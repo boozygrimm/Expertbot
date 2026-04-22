@@ -265,6 +265,7 @@ def build_fort_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMark
         label = get_role_name(captive.get("unit_id", "ghost"))
         builder.button(text=f"🪤 {label}", callback_data=f"captive_view:{captive['id']}")
     if total_pages > 1:
+        builder.button(text=f"📄 Подвал {page + 1}/{total_pages}", callback_data="fort_page_info")
         if page > 0:
             builder.button(text="⬅️ Подвал", callback_data=f"fort_captives_page:{page - 1}")
         if page < total_pages - 1:
@@ -665,6 +666,11 @@ async def fort_captives_page(callback: types.CallbackQuery):
         reply_markup=build_fort_keyboard(player, page),
         parse_mode="Markdown",
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fort_page_info")
+async def fort_dummy_btn(callback: types.CallbackQuery):
     await callback.answer()
 
 

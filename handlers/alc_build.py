@@ -233,15 +233,18 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     fighters = get_player_fighters(player)
     available_units = get_available_barracks_units(barracks_level)
     capacity = get_barracks_capacity(barracks_level)
-    active_count = len([fighter for fighter in fighters if fighter.get("status") != "dead"])
-    available_count = len([fighter for fighter in fighters if fighter.get("status") == "available"])
-    tired_count = len([fighter for fighter in fighters if fighter.get("status") == "available" and fighter.get("stamina", 0) <= 0])
+    roster_fighters = [fighter for fighter in fighters if fighter.get("status") != "dead"]
+    active_count = len(roster_fighters)
+    available_count = len([fighter for fighter in roster_fighters if fighter.get("status") == "available"])
+    tired_count = len([fighter for fighter in roster_fighters if fighter.get("status") == "available" and fighter.get("stamina", 0) <= 0])
+    expedition_count = sum(len(expedition.get("fighter_ids", [])) for expedition in player.get("active_expeditions", []) if expedition.get("status") != "arrived")
+    raid_count = len(player.get("raid_squad", {}).get("fighter_ids", []))
 
     lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})", "Что доступно:"]
     lines.extend(get_barracks_effect_lines(barracks_level))
     lines.append("")
     lines.append(f"Личный состав: {active_count}/{capacity}")
-    lines.append(f"В строю: {available_count} | Уставшие: {tired_count} | В походах: {len(player.get('active_expeditions', [])) + len(player.get('raid_squad', {}).get('fighter_ids', []))}")
+    lines.append(f"В строю: {available_count} | Уставшие: {tired_count} | В походах: {expedition_count + raid_count}")
     lines.append("")
     lines.append("Доступные юниты:")
     for tier, unit_ids in available_units.items():
@@ -256,18 +259,43 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     lines.append("")
 
     available_fighters = get_available_fighters(player)
+    roster_fighters.sort(
+        key=lambda item: (
+            item.get("status") not in {"available", "expedition", "raid"},
+            item.get("status") != "available",
+            -int(item.get("tier", 1)),
+            -int(item.get("xp", 0)),
+            get_fighter_title(item),
+        )
+    )
     current_page = barracks_pages.get(user_id, 0)
-    total_pages = max(1, (len(available_fighters) + BARRACKS_FIGHTERS_PER_PAGE - 1) // BARRACKS_FIGHTERS_PER_PAGE)
+    total_pages = max(1, (len(roster_fighters) + BARRACKS_FIGHTERS_PER_PAGE - 1) // BARRACKS_FIGHTERS_PER_PAGE)
     if current_page >= total_pages:
         current_page = max(0, total_pages - 1)
     barracks_pages[user_id] = current_page
     page_start = current_page * BARRACKS_FIGHTERS_PER_PAGE
-    page_fighters = available_fighters[page_start: page_start + BARRACKS_FIGHTERS_PER_PAGE]
-    if available_fighters:
+    page_fighters = roster_fighters[page_start: page_start + BARRACKS_FIGHTERS_PER_PAGE]
+    if roster_fighters:
         lines.append("Лидеры по опыту:")
         for fighter in sorted(available_fighters, key=lambda item: (-item.get("xp", 0), -item.get("tier", 1), get_fighter_title(item)))[:6]:
             lines.append(f"• {build_fighter_label(fighter)}")
-        if len(available_fighters) > BARRACKS_FIGHTERS_PER_PAGE:
+        lines.append("")
+        lines.append("Состав страницы:")
+        for fighter in page_fighters:
+            if fighter.get("status") == "expedition":
+                marker = "🧪"
+                status_text = "в экспедиции"
+            elif fighter.get("status") == "raid":
+                marker = "☠️"
+                status_text = "в рейде"
+            elif fighter.get("stamina", 0) <= 0:
+                marker = "😴"
+                status_text = "отдыхает"
+            else:
+                marker = "🪖"
+                status_text = "в строю"
+            lines.append(f"• {marker} {build_fighter_label(fighter)} | {status_text}")
+        if len(roster_fighters) > BARRACKS_FIGHTERS_PER_PAGE:
             lines.append("")
             lines.append(f"Страница состава: {current_page + 1}/{total_pages}")
     else:
@@ -278,7 +306,14 @@ async def render_barracks_menu(message: types.Message, user_id: int):
 
     builder = InlineKeyboardBuilder()
     for fighter in page_fighters:
-        marker = "😴" if fighter.get("stamina", 0) <= 0 else "🪖"
+        if fighter.get("status") == "expedition":
+            marker = "🧪"
+        elif fighter.get("status") == "raid":
+            marker = "☠️"
+        elif fighter.get("stamina", 0) <= 0:
+            marker = "😴"
+        else:
+            marker = "🪖"
         builder.button(text=f"{marker} {get_fighter_title(fighter)}", callback_data=f"fighter_view:{fighter['id']}")
     if total_pages > 1:
         if current_page > 0:
