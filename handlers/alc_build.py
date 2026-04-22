@@ -50,6 +50,12 @@ def format_supply_report(report: dict | None) -> str:
     return line
 
 
+def shorten_button_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)] + "…"
+
+
 def get_barracks_effect_lines(level: int) -> list[str]:
     levels = BUILDINGS["barracks"]["levels"]
     lines = []
@@ -317,7 +323,13 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             marker = "😴"
         else:
             marker = "🪖"
-        btn_text = get_fighter_title(fighter) if grid_size == 4 else f"{marker} {get_fighter_title(fighter)}"
+        base_name = get_fighter_title(fighter)
+        if grid_size == 4:
+            btn_text = shorten_button_text(base_name, 10)
+        elif grid_size == 3:
+            btn_text = f"{marker} {shorten_button_text(base_name, 8)}"
+        else:
+            btn_text = f"{marker} {shorten_button_text(base_name, 14)}"
         row.append(types.InlineKeyboardButton(text=btn_text, callback_data=f"fighter_view:{fighter['id']}"))
         if len(row) == grid_size:
             builder.row(*row)

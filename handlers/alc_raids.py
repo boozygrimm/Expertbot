@@ -53,6 +53,28 @@ def cleanup_raid_draft(player: dict, user_id: int) -> list[str]:
     return cleaned
 
 
+def get_el_name(item_id: str) -> str:
+    label = ELEMENTS.get(item_id, item_id)
+    if isinstance(label, str):
+        parts = label.split(" ", 1)
+        return parts[1] if len(parts) > 1 else label
+    return str(label)
+
+
+def get_el_emoji(item_id: str) -> str:
+    label = ELEMENTS.get(item_id, item_id)
+    if isinstance(label, str):
+        parts = label.split(" ", 1)
+        return parts[0] if len(parts) > 1 else "❓"
+    return "❓"
+
+
+def shorten_button_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: max(1, limit - 1)] + "…"
+
+
 def get_raid_power(units: list, energy: int) -> int:
     unit_ids = [unit["unit_id"] if isinstance(unit, dict) else unit for unit in units]
     tiers = [int(unit.get("tier", BATTLE_UNITS.get(unit.get("unit_id", ""), {}).get("tier", 1))) if isinstance(unit, dict) else BATTLE_UNITS[unit]["tier"] for unit in units]
@@ -290,8 +312,14 @@ def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types
     subset = items[start:start + page_size]
     row = []
     for item_id, amount in subset:
-        label = ELEMENTS.get(item_id, item_id)
-        text = f"{label} x{amount}" if grid_size != 4 else f"{label.split(' ', 1)[-1]} {amount}"
+        name = get_el_name(item_id)
+        emoji = get_el_emoji(item_id)
+        if grid_size == 4:
+            text = f"{shorten_button_text(name, 8)} {amount}"
+        elif grid_size == 3:
+            text = f"{emoji} {shorten_button_text(name, 7)}"
+        else:
+            text = f"{emoji} {shorten_button_text(name, 12)} {amount}"
         row.append(types.InlineKeyboardButton(text=text, callback_data=f"fort_load:{slot_id}:{item_id}"))
         if len(row) == grid_size:
             builder.row(*row)
