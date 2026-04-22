@@ -43,6 +43,7 @@ LIVE_PLAYER_WINDOW = 36 * 3600
 RAID_REPEAT_COOLDOWN = 18 * 3600
 RAID_PROTECTION_ON_SUCCESS = 12 * 3600
 FORT_CAPTIVES_PER_PAGE = 8
+FORT_SLOT_ROWS_PER_PAGE = 8
 
 
 def cleanup_raid_draft(player: dict, user_id: int) -> list[str]:
@@ -278,25 +279,35 @@ def build_fort_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMark
 def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     inventory = player.get("inventory", {})
+    grid_size = player.get("inv_grid", 3)
     items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
     items.sort(key=lambda item: ELEMENTS.get(item[0], item[0]))
-    page_size = 10
+    page_size = grid_size * FORT_SLOT_ROWS_PER_PAGE
     total_pages = max(1, (len(items) + page_size - 1) // page_size)
     if page >= total_pages:
         page = max(0, total_pages - 1)
     start = page * page_size
     subset = items[start:start + page_size]
+    row = []
     for item_id, amount in subset:
-        builder.button(
-            text=f"{ELEMENTS.get(item_id, item_id)} x{amount}",
-            callback_data=f"fort_load:{slot_id}:{item_id}",
-        )
+        label = ELEMENTS.get(item_id, item_id)
+        text = f"{label} x{amount}" if grid_size != 4 else f"{label.split(' ', 1)[-1]} {amount}"
+        row.append(types.InlineKeyboardButton(text=text, callback_data=f"fort_load:{slot_id}:{item_id}"))
+        if len(row) == grid_size:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
     if total_pages > 1:
-        builder.button(text=f"📄 Страница {page + 1}/{total_pages}", callback_data="fort_page_info")
+        nav_row = []
         if page > 0:
-            builder.button(text="⬅️ Назад", callback_data=f"fort_page:{slot_id}:{page-1}")
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"fort_page:{slot_id}:{page-1}"))
         if page < total_pages - 1:
-            builder.button(text="Вперёд ➡️", callback_data=f"fort_page:{slot_id}:{page+1}")
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"fort_page:{slot_id}:{page+1}"))
+        if nav_row:
+            builder.row(*nav_row)
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"fort_set_grid:{slot_id}:{next_grid}")
     if player.get("fort_defense", {}).get(slot_id):
         builder.button(text="♻️ Снять предмет", callback_data=f"fort_unload:{slot_id}")
     builder.button(text="🔙 В Форт", callback_data="fort_open")
@@ -684,8 +695,12 @@ async def fort_slot(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     slot_id = callback.data.split(":")[1]
     fort_item_pages[(callback.from_user.id, slot_id)] = 0
+    grid_size = player.get("inv_grid", 3)
+    inventory = player.get("inventory", {})
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    total_pages = max(1, (len(items) + (grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (grid_size * FORT_SLOT_ROWS_PER_PAGE))
     await callback.message.edit_text(
-        f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.",
+        f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: 1/{total_pages} | Сетка: {grid_size} в ряд.",
         reply_markup=build_fort_slot_keyboard(player, slot_id, 0),
         parse_mode="Markdown",
     )
@@ -698,9 +713,32 @@ async def fort_page(callback: types.CallbackQuery):
     current_page = int(page)
     fort_item_pages[(callback.from_user.id, slot_id)] = current_page
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    grid_size = player.get("inv_grid", 3)
+    inventory = player.get("inventory", {})
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    total_pages = max(1, (len(items) + (grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (grid_size * FORT_SLOT_ROWS_PER_PAGE))
     await callback.message.edit_text(
-        f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.",
+        f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: {current_page + 1}/{total_pages} | Сетка: {grid_size} в ряд.",
         reply_markup=build_fort_slot_keyboard(player, slot_id, current_page),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fort_set_grid:"))
+async def fort_set_grid(callback: types.CallbackQuery):
+    _, slot_id, new_grid = callback.data.split(":")
+    new_grid_size = int(new_grid)
+    user_id = callback.from_user.id
+    fort_item_pages[(user_id, slot_id)] = 0
+    await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"inv_grid": new_grid_size}})
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    inventory = player.get("inventory", {})
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    total_pages = max(1, (len(items) + (new_grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (new_grid_size * FORT_SLOT_ROWS_PER_PAGE))
+    await callback.message.edit_text(
+        f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: 1/{total_pages} | Сетка: {new_grid_size} в ряд.",
+        reply_markup=build_fort_slot_keyboard(player, slot_id, 0),
         parse_mode="Markdown",
     )
     await callback.answer()

@@ -25,7 +25,7 @@ from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
 
-BARRACKS_FIGHTERS_PER_PAGE = 10
+BARRACKS_ROWS_PER_PAGE = 8
 BARRACKS_HOF_PER_PAGE = 10
 barracks_pages: dict[int, int] = {}
 barracks_hof_pages: dict[int, int] = {}
@@ -231,6 +231,7 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         )
 
     fighters = get_player_fighters(player)
+    grid_size = player.get("inv_grid", 3)
     available_units = get_available_barracks_units(barracks_level)
     capacity = get_barracks_capacity(barracks_level)
     roster_fighters = [fighter for fighter in fighters if fighter.get("status") != "dead"]
@@ -269,12 +270,13 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         )
     )
     current_page = barracks_pages.get(user_id, 0)
-    total_pages = max(1, (len(roster_fighters) + BARRACKS_FIGHTERS_PER_PAGE - 1) // BARRACKS_FIGHTERS_PER_PAGE)
+    items_per_page = grid_size * BARRACKS_ROWS_PER_PAGE
+    total_pages = max(1, (len(roster_fighters) + items_per_page - 1) // items_per_page)
     if current_page >= total_pages:
         current_page = max(0, total_pages - 1)
     barracks_pages[user_id] = current_page
-    page_start = current_page * BARRACKS_FIGHTERS_PER_PAGE
-    page_fighters = roster_fighters[page_start: page_start + BARRACKS_FIGHTERS_PER_PAGE]
+    page_start = current_page * items_per_page
+    page_fighters = roster_fighters[page_start: page_start + items_per_page]
     if roster_fighters:
         lines.append("Лидеры по опыту:")
         for fighter in sorted(available_fighters, key=lambda item: (-item.get("xp", 0), -item.get("tier", 1), get_fighter_title(item)))[:6]:
@@ -295,7 +297,7 @@ async def render_barracks_menu(message: types.Message, user_id: int):
                 marker = "🪖"
                 status_text = "в строю"
             lines.append(f"• {marker} {build_fighter_label(fighter)} | {status_text}")
-        if len(roster_fighters) > BARRACKS_FIGHTERS_PER_PAGE:
+        if len(roster_fighters) > items_per_page:
             lines.append("")
             lines.append(f"Страница состава: {current_page + 1}/{total_pages}")
     else:
@@ -305,6 +307,7 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     lines.append(format_supply_report(player.get("barracks_report")))
 
     builder = InlineKeyboardBuilder()
+    row = []
     for fighter in page_fighters:
         if fighter.get("status") == "expedition":
             marker = "🧪"
@@ -314,12 +317,23 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             marker = "😴"
         else:
             marker = "🪖"
-        builder.button(text=f"{marker} {get_fighter_title(fighter)}", callback_data=f"fighter_view:{fighter['id']}")
+        btn_text = get_fighter_title(fighter) if grid_size == 4 else f"{marker} {get_fighter_title(fighter)}"
+        row.append(types.InlineKeyboardButton(text=btn_text, callback_data=f"fighter_view:{fighter['id']}"))
+        if len(row) == grid_size:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
     if total_pages > 1:
+        nav_row = []
         if current_page > 0:
-            builder.button(text="⬅️ Состав", callback_data=f"barracks_page:{current_page - 1}")
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"barracks_page:{current_page - 1}"))
         if current_page < total_pages - 1:
-            builder.button(text="Состав ➡️", callback_data=f"barracks_page:{current_page + 1}")
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"barracks_page:{current_page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"barracks_set_grid:{next_grid}")
     builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
     builder.button(text="🏗 Постройки", callback_data="build_open")
     builder.button(text="🧪 Экспедиции", callback_data="expeditions_open")
@@ -488,6 +502,15 @@ async def barracks_hof(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("barracks_page:"))
 async def barracks_page(callback: types.CallbackQuery):
     barracks_pages[callback.from_user.id] = int(callback.data.split(":")[1])
+    await render_barracks_menu(callback.message, callback.from_user.id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("barracks_set_grid:"))
+async def barracks_set_grid(callback: types.CallbackQuery):
+    new_grid = int(callback.data.split(":")[1])
+    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
+    barracks_pages[callback.from_user.id] = 0
     await render_barracks_menu(callback.message, callback.from_user.id)
     await callback.answer()
 
