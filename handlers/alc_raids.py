@@ -281,6 +281,9 @@ def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types
     items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
     items.sort(key=lambda item: ELEMENTS.get(item[0], item[0]))
     page_size = 10
+    total_pages = max(1, (len(items) + page_size - 1) // page_size)
+    if page >= total_pages:
+        page = max(0, total_pages - 1)
     start = page * page_size
     subset = items[start:start + page_size]
     for item_id, amount in subset:
@@ -288,10 +291,12 @@ def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types
             text=f"{ELEMENTS.get(item_id, item_id)} x{amount}",
             callback_data=f"fort_load:{slot_id}:{item_id}",
         )
-    if page > 0:
-        builder.button(text="⬅️ Назад", callback_data=f"fort_page:{slot_id}:{page-1}")
-    if start + page_size < len(items):
-        builder.button(text="➡️ Вперёд", callback_data=f"fort_page:{slot_id}:{page+1}")
+    if total_pages > 1:
+        builder.button(text=f"📄 Страница {page + 1}/{total_pages}", callback_data="fort_page_info")
+        if page > 0:
+            builder.button(text="⬅️ Назад", callback_data=f"fort_page:{slot_id}:{page-1}")
+        if page < total_pages - 1:
+            builder.button(text="Вперёд ➡️", callback_data=f"fort_page:{slot_id}:{page+1}")
     if player.get("fort_defense", {}).get(slot_id):
         builder.button(text="♻️ Снять предмет", callback_data=f"fort_unload:{slot_id}")
     builder.button(text="🔙 В Форт", callback_data="fort_open")
