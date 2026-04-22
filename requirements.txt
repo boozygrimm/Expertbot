@@ -1,0 +1,15 @@
+aiogram
+motor
+google-genai
+python-dotenv
+aiohttp
+dnspython
+opencv-python-headless
+ddgs
+musicdl
+beautifulsoup4
+requests
+pycryptodomex
+yt-dlp
+apscheduler==3.10.4
+Pillow>=10.0.0
