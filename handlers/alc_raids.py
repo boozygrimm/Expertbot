@@ -38,9 +38,18 @@ FORT_SLOTS = {1: ["moat"], 2: ["moat", "catapult"], 3: ["moat", "catapult", "aur
 TRAP_LABELS = {"moat": "Ров", "catapult": "Катапульта", "aura": "Распылитель"}
 raid_drafts: dict[int, list[str]] = {}
 fort_item_pages: dict[tuple[int, str], int] = {}
+fort_captive_pages: dict[int, int] = {}
 LIVE_PLAYER_WINDOW = 36 * 3600
 RAID_REPEAT_COOLDOWN = 18 * 3600
 RAID_PROTECTION_ON_SUCCESS = 12 * 3600
+FORT_CAPTIVES_PER_PAGE = 8
+
+
+def cleanup_raid_draft(player: dict, user_id: int) -> list[str]:
+    valid_ids = {fighter["id"] for fighter in get_available_fighters(player, include_zero_stamina=True)}
+    cleaned = [fighter_id for fighter_id in raid_drafts.get(user_id, []) if fighter_id in valid_ids]
+    raid_drafts[user_id] = cleaned
+    return cleaned
 
 
 def get_raid_power(units: list, energy: int) -> int:
@@ -212,7 +221,7 @@ def build_raids_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboard
     return builder.as_markup()
 
 
-def render_fort_menu(player: dict) -> str:
+def render_fort_menu(player: dict, page: int = 0) -> str:
     fort_level = player.get("buildings", {}).get("fort", 0)
     defense = player.get("fort_defense", {})
     captives = player.get("captives", [])
@@ -228,21 +237,38 @@ def render_fort_menu(player: dict) -> str:
     lines.append("")
     if captives:
         lines.append("Пленные:")
-        for captive in captives[:8]:
+        total_pages = max(1, (len(captives) + FORT_CAPTIVES_PER_PAGE - 1) // FORT_CAPTIVES_PER_PAGE)
+        if page >= total_pages:
+            page = max(0, total_pages - 1)
+        start = page * FORT_CAPTIVES_PER_PAGE
+        for captive in captives[start:start + FORT_CAPTIVES_PER_PAGE]:
             lines.append(f"• {get_role_name(captive.get('unit_id', 'ghost'))} [{captive.get('id', '')[:4]}]")
+        if total_pages > 1:
+            lines.append("")
+            lines.append(f"Страница подвала: {page + 1}/{total_pages}")
     else:
         lines.append("Подвал пока пуст.")
     return "\n".join(lines)
 
 
-def build_fort_keyboard(player: dict) -> types.InlineKeyboardMarkup:
+def build_fort_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMarkup:
     fort_level = player.get("buildings", {}).get("fort", 0)
     builder = InlineKeyboardBuilder()
     for slot_id in get_allowed_fort_slots(fort_level):
         builder.button(text=f"🧱 Настроить {TRAP_LABELS[slot_id]}", callback_data=f"fort_slot:{slot_id}")
-    for captive in player.get("captives", [])[:8]:
+    captives = player.get("captives", [])
+    total_pages = max(1, (len(captives) + FORT_CAPTIVES_PER_PAGE - 1) // FORT_CAPTIVES_PER_PAGE)
+    if page >= total_pages:
+        page = max(0, total_pages - 1)
+    start = page * FORT_CAPTIVES_PER_PAGE
+    for captive in captives[start:start + FORT_CAPTIVES_PER_PAGE]:
         label = get_role_name(captive.get("unit_id", "ghost"))
         builder.button(text=f"🪤 {label}", callback_data=f"captive_view:{captive['id']}")
+    if total_pages > 1:
+        if page > 0:
+            builder.button(text="⬅️ Подвал", callback_data=f"fort_captives_page:{page - 1}")
+        if page < total_pages - 1:
+            builder.button(text="Подвал ➡️", callback_data=f"fort_captives_page:{page + 1}")
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
     return builder.as_markup()
@@ -487,7 +513,7 @@ async def close_pm_report(callback: types.CallbackQuery):
 @router.callback_query(F.data == "raids_open")
 async def raids_open(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    draft = raid_drafts.get(callback.from_user.id, [])
+    draft = cleanup_raid_draft(player, callback.from_user.id)
     await callback.message.edit_text(
         render_raids_menu(player, draft),
         reply_markup=build_raids_keyboard(player, draft),
@@ -517,7 +543,7 @@ async def raid_clear(callback: types.CallbackQuery):
 async def raid_pick(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
-    draft = raid_drafts.get(user_id, []).copy()
+    draft = cleanup_raid_draft(player, user_id).copy()
     fighter_id = callback.data.split(":")[1]
     limit = get_expedition_team_limit(player.get("buildings", {}).get("guild", 0))
     if fighter_id in draft:
@@ -527,7 +553,13 @@ async def raid_pick(callback: types.CallbackQuery):
             return await callback.answer("Гильдия не пропускает такой размер отряда.", show_alert=True)
         fighter = find_fighter(player, fighter_id)
         if not fighter or fighter.get("status") != "available":
-            return await callback.answer("Этот боец уже занят.", show_alert=True)
+            raid_drafts[user_id] = cleanup_raid_draft(player, user_id)
+            await callback.message.edit_text(
+                render_raids_menu(player, raid_drafts[user_id]),
+                reply_markup=build_raids_keyboard(player, raid_drafts[user_id]),
+                parse_mode="Markdown",
+            )
+            return await callback.answer("Список бойцов обновлён. Попробуй выбрать заново.", show_alert=True)
         draft.append(fighter_id)
     raid_drafts[user_id] = draft
     await callback.message.edit_text(
@@ -543,7 +575,7 @@ async def raid_prepare(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = player.get("inventory", {})
-    draft = raid_drafts.get(user_id, []).copy()
+    draft = cleanup_raid_draft(player, user_id).copy()
     if not 3 <= len(draft) <= get_expedition_team_limit(player.get("buildings", {}).get("guild", 0)):
         return await callback.answer("Нужно 3-5 бойцов.", show_alert=True)
     if player.get("raid_squad", {}).get("fighter_ids"):
@@ -614,9 +646,23 @@ async def raid_disband(callback: types.CallbackQuery):
 @router.callback_query(F.data == "fort_open")
 async def fort_open(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    page = fort_captive_pages.get(callback.from_user.id, 0)
     await callback.message.edit_text(
-        render_fort_menu(player),
-        reply_markup=build_fort_keyboard(player),
+        render_fort_menu(player, page),
+        reply_markup=build_fort_keyboard(player, page),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fort_captives_page:"))
+async def fort_captives_page(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[1])
+    fort_captive_pages[callback.from_user.id] = page
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    await callback.message.edit_text(
+        render_fort_menu(player, page),
+        reply_markup=build_fort_keyboard(player, page),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -671,9 +717,10 @@ async def fort_load(callback: types.CallbackQuery):
     )
     player["inventory"] = inventory
     player["fort_defense"] = defense
+    page = fort_captive_pages.get(user_id, 0)
     await callback.message.edit_text(
-        render_fort_menu(player),
-        reply_markup=build_fort_keyboard(player),
+        render_fort_menu(player, page),
+        reply_markup=build_fort_keyboard(player, page),
         parse_mode="Markdown",
     )
     await callback.answer("Ловушка заряжена.")
@@ -697,9 +744,10 @@ async def fort_unload(callback: types.CallbackQuery):
     )
     player["inventory"] = inventory
     player["fort_defense"] = defense
+    page = fort_captive_pages.get(user_id, 0)
     await callback.message.edit_text(
-        render_fort_menu(player),
-        reply_markup=build_fort_keyboard(player),
+        render_fort_menu(player, page),
+        reply_markup=build_fort_keyboard(player, page),
         parse_mode="Markdown",
     )
     await callback.answer("Предмет снят с ловушки.")

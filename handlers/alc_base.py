@@ -10,6 +10,27 @@ from handlers.alc_achievements import ACHIEVEMENTS
 
 router = Router()
 
+ALCHEMY_ALPHA_VERSION = "0.4.3-alpha"
+ALCHEMY_CHANGELOG = [
+    ("0.4.3-alpha", [
+        "Персональные бойцы в Казармах: у каждого теперь свой XP, бодрость, имя и история походов.",
+        "Рейды и экспедиции переведены на личный состав вместо безликих пачек.",
+        "Добавлены Зал славы, апгрейды бойцов и безопасный переход со старых сохранений.",
+        "Появилась пагинация в длинных окнах Казарм и Форта.",
+    ]),
+    ("0.4.2-alpha", [
+        "Экспедиции получили отдельный интерфейс, события по маршруту и подробные отчеты.",
+        "Форт, ловушки и пленные стали частью обороны базы.",
+    ]),
+    ("0.4.1-alpha", [
+        "Казармы, рейды и военные рецепты были вынесены в отдельный контур развития.",
+        "Появились достижения и доска объявлений.",
+    ]),
+    ("0.4.0-alpha", [
+        "База алхимика оформилась в модульную систему: штаб, стройка, лаборатория, производство.",
+    ]),
+]
+
 # Системные переменные
 HIDDEN_ITEMS = ["base_crystal", "active_base"]
 USE_ITEMS = ["pack_s", "pack_m", "pack_l", "pack_xl", "base_crystal", "recipe_scroll"]
@@ -95,6 +116,7 @@ async def get_base_content(user_id: int):
     main_btns = InlineKeyboardBuilder()
     main_btns.button(text="🎒 Мой склад", callback_data="alc:inventory")
     main_btns.button(text="🏆 Достижения", callback_data="alc:achievements")
+    main_btns.button(text="🧾 Альфа и изменения", callback_data="alc:changelog")
     main_btns.button(text="📜 Доска объявлений", callback_data="quests_open") # <-- НОВАЯ КНОПКА
     main_btns.button(text="⚗️ Лаборатория", callback_data="lab_open")
     main_btns.button(text="🏗 Постройки", callback_data="build_open")
@@ -109,17 +131,47 @@ async def get_base_content(user_id: int):
     main_btns.button(text="❌ Закрыть", callback_data="alc:base_close")
     
     # Настраиваем сетку: 2 сверху, 2 в центре, и остальные по одной
-    main_btns.adjust(2, 2, 2, 1) 
+    main_btns.adjust(2, 2, 2, 2, 1) 
     builder.attach(main_btns)
     # ==================================
             
     text = f"🏕 **ГЛАВНЫЙ ШТАБ**\nДобро пожаловать, {player.get('user_name', 'Путник')}!\n"
+    text += f"\nВерсия: **{ALCHEMY_ALPHA_VERSION}**"
     text += "\n_Тут лежат только активные предметы. Твои ресурсы отсортированы на Складе._"
     
     if ach_msg:
         text = f"{ach_msg}\n\n" + text
 
     return text, builder.as_markup()
+
+
+def build_changelog_text() -> str:
+    lines = [
+        "🧾 **АЛЬФА ИЗМЕНЕНИЙ**",
+        f"Текущая версия: **{ALCHEMY_ALPHA_VERSION}**",
+        "",
+        "Что это значит:",
+        "• Альфа - механики ещё двигаются, баланс и интерфейсы могут меняться.",
+        "• Если старые сохранения можно перенести без потерь, игра старается сделать это автоматически.",
+        "",
+        "История ключевых изменений:",
+    ]
+    for version, notes in ALCHEMY_CHANGELOG:
+        lines.append(f"**{version}**")
+        for note in notes:
+            lines.append(f"• {note}")
+        lines.append("")
+    lines.append("Если после обновления что-то ведет себя странно, обычно помогает заново открыть нужное окно базы.")
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "alc:changelog")
+async def show_changelog(callback: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+    builder.adjust(1)
+    await callback.message.edit_text(build_changelog_text(), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
 
 
 # ==================== ИНВЕНТАРЬ И НАСТРОЙКИ СЕТКИ ====================

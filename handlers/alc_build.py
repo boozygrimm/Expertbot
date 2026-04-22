@@ -25,6 +25,11 @@ from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
 
+BARRACKS_FIGHTERS_PER_PAGE = 10
+BARRACKS_HOF_PER_PAGE = 10
+barracks_pages: dict[int, int] = {}
+barracks_hof_pages: dict[int, int] = {}
+
 
 def format_supply_report(report: dict | None) -> str:
     if not report:
@@ -251,10 +256,20 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     lines.append("")
 
     available_fighters = get_available_fighters(player)
+    current_page = barracks_pages.get(user_id, 0)
+    total_pages = max(1, (len(available_fighters) + BARRACKS_FIGHTERS_PER_PAGE - 1) // BARRACKS_FIGHTERS_PER_PAGE)
+    if current_page >= total_pages:
+        current_page = max(0, total_pages - 1)
+    barracks_pages[user_id] = current_page
+    page_start = current_page * BARRACKS_FIGHTERS_PER_PAGE
+    page_fighters = available_fighters[page_start: page_start + BARRACKS_FIGHTERS_PER_PAGE]
     if available_fighters:
         lines.append("Лидеры по опыту:")
         for fighter in sorted(available_fighters, key=lambda item: (-item.get("xp", 0), -item.get("tier", 1), get_fighter_title(item)))[:6]:
             lines.append(f"• {build_fighter_label(fighter)}")
+        if len(available_fighters) > BARRACKS_FIGHTERS_PER_PAGE:
+            lines.append("")
+            lines.append(f"Страница состава: {current_page + 1}/{total_pages}")
     else:
         lines.append("Личный состав пуст. Боевые рецепты из Лаборатории теперь сразу создают бойцов в ростере.")
 
@@ -262,9 +277,14 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     lines.append(format_supply_report(player.get("barracks_report")))
 
     builder = InlineKeyboardBuilder()
-    for fighter in available_fighters[:10]:
+    for fighter in page_fighters:
         marker = "😴" if fighter.get("stamina", 0) <= 0 else "🪖"
         builder.button(text=f"{marker} {get_fighter_title(fighter)}", callback_data=f"fighter_view:{fighter['id']}")
+    if total_pages > 1:
+        if current_page > 0:
+            builder.button(text="⬅️ Состав", callback_data=f"barracks_page:{current_page - 1}")
+        if current_page < total_pages - 1:
+            builder.button(text="Состав ➡️", callback_data=f"barracks_page:{current_page + 1}")
     builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
     builder.button(text="🏗 Постройки", callback_data="build_open")
     builder.button(text="🧪 Экспедиции", callback_data="expeditions_open")
@@ -400,18 +420,47 @@ async def barracks_hof(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     hall = player.get("hall_of_fame", [])
     lines = ["🏅 **ЗАЛ СЛАВЫ**"]
+    current_page = barracks_hof_pages.get(callback.from_user.id, 0)
+    total_pages = max(1, (len(hall) + BARRACKS_HOF_PER_PAGE - 1) // BARRACKS_HOF_PER_PAGE)
+    if current_page >= total_pages:
+        current_page = max(0, total_pages - 1)
+    barracks_hof_pages[callback.from_user.id] = current_page
     if not hall:
         lines.append("Пока пусто. И это хороший знак.")
     else:
-        for entry in hall[-12:][::-1]:
+        ordered_hall = hall[::-1]
+        page_start = current_page * BARRACKS_HOF_PER_PAGE
+        page_entries = ordered_hall[page_start: page_start + BARRACKS_HOF_PER_PAGE]
+        for entry in page_entries:
             lines.append(
                 f"• {entry.get('name')} | Т{entry.get('tier', 1)} | рейды {entry.get('raids', 0)} | экспедиции {entry.get('expeditions', 0)}"
             )
+        if total_pages > 1:
+            lines.append("")
+            lines.append(f"Страница памяти: {current_page + 1}/{total_pages}")
     builder = InlineKeyboardBuilder()
+    if total_pages > 1:
+        if current_page > 0:
+            builder.button(text="⬅️ Память", callback_data=f"barracks_hof_page:{current_page - 1}")
+        if current_page < total_pages - 1:
+            builder.button(text="Память ➡️", callback_data=f"barracks_hof_page:{current_page + 1}")
     builder.button(text="🔙 В Казармы", callback_data="barracks_open")
     builder.adjust(1)
     await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("barracks_page:"))
+async def barracks_page(callback: types.CallbackQuery):
+    barracks_pages[callback.from_user.id] = int(callback.data.split(":")[1])
+    await render_barracks_menu(callback.message, callback.from_user.id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("barracks_hof_page:"))
+async def barracks_hof_page(callback: types.CallbackQuery):
+    barracks_hof_pages[callback.from_user.id] = int(callback.data.split(":")[1])
+    await barracks_hof(callback)
 
 @router.callback_query(F.data == "build_open")
 async def build_main(callback: types.CallbackQuery):
