@@ -15,6 +15,19 @@ from handlers.alc_core import (
     get_or_create_player,
     increment_action_counter,
 )
+from handlers.alc_fighters import (
+    build_fighter_snapshot,
+    consume_fighter_stamina,
+    create_fighter,
+    find_fighter,
+    get_available_fighters,
+    get_fighter_risk,
+    get_fighter_stamina_cap,
+    get_fighter_title,
+    get_player_fighters,
+    grant_mission_progress,
+    hall_of_fame_entry,
+)
 from handlers.alc_expeditions import get_expedition_team_limit, get_role_name
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.pole_chudes import delete_after_delay
@@ -30,14 +43,16 @@ RAID_REPEAT_COOLDOWN = 18 * 3600
 RAID_PROTECTION_ON_SUCCESS = 12 * 3600
 
 
-def get_raid_power(units: list[str], energy: int) -> int:
-    power = sum(BATTLE_UNITS[unit_id]["tier"] * 18 + 10 for unit_id in units)
+def get_raid_power(units: list, energy: int) -> int:
+    unit_ids = [unit["unit_id"] if isinstance(unit, dict) else unit for unit in units]
+    tiers = [int(unit.get("tier", BATTLE_UNITS.get(unit.get("unit_id", ""), {}).get("tier", 1))) if isinstance(unit, dict) else BATTLE_UNITS[unit]["tier"] for unit in units]
+    power = sum(tier * 18 + 10 for tier in tiers)
     power += energy * 3
-    if "sniper" in units:
+    if "sniper" in unit_ids:
         power += 12
-    if "saboteur" in units:
+    if "saboteur" in unit_ids:
         power += 10
-    if "medic" in units:
+    if "medic" in unit_ids:
         power += 8
     return power
 
@@ -104,8 +119,8 @@ def build_public_raid_line(attacker: str, defender: str, success: bool, live_tar
     return random.choice(pool)
 
 
-def build_raid_dm_log(units: list[str], trap_item: str | None, success: bool, live_target: bool, loot: dict, captives_taken: list[str]) -> str:
-    named_units = [get_role_name(unit_id) for unit_id in units]
+def build_raid_dm_log(units: list, trap_item: str | None, success: bool, live_target: bool, loot: dict, captives_taken: list[dict]) -> str:
+    named_units = [get_role_name(unit) for unit in units]
     lead_unit = named_units[0] if named_units else "Командир"
     support_unit = named_units[1] if len(named_units) > 1 else lead_unit
     trap_name = ELEMENTS.get(trap_item, trap_item) if trap_item else None
@@ -150,7 +165,7 @@ def build_raid_dm_log(units: list[str], trap_item: str | None, success: bool, li
 
 
 def render_raids_menu(player: dict, draft: list[str] | None = None) -> str:
-    squad = player.get("raid_squad", {"units": [], "energy_invested": 0})
+    squad = player.get("raid_squad", {"fighter_ids": [], "energy_invested": 0})
     guild_level = player.get("buildings", {}).get("guild", 0)
     team_limit = get_expedition_team_limit(guild_level)
     lines = [
@@ -161,14 +176,15 @@ def render_raids_menu(player: dict, draft: list[str] | None = None) -> str:
     ]
     if draft is not None:
         if draft:
-            lines.append("Черновик: " + ", ".join(get_role_name(unit_id) for unit_id in draft))
+            fighters = [find_fighter(player, fighter_id) for fighter_id in draft]
+            lines.append("Черновик: " + ", ".join(get_fighter_title(fighter) for fighter in fighters if fighter))
         else:
             lines.append("Черновик пуст.")
         lines.append("")
 
-    if squad.get("units"):
+    if squad.get("fighter_snapshots"):
         lines.append("Подготовленный рейд-отряд:")
-        lines.append("• " + ", ".join(get_role_name(unit_id) for unit_id in squad["units"]))
+        lines.append("• " + ", ".join(get_role_name(unit) for unit in squad["fighter_snapshots"]))
         lines.append(f"• Вложено энергии: {squad.get('energy_invested', 0)}")
     else:
         lines.append("Готового рейд-отряда нет.")
@@ -180,15 +196,16 @@ def build_raids_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboard
     guild_level = player.get("buildings", {}).get("guild", 0)
     team_limit = get_expedition_team_limit(guild_level)
     builder = InlineKeyboardBuilder()
-    owned_units = [(unit_id, amount) for unit_id, amount in inventory.items() if unit_id in BATTLE_UNITS and amount > 0]
-    owned_units.sort(key=lambda item: (BATTLE_UNITS[item[0]]["tier"], get_role_name(item[0])))
-    for unit_id, amount in owned_units[:20]:
-        marker = "✅" if unit_id in draft else "▫️"
-        builder.button(text=f"{marker} {get_role_name(unit_id)} x{amount}", callback_data=f"raid_pick:{unit_id}")
+    for fighter in get_available_fighters(player, include_zero_stamina=True)[:20]:
+        marker = "✅" if fighter["id"] in draft else "▫️"
+        builder.button(
+            text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
+            callback_data=f"raid_pick:{fighter['id']}",
+        )
     can_prepare = 3 <= len(draft) <= team_limit and inventory.get("energy", 0) > 0
     builder.button(text="⚡ Подготовить", callback_data="raid_prepare" if can_prepare else "raid_nope")
     builder.button(text="🧹 Очистить", callback_data="raid_clear")
-    if player.get("raid_squad", {}).get("units"):
+    if player.get("raid_squad", {}).get("fighter_ids"):
         builder.button(text="↩️ Расформировать", callback_data="raid_disband")
     builder.button(text="🔙 В Казармы", callback_data="barracks_open")
     builder.adjust(1)
@@ -280,7 +297,7 @@ def choose_loot_from_inventory(inventory: dict, count: int = 3, max_fraction: fl
     return stolen
 
 
-def maybe_trigger_trap(defender: dict, attacker_units: list[str]) -> tuple[bool, str | None, str | None]:
+def maybe_trigger_trap(defender: dict, attacker_units: list) -> tuple[bool, str | None, str | None]:
     fort_level = defender.get("buildings", {}).get("fort", 0)
     if fort_level <= 0:
         return False, None, None
@@ -288,18 +305,31 @@ def maybe_trigger_trap(defender: dict, attacker_units: list[str]) -> tuple[bool,
     if not loaded:
         return False, None, None
     slot_id, item_id = random.choice(loaded)
-    difficulty = 0.10 + min(0.20, BATTLE_UNITS[random.choice(attacker_units)]["tier"] * 0.04)
+    sample = random.choice(attacker_units)
+    attacker_tier = int(sample.get("tier", BATTLE_UNITS.get(sample.get("unit_id", ""), {}).get("tier", 1))) if isinstance(sample, dict) else BATTLE_UNITS[sample]["tier"]
+    difficulty = 0.10 + min(0.20, attacker_tier * 0.04)
     trigger = random.random() < 0.35 + difficulty
     return trigger, slot_id, item_id
 
 
-def build_captive(unit_id: str, owner_id: int | None = None) -> dict:
-    return {"id": uuid.uuid4().hex[:10], "unit_id": unit_id, "tier": BATTLE_UNITS.get(unit_id, {}).get("tier", 1), "owner_id": owner_id}
+def build_captive(fighter, owner_id: int | None = None) -> dict:
+    if isinstance(fighter, dict):
+        return {
+            "id": uuid.uuid4().hex[:10],
+            "unit_id": fighter.get("unit_id"),
+            "tier": fighter.get("tier", 1),
+            "owner_id": owner_id,
+            "custom_name": fighter.get("custom_name", ""),
+            "raids": fighter.get("raids", 0),
+            "expeditions": fighter.get("expeditions", 0),
+            "crafted_tier3": fighter.get("crafted_tier3", False),
+        }
+    return {"id": uuid.uuid4().hex[:10], "unit_id": fighter, "tier": BATTLE_UNITS.get(fighter, {}).get("tier", 1), "owner_id": owner_id}
 
 
 async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str, defender_name: str, is_pve: bool) -> dict:
-    squad = attacker.get("raid_squad", {"units": [], "energy_invested": 0})
-    units = squad.get("units", [])
+    squad = attacker.get("raid_squad", {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0})
+    units = squad.get("fighter_snapshots", [])
     attack_power = get_raid_power(units, squad.get("energy_invested", 0))
     defense_power = 20 + random.randint(0, 18)
     trap_triggered, trap_slot, trap_item = False, None, None
@@ -325,6 +355,7 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
     captives_taken = []
     loot = {}
     scraps = {}
+    dead_units = []
 
     if success:
         if defender:
@@ -346,6 +377,7 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
             if defender:
                 defender_captives.append(build_captive(captured_unit, attacker.get("user_id")))
                 captives_taken.append(captured_unit)
+                survivors = [fighter for fighter in survivors if fighter.get("id") != captured_unit.get("id")]
     else:
         lost_count = random.randint(1, max(1, len(units) // 2))
         random.shuffle(survivors)
@@ -356,10 +388,21 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
             defender_captives.append(build_captive(captive_unit, attacker.get("user_id")))
             captives_taken.append(captive_unit)
             lost_units = lost_units[1:]
-        for unit_id in lost_units:
-            tier = BATTLE_UNITS[unit_id]["tier"]
+        dead_units.extend(lost_units)
+        for unit in lost_units:
+            tier = int(unit.get("tier", 1))
             scraps["w"] = scraps.get("w", 0) + tier
             scraps["e"] = scraps.get("e", 0) + tier
+
+    raid_casualties = []
+    for fighter in list(survivors):
+        if random.random() < get_fighter_risk(fighter):
+            raid_casualties.append(fighter)
+            survivors = [item for item in survivors if item.get("id") != fighter.get("id")]
+            tier = int(fighter.get("tier", 1))
+            scraps["w"] = scraps.get("w", 0) + tier
+            scraps["e"] = scraps.get("e", 0) + tier
+    dead_units.extend(raid_casualties)
 
     public_line = build_public_raid_line(attacker_name, defender_name, success, live_target, trap_triggered)
     dm_log = build_raid_dm_log(units, trap_item, success, live_target, loot, captives_taken)
@@ -371,6 +414,7 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
         "trap_slot": trap_slot,
         "trap_item": trap_item,
         "survivors": survivors,
+        "dead_units": dead_units,
         "loot": loot,
         "scraps": scraps,
         "captives_taken": captives_taken,
@@ -395,7 +439,7 @@ async def process_random_fort_events():
             "user_id": 0,
             "user_name": random.choice(["Банда ретортников", "Отряд болотников", "Гоблинский обоз"]),
             "raid_squad": {
-                "units": random.sample(list(BATTLE_UNITS.keys()), k=random.randint(3, 5)),
+                "fighter_snapshots": [build_fighter_snapshot(create_fighter(unit_id)) for unit_id in random.sample(list(BATTLE_UNITS.keys()), k=random.randint(3, 5))],
                 "energy_invested": random.randint(3, 8),
             },
         }
@@ -474,16 +518,17 @@ async def raid_pick(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     draft = raid_drafts.get(user_id, []).copy()
-    unit_id = callback.data.split(":")[1]
+    fighter_id = callback.data.split(":")[1]
     limit = get_expedition_team_limit(player.get("buildings", {}).get("guild", 0))
-    if unit_id in draft:
-        draft.remove(unit_id)
+    if fighter_id in draft:
+        draft.remove(fighter_id)
     else:
         if len(draft) >= limit:
             return await callback.answer("Гильдия не пропускает такой размер отряда.", show_alert=True)
-        if draft.count(unit_id) >= player.get("inventory", {}).get(unit_id, 0):
-            return await callback.answer("Этого юнита больше нет.", show_alert=True)
-        draft.append(unit_id)
+        fighter = find_fighter(player, fighter_id)
+        if not fighter or fighter.get("status") != "available":
+            return await callback.answer("Этот боец уже занят.", show_alert=True)
+        draft.append(fighter_id)
     raid_drafts[user_id] = draft
     await callback.message.edit_text(
         render_raids_menu(player, draft),
@@ -501,30 +546,33 @@ async def raid_prepare(callback: types.CallbackQuery):
     draft = raid_drafts.get(user_id, []).copy()
     if not 3 <= len(draft) <= get_expedition_team_limit(player.get("buildings", {}).get("guild", 0)):
         return await callback.answer("Нужно 3-5 бойцов.", show_alert=True)
-    if player.get("raid_squad", {}).get("units"):
+    if player.get("raid_squad", {}).get("fighter_ids"):
         return await callback.answer("Сначала расформируйте текущий рейд-отряд.", show_alert=True)
-    for unit_id in set(draft):
-        if inventory.get(unit_id, 0) < draft.count(unit_id):
-            return await callback.answer("Бойцы рассинхронизировались с инвентарём.", show_alert=True)
+    draft_fighters = [find_fighter(player, fighter_id) for fighter_id in draft]
+    if any(not fighter or fighter.get("status") != "available" for fighter in draft_fighters):
+        return await callback.answer("Бойцы рассинхронизировались с составом.", show_alert=True)
 
     energy_cost = max(3, len(draft) * 2)
     if inventory.get("energy", 0) < energy_cost:
         return await callback.answer("Не хватает энергии на подготовку.", show_alert=True)
 
-    for unit_id in draft:
-        inventory[unit_id] -= 1
-        if inventory[unit_id] <= 0:
-            del inventory[unit_id]
     inventory["energy"] -= energy_cost
     if inventory.get("energy", 0) <= 0:
         inventory.pop("energy", None)
 
-    squad = {"units": draft, "energy_invested": energy_cost, "created_at": int(time.time())}
+    for fighter in draft_fighters:
+        fighter["status"] = "raid"
+    squad = {
+        "fighter_ids": draft,
+        "fighter_snapshots": [build_fighter_snapshot(fighter) for fighter in draft_fighters],
+        "energy_invested": energy_cost,
+        "created_at": int(time.time()),
+    }
     counters = increment_action_counter(player, "raids_prepared")
     raid_drafts[user_id] = []
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inventory, "raid_squad": squad, "action_counters": counters}},
+        {"$set": {"inventory": inventory, "fighters": player.get("fighters", []), "raid_squad": squad, "action_counters": counters}},
     )
     player["inventory"] = inventory
     player["raid_squad"] = squad
@@ -540,19 +588,21 @@ async def raid_prepare(callback: types.CallbackQuery):
 async def raid_disband(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
-    squad = player.get("raid_squad", {"units": [], "energy_invested": 0})
-    if not squad.get("units"):
+    squad = player.get("raid_squad", {"fighter_ids": [], "energy_invested": 0})
+    if not squad.get("fighter_ids"):
         return await callback.answer("Нечего расформировывать.", show_alert=True)
     inventory = player.get("inventory", {})
-    for unit_id in squad["units"]:
-        inventory[unit_id] = inventory.get(unit_id, 0) + 1
+    for fighter_id in squad.get("fighter_ids", []):
+        fighter = find_fighter(player, fighter_id)
+        if fighter:
+            fighter["status"] = "available"
     inventory["energy"] = inventory.get("energy", 0) + squad.get("energy_invested", 0)
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inventory, "raid_squad": {"units": [], "energy_invested": 0, "created_at": 0}}},
+        {"$set": {"inventory": inventory, "fighters": player.get("fighters", []), "raid_squad": {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0, "created_at": 0}}},
     )
     player["inventory"] = inventory
-    player["raid_squad"] = {"units": [], "energy_invested": 0, "created_at": 0}
+    player["raid_squad"] = {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0, "created_at": 0}
     await callback.message.edit_text(
         render_raids_menu(player, []),
         reply_markup=build_raids_keyboard(player, []),
@@ -690,15 +740,24 @@ async def captive_recruit(callback: types.CallbackQuery):
         inventory.pop("energy", None)
     captives = [item for item in captives if item.get("id") != captive_id]
     counters = player.get("action_counters", DEFAULT_ACTION_COUNTERS)
-    if random.random() < 0.5:
-        inventory[captive["unit_id"]] = inventory.get(captive["unit_id"], 0) + 1
+    recruited_success = random.random() < 0.5
+    if recruited_success:
+        fighters = player.get("fighters", [])
+        recruited = create_fighter(captive["unit_id"], tier=captive.get("tier", 1), crafted_tier3=captive.get("crafted_tier3", False))
+        recruited["custom_name"] = captive.get("custom_name", "")[:24]
+        recruited["raids"] = captive.get("raids", 0)
+        recruited["expeditions"] = captive.get("expeditions", 0)
+        fighters.append(recruited)
         counters = increment_action_counter(player, "captives_recruited")
         text = "Пленный сломался, согласился служить и получил котелок по размеру."
     else:
         text = "Пленный дождался, пока все моргнут, и сбежал в ближайший туман."
+    update_fields = {"inventory": inventory, "captives": captives, "action_counters": counters}
+    if recruited_success:
+        update_fields["fighters"] = fighters
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inventory, "captives": captives, "action_counters": counters}},
+        {"$set": update_fields},
     )
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
@@ -732,8 +791,8 @@ async def captive_recycle(callback: types.CallbackQuery):
 @router.message(Command("грабить"))
 async def cmd_raid(message: types.Message):
     attacker = await get_or_create_player(message.from_user.id, message.from_user.first_name)
-    squad = attacker.get("raid_squad", {"units": [], "energy_invested": 0})
-    if not squad.get("units") or squad.get("energy_invested", 0) <= 0:
+    squad = attacker.get("raid_squad", {"fighter_ids": [], "energy_invested": 0})
+    if not squad.get("fighter_ids") or squad.get("energy_invested", 0) <= 0:
         return await message.reply("☠️ Рейд невозможен: сначала собери и заряди отряд в Казармах.")
 
     target_user = message.reply_to_message.from_user if message.reply_to_message else None
@@ -779,7 +838,7 @@ async def raid_pve_no(callback: types.CallbackQuery):
 @router.callback_query(F.data == "raid_pve_yes")
 async def raid_pve_yes(callback: types.CallbackQuery):
     attacker = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    if not attacker.get("raid_squad", {}).get("units"):
+    if not attacker.get("raid_squad", {}).get("fighter_ids"):
         return await callback.answer("Рейд-отряд уже потрачен или распущен.", show_alert=True)
     await execute_raid(callback.message, attacker, None, random.choice(["лагерь бутлегеров", "пещера гоблинов", "башня шарлатанов"]), True)
     await callback.answer()
@@ -788,22 +847,42 @@ async def raid_pve_yes(callback: types.CallbackQuery):
 async def execute_raid(message: types.Message, attacker: dict, defender: dict | None, defender_name: str, is_pve: bool):
     attacker_name = attacker.get("user_name", "Агрессор")
 
+    squad = attacker.get("raid_squad", {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0})
+    now = int(time.time())
+    for fighter_id in squad.get("fighter_ids", []):
+        fighter = find_fighter(attacker, fighter_id)
+        if fighter:
+            consume_fighter_stamina(fighter, now)
+            grant_mission_progress(fighter, "raid", now)
     report = await resolve_raid(attacker, defender, attacker_name, defender_name, is_pve)
     attacker_inventory = attacker.get("inventory", {})
-    for unit_id in report["survivors"]:
-        attacker_inventory[unit_id] = attacker_inventory.get(unit_id, 0) + 1
+    survivor_ids = {fighter.get("id") for fighter in report["survivors"]}
+    dead_ids = {fighter.get("id") for fighter in report.get("dead_units", [])}
+    captive_ids = {fighter.get("id") for fighter in report.get("captives_taken", [])}
+    hall = attacker.get("hall_of_fame", [])
+    fighters = []
+    for fighter in get_player_fighters(attacker):
+        if fighter.get("id") in dead_ids:
+            if fighter.get("custom_name"):
+                hall.append(hall_of_fame_entry(fighter, "погиб в рейде", now))
+            continue
+        if fighter.get("id") in captive_ids:
+            continue
+        if fighter.get("id") in survivor_ids:
+            fighter["status"] = "available"
+        fighters.append(fighter)
     for item_id, amount in report["loot"].items():
         attacker_inventory[item_id] = attacker_inventory.get(item_id, 0) + amount
     for item_id, amount in report["scraps"].items():
         attacker_inventory[item_id] = attacker_inventory.get(item_id, 0) + amount
 
-    attacker["raid_squad"] = {"units": [], "energy_invested": 0, "created_at": 0}
+    attacker["raid_squad"] = {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0, "created_at": 0}
     counters = increment_action_counter(attacker, "raids_started")
     counters = increment_action_counter(attacker, "raids_won" if report["success"] else "raids_lost")
 
     await db.alchemy_players.update_one(
         {"user_id": attacker["user_id"]},
-        {"$set": {"inventory": attacker_inventory, "raid_squad": attacker["raid_squad"], "action_counters": counters}},
+        {"$set": {"inventory": attacker_inventory, "fighters": fighters, "hall_of_fame": hall, "raid_squad": attacker["raid_squad"], "action_counters": counters}},
     )
 
     if defender:
@@ -845,6 +924,7 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
         f"Итог: {'Победа' if report['success'] else 'Поражение'}\n"
         f"Добыча/ошмётки: {loot_line}\n"
         f"Выжили: {', '.join(get_role_name(unit_id) for unit_id in report['survivors']) or 'никто'}\n"
+        f"Погибли: {', '.join(get_role_name(unit_id) for unit_id in report.get('dead_units', [])) or 'нет'}\n"
         f"Пленные: {', '.join(get_role_name(unit_id) for unit_id in report['captives_taken']) or 'нет'}"
     )
     await send_dm_report(attacker["user_id"], attacker_dm)

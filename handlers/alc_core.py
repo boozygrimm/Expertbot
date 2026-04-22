@@ -9,6 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from config import ADMIN_ID
 from handlers.pole_chudes import delete_after_delay
+from handlers.alc_fighters import FIGHTER_SCHEMA_VERSION, normalize_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES, is_battle_unit
 
 router = Router()
@@ -43,8 +44,12 @@ DEFAULT_PLAYER_TEMPLATE = {
     "buildings": {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0},
     "barracks_report": {},
     "last_barracks_drain": "",
+    "fighters": [],
+    "hall_of_fame": [],
+    "fighter_name_pending": None,
+    "fighter_schema_version": FIGHTER_SCHEMA_VERSION,
     "active_expeditions": [],
-    "raid_squad": {"units": [], "energy_invested": 0, "created_at": 0},
+    "raid_squad": {"fighter_ids": [], "fighter_snapshots": [], "energy_invested": 0, "created_at": 0},
     "fort_defense": {"moat": None, "catapult": None, "aura": None},
     "captives": [],
     "action_counters": DEFAULT_ACTION_COUNTERS,
@@ -97,16 +102,6 @@ async def get_or_create_player(user_id: int, user_name: str):
         player["action_counters"] = counters
         update_fields["action_counters"] = counters
 
-    raid_squad = player.get("raid_squad", {})
-    normalized_raid_squad = {
-        "units": raid_squad.get("units", []),
-        "energy_invested": raid_squad.get("energy_invested", 0),
-        "created_at": raid_squad.get("created_at", 0),
-    }
-    if raid_squad != normalized_raid_squad:
-        player["raid_squad"] = normalized_raid_squad
-        update_fields["raid_squad"] = normalized_raid_squad
-
     fort_defense = player.get("fort_defense", {})
     normalized_fort_defense = {
         "moat": fort_defense.get("moat"),
@@ -120,6 +115,20 @@ async def get_or_create_player(user_id: int, user_name: str):
     if player.get("user_name") != user_name:
         player["user_name"] = user_name
         update_fields["user_name"] = user_name
+
+    normalized_player = normalize_player_fighters(player)
+    for field in [
+        "inventory",
+        "fighters",
+        "active_expeditions",
+        "raid_squad",
+        "hall_of_fame",
+        "fighter_name_pending",
+        "fighter_schema_version",
+    ]:
+        if player.get(field) != normalized_player.get(field):
+            player[field] = normalized_player.get(field)
+            update_fields[field] = normalized_player.get(field)
 
     if update_fields:
         await db.alchemy_players.update_one({"user_id": user_id}, {"$set": update_fields})

@@ -4,6 +4,7 @@ import logging
 from bot_instance import bot
 from database import db
 from handlers.alc_core import get_stamina_ready_at, get_used_slots
+from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from config import get_msk_now
 
@@ -122,10 +123,9 @@ def build_barracks_report_text(report: dict) -> str:
 
 async def process_barracks_upkeep():
     today_label = get_msk_now().strftime("%Y-%m-%d")
-    unit_filters = [{f"inventory.{unit_id}": {"$gt": 0}} for unit_id in BATTLE_UNITS]
     cursor = db.alchemy_players.find(
         {
-            "$or": unit_filters,
+            "fighters.0": {"$exists": True},
             "last_barracks_drain": {"$ne": today_label},
         }
     )
@@ -134,39 +134,31 @@ async def process_barracks_upkeep():
         user_id = player["user_id"]
         inv = player.get("inventory", {})
 
+        fighters = [fighter for fighter in get_player_fighters(player) if fighter.get("status") != "dead"]
         drained_energy = 0
         served_units = 0
         deserters = 0
-
-        unit_ids = [unit_id for unit_id in BATTLE_UNITS if inv.get(unit_id, 0) > 0]
-        if not unit_ids:
+        if not fighters:
             await db.alchemy_players.update_one(
                 {"user_id": user_id},
                 {"$set": {"last_barracks_drain": today_label}},
             )
             continue
 
-        for unit_id in unit_ids:
-            meta = BATTLE_UNITS[unit_id]
-            amount = inv.get(unit_id, 0)
-            upkeep = meta["upkeep"]
+        deserter_lines = []
+        for fighter in list(fighters):
+            upkeep = get_fighter_upkeep(fighter)
             available_energy = inv.get("energy", 0)
-            sustainable = min(amount, available_energy // upkeep) if upkeep > 0 else amount
-
-            if sustainable > 0:
-                spend = sustainable * upkeep
-                inv["energy"] -= spend
-                drained_energy += spend
-                served_units += sustainable
-
-            lost = amount - sustainable
-            if lost > 0:
-                inv[unit_id] -= lost
-                if inv[unit_id] <= 0:
-                    del inv[unit_id]
-                fallback = meta["fallback_spirit"]
-                inv[fallback] = inv.get(fallback, 0) + lost
-                deserters += lost
+            if available_energy >= upkeep:
+                inv["energy"] -= upkeep
+                drained_energy += upkeep
+                served_units += 1
+                continue
+            fallback = BATTLE_UNITS.get(fighter.get("unit_id"), {}).get("fallback_spirit", "spirit_f")
+            inv[fallback] = inv.get(fallback, 0) + 1
+            player["fighters"] = [item for item in player.get("fighters", []) if item.get("id") != fighter.get("id")]
+            deserter_lines.append(f"{ELEMENTS.get(fighter.get('unit_id'), fighter.get('unit_id'))}")
+            deserters += 1
 
         if inv.get("energy", 0) <= 0 and "energy" in inv:
             del inv["energy"]
@@ -177,7 +169,7 @@ async def process_barracks_upkeep():
             "served_units": served_units,
             "deserters": deserters,
             "energy_left": inv.get("energy", 0),
-            "unit_lines": [f"{ELEMENTS.get(unit_id, unit_id)} x{player.get('inventory', {}).get(unit_id, 0)}" for unit_id in unit_ids],
+            "unit_lines": deserter_lines,
         }
 
         await db.alchemy_players.update_one(
@@ -185,6 +177,7 @@ async def process_barracks_upkeep():
             {
                 "$set": {
                     "inventory": inv,
+                    "fighters": player.get("fighters", []),
                     "barracks_report": report,
                     "last_barracks_drain": today_label,
                 }

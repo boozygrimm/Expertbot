@@ -1,6 +1,24 @@
+import time
+
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
+from handlers.alc_core import get_or_create_player
+from handlers.alc_fighters import (
+    build_fighter_label,
+    can_name_fighter,
+    can_pay_cost,
+    find_fighter,
+    get_available_fighters,
+    get_barracks_capacity,
+    get_fighter_stamina_cap,
+    get_fighter_title,
+    get_name_unlock_xp,
+    get_player_fighters,
+    get_upgrade_cost,
+    refresh_fighter,
+    spend_cost,
+)
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 # Важно импортировать функцию отрисовки базы, чтобы кнопка Назад работала красиво
 # Но чтобы избежать циклического импорта, вызовем её через start
@@ -190,6 +208,8 @@ async def render_build_menu(message: types.Message, user_id: int):
 
 async def render_barracks_menu(message: types.Message, user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
+    if player:
+        player = await get_or_create_player(user_id, player.get("user_name", ""))
     if not player:
         return await message.edit_text("⚠️ Профиль алхимика не найден.", parse_mode="Markdown")
 
@@ -205,13 +225,18 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             parse_mode="Markdown",
         )
 
-    inventory = player.get("inventory", {})
-    owned_units = [(unit_id, amount) for unit_id, amount in inventory.items() if amount > 0 and unit_id in BATTLE_UNITS]
-    owned_units.sort(key=lambda item: (BATTLE_UNITS[item[0]]["tier"], ELEMENTS.get(item[0], item[0])))
+    fighters = get_player_fighters(player)
     available_units = get_available_barracks_units(barracks_level)
+    capacity = get_barracks_capacity(barracks_level)
+    active_count = len([fighter for fighter in fighters if fighter.get("status") != "dead"])
+    available_count = len([fighter for fighter in fighters if fighter.get("status") == "available"])
+    tired_count = len([fighter for fighter in fighters if fighter.get("status") == "available" and fighter.get("stamina", 0) <= 0])
 
     lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})", "Что доступно:"]
     lines.extend(get_barracks_effect_lines(barracks_level))
+    lines.append("")
+    lines.append(f"Личный состав: {active_count}/{capacity}")
+    lines.append(f"В строю: {available_count} | Уставшие: {tired_count} | В походах: {len(player.get('active_expeditions', [])) + len(player.get('raid_squad', {}).get('fighter_ids', []))}")
     lines.append("")
     lines.append("Доступные юниты:")
     for tier, unit_ids in available_units.items():
@@ -219,31 +244,174 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         lines.append(f"• Тир-{tier}: {unit_names}")
     lines.append("")
     lines.append("Подсказки для командира:")
-    lines.append("• Начни с простых бойцов. Пример: Огнемеч = Дух Огня + Металл.")
-    lines.append("• Если хочешь много армии рано, сначала собирай тир-1, а уже потом лезь в рейдеров и технику.")
-    lines.append("• Экспедиции зависят от Казарм, а размер рейд-отряда и походного отряда - от Гильдии.")
+    lines.append("• Теперь каждый боец - отдельная личность с XP и бодростью. Экспедиции качают безопасно, рейды качают опасно.")
+    lines.append("• За каждый выход боец получает 1 XP и теряет 1 бодрость. Бодрость возвращается по 1 ед. каждые 6 часов.")
+    lines.append("• Апгрейд в Т2 доступен с 30 XP, в Т3 - с 70 XP. Если Т3 был скрафчен сразу, имя можно дать уже на 20 XP.")
+    lines.append("• В экспедицию уставший боец не идёт. В рейд при нуле бодрости пойдёт, но шанс потерять его уже почти суицидальный.")
     lines.append("")
 
-    if owned_units:
-        lines.append("Боевой состав:")
-        for unit_id, amount in owned_units:
-            meta = BATTLE_UNITS[unit_id]
-            lines.append(
-                f"• {ELEMENTS.get(unit_id, unit_id)} x{amount} | Тир {meta['tier']} | Содержание: {meta['upkeep']}⚡/сутки"
-            )
+    available_fighters = get_available_fighters(player)
+    if available_fighters:
+        lines.append("Лидеры по опыту:")
+        for fighter in sorted(available_fighters, key=lambda item: (-item.get("xp", 0), -item.get("tier", 1), get_fighter_title(item)))[:6]:
+            lines.append(f"• {build_fighter_label(fighter)}")
     else:
-        lines.append("Боевых юнитов пока нет. Ищи рецепты в Лаборатории.")
+        lines.append("Личный состав пуст. Боевые рецепты из Лаборатории теперь сразу создают бойцов в ростере.")
 
     lines.append("")
     lines.append(format_supply_report(player.get("barracks_report")))
 
     builder = InlineKeyboardBuilder()
+    for fighter in available_fighters[:10]:
+        marker = "😴" if fighter.get("stamina", 0) <= 0 else "🪖"
+        builder.button(text=f"{marker} {get_fighter_title(fighter)}", callback_data=f"fighter_view:{fighter['id']}")
+    builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
     builder.button(text="🏗 Постройки", callback_data="build_open")
     builder.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     builder.button(text="☠️ Рейдеры", callback_data="raids_open")
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
     await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+
+
+def build_fighter_detail_text(player: dict, fighter: dict) -> str:
+    refresh_fighter(fighter)
+    title = get_fighter_title(fighter)
+    tier = int(fighter.get("tier", 1))
+    name_unlock = get_name_unlock_xp(fighter)
+    risk = int(round((0.80 if fighter.get("stamina", 0) <= 0 else {1: 0.13, 2: 0.09, 3: 0.05}.get(tier, 0.13)) * 100))
+    lines = [
+        f"🪪 **{title}**",
+        f"Роль: {ELEMENTS.get(fighter.get('unit_id'), fighter.get('unit_id'))}",
+        f"Тир: {tier}",
+        f"Опыт: {fighter.get('xp', 0)}",
+        f"Бодрость: {fighter.get('stamina', 0)}/{get_fighter_stamina_cap(fighter)}",
+        f"Рейды: {fighter.get('raids', 0)} | Экспедиции: {fighter.get('expeditions', 0)}",
+        f"Риск смерти в рейде сейчас: {risk}%",
+        "",
+    ]
+    if tier < 3:
+        next_tier = tier + 1
+        cost = get_upgrade_cost(next_tier, fighter)
+        cost_line = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in cost.items())
+        lines.append(f"Апгрейд до Т{next_tier}: нужен XP {fighter.get('xp', 0)}/{30 if next_tier == 2 else 70} и {cost_line}.")
+    else:
+        lines.append(f"Т3 достигнут. Имя открывается на {name_unlock} XP.")
+    if can_name_fighter(fighter):
+        lines.append("Имя разблокировано.")
+    elif tier >= 3:
+        lines.append(f"До имени ещё {max(0, name_unlock - int(fighter.get('xp', 0)))} XP.")
+    return "\n".join(lines)
+
+
+def build_fighter_detail_keyboard(player: dict, fighter: dict) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    tier = int(fighter.get("tier", 1))
+    if tier < 3:
+        next_tier = tier + 1
+        builder.button(text=f"⬆️ Повысить до Т{next_tier}", callback_data=f"fighter_promote:{fighter['id']}")
+    if can_name_fighter(fighter):
+        builder.button(text="✍️ Дать имя", callback_data=f"fighter_rename:{fighter['id']}")
+    builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
+    builder.button(text="🔙 К казармам", callback_data="barracks_open")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+@router.callback_query(F.data.startswith("fighter_view:"))
+async def fighter_view(callback: types.CallbackQuery):
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    fighter = find_fighter(player, callback.data.split(":")[1])
+    if not fighter:
+        return await callback.answer("Боец не найден.", show_alert=True)
+    await callback.message.edit_text(build_fighter_detail_text(player, fighter), reply_markup=build_fighter_detail_keyboard(player, fighter), parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fighter_promote:"))
+async def fighter_promote(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    fighter = find_fighter(player, callback.data.split(":")[1])
+    if not fighter:
+        return await callback.answer("Боец потерялся по дороге в штаб.", show_alert=True)
+    current_tier = int(fighter.get("tier", 1))
+    if current_tier >= 3:
+        return await callback.answer("Выше Т3 уже некуда.", show_alert=True)
+    target_tier = current_tier + 1
+    required_xp = 30 if target_tier == 2 else 70
+    if player.get("buildings", {}).get("barracks", 0) < target_tier:
+        return await callback.answer("Казармы ещё не готовы к такому тиру.", show_alert=True)
+    if int(fighter.get("xp", 0)) < required_xp:
+        return await callback.answer(f"Нужно минимум {required_xp} XP.", show_alert=True)
+    inventory = player.get("inventory", {})
+    cost = get_upgrade_cost(target_tier, fighter)
+    if not can_pay_cost(inventory, cost):
+        return await callback.answer("Не хватает энергии или профильных духов.", show_alert=True)
+    spend_cost(inventory, cost)
+    fighter["tier"] = target_tier
+    fighter["stamina"] = get_fighter_stamina_cap(fighter)
+    fighter["stamina_updated_at"] = int(time.time())
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"inventory": inventory, "fighters": player.get("fighters", [])}},
+    )
+    await callback.message.edit_text(build_fighter_detail_text(player, fighter), reply_markup=build_fighter_detail_keyboard(player, fighter), parse_mode="Markdown")
+    await callback.answer(f"Боец переведён в Т{target_tier}.")
+
+
+@router.callback_query(F.data.startswith("fighter_rename:"))
+async def fighter_rename(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    fighter = find_fighter(player, callback.data.split(":")[1])
+    if not fighter:
+        return await callback.answer("Боец не найден.", show_alert=True)
+    if not can_name_fighter(fighter):
+        return await callback.answer("Имя для него ещё не открыто.", show_alert=True)
+    pending = {"fighter_id": fighter["id"], "set_at": int(time.time())}
+    await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"fighter_name_pending": pending}})
+    await callback.answer("Отправь имя следующим сообщением в этот чат.", show_alert=True)
+
+
+@router.message(F.text)
+async def handle_fighter_naming(message: types.Message):
+    player = await db.alchemy_players.find_one({"user_id": message.from_user.id})
+    pending = (player or {}).get("fighter_name_pending")
+    if not pending:
+        return
+    fighter = find_fighter(player, pending.get("fighter_id", ""))
+    if not fighter or not can_name_fighter(fighter):
+        await db.alchemy_players.update_one({"user_id": message.from_user.id}, {"$set": {"fighter_name_pending": None}})
+        return await message.reply("Имя уже нельзя назначить. Открой Казармы и выбери бойца заново.")
+    new_name = " ".join((message.text or "").strip().split())[:24]
+    if len(new_name) < 2:
+        return await message.reply("Имя слишком короткое. Нужно хотя бы 2 символа.")
+    fighter["custom_name"] = new_name
+    await db.alchemy_players.update_one(
+        {"user_id": message.from_user.id},
+        {"$set": {"fighters": player.get("fighters", []), "fighter_name_pending": None}},
+    )
+    await message.reply(f"Имя закреплено: {new_name}. Открой Казармы, чтобы увидеть обновлённую карточку.")
+
+
+@router.callback_query(F.data == "barracks_hof")
+async def barracks_hof(callback: types.CallbackQuery):
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    hall = player.get("hall_of_fame", [])
+    lines = ["🏅 **ЗАЛ СЛАВЫ**"]
+    if not hall:
+        lines.append("Пока пусто. И это хороший знак.")
+    else:
+        for entry in hall[-12:][::-1]:
+            lines.append(
+                f"• {entry.get('name')} | Т{entry.get('tier', 1)} | рейды {entry.get('raids', 0)} | экспедиции {entry.get('expeditions', 0)}"
+            )
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 В Казармы", callback_data="barracks_open")
+    builder.adjust(1)
+    await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
 
 @router.callback_query(F.data == "build_open")
 async def build_main(callback: types.CallbackQuery):

@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from config import ADMIN_ID
+from handlers.alc_fighters import create_fighter, get_barracks_capacity
 
 # Импортируем нашу базу рецептов
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES, is_battle_unit
@@ -96,6 +97,16 @@ def get_barracks_lock_text(result: str, player: dict) -> str | None:
         f"🎖 Для создания {ELEMENTS.get(result, result)} нужны Казармы {required_level} ур. "
         f"Здание открывает доступ, но рецепт все равно придется найти в Лаборатории."
     )
+
+
+def get_barracks_capacity_error(result: str, player: dict, amount: int = 1) -> str | None:
+    if not is_battle_unit(result):
+        return None
+    capacity = get_barracks_capacity(player.get("buildings", {}).get("barracks", 0))
+    current = len([fighter for fighter in player.get("fighters", []) if fighter.get("status") != "dead"])
+    if current + amount > capacity:
+        return f"🎖 В Казармах нет места. Лимит личного состава: {current}/{capacity}."
+    return None
 
 
 @router.message(Command("шпора"))
@@ -383,25 +394,38 @@ async def lab_mix_items(callback: types.CallbackQuery):
         active_mixes.pop(uid, None)
         await callback.answer(barracks_lock, show_alert=True)
         return await render_lab_window(callback, uid)
+    barracks_cap = get_barracks_capacity_error(result, player)
+    if barracks_cap:
+        active_mixes.pop(uid, None)
+        await callback.answer(barracks_cap, show_alert=True)
+        return await render_lab_window(callback, uid)
         
     # Успешный крафт
     inv[i1] -= 1
     inv[i2] -= 1
-    inv[result] = inv.get(result, 0) + 1
     active_mixes.pop(uid, None)
+    update_fields = {"inventory": inv}
+    if is_battle_unit(result):
+        fighters = player.get("fighters", [])
+        fighters.append(create_fighter(result, crafted_tier3=BATTLE_UNITS[result]["tier"] >= 3))
+        update_fields["fighters"] = fighters
+    else:
+        inv[result] = inv.get(result, 0) + 1
     
     disc = player.get("discovered", [])
     if result not in disc:
         disc.append(result)
+    update_fields["discovered"] = disc
         
     # Обновляем инвентарь и сохраняем последний рецепт для кнопки "Повтор"
-    await db.alchemy_players.update_one(
-        {"user_id": uid}, 
-        {"$set": {"inventory": inv, "discovered": disc, "last_craft": [i1, i2]}}
-    )
+    update_fields["last_craft"] = [i1, i2]
+    await db.alchemy_players.update_one({"user_id": uid}, {"$set": update_fields})
     
     res_name = ELEMENTS.get(result, result)
-    await callback.answer(f"🎉 Успех! Получено: {res_name}", show_alert=True)
+    if is_battle_unit(result):
+        await callback.answer(f"🎉 Успех! В Казармы прибыл новый боец: {res_name}", show_alert=True)
+    else:
+        await callback.answer(f"🎉 Успех! Получено: {res_name}", show_alert=True)
     await render_lab_window(callback, uid)
 
 
@@ -453,6 +477,10 @@ async def lab_repeat_craft(callback: types.CallbackQuery):
     if barracks_lock:
         await callback.answer(barracks_lock, show_alert=True)
         return await render_lab_window(callback, uid)
+    barracks_cap = get_barracks_capacity_error(result, player, iters)
+    if barracks_cap:
+        await callback.answer(barracks_cap, show_alert=True)
+        return await render_lab_window(callback, uid)
 
     # Проверка лимитов склада (для новых предметов)
     from handlers.alc_core import STORAGE_CAPACITY, get_used_slots
@@ -469,17 +497,20 @@ async def lab_repeat_craft(callback: types.CallbackQuery):
         inv[i1] -= iters
         inv[i2] -= iters
         
-    inv[result] = inv.get(result, 0) + iters
-    
     disc = player.get("discovered", [])
     if result not in disc:
         disc.append(result)
 
-    # Одна транзакция в БД
-    await db.alchemy_players.update_one(
-        {"user_id": uid}, 
-        {"$set": {"inventory": inv, "discovered": disc}}
-    )
+    update_fields = {"inventory": inv, "discovered": disc}
+    if is_battle_unit(result):
+        fighters = player.get("fighters", [])
+        for _ in range(iters):
+            fighters.append(create_fighter(result, crafted_tier3=BATTLE_UNITS[result]["tier"] >= 3))
+        update_fields["fighters"] = fighters
+    else:
+        inv[result] = inv.get(result, 0) + iters
+
+    await db.alchemy_players.update_one({"user_id": uid}, {"$set": update_fields})
 
     res_name = ELEMENTS.get(result, result)
     await callback.answer(f"🎉 Массовый крафт! Создано: {res_name} (x{iters})", show_alert=True)

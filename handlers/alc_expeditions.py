@@ -16,6 +16,16 @@ from handlers.alc_core import (
     get_used_slots,
     increment_action_counter,
 )
+from handlers.alc_fighters import (
+    build_fighter_snapshot,
+    consume_fighter_stamina,
+    find_fighter,
+    get_available_fighters,
+    get_fighter_stamina_cap,
+    get_fighter_title,
+    get_player_fighters,
+    grant_mission_progress,
+)
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
@@ -102,7 +112,14 @@ MEETING_PACKS = ["pack_s", "pack_s", "pack_m", "pack_m", "pack_l"]
 expedition_drafts: dict[int, list[str]] = {}
 
 
-def get_role_name(unit_id: str) -> str:
+def get_role_name(fighter_or_unit) -> str:
+    if isinstance(fighter_or_unit, dict):
+        custom_name = fighter_or_unit.get("custom_name") or fighter_or_unit.get("name")
+        if custom_name:
+            return custom_name
+        unit_id = fighter_or_unit.get("unit_id", "")
+        return ROLE_ALIASES.get(unit_id, ELEMENTS.get(unit_id, unit_id))
+    unit_id = str(fighter_or_unit)
     return ROLE_ALIASES.get(unit_id, ELEMENTS.get(unit_id, unit_id))
 
 
@@ -122,22 +139,35 @@ def get_expedition_team_limit(guild_level: int) -> int:
     return 3
 
 
-def calculate_unit_hp(unit_id: str, barracks_level: int) -> int:
-    tier = BATTLE_UNITS[unit_id]["tier"]
+def get_unit_id(subject) -> str:
+    if isinstance(subject, dict):
+        return subject.get("unit_id", "")
+    return str(subject)
+
+
+def get_unit_tier(subject) -> int:
+    if isinstance(subject, dict):
+        return int(subject.get("tier", BATTLE_UNITS.get(subject.get("unit_id", ""), {}).get("tier", 1)) or 1)
+    return int(BATTLE_UNITS[str(subject)]["tier"])
+
+
+def calculate_unit_hp(subject, barracks_level: int) -> int:
+    tier = get_unit_tier(subject)
     return TIER_HP[tier] + barracks_level * 6
 
 
-def calculate_unit_cargo(unit_id: str) -> int:
-    return TIER_CARGO[BATTLE_UNITS[unit_id]["tier"]]
+def calculate_unit_cargo(subject) -> int:
+    return TIER_CARGO[get_unit_tier(subject)]
 
 
-def build_team_stats(units: list[str], barracks_level: int) -> dict:
-    total_hp = sum(calculate_unit_hp(unit_id, barracks_level) for unit_id in units)
-    total_cargo = sum(calculate_unit_cargo(unit_id) for unit_id in units)
-    has_medic = "medic" in units
-    defense_bonus = sum(1 for unit_id in units if unit_id in {"earth_shielder", "water_guard", "mech", "juggernaut"})
-    loot_bonus = sum(1 for unit_id in units if unit_id in {"wind_scout", "storm_archer", "saboteur", "engineer", "sniper", "drone", "hover"})
-    tier_pressure = sum(BATTLE_UNITS[unit_id]["tier"] for unit_id in units)
+def build_team_stats(units: list, barracks_level: int) -> dict:
+    unit_ids = [get_unit_id(unit) for unit in units]
+    total_hp = sum(calculate_unit_hp(unit, barracks_level) for unit in units)
+    total_cargo = sum(calculate_unit_cargo(unit) for unit in units)
+    has_medic = "medic" in unit_ids
+    defense_bonus = sum(1 for unit_id in unit_ids if unit_id in {"earth_shielder", "water_guard", "mech", "juggernaut"})
+    loot_bonus = sum(1 for unit_id in unit_ids if unit_id in {"wind_scout", "storm_archer", "saboteur", "engineer", "sniper", "drone", "hover"})
+    tier_pressure = sum(get_unit_tier(unit) for unit in units)
     return {
         "total_hp": total_hp,
         "cargo_capacity": total_cargo,
@@ -164,14 +194,14 @@ def choose_weighted_loot() -> str:
     return "stone"
 
 
-def build_fallback_text(units: list[str]) -> str:
+def build_fallback_text(units: list) -> str:
     actor = get_role_name(random.choice(units))
     action = random.choice(FALLBACK_ACTIONS)
     enemy = random.choice(FALLBACK_ENEMIES)
     return f"{actor} {action} {enemy}, а потом сделал вид, что так и надо."
 
 
-def build_planned_event_text(units: list[str], event_type: str) -> str:
+def build_planned_event_text(units: list, event_type: str) -> str:
     actor = get_role_name(random.choice(units))
     wingman = get_role_name(random.choice(units))
     enemy = random.choice(FALLBACK_ENEMIES)
@@ -185,7 +215,7 @@ def build_planned_event_text(units: list[str], event_type: str) -> str:
     return f"{actor} договорился с гостем у костра, пока {wingman} следил, чтобы сделка не закончилась поножовщиной."
 
 
-async def generate_event_line(units: list[str], hp_now: int, hp_total: int) -> str:
+async def generate_event_line(units: list, hp_now: int, hp_total: int) -> str:
     roles = ", ".join(get_role_name(unit_id) for unit_id in units)
     prompt = (
         "Мир фэнтезийной алхимии, големов, мутировавших растений, зелий и мошенников. "
@@ -207,7 +237,7 @@ def format_loot_summary(loot: dict) -> str:
 
 
 async def generate_expedition_final_report(expedition: dict) -> str:
-    fighters = ", ".join(get_role_name(unit_id) for unit_id in expedition.get("fighters", []))
+    fighters = ", ".join(get_role_name(item) for item in expedition.get("fighter_snapshots", expedition.get("fighters", [])))
     loot_text = format_loot_summary(expedition.get("loot", {}))
     reason = expedition.get("return_reason", "маршрут завершён")
     hp_text = f"{expedition.get('current_hp', 0)}/{expedition.get('total_hp', 0)}"
@@ -233,7 +263,7 @@ async def generate_expedition_final_report(expedition: dict) -> str:
     )
 
 
-async def build_planned_events(units: list[str], stats: dict) -> list[dict]:
+async def build_planned_events(units: list, stats: dict) -> list[dict]:
     hp_now = stats["total_hp"]
     planned = []
     planned_count = random.randint(9, 13)
@@ -288,6 +318,19 @@ def get_bag_load(loot: dict) -> int:
     return sum(loot.values())
 
 
+def resolve_draft_fighters(player: dict, draft: list[str], *, expedition_mode: bool = False) -> list[dict]:
+    fighters = []
+    all_fighters = {fighter["id"]: fighter for fighter in get_player_fighters(player)}
+    for fighter_id in draft:
+        fighter = all_fighters.get(fighter_id)
+        if not fighter or fighter.get("status") != "available":
+            continue
+        if expedition_mode and int(fighter.get("stamina", 0)) <= 0:
+            continue
+        fighters.append(fighter)
+    return fighters
+
+
 def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str:
     buildings = player.get("buildings", {})
     barracks_level = buildings.get("barracks", 0)
@@ -302,9 +345,10 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
     ]
     if draft is not None:
         if draft:
-            stats = build_team_stats(draft, barracks_level)
+            draft_fighters = resolve_draft_fighters(player, draft, expedition_mode=True)
+            stats = build_team_stats(draft_fighters, barracks_level)
             lines.append("Черновик отряда:")
-            lines.append("• " + ", ".join(get_role_name(unit_id) for unit_id in draft))
+            lines.append("• " + ", ".join(get_role_name(fighter) for fighter in draft_fighters))
             lines.append(f"• HP: {stats['total_hp']} | Груз: {stats['cargo_capacity']}")
         else:
             lines.append("Черновик отряда пуст.")
@@ -323,7 +367,6 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
 
 
 def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboardMarkup:
-    inventory = player.get("inventory", {})
     guild_level = player.get("buildings", {}).get("guild", 0)
     barracks_level = player.get("buildings", {}).get("barracks", 0)
     active = player.get("active_expeditions", [])
@@ -331,13 +374,11 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
     slot_limit = get_expedition_slot_limit(barracks_level)
     builder = InlineKeyboardBuilder()
 
-    owned_units = [(unit_id, amount) for unit_id, amount in inventory.items() if unit_id in BATTLE_UNITS and amount > 0]
-    owned_units.sort(key=lambda item: (BATTLE_UNITS[item[0]]["tier"], get_role_name(item[0])))
-    for unit_id, amount in owned_units[:20]:
-        marker = "✅" if unit_id in draft else "▫️"
+    for fighter in get_available_fighters(player, include_zero_stamina=False)[:20]:
+        marker = "✅" if fighter["id"] in draft else "▫️"
         builder.button(
-            text=f"{marker} {get_role_name(unit_id)} x{amount}",
-            callback_data=f"expedition_pick:{unit_id}",
+            text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
+            callback_data=f"expedition_pick:{fighter['id']}",
         )
 
     can_launch = bool(draft) and len(draft) <= team_limit and len(active) < slot_limit
@@ -358,7 +399,7 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
 
 def render_expedition_detail(expedition: dict) -> str:
     load_now = get_bag_load(expedition.get("loot", {}))
-    fighters = ", ".join(get_role_name(unit_id) for unit_id in expedition.get("fighters", []))
+    fighters = ", ".join(get_role_name(item) for item in expedition.get("fighter_snapshots", expedition.get("fighters", [])))
     logs = expedition.get("logs", [])[-VISIBLE_LOGS:]
     status_text = expedition.get("status_label", expedition.get("status", "Неизвестно"))
     lines = [
@@ -519,18 +560,20 @@ async def expedition_pick(callback: types.CallbackQuery):
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     guild_level = player.get("buildings", {}).get("guild", 0)
     draft = expedition_drafts.get(user_id, []).copy()
-    unit_id = callback.data.split(":")[1]
+    fighter_id = callback.data.split(":")[1]
     team_limit = get_expedition_team_limit(guild_level)
 
-    if unit_id in draft:
-        draft.remove(unit_id)
+    if fighter_id in draft:
+        draft.remove(fighter_id)
     else:
         if len(draft) >= team_limit:
             return await callback.answer("Больше бойцов Гильдия пока не пустит.", show_alert=True)
-        available = player.get("inventory", {}).get(unit_id, 0)
-        if draft.count(unit_id) >= available:
-            return await callback.answer("Этого бойца больше нет в запасе.", show_alert=True)
-        draft.append(unit_id)
+        fighter = find_fighter(player, fighter_id)
+        if not fighter or fighter.get("status") != "available":
+            return await callback.answer("Этот боец уже занят.", show_alert=True)
+        if int(fighter.get("stamina", 0)) <= 0:
+            return await callback.answer("Уставший боец в экспедицию не пойдёт.", show_alert=True)
+        draft.append(fighter_id)
 
     expedition_drafts[user_id] = draft
     await safe_edit_text(callback.message, render_expeditions_text(player, draft), build_expeditions_keyboard(player, draft))
@@ -545,27 +588,25 @@ async def expedition_launch(callback: types.CallbackQuery):
     if not draft:
         return await callback.answer("Нечего отправлять.", show_alert=True)
 
-    inventory = player.get("inventory", {})
     barracks_level = player.get("buildings", {}).get("barracks", 0)
     slot_limit = get_expedition_slot_limit(barracks_level)
     if len(player.get("active_expeditions", [])) >= slot_limit:
         return await callback.answer("Все слоты экспедиций уже заняты.", show_alert=True)
-
-    for unit_id in set(draft):
-        if inventory.get(unit_id, 0) < draft.count(unit_id):
-            return await callback.answer("Отряд рассинхронизировался с инвентарём. Обновите окно.", show_alert=True)
-
-    for unit_id in draft:
-        inventory[unit_id] -= 1
-        if inventory[unit_id] <= 0:
-            del inventory[unit_id]
+    draft_fighters = resolve_draft_fighters(player, draft, expedition_mode=True)
+    if len(draft_fighters) != len(draft):
+        return await callback.answer("Часть бойцов уже занята или устала. Обновите окно.", show_alert=True)
 
     await callback.answer("Отряд отправляется.")
-    stats = build_team_stats(draft, barracks_level)
     now = int(time.time())
+    for fighter in draft_fighters:
+        consume_fighter_stamina(fighter, now)
+        fighter["status"] = "expedition"
+    stats = build_team_stats(draft_fighters, barracks_level)
     expedition = {
         "id": uuid.uuid4().hex[:10],
-        "fighters": draft,
+        "fighters": [fighter["unit_id"] for fighter in draft_fighters],
+        "fighter_ids": [fighter["id"] for fighter in draft_fighters],
+        "fighter_snapshots": [build_fighter_snapshot(fighter) for fighter in draft_fighters],
         "started_at": now,
         "max_end_at": now + BASE_EXPEDITION_DURATION + len(draft) * 900,
         "status": "searching",
@@ -578,7 +619,7 @@ async def expedition_launch(callback: types.CallbackQuery):
             "Отряд вышел за ворота и уже спорит, кто понесёт котёл.",
             f"Командование ждёт богатый рейс: груз {stats['cargo_capacity']}, ударная мощь {stats['tier_pressure']}, нюх на добычу {stats['loot_bonus']}.",
         ],
-        "planned_events": await build_planned_events(draft, stats),
+        "planned_events": await build_planned_events(draft_fighters, stats),
         "event_index": 0,
         "next_tick_at": now + EXPEDITION_TICK,
         "return_end_at": 0,
@@ -593,13 +634,12 @@ async def expedition_launch(callback: types.CallbackQuery):
         {"user_id": user_id},
         {
             "$set": {
-                "inventory": inventory,
+                "fighters": player.get("fighters", []),
                 "active_expeditions": active,
                 "action_counters": counters,
             }
         },
     )
-    player["inventory"] = inventory
     player["active_expeditions"] = active
     await safe_edit_text(callback.message, render_expeditions_text(player, []), build_expeditions_keyboard(player, []))
 
@@ -655,8 +695,12 @@ async def expedition_claim(callback: types.CallbackQuery):
             continue
         inventory[item_id] = inventory.get(item_id, 0) + amount
 
-    for unit_id in expedition.get("fighters", []):
-        inventory[unit_id] = inventory.get(unit_id, 0) + 1
+    for fighter_id in expedition.get("fighter_ids", []):
+        fighter = find_fighter(player, fighter_id)
+        if not fighter:
+            continue
+        fighter["status"] = "available"
+        grant_mission_progress(fighter, "expedition")
 
     player["active_expeditions"] = [item for item in player.get("active_expeditions", []) if item.get("id") != expedition_id]
     outcome_counter = "expeditions_failed" if expedition.get("return_reason") == "отряд едва выжил и бросил лут" else "expeditions_completed"
@@ -666,6 +710,7 @@ async def expedition_claim(callback: types.CallbackQuery):
         {
             "$set": {
                 "inventory": inventory,
+                "fighters": player.get("fighters", []),
                 "active_expeditions": player["active_expeditions"],
                 "action_counters": counters,
             }
@@ -673,7 +718,7 @@ async def expedition_claim(callback: types.CallbackQuery):
     )
 
     returned_loot = format_loot_summary(expedition.get("loot", {}))
-    returned_units = ", ".join(get_role_name(unit_id) for unit_id in expedition.get("fighters", []))
+    returned_units = ", ".join(get_role_name(item) for item in expedition.get("fighter_snapshots", expedition.get("fighters", [])))
     text = (
         "🏁 **ОТЧЁТ ЭКСПЕДИЦИИ**\n"
         f"Бойцы: {returned_units}\n"

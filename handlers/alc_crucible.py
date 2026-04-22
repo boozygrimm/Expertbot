@@ -3,6 +3,7 @@ import random
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
+from handlers.alc_fighters import create_fighter, get_barracks_capacity
 from handlers.alc_recipes import ELEMENTS, RECIPES
 
 router = Router()
@@ -312,15 +313,29 @@ async def crucible_claim(callback: types.CallbackQuery):
     inv = player.get("inventory", {})
     item, amt = process["result"], process["amount"]
     
+    from handlers.alc_recipes import BATTLE_UNITS
     from handlers.alc_core import STORAGE_CAPACITY, get_used_slots
     max_slots = STORAGE_CAPACITY.get(player.get("buildings", {}).get("storage", 0), 20)
-    
-    if item not in inv and get_used_slots(inv) >= max_slots:
+    if item in BATTLE_UNITS:
+        capacity = get_barracks_capacity(player.get("buildings", {}).get("barracks", 0))
+        current = len([fighter for fighter in player.get("fighters", []) if fighter.get("status") != "dead"])
+        if current + amt > capacity:
+            return await callback.answer("В Казармах нет места для новых бойцов.", show_alert=True)
+    elif item not in inv and get_used_slots(inv) >= max_slots:
         return await callback.answer("На складе нет свободных слотов!", show_alert=True)
     
-    inv[item] = inv.get(item, 0) + amt
-    await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"inventory": inv}, "$unset": {"crucible_process": ""}})
-    await callback.answer(f"📦 Получено {amt} ед. товара!")
+    update_fields = {"inventory": inv}
+    if item in BATTLE_UNITS:
+        fighters = player.get("fighters", [])
+        for _ in range(amt):
+            fighters.append(create_fighter(item, crafted_tier3=BATTLE_UNITS[item]["tier"] >= 3))
+        update_fields["fighters"] = fighters
+        answer_text = f"🪖 Подготовлено бойцов: {amt}"
+    else:
+        inv[item] = inv.get(item, 0) + amt
+        answer_text = f"📦 Получено {amt} ед. товара!"
+    await db.alchemy_players.update_one({"user_id": user_id}, {"$set": update_fields, "$unset": {"crucible_process": ""}})
+    await callback.answer(answer_text)
     await render_crucible(callback)
 
 # =====================================================================
