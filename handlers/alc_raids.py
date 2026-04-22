@@ -307,11 +307,13 @@ def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types
         if nav_row:
             builder.row(*nav_row)
     next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
-    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"fort_set_grid:{slot_id}:{next_grid}")
+    controls = InlineKeyboardBuilder()
+    controls.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"fort_set_grid:{slot_id}:{next_grid}")
     if player.get("fort_defense", {}).get(slot_id):
-        builder.button(text="♻️ Снять предмет", callback_data=f"fort_unload:{slot_id}")
-    builder.button(text="🔙 В Форт", callback_data="fort_open")
-    builder.adjust(1)
+        controls.button(text="♻️ Снять предмет", callback_data=f"fort_unload:{slot_id}")
+    controls.button(text="🔙 В Форт", callback_data="fort_open")
+    controls.adjust(1)
+    builder.attach(controls)
     return builder.as_markup()
 
 
