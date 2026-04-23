@@ -3,9 +3,10 @@ import random
 import logging
 from bot_instance import bot
 from database import db
-from handlers.alc_core import get_stamina_ready_at, get_used_slots
+from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots
 from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
+from handlers.alc_heritage import get_active_legacy_bonus_map
 from config import get_msk_now
 
 logger = logging.getLogger(__name__)
@@ -188,4 +189,53 @@ async def process_barracks_upkeep():
             await bot.send_message(user_id, build_barracks_report_text(report))
         except Exception:
             logger.info("Не удалось отправить отчет снабжения user_id=%s", user_id)
+
+
+async def process_heritage_income():
+    today_label = get_msk_now().strftime("%Y-%m-%d")
+    cursor = db.alchemy_players.find(
+        {
+            "active_stands.0": {"$exists": True},
+            "last_heritage_income": {"$ne": today_label},
+        }
+    )
+
+    async for player in cursor:
+        bonus_map = await get_active_legacy_bonus_map(player)
+        if not bonus_map:
+            await db.alchemy_players.update_one(
+                {"user_id": player["user_id"]},
+                {"$set": {"last_heritage_income": today_label}},
+            )
+            continue
+
+        inventory = player.get("inventory", {})
+        storage_lvl = player.get("buildings", {}).get("storage", 0)
+        max_slots = STORAGE_CAPACITY.get(storage_lvl, 20)
+        granted_lines = []
+
+        for item_id, amount in bonus_map.items():
+            if item_id not in inventory and get_used_slots(inventory) >= max_slots:
+                continue
+            inventory[item_id] = inventory.get(item_id, 0) + amount
+            granted_lines.append(f"{ELEMENTS.get(item_id, item_id)} x{amount}")
+
+        await db.alchemy_players.update_one(
+            {"user_id": player["user_id"]},
+            {
+                "$set": {
+                    "inventory": inventory,
+                    "last_heritage_income": today_label,
+                }
+            },
+        )
+
+        if granted_lines:
+            try:
+                await bot.send_message(
+                    player["user_id"],
+                    "📚 Наследие сработало: " + ", ".join(granted_lines),
+                )
+            except Exception:
+                logger.info("Не удалось отправить отчет наследия user_id=%s", player["user_id"])
             

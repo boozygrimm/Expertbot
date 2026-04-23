@@ -11,11 +11,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot_instance import bot 
 from handlers import (
     reports, pole_chudes, ex_logic, music, web_search, 
-    admin_cron, admin_panel, viselitsa, game_stats, anachronism, image_gen, auth, social_rp, alc_core, alc_base, alc_lab, alc_build, alc_crucible, alc_production, alc_quests, alc_achievements, alc_expeditions, alc_raids
+    admin_cron, admin_panel, viselitsa, game_stats, anachronism, image_gen, auth, social_rp, alc_core, alc_base, alc_lab, alc_build, alc_crucible, alc_production, alc_quests, alc_achievements, alc_expeditions, alc_raids, alc_heritage
 )
 from handlers import voice_rec
-from handlers.alc_tasks import check_alchemy_stamina, collect_production_loot, process_barracks_upkeep
+from handlers.alc_tasks import check_alchemy_stamina, collect_production_loot, process_barracks_upkeep, process_heritage_income
 from handlers.alc_expeditions import process_expeditions_tick, notify_arrived_expeditions
+from handlers.alc_heritage import ensure_default_lore
 from handlers.alc_raids import process_random_fort_events
 
 from handlers.logger import ChatLoggerMiddleware 
@@ -43,7 +44,8 @@ async def set_commands(bot):
         BotCommand(command="chats", description="🔐 Управление чатами"),
         BotCommand(command="support", description="Связаться с владельцем"),
         BotCommand(command="base", description="🏕 Главный Штаб"), # Добавь эту строку
-        BotCommand(command="regen_quests", description="Перезапуск квестов")
+        BotCommand(command="regen_quests", description="Перезапуск квестов"),
+        BotCommand(command="lore_edit", description="Редактор Наследия"),
     ]
 
     group_commands = [
@@ -77,6 +79,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     
     await db.setup()
+    await ensure_default_lore()
     await init_personas()
     await set_commands(bot)
 
@@ -97,6 +100,7 @@ async def main():
     # Сначала ставим наш игровой штаб, чтобы он первым проверял команду /start alcbase
     dp.include_router(alc_base.router)
     dp.include_router(alc_achievements.router)
+    dp.include_router(alc_heritage.router)
     dp.include_router(alc_quests.router)
     dp.include_router(alc_lab.router)
     dp.include_router(alc_build.router)
@@ -126,6 +130,7 @@ async def main():
     scheduler.add_job(check_cron_time, 'cron', minute='*')
     scheduler.add_job(check_alchemy_stamina, 'interval', minutes=10)
     scheduler.add_job(collect_production_loot, 'interval', hours=1)
+    scheduler.add_job(process_heritage_income, 'cron', hour=3, minute=5, timezone=MSK)
     scheduler.add_job(process_barracks_upkeep, 'cron', hour=3, minute=10, timezone=MSK)
     scheduler.add_job(process_expeditions_tick, 'interval', minutes=1)
     scheduler.add_job(notify_arrived_expeditions, 'interval', minutes=2)

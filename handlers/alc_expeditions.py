@@ -26,6 +26,7 @@ from handlers.alc_fighters import (
     get_player_fighters,
     grant_mission_progress,
 )
+from handlers.alc_heritage import try_grant_random_lore_fragment
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
@@ -712,6 +713,7 @@ async def expedition_claim(callback: types.CallbackQuery):
         grant_mission_progress(fighter, "expedition")
 
     player["active_expeditions"] = [item for item in player.get("active_expeditions", []) if item.get("id") != expedition_id]
+    found_fragment = await try_grant_random_lore_fragment(player, chance=0.15)
     outcome_counter = "expeditions_failed" if expedition.get("return_reason") == "отряд едва выжил и бросил лут" else "expeditions_completed"
     counters = increment_action_counter(player, outcome_counter)
     await db.alchemy_players.update_one(
@@ -722,6 +724,8 @@ async def expedition_claim(callback: types.CallbackQuery):
                 "fighters": player.get("fighters", []),
                 "active_expeditions": player["active_expeditions"],
                 "action_counters": counters,
+                "lore_fragments": player.get("lore_fragments", {}),
+                "lore_fragment_progress": player.get("lore_fragment_progress", {}),
             }
         },
     )
@@ -738,6 +742,11 @@ async def expedition_claim(callback: types.CallbackQuery):
     )
     if burned:
         text += "\nСгорело из-за лимита склада: " + ", ".join(burned)
+    if found_fragment:
+        text += (
+            "\n\n📜 Найден обрывок лора: "
+            f"{found_fragment['title']} ({found_fragment['collection_name']})."
+        )
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer("Отряд вернулся в строй.")
 

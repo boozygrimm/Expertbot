@@ -7,11 +7,24 @@ from database import db
 from handlers.alc_recipes import ELEMENTS
 from handlers.pole_chudes import delete_after_delay
 from handlers.alc_achievements import ACHIEVEMENTS
+from handlers.alc_core import get_or_create_player, run_alchemy_intro
 
 router = Router()
 
-ALCHEMY_ALPHA_VERSION = "0.4.4-alpha"
+ALCHEMY_ALPHA_VERSION = "0.8.0-alpha"
 ALCHEMY_CHANGELOG = [
+    ("0.8.0-alpha", [
+        "Добавлена История миров: коллекции лора, стенды Наследия и постоянные бонусы для базы.",
+        "Старые профили мягко мигрируют на новую систему, а новые игроки получают обновленный старт через ЛС.",
+        "Появились разовые дары Наследий, отставка бойцов и админ-редактор /lore_edit для наполнения мира.",
+        "Обрывки лора теперь могут выпадать из квестов и экспедиций с дневным лимитом.",
+        "В базовые сиды добавлены первые истории мира, так что модуль уже живет не как заготовка, а как почти бета.",
+    ]),
+    ("0.5.0-alpha", [
+        "Появилось меню Наследия: коллекции лора, стенды, чтение хроник и постоянные бафы.",
+        "История миров теперь мягко мигрирует старые профили и сразу доступна новым игрокам.",
+        "Добавлены разовые дары Наследий, отставка бойцов и новая стартовая сцена в ЛС.",
+    ]),
     ("0.4.4-alpha", [
         "Доска объявлений больше не выдает задания на боевых юнитов, которые нельзя сдать после обновления.",
         "Старые зависшие задания на таких юнитов автоматически заменяются при открытии доски.",
@@ -99,6 +112,7 @@ async def get_base_content(user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
     if not player:
         return "⚠️ Я тебя не узнаю. Сначала сходи в поход!", None
+    player = await get_or_create_player(user_id, player.get("user_name", "Путник"))
 
     ach_msg = await check_achievements(user_id, player)
     
@@ -124,6 +138,7 @@ async def get_base_content(user_id: int):
     main_btns.button(text="🏆 Достижения", callback_data="alc:achievements")
     main_btns.button(text="🧾 Альфа и изменения", callback_data="alc:changelog")
     main_btns.button(text="📜 Доска объявлений", callback_data="quests_open") # <-- НОВАЯ КНОПКА
+    main_btns.button(text="📚 Наследие", callback_data="heritage_open")
     main_btns.button(text="⚗️ Лаборатория", callback_data="lab_open")
     main_btns.button(text="🏗 Постройки", callback_data="build_open")
     if player.get("buildings", {}).get("barracks", 0) > 0:
@@ -185,7 +200,7 @@ async def show_changelog(callback: types.CallbackQuery):
 @router.callback_query(F.data == "alc:inventory")
 async def show_inventory(callback: types.CallbackQuery):
     user_id = callback.from_user.id
-    player = await db.alchemy_players.find_one({"user_id": user_id})
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = player.get("inventory", {})
     grid_size = player.get("inv_grid", 3) 
     page = base_pages.get(user_id, 0)
@@ -282,6 +297,9 @@ async def change_grid(callback: types.CallbackQuery):
 # ==================== БАЗОВЫЕ ХЭНДЛЕРЫ НАВИГАЦИИ ====================
 @router.message(CommandStart(deep_link=True))
 async def open_base_menu_start(message: types.Message, command: CommandObject):
+    if command.args == "alcintro":
+        text, _ = await run_alchemy_intro(message.from_user.id, message.from_user.first_name)
+        return await message.answer(text, parse_mode="Markdown")
     if command.args != "alcbase": return
     text, markup = await get_base_content(message.from_user.id)
     await message.answer(text, reply_markup=markup, parse_mode="Markdown")

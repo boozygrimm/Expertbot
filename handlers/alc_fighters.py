@@ -97,11 +97,13 @@ def create_fighter(unit_id: str, tier: int | None = None, *, crafted_tier3: bool
         "stamina": FIGHTER_TIER_STAMINA.get(current_tier, 3),
         "stamina_updated_at": now_ts,
         "custom_name": "",
+        "history": [],
         "crafted_tier3": bool(crafted_tier3 and current_tier >= 3),
         "raids": 0,
         "expeditions": 0,
         "status": "available",
         "created_at": now_ts,
+        "origin": "crafted_tier3" if crafted_tier3 else "recruited",
     }
     return normalize_fighter(fighter, now_ts)
 
@@ -116,7 +118,9 @@ def normalize_fighter(fighter: dict, now_ts: int | None = None) -> dict:
     current["expeditions"] = max(0, int(current.get("expeditions", 0) or 0))
     current["status"] = current.get("status") or "available"
     current["custom_name"] = str(current.get("custom_name") or "").strip()[:32]
+    current["history"] = [str(line).strip()[:160] for line in current.get("history", []) if str(line).strip()][:12]
     current["crafted_tier3"] = bool(current.get("crafted_tier3")) or current["tier"] >= 3 and bool(current.get("origin") == "crafted_tier3")
+    current["origin"] = str(current.get("origin") or "recruited")
     current["created_at"] = int(current.get("created_at") or now_ts or time.time())
     current["stamina_updated_at"] = int(current.get("stamina_updated_at") or current["created_at"])
     current["stamina"] = max(0, int(current.get("stamina", get_fighter_stamina_cap(current)) or 0))

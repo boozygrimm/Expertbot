@@ -4,7 +4,7 @@ from aiogram import Router, types, F
 from aiogram.filters import Filter
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
-from handlers.alc_core import get_or_create_player
+from handlers.alc_core import get_heritage_slots, get_or_create_player
 from handlers.alc_fighters import (
     build_fighter_label,
     can_name_fighter,
@@ -88,6 +88,7 @@ def get_building_help_line(building_id: str, level: int) -> str:
         "guild": "Гильдия помогает ходить дальше и чаще. 1 уровень уже открывает нормальный размер отряда, а дальше полезен тем, кто живет экспедициями.",
         "barracks": "Казармы открывают армию из простых связок. Пример для старта: Огнемеч = Дух Огня + Металл. Ищи похожие рецепты для других стихий.",
         "fort": "Форт защищает склад. В ловушку можно положить любой предмет: хоть зомби, хоть велосипед, хоть стекло - главное, чтобы потом было не жалко.",
+        "heritage_center": "Наследие мира собирается из обрывков лора. Собранные коллекции ставятся на стенды и питают базу постоянными бонусами.",
     }
     return hints.get(building_id, "")
 
@@ -168,13 +169,25 @@ BUILDINGS = {
             2: {"cost": {"metal": 8, "glass": 5, "bomb": 1, "energy": 5}, "effect_desc": "Открывает катапульту и второй слот ловушки."},
             3: {"cost": {"electricity": 6, "robot": 1, "diamond": 1, "energy": 9}, "effect_desc": "Открывает алхимический распылитель и третий слот ловушки."},
         }
+    },
+    "heritage_center": {
+        "id": "heritage_center",
+        "name": "📚 История миров",
+        "desc": "Стенды с собранными Наследиями мира и их постоянными бафами.",
+        "levels": {
+            1: {"cost": {}, "effect_desc": "Стартовый архив: 1 стенд Наследия уже доступен."},
+            2: {"cost": {"paper": 3, "wood": 6, "stone": 4}, "effect_desc": "Открывает 2-й стенд Наследия."},
+            3: {"cost": {"book": 2, "glass": 4, "energy": 6}, "effect_desc": "Открывает 3-й стенд Наследия."},
+            4: {"cost": {"library": 1, "electricity": 5, "metal": 8}, "effect_desc": "Открывает 4-й стенд Наследия."},
+            5: {"cost": {"philosophers_stone": 1, "diamond": 1, "book": 4, "energy": 12}, "effect_desc": "Открывает 5-й стенд и удваивает все активные бонусы."},
+        },
     }
 }
 
 async def render_build_menu(message: types.Message, user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
     inventory = player.get("inventory", {})
-    user_buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0})
+    user_buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
     text = "🏗 **СТРОЙПЛОЩАДКА**\nРесурсы тратятся на улучшение модулей базы.\n\n"
     builder = InlineKeyboardBuilder()
@@ -396,6 +409,8 @@ def build_fighter_detail_keyboard(player: dict, fighter: dict) -> types.InlineKe
         builder.button(text=f"⬆️ Повысить до Т{next_tier}", callback_data=f"fighter_promote:{fighter['id']}")
     if can_name_fighter(fighter):
         builder.button(text="✍️ Дать имя", callback_data=f"fighter_rename:{fighter['id']}")
+    if fighter.get("status") == "available":
+        builder.button(text="🪦 Отправить в отставку", callback_data=f"fighter_retire:{fighter['id']}")
     builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
     builder.button(text="🔙 К казармам", callback_data="barracks_open")
     builder.adjust(1)
@@ -456,6 +471,25 @@ async def fighter_rename(callback: types.CallbackQuery):
     pending = {"fighter_id": fighter["id"], "set_at": int(time.time())}
     await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"fighter_name_pending": pending}})
     await callback.answer("Отправь имя следующим сообщением в этот чат.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("fighter_retire:"))
+async def fighter_retire(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    fighter_id = callback.data.split(":")[1]
+    fighter = find_fighter(player, fighter_id)
+    if not fighter:
+        return await callback.answer("Боец не найден.", show_alert=True)
+    if fighter.get("status") != "available":
+        return await callback.answer("В отставку можно отправить только свободного бойца.", show_alert=True)
+    player["fighters"] = [item for item in player.get("fighters", []) if item.get("id") != fighter_id]
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"fighters": player.get("fighters", [])}},
+    )
+    await callback.answer("Боец отправлен в отставку.")
+    await render_barracks_menu(callback.message, user_id)
 
 
 class IsNamingFighter(Filter):
@@ -562,7 +596,7 @@ async def upg_logic(callback: types.CallbackQuery):
     
     player = await db.alchemy_players.find_one({"user_id": user_id})
     inv = player.get("inventory", {})
-    builds = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0})
+    builds = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
     nxt_lvl = builds.get(b_id, 0) + 1
     cost = BUILDINGS[b_id]["levels"][nxt_lvl]["cost"]
@@ -572,10 +606,19 @@ async def upg_logic(callback: types.CallbackQuery):
         inv[item] -= amt
     
     builds[b_id] = nxt_lvl
-    
+
+    update_fields = {"inventory": inv, "buildings": builds}
+    if b_id == "heritage_center":
+        stands = list(player.get("active_stands", []))
+        target_slots = get_heritage_slots(nxt_lvl)
+        stands = [stand if stand else None for stand in stands[:target_slots]]
+        while len(stands) < target_slots:
+            stands.append(None)
+        update_fields["active_stands"] = stands
+
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inv, "buildings": builds}}
+        {"$set": update_fields}
     )
     
     await callback.answer(f"🚀 {BUILDINGS[b_id]['name']} теперь {nxt_lvl} уровня!")

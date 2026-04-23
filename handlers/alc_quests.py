@@ -4,6 +4,7 @@ import re
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
+from handlers.alc_heritage import try_grant_random_lore_fragment
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
 from ai_logic import try_groq, try_openrouter
 
@@ -224,6 +225,7 @@ async def turn_in_quest(callback: types.CallbackQuery):
     inv[quest["reward_res"]] = inv.get(quest["reward_res"], 0) + quest["reward_amt"]
     
     quest["done"] = True
+    found_fragment = await try_grant_random_lore_fragment(player, chance=0.10)
     
     # Проверяем лимиты склада
     from handlers.alc_core import STORAGE_CAPACITY, get_used_slots
@@ -233,10 +235,20 @@ async def turn_in_quest(callback: types.CallbackQuery):
     
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inv, "daily_quests": daily_data}}
+        {
+            "$set": {
+                "inventory": inv,
+                "daily_quests": daily_data,
+                "lore_fragments": player.get("lore_fragments", {}),
+                "lore_fragment_progress": player.get("lore_fragment_progress", {}),
+            }
+        }
     )
     
-    await callback.answer("🎉 Задание успешно сдано! Награда добавлена на склад.", show_alert=True)
+    answer_text = "🎉 Задание успешно сдано! Награда добавлена на склад."
+    if found_fragment:
+        answer_text += f"\n📜 Найден обрывок: {found_fragment['title']}."
+    await callback.answer(answer_text, show_alert=True)
     await open_quests(callback)
 
 from aiogram.filters import Command

@@ -38,10 +38,15 @@ DEFAULT_ACTION_COUNTERS = {
 DEFAULT_PLAYER_TEMPLATE = {
     "inventory": {},
     "discovered": [],
+    "lore_fragments": {},
+    "active_stands": [None],
+    "claimed_legacy_rewards": [],
+    "lore_fragment_progress": {"date": "", "found": 0},
+    "last_heritage_income": "",
     "last_mine": 0,
     "tutorial_step": 0,
     "stats": {"stamina": 1, "luck": 1},
-    "buildings": {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0},
+    "buildings": {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
     "barracks_report": {},
     "last_barracks_drain": "",
     "fighters": [],
@@ -73,6 +78,10 @@ def get_used_slots(inventory: dict) -> int:
     from handlers.alc_base import HIDDEN_ITEMS
     return len([k for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS])
 
+
+def get_heritage_slots(level: int) -> int:
+    return max(1, min(5, int(level or 1)))
+
 async def get_or_create_player(user_id: int, user_name: str):
     """Инициализация профиля."""
     player = await db.alchemy_players.find_one({"user_id": user_id})
@@ -94,6 +103,24 @@ async def get_or_create_player(user_id: int, user_name: str):
             buildings.setdefault(key, value)
         player["buildings"] = buildings
         update_fields["buildings"] = buildings
+
+    heritage_slots = get_heritage_slots(buildings.get("heritage_center", 1))
+    active_stands = list(player.get("active_stands", []))
+    normalized_stands = [stand if stand else None for stand in active_stands[:heritage_slots]]
+    while len(normalized_stands) < heritage_slots:
+        normalized_stands.append(None)
+    if player.get("active_stands") != normalized_stands:
+        player["active_stands"] = normalized_stands
+        update_fields["active_stands"] = normalized_stands
+
+    lore_progress = player.get("lore_fragment_progress", {})
+    normalized_lore_progress = {
+        "date": str(lore_progress.get("date", "")),
+        "found": max(0, int(lore_progress.get("found", 0) or 0)),
+    }
+    if player.get("lore_fragment_progress") != normalized_lore_progress:
+        player["lore_fragment_progress"] = normalized_lore_progress
+        update_fields["lore_fragment_progress"] = normalized_lore_progress
 
     counters = player.get("action_counters", {})
     if any(key not in counters for key in DEFAULT_ACTION_COUNTERS):
@@ -178,6 +205,55 @@ def build_locations_menu(bot_username: str, has_base: bool):
     b.button(text=btn_text, url=f"https://t.me/{bot_username}?start=alcbase")
     b.adjust(2, 2, 1)
     return b.as_markup()
+
+
+def build_intro_menu(bot_username: str):
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🧪 Начать путь", url=f"https://t.me/{bot_username}?start=alcintro")
+    return builder.as_markup()
+
+
+async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
+    player = await get_or_create_player(user_id, user_name)
+    if player.get("tutorial_step", 0) >= 1:
+        return "Ты уже пережил первый алхимический БАМММ. Открывай /base и продолжай.", False
+
+    inventory = player.get("inventory", {})
+    starters = {
+        "base_crystal": 1,
+        "pack_s": 1,
+        "w": 6,
+        "f": 6,
+        "e": 6,
+        "a": 6,
+        "stone": 2,
+        "wood": 2,
+    }
+    for item_id, amount in starters.items():
+        inventory[item_id] = inventory.get(item_id, 0) + amount
+
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "inventory": inventory,
+                "tutorial_step": 1,
+            }
+        },
+    )
+    text = (
+        "Пшик, пшик... **БАМММ!**\n\n"
+        "Колба рванула, лаборатория завоняла жженой травой, а в пепле остался странный кристалл.\n"
+        "Похоже, это твой первый якорь базы. Я сложил рядом стартовый набор и немного сырья, пока потолок не рухнул снова.\n\n"
+        "Получено:\n"
+        "• 🔮 Кристалл Базы x1\n"
+        "• 📦 Малый набор x1\n"
+        "• Базовые стихии по 6\n"
+        "• 🪨 Камень x2\n"
+        "• 🪵 Древесина x2\n\n"
+        "Теперь открой /base, активируй Кристалл Базы и постарайся больше не нюхать дым прямо из реторты."
+    )
+    return text, True
 
 # ==================== ЛОГИКА ПРЕДМЕТОВ ====================
 
@@ -268,6 +344,18 @@ async def use_item_logic(user_id: int, item_code: str):
 async def start_expedition(message: types.Message):
     user_id = message.from_user.id
     player = await get_or_create_player(user_id, message.from_user.first_name)
+    if player.get("tutorial_step", 0) == 0:
+        bot_info = await message.bot.get_me()
+        if message.chat.type != "private":
+            msg = await message.reply(
+                "🧪 Перед первым походом надо пережить один контролируемый алхимический взрыв. Жми и переходи в ЛС.",
+                reply_markup=build_intro_menu(bot_info.username),
+            )
+            asyncio.create_task(delete_after_delay(message, 10))
+            asyncio.create_task(delete_after_delay(msg, 20))
+            return
+        intro_text, _ = await run_alchemy_intro(user_id, message.from_user.first_name)
+        return await message.answer(intro_text, parse_mode="Markdown")
     
     now = time.time()
     last_mine = player.get("last_mine", 0)
@@ -343,20 +431,12 @@ async def process_expedition(callback: types.CallbackQuery):
     step = player.get("tutorial_step", 0)
     narrative_text = ""
     
-    if step == 0:
-        inv["base_crystal"] = 1
-        inv["pack_s"] = 1
-        narrative_text = ("\n\n✨ **СЮЖЕТ:** Среди обломков ты находишь странный пульсирующий камень... "
-                          "Это 🔮 **Кристалл Базы**, а рядом лежал стартовый 📦 **Малый Набор**!\n"
-                          "👉 Скорее открой Главный Штаб по кнопке '🏕 Моя База' (или '🎒 Инвентарь') и нажми 'Использовать Кристалл'.")
-        step = 0.5 
-    else:
-        if random.random() < 0.05:
-            inv["pack_s"] = inv.get("pack_s", 0) + 1
-            narrative_text += "\n\n✨ Ого! Ты наткнулся на 📦 Малый набор!"
-        if random.random() < 0.03:
-            inv["recipe_scroll"] = inv.get("recipe_scroll", 0) + 1
-            narrative_text += "\n\n📜 В грязи лежал древний Свиток Рецепта!"
+    if random.random() < 0.05:
+        inv["pack_s"] = inv.get("pack_s", 0) + 1
+        narrative_text += "\n\n✨ Ого! Ты наткнулся на 📦 Малый набор!"
+    if random.random() < 0.03:
+        inv["recipe_scroll"] = inv.get("recipe_scroll", 0) + 1
+        narrative_text += "\n\n📜 В грязи лежал древний Свиток Рецепта!"
 
     # Обновляем инвентарь базовыми дропами
     for item in drops:

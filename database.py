@@ -25,6 +25,7 @@ class Database:
 
         # НОВАЯ КОЛЛЕКЦИЯ ДЛЯ АЛХИМИИ (Глобальные профили)
         self.alchemy_players = self.db.alchemy_players
+        self.alchemy_lore = self.db.alchemy_lore
         
     async def setup(self):
         # Авто-удаление сообщений через 7 дней
@@ -37,5 +38,6 @@ class Database:
         await self.auth_chats.create_index("chat_id", unique=True)
         # Индекс для алхимических профилей
         await self.alchemy_players.create_index("user_id", unique=True)
+        await self.alchemy_lore.create_index("id", unique=True)
 
 db = Database()
