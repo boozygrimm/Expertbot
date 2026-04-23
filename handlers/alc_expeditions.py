@@ -331,6 +331,13 @@ def resolve_draft_fighters(player: dict, draft: list[str], *, expedition_mode: b
     return fighters
 
 
+def cleanup_expedition_draft(player: dict, user_id: int) -> list[str]:
+    valid_ids = {fighter["id"] for fighter in get_available_fighters(player, include_zero_stamina=False)}
+    cleaned = [fighter_id for fighter_id in expedition_drafts.get(user_id, []) if fighter_id in valid_ids]
+    expedition_drafts[user_id] = cleaned
+    return cleaned
+
+
 def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str:
     buildings = player.get("buildings", {})
     barracks_level = buildings.get("barracks", 0)
@@ -536,7 +543,7 @@ async def process_expeditions_tick():
 @router.callback_query(F.data == "expeditions_open")
 async def expeditions_open(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    draft = expedition_drafts.get(callback.from_user.id, [])
+    draft = cleanup_expedition_draft(player, callback.from_user.id)
     await safe_edit_text(callback.message, render_expeditions_text(player, draft), build_expeditions_keyboard(player, draft))
     await callback.answer()
 
@@ -559,7 +566,7 @@ async def expedition_pick(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     guild_level = player.get("buildings", {}).get("guild", 0)
-    draft = expedition_drafts.get(user_id, []).copy()
+    draft = cleanup_expedition_draft(player, user_id).copy()
     fighter_id = callback.data.split(":")[1]
     team_limit = get_expedition_team_limit(guild_level)
 
@@ -570,7 +577,9 @@ async def expedition_pick(callback: types.CallbackQuery):
             return await callback.answer("Больше бойцов Гильдия пока не пустит.", show_alert=True)
         fighter = find_fighter(player, fighter_id)
         if not fighter or fighter.get("status") != "available":
-            return await callback.answer("Этот боец уже занят.", show_alert=True)
+            expedition_drafts[user_id] = cleanup_expedition_draft(player, user_id)
+            await safe_edit_text(callback.message, render_expeditions_text(player, expedition_drafts[user_id]), build_expeditions_keyboard(player, expedition_drafts[user_id]))
+            return await callback.answer("Список бойцов обновлён. Попробуй выбрать заново.", show_alert=True)
         if int(fighter.get("stamina", 0)) <= 0:
             return await callback.answer("Уставший боец в экспедицию не пойдёт.", show_alert=True)
         draft.append(fighter_id)
@@ -584,7 +593,7 @@ async def expedition_pick(callback: types.CallbackQuery):
 async def expedition_launch(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
-    draft = expedition_drafts.get(user_id, []).copy()
+    draft = cleanup_expedition_draft(player, user_id).copy()
     if not draft:
         return await callback.answer("Нечего отправлять.", show_alert=True)
 

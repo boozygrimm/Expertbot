@@ -4,13 +4,32 @@ import re
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
-from handlers.alc_recipes import ELEMENTS, RECIPES
+from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
 from ai_logic import try_groq, try_openrouter
 
 router = Router()
 
 # Кэш сложности крафта (тиров), чтобы не вычислять заново для каждого запроса
 TIER_CACHE = {}
+INVALID_QUEST_ITEMS = {
+    "base_crystal",
+    "active_base",
+    "pack_s",
+    "pack_m",
+    "pack_l",
+    "pack_xl",
+    "recipe_scroll",
+    "energy",
+    "spirit_f",
+    "spirit_w",
+    "spirit_e",
+    "spirit_a",
+    "a",
+    "e",
+    "f",
+    "w",
+    *BATTLE_UNITS.keys(),
+}
 
 def get_item_tier(item, visited=None):
     """Рекурсивно высчитывает себестоимость (сложность) предмета."""
@@ -36,16 +55,71 @@ def get_item_tier(item, visited=None):
     TIER_CACHE[item] = 10
     return 10
 
+
+def is_invalid_quest_item(item_id):
+    return item_id in INVALID_QUEST_ITEMS
+
+
+def get_valid_quest_items(exclude=None):
+    excluded = set(exclude or ())
+    return [item_id for item_id in ELEMENTS.keys() if item_id not in INVALID_QUEST_ITEMS and item_id not in excluded]
+
+
+def build_fallback_quest_text(item_id):
+    item_name = ELEMENTS.get(item_id, item_id)
+    return f"Нужен {item_name} для срочного заказа гильдии."
+
+
+def build_quest_entry(item_id, quest_id, text=None):
+    tier = get_item_tier(item_id)
+    pack = "recipe_scroll" if random.random() < 0.15 else "pack_s"
+    bonus_res = random.choice(["stone", "sand", "glass", "clay", "energy"])
+    bonus_amt = min(3, max(1, tier // 15))
+    return {
+        "id": quest_id,
+        "item": item_id,
+        "text": text or build_fallback_quest_text(item_id),
+        "reward_pack": pack,
+        "reward_res": bonus_res,
+        "reward_amt": bonus_amt,
+        "done": False,
+    }
+
+
+async def sanitize_daily_quests(user_id, player, daily_data):
+    quests = daily_data.get("quests", [])
+    if not quests:
+        return daily_data, False
+
+    used_items = {quest.get("item") for quest in quests if not is_invalid_quest_item(quest.get("item"))}
+    replacements = get_valid_quest_items(used_items)
+    changed = False
+
+    for idx, quest in enumerate(quests):
+        item_id = quest.get("item")
+        if quest.get("done") or not is_invalid_quest_item(item_id):
+            continue
+        if not replacements:
+            break
+        new_item = random.choice(replacements)
+        replacements.remove(new_item)
+        used_items.add(new_item)
+        quests[idx] = build_quest_entry(new_item, quest.get("id", idx))
+        changed = True
+
+    if changed:
+        daily_data["quests"] = quests
+        await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"daily_quests": daily_data}})
+    return daily_data, changed
+
 async def generate_daily_quests(user_id, player):
     guild_lvl = player.get("buildings", {}).get("guild", 0)
     
     num_quests = 3
     if guild_lvl in [1, 2]: num_quests = 4
     elif guild_lvl >= 3: num_quests = 5
-    
-    invalid_items = {"base_crystal", "active_base", "pack_s", "pack_m", "pack_l", "pack_xl", "recipe_scroll", "energy", "spirit_f", "spirit_w", "spirit_e", "spirit_a", "a", "e", "f", "w"}
-    valid_items = [k for k in ELEMENTS.keys() if k not in invalid_items]
-    
+
+    valid_items = get_valid_quest_items()
     chosen_items = random.sample(valid_items, num_quests)
     item_names = [ELEMENTS[k] for k in chosen_items]
     
@@ -70,26 +144,7 @@ async def generate_daily_quests(user_id, player):
     if len(texts) != num_quests:
         texts = [f"Срочный заказ из столицы. Оплачу по тарифу." for _ in item_names]
         
-    quests = []
-    for idx, item in enumerate(chosen_items):
-        tier = get_item_tier(item)
-        
-        # Ребаланс наград. Никаких больших паков.
-        pack = "recipe_scroll" if random.random() < 0.15 else "pack_s"
-        
-        # Интересные ресурсы вместо базовых, и жесткий лимит количества (от 1 до 3)
-        bonus_res = random.choice(["stone", "sand", "glass", "clay", "energy"])
-        bonus_amt = min(3, max(1, tier // 15)) 
-        
-        quests.append({
-            "id": idx,
-            "item": item,
-            "text": texts[idx],
-            "reward_pack": pack,
-            "reward_res": bonus_res,
-            "reward_amt": bonus_amt,
-            "done": False
-        })
+    quests = [build_quest_entry(item, idx, texts[idx]) for idx, item in enumerate(chosen_items)]
         
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     daily_data = {"date": today_str, "quests": quests}
@@ -109,6 +164,8 @@ async def open_quests(callback: types.CallbackQuery):
     if daily_data.get("date") != today_str:
         await callback.message.edit_text("⏳ Торговцы формулируют запросы... Дай пару секунд, связываюсь с гильдией.")
         daily_data = await generate_daily_quests(user_id, player)
+    else:
+        daily_data, _ = await sanitize_daily_quests(user_id, player, daily_data)
         
     quests = daily_data.get("quests", [])
     
@@ -147,6 +204,10 @@ async def turn_in_quest(callback: types.CallbackQuery):
     quest = next((q for q in quests if q["id"] == q_id), None)
     if not quest or quest["done"]:
         return await callback.answer("Задание уже выполнено или не найдено!", show_alert=True)
+    if is_invalid_quest_item(quest["item"]):
+        daily_data, _ = await sanitize_daily_quests(user_id, player, daily_data)
+        await callback.answer("Это задание устарело после обновления. Доска уже обновлена.", show_alert=True)
+        return await open_quests(callback)
         
     # Проверка наличия предмета
     if inv.get(quest["item"], 0) < 1:
