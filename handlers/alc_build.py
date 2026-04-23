@@ -457,19 +457,30 @@ async def fighter_rename(callback: types.CallbackQuery):
     await callback.answer("Отправь имя следующим сообщением в этот чат.", show_alert=True)
 
 
-@router.message(F.text)
+from aiogram.filters import Filter
+
+class IsNamingFighter(Filter):
+    async def __call__(self, message: types.Message) -> bool:
+        player = await db.alchemy_players.find_one({"user_id": message.from_user.id})
+        pending = (player or {}).get("fighter_name_pending")
+        return bool(pending)
+
+@router.message(F.text, IsNamingFighter())
 async def handle_fighter_naming(message: types.Message):
     player = await db.alchemy_players.find_one({"user_id": message.from_user.id})
-    pending = (player or {}).get("fighter_name_pending")
-    if not pending:
-        return
+    pending = player.get("fighter_name_pending")
+    
     fighter = find_fighter(player, pending.get("fighter_id", ""))
     if not fighter or not can_name_fighter(fighter):
         await db.alchemy_players.update_one({"user_id": message.from_user.id}, {"$set": {"fighter_name_pending": None}})
-        return await message.reply("Имя уже нельзя назначить. Открой Казармы и выбери бойца заново.")
+        await message.reply("Имя уже нельзя назначить. Открой Казармы и выбери бойца заново.")
+        return 
+        
     new_name = " ".join((message.text or "").strip().split())[:24]
     if len(new_name) < 2:
-        return await message.reply("Имя слишком короткое. Нужно хотя бы 2 символа.")
+        await message.reply("Имя слишком короткое. Нужно хотя бы 2 символа.")
+        return 
+        
     fighter["custom_name"] = new_name
     await db.alchemy_players.update_one(
         {"user_id": message.from_user.id},
