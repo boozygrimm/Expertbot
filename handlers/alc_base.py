@@ -1,4 +1,5 @@
 import asyncio
+import html
 
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -11,8 +12,14 @@ from handlers.alc_core import get_or_create_player, run_alchemy_intro
 
 router = Router()
 
-ALCHEMY_ALPHA_VERSION = "0.8.0-alpha"
+ALCHEMY_ALPHA_VERSION = "0.8.1-alpha"
 ALCHEMY_CHANGELOG = [
+    ("0.8.1-alpha", [
+        "Исправлено окно 'Альфа и изменения': список версий снова открывается без краша.",
+        "Утренний отчет снабжения и Наследия теперь приходит одним отдельным окном с кнопкой закрытия.",
+        "Отчет о встрече экспедиции получил кнопку 'Закрыть'.",
+        "Бойцы больше не дезертируют сразу из-за нехватки энергии: сначала остаются без отдыха и теряют 2 XP, а уходят только на нуле опыта.",
+    ]),
     ("0.8.0-alpha", [
         "Добавлена История миров: коллекции лора, стенды Наследия и постоянные бонусы для базы.",
         "Старые профили мягко мигрируют на новую систему, а новые игроки получают обновленный старт через ЛС.",
@@ -168,8 +175,8 @@ async def get_base_content(user_id: int):
 
 def build_changelog_text() -> str:
     lines = [
-        "🧾 **АЛЬФА ИЗМЕНЕНИЙ**",
-        f"Текущая версия: **{ALCHEMY_ALPHA_VERSION}**",
+        "🧾 <b>АЛЬФА ИЗМЕНЕНИЙ</b>",
+        f"Текущая версия: <b>{html.escape(ALCHEMY_ALPHA_VERSION)}</b>",
         "",
         "Что это значит:",
         "• Альфа - механики ещё двигаются, баланс и интерфейсы могут меняться.",
@@ -178,9 +185,9 @@ def build_changelog_text() -> str:
         "История ключевых изменений:",
     ]
     for version, notes in ALCHEMY_CHANGELOG:
-        lines.append(f"**{version}**")
+        lines.append(f"<b>{html.escape(version)}</b>")
         for note in notes:
-            lines.append(f"• {note}")
+            lines.append(f"• {html.escape(note)}")
         lines.append("")
     lines.append("Если после обновления что-то ведет себя странно, обычно помогает заново открыть нужное окно базы.")
     return "\n".join(lines)
@@ -191,7 +198,7 @@ async def show_changelog(callback: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
-    await callback.message.edit_text(build_changelog_text(), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.message.edit_text(build_changelog_text(), reply_markup=builder.as_markup(), parse_mode="HTML")
     await callback.answer()
 
 

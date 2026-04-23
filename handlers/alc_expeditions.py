@@ -446,6 +446,14 @@ def build_expedition_detail_keyboard(expedition: dict) -> types.InlineKeyboardMa
     return builder.as_markup()
 
 
+def build_expedition_claim_keyboard() -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Закрыть", callback_data="alc:base_close")
+    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 async def discover_random_recipe(player: dict) -> str | None:
     known = set(player.get("discovered", [])) | set(player.get("inventory", {}).keys())
     unknown = [item_id for item_id in ELEMENTS if item_id not in known and item_id not in BATTLE_UNITS]
@@ -747,7 +755,7 @@ async def expedition_claim(callback: types.CallbackQuery):
             "\n\n📜 Найден обрывок лора: "
             f"{found_fragment['title']} ({found_fragment['collection_name']})."
         )
-    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=build_expedition_claim_keyboard(), parse_mode="Markdown")
     await callback.answer("Отряд вернулся в строй.")
 
 
