@@ -46,6 +46,7 @@ async def set_commands(bot):
         BotCommand(command="base", description="🏕 Главный Штаб"), # Добавь эту строку
         BotCommand(command="regen_quests", description="Перезапуск квестов"),
         BotCommand(command="lore_edit", description="Редактор Наследия"),
+        BotCommand(command="справкалор", description="Справка по лору"),
     ]
 
     group_commands = [

@@ -707,3 +707,24 @@ async def lore_edit(message: types.Message, command: CommandObject):
         return await message.answer(f"Фрагменты для `{lore_id}` обновлены.", parse_mode="Markdown")
 
     await message.answer("Не понял подкоманду `/lore_edit`.", parse_mode="Markdown")
+
+
+@router.message(Command("справкалор"))
+async def lore_help(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    text = (
+        "📚 **СПРАВКА ПО ЛОРУ**\n\n"
+        "`/lore_edit list` - список коллекций\n"
+        "`/lore_edit show <id>` - показать коллекцию\n"
+        "`/lore_edit set <id>|<name>|<emoji>|<bonus_type>|<bonus_value>|<reward_type>|<reward_payload>|<reward_amount>|<reward_name>|<sort_order>` - метаданные\n"
+        "`/lore_edit fragments <id>|frag1:Название:Анонс|frag2:...|frag3:...` - 3 обрывка\n"
+        "Отправь полный текст обычным сообщением и ответь на него: `/lore_edit text <id>`\n"
+        "`/lore_edit seed` - досоздать стартовые сиды\n\n"
+        "Пример:\n"
+        "1. `/lore_edit set void_legacy|Наследие Пустоты|🌌|spirit_a|3|item|pack_l|1||40`\n"
+        "2. `/lore_edit fragments void_legacy|void_1:Разлом:Пустота заговорила.|void_2:Ветер:Воздух стал умным.|void_3:Свидетель:После вспышки осталась память.`\n"
+        "3. Отправь полный текст\n"
+        "4. Reply: `/lore_edit text void_legacy`"
+    )
+    await message.answer(text, parse_mode="Markdown")
