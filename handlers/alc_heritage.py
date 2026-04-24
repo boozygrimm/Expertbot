@@ -584,6 +584,11 @@ async def show_lore_editor_collection(target_message: types.Message, lore_id: st
     )
 
 
+def has_active_lore_editor_session(message: types.Message) -> bool:
+    user = message.from_user
+    return bool(user and user.id == ADMIN_ID and lore_editor_sessions.get(user.id))
+
+
 @router.callback_query(F.data == "heritage_open")
 async def heritage_open(callback: types.CallbackQuery):
     await ensure_default_lore()
@@ -909,13 +914,9 @@ async def lore_help(message: types.Message):
     )
 
 
-@router.message(F.text)
+@router.message(F.text, has_active_lore_editor_session)
 async def lore_editor_input(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    session = lore_editor_sessions.get(message.from_user.id)
-    if not session:
-        return
+    session = lore_editor_sessions[message.from_user.id]
 
     mode = session.get("mode")
     lore_id = session.get("id")

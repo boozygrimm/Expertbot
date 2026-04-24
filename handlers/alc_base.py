@@ -13,8 +13,15 @@ from handlers.alc_core import get_or_create_player, run_alchemy_intro
 
 router = Router()
 
-ALCHEMY_ALPHA_VERSION = "0.8.2-alpha"
+ALCHEMY_ALPHA_VERSION = "0.8.2.5"
 ALCHEMY_CHANGELOG = [
+    ("0.8.2.5", [
+        "Исправлен жадный текстовый хендлер редактора Наследий: обычные сообщения снова не перехватываются вне активной сессии.",
+        "Главный штаб подчищен по интерфейсу: строка общего статуса Лаборатории убрана, Склад перенесен в первую кнопку, а Ачивки подняты в верхний ряд.",
+        "Кнопка Лаборатории вынесена в крупный блок, чтобы не теряться среди эмодзи-навигации.",
+        "Склад упрощен до списка активируемых предметов без дубляжа обычных ресурсов.",
+        "Окно 'Альфа и изменения' получило пагинацию вместо одной длинной простыни.",
+    ]),
     ("0.8.2-alpha", [
         "Редактор Наследий переделан в пошаговый диалог с кнопками и подсказками вместо невнятного набора команд.",
         "Третье стартовое Наследие заменено на 'Хроники приматов и первичного бульона'.",
@@ -73,27 +80,6 @@ ALCHEMY_CHANGELOG = [
 HIDDEN_ITEMS = ["base_crystal", "active_base"]
 USE_ITEMS = ["pack_s", "pack_m", "pack_l", "pack_xl", "base_crystal", "recipe_scroll"]
 
-base_pages = {}
-ROWS_PER_PAGE = 15 #количество рядов на странице 
-# =====================================================================
-# ФУНКЦИИ-ПОМОЩНИКИ ДЛЯ РАБОТЫ С ИМЕНАМИ И ЭМОДЗИ
-# =====================================================================
-def get_el_name(k):
-    """Возвращает только название предмета (без эмодзи)"""
-    el = ELEMENTS.get(k, k)
-    if isinstance(el, str):
-        parts = el.split(" ", 1)
-        return parts[1] if len(parts) > 1 else el
-    return str(k)
-
-def get_el_emoji(k):
-    """Возвращает только эмодзи предмета"""
-    el = ELEMENTS.get(k, k)
-    if isinstance(el, str):
-        parts = el.split(" ", 1)
-        return parts[0] if len(parts) > 1 else "❓"
-    return "❓"
-
 
 def get_headquarters_icon(fort_level: int) -> str:
     if fort_level >= 3:
@@ -135,9 +121,9 @@ def build_heritage_status(player: dict) -> str:
 def build_lab_status_lines(player: dict) -> list[str]:
     lab_level = player.get("buildings", {}).get("lab", 0)
     if lab_level <= 0:
-        return ["⚗️ Лаборатория: 🔴 не собрана"]
+        return []
 
-    lines = [f"⚗️ Лаборатория: 🟢 ур. {lab_level}"]
+    lines: list[str] = []
     if lab_level >= 2:
         lines.append(
             "🔥 Тигель: "
@@ -251,27 +237,58 @@ def build_base_summary(player: dict) -> str:
     return "\n".join(lines)
 
 
+def build_changelog_page(page: int) -> tuple[str, types.InlineKeyboardMarkup]:
+    total_pages = len(ALCHEMY_CHANGELOG)
+    page = max(0, min(page, total_pages - 1))
+    version, notes = ALCHEMY_CHANGELOG[page]
+
+    lines = [
+        "🧾 <b>АЛЬФА ИЗМЕНЕНИЙ</b>",
+        f"Текущая версия: <b>{html.escape(ALCHEMY_ALPHA_VERSION)}</b>",
+        f"Страница <b>{page + 1}/{total_pages}</b>",
+        "",
+        f"<b>{html.escape(version)}</b>",
+    ]
+    for note in notes:
+        lines.append(f"• {html.escape(note)}")
+    lines.extend([
+        "",
+        "Альфа все еще двигается: баланс, окна и отдельные механики могут меняться между апдейтами.",
+    ])
+
+    builder = InlineKeyboardBuilder()
+    nav_row = []
+    if page > 0:
+        nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"alc:changelog:{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"alc:changelog:{page + 1}"))
+    if nav_row:
+        builder.row(*nav_row)
+    builder.row(types.InlineKeyboardButton(text="🔙 В Штаб", callback_data="alc:base_return"))
+    return "\n".join(lines), builder.as_markup()
+
+
 def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     buildings = player.get("buildings", {})
     builder = InlineKeyboardBuilder()
 
     top_row = [
+        types.InlineKeyboardButton(text="🎒", callback_data="alc:inventory"),
         types.InlineKeyboardButton(text="📚", callback_data="heritage_open"),
-        types.InlineKeyboardButton(text="⚗️", callback_data="lab_open"),
+        types.InlineKeyboardButton(text="🏆", callback_data="alc:achievements"),
     ]
     if buildings.get("altar", 0) > 0:
         top_row.append(types.InlineKeyboardButton(text="🏭", callback_data="altar_open"))
     top_row.append(types.InlineKeyboardButton(text="🧾", callback_data="alc:changelog"))
     if buildings.get("barracks", 0) > 0:
         top_row.append(types.InlineKeyboardButton(text="🧭", callback_data="expeditions_open"))
-    top_row.append(types.InlineKeyboardButton(text="🎒", callback_data="alc:inventory"))
     top_row.append(types.InlineKeyboardButton(text="❓", callback_data="alc:base_help"))
     builder.row(*top_row)
 
     service_rows: list[types.InlineKeyboardButton] = [
+        types.InlineKeyboardButton(text="⚗️ Лаборатория", callback_data="lab_open"),
         types.InlineKeyboardButton(text="🏗 Стройка", callback_data="build_open"),
         types.InlineKeyboardButton(text="📜 Квесты", callback_data="quests_open"),
-        types.InlineKeyboardButton(text="🏆 Ачивки", callback_data="alc:achievements"),
     ]
     if buildings.get("barracks", 0) > 0:
         service_rows.append(types.InlineKeyboardButton(text="🎖 Казармы", callback_data="barracks_open"))
@@ -335,32 +352,18 @@ async def get_base_content(user_id: int):
     return text, build_base_keyboard(player)
 
 
-def build_changelog_text() -> str:
-    lines = [
-        "🧾 <b>АЛЬФА ИЗМЕНЕНИЙ</b>",
-        f"Текущая версия: <b>{html.escape(ALCHEMY_ALPHA_VERSION)}</b>",
-        "",
-        "Что это значит:",
-        "• Альфа - механики ещё двигаются, баланс и интерфейсы могут меняться.",
-        "• Если старые сохранения можно перенести без потерь, игра старается сделать это автоматически.",
-        "",
-        "История ключевых изменений:",
-    ]
-    for version, notes in ALCHEMY_CHANGELOG:
-        lines.append(f"<b>{html.escape(version)}</b>")
-        for note in notes:
-            lines.append(f"• {html.escape(note)}")
-        lines.append("")
-    lines.append("Если после обновления что-то ведет себя странно, обычно помогает заново открыть нужное окно базы.")
-    return "\n".join(lines)
-
-
 @router.callback_query(F.data == "alc:changelog")
 async def show_changelog(callback: types.CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    builder.adjust(1)
-    await callback.message.edit_text(build_changelog_text(), reply_markup=builder.as_markup(), parse_mode="HTML")
+    text, markup = build_changelog_page(0)
+    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("alc:changelog:"))
+async def show_changelog_page(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[2])
+    text, markup = build_changelog_page(page)
+    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
     await callback.answer()
 
 
@@ -372,13 +375,19 @@ async def show_base_help(callback: types.CallbackQuery):
     await callback.message.edit_text(
         "❓ **СПРАВКА ПО ШТАБУ**\n\n"
         "Верхний ряд:\n"
+        "🎒 Склад и активация\n"
         "📚 Наследие\n"
-        "⚗️ Лаборатория\n"
+        "🏆 Ачивки\n"
         "🏭 Производство\n"
         "🧾 Альфа и изменения\n"
         "🧭 Экспедиции\n"
-        "🎒 Склад и активация\n"
         "❓ Эта справка\n\n"
+        "Большие кнопки ниже:\n"
+        "⚗️ Лаборатория\n"
+        "🏗 Стройка\n"
+        "📜 Квесты\n"
+        "🎖 Казармы\n"
+        "🏰 Форт\n\n"
         "Цвета статусов:\n"
         "🔴 пусто, не запущено или не собрано\n"
         "🔵 идет работа, модуль занят или отряд в пути\n"
@@ -397,10 +406,6 @@ async def show_inventory(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = player.get("inventory", {})
-    grid_size = player.get("inv_grid", 3) 
-    page = base_pages.get(user_id, 0)
-    
-    visible_items = [(k, v) for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS and k not in USE_ITEMS]
     active_items = [(code, inventory.get(code, 0)) for code in USE_ITEMS if inventory.get(code, 0) > 0]
     
     storage_lvl = player.get("buildings", {}).get("storage", 0)
@@ -413,91 +418,17 @@ async def show_inventory(callback: types.CallbackQuery):
     if active_items:
         text += "Готово к активации:\n"
         text += "\n".join(f"• {ELEMENTS.get(code, code)} x{amount}" for code, amount in active_items)
-        text += "\n\n"
-    if not visible_items:
-        text += "Ресурсов на хранении пока нет."
     else:
-        text += "Ресурсы на складе:"
+        text += "Сейчас здесь нет предметов, которые можно активировать."
 
     builder = InlineKeyboardBuilder()
     if active_items:
         for code, amount in active_items:
             builder.button(text=f"▶️ {ELEMENTS.get(code, code)} x{amount}", callback_data=f"alc_use:{code}")
         builder.adjust(1)
-
-    BASIC_ELEMENTS = ["w", "f", "e", "a"]
-    
-    basic_items = [(k, v) for k, v in visible_items if k in BASIC_ELEMENTS]
-    if basic_items:
-        basic_row = []
-        for k, v in basic_items:
-            emoji = get_el_emoji(k)
-            basic_row.append(types.InlineKeyboardButton(text=f"{emoji} {v}", callback_data="dummy_btn"))
-        builder.row(*basic_row)
-
-    other_items = [(k, v) for k, v in visible_items if k not in BASIC_ELEMENTS]
-    other_items.sort(key=lambda x: get_el_name(x[0]))
-    
-    items_per_page = grid_size * ROWS_PER_PAGE
-    total_pages = max(1, (len(other_items) + items_per_page - 1) // items_per_page)
-    if page >= total_pages: page = max(0, total_pages - 1)
-    
-    start_idx = page * items_per_page
-    page_items = other_items[start_idx : start_idx + items_per_page]
-    
-    row = []
-    for code, amount in page_items:
-        name = get_el_name(code)
-        if grid_size == 4:
-            btn_text = f"{name} {amount}"
-        else:
-            emoji = get_el_emoji(code)
-            btn_text = f"{emoji} {name} {amount}"
-            
-        row.append(types.InlineKeyboardButton(text=btn_text, callback_data="dummy_btn"))
-        if len(row) == grid_size:
-            builder.row(*row)
-            row = []
-    if row:
-        builder.row(*row)
-    
-    if total_pages > 1:
-        nav_row = []
-        if page > 0:
-            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"alc_page:{page-1}"))
-        if page < total_pages - 1:
-            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"alc_page:{page+1}"))
-        
-        if nav_row:
-            paginator = InlineKeyboardBuilder()
-            paginator.row(*nav_row)
-            builder.attach(paginator)
-    
-    ctrl = InlineKeyboardBuilder()
-    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
-    ctrl.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"alc:set_grid:{next_grid}")
-    ctrl.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    ctrl.adjust(1)
-    
-    builder.attach(ctrl)
+    builder.row(types.InlineKeyboardButton(text="🔙 В Штаб", callback_data="alc:base_return"))
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
-
-# НОВЫЙ ХЭНДЛЕР ПАГИНАЦИИ ДЛЯ БАЗЫ (Добавь в alc_base.py)
-@router.callback_query(F.data.startswith("alc_page:"))
-async def base_change_page(callback: types.CallbackQuery):
-    base_pages[callback.from_user.id] = int(callback.data.split(":")[1])
-    await show_inventory(callback)
-
-@router.callback_query(F.data == "dummy_btn")
-async def dummy_answer(callback: types.CallbackQuery):
-    await callback.answer("Это ресурс на складе. Используйте его в Лаборатории или Постройках!", show_alert=False)
-
-@router.callback_query(F.data.startswith("alc:set_grid:"))
-async def change_grid(callback: types.CallbackQuery):
-    new_grid = int(callback.data.split(":")[2])
-    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
-    await show_inventory(callback)
 
 # ==================== БАЗОВЫЕ ХЭНДЛЕРЫ НАВИГАЦИИ ====================
 @router.message(CommandStart(deep_link=True))
