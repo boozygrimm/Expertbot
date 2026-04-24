@@ -1,5 +1,6 @@
 import asyncio
 import html
+import time
 
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -20,6 +21,10 @@ ALCHEMY_CHANGELOG = [
         "Активация любого Наследия теперь стоит 50 энергии.",
         "Обрывки лора стали выпадать заметно стабильнее: экспедиции теперь почти гарантированно закрывают дневной лимит, а квесты помогают добрать остаток.",
         "Подтянуты свежие балансные правки из alc_build.",
+        "Главный штаб ужат в статусную сводку: верхний ряд теперь состоит из эмодзи-кнопок по доступным модулям.",
+        "Иконка штаба стала зависеть от уровня Форта, а в верхний ряд добавлена кнопка справки по эмодзи.",
+        "Активация паков, свитков и кристалла перенесена в Склад, чтобы главное окно не смешивало навигацию и действия.",
+        "Цвета статусов в штабе унифицированы: красный - пусто или не запущено, синий - процесс идет, зеленый - готово или можно забирать.",
     ]),
     ("0.8.1-alpha", [
         "Исправлено окно 'Альфа и изменения': список версий снова открывается без краша.",
@@ -88,7 +93,196 @@ def get_el_emoji(k):
         parts = el.split(" ", 1)
         return parts[0] if len(parts) > 1 else "❓"
     return "❓"
-    
+
+
+def get_headquarters_icon(fort_level: int) -> str:
+    if fort_level >= 3:
+        return "🏯"
+    if fort_level == 2:
+        return "🏰"
+    if fort_level == 1:
+        return "🏕"
+    return "🛖"
+
+
+def format_process_status(process: dict | None, *, running_text: str, ready_text: str) -> str:
+    if not process:
+        return "🔴 пусто"
+    if int(process.get("finish_time", 0)) > int(time.time()):
+        return f"🔵 {running_text}"
+    return f"🟢 {ready_text}"
+
+
+def build_storage_status(player: dict) -> str:
+    from handlers.alc_core import STORAGE_CAPACITY
+
+    inventory = player.get("inventory", {})
+    storage_lvl = player.get("buildings", {}).get("storage", 0)
+    max_slots = STORAGE_CAPACITY.get(storage_lvl, 20)
+    used_slots = len([k for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS])
+    marker = "🔴" if used_slots >= max_slots else "🟢"
+    return f"{marker} {used_slots}/{max_slots}"
+
+
+def build_heritage_status(player: dict) -> str:
+    stands = player.get("active_stands", [])
+    slots = len(stands)
+    active = sum(1 for stand in stands if stand)
+    marker = "🟢" if active else "🔴"
+    return f"{marker} {active}/{slots} стендов"
+
+
+def build_lab_status_lines(player: dict) -> list[str]:
+    lab_level = player.get("buildings", {}).get("lab", 0)
+    if lab_level <= 0:
+        return ["⚗️ Лаборатория: 🔴 не собрана"]
+
+    lines = [f"⚗️ Лаборатория: 🟢 ур. {lab_level}"]
+    if lab_level >= 2:
+        lines.append(
+            "🔥 Тигель: "
+            + format_process_status(
+                player.get("crucible_process"),
+                running_text="переплавляет",
+                ready_text="результат готов",
+            )
+        )
+    if lab_level >= 3:
+        lines.append(
+            "🧪 Реторта: "
+            + format_process_status(
+                player.get("retort_process"),
+                running_text="фракционирует",
+                ready_text="фракции готовы",
+            )
+        )
+    return lines
+
+
+def build_production_status(player: dict) -> str:
+    altar_level = player.get("buildings", {}).get("altar", 0)
+    if altar_level <= 0:
+        return ""
+
+    slots = player.get("production_slots", [])
+    max_slots = min(3, max(1, altar_level))
+    running = 0
+    stopped = 0
+    now = int(time.time())
+    for slot in slots:
+        assigned_at = int(slot.get("assigned_at", 0) or 0)
+        expired = assigned_at > 0 and now - assigned_at >= 24 * 3600
+        if slot.get("stopped") or expired:
+            stopped += 1
+        else:
+            running += 1
+
+    if running:
+        return f"🏭 Производство: 🔵 {running}/{max_slots} в работе"
+    if stopped:
+        return f"🏭 Производство: 🟢 {stopped}/{max_slots} ждут сбор"
+    return f"🏭 Производство: 🔴 {len(slots)}/{max_slots} пусто"
+
+
+def build_barracks_status(player: dict) -> str:
+    barracks_level = player.get("buildings", {}).get("barracks", 0)
+    if barracks_level <= 0:
+        return ""
+
+    fighters = player.get("fighters", [])
+    roster = [fighter for fighter in fighters if fighter.get("status") != "dead"]
+    if not roster:
+        return "🎖 Казармы: 🔴 пусто"
+
+    ready = len([fighter for fighter in roster if fighter.get("status") == "available" and int(fighter.get("stamina", 0)) > 0])
+    tired = len([fighter for fighter in roster if fighter.get("status") == "available" and int(fighter.get("stamina", 0)) <= 0])
+    away = len([fighter for fighter in roster if fighter.get("status") in {"expedition", "raid"}])
+    marker = "🔵" if away else "🟢"
+    return f"🎖 Казармы: {marker} строй {ready} | поход {away} | отдых {tired}"
+
+
+def build_expeditions_status(player: dict) -> str:
+    if player.get("buildings", {}).get("barracks", 0) <= 0:
+        return ""
+
+    expeditions = player.get("active_expeditions", [])
+    if not expeditions:
+        return "🧭 Экспедиции: 🔴 пусто"
+
+    arrived = len([item for item in expeditions if item.get("status") == "arrived"])
+    active = len(expeditions) - arrived
+    if arrived:
+        return f"🧭 Экспедиции: 🟢 ждут {arrived} | в пути {active}"
+    return f"🧭 Экспедиции: 🔵 в пути {active}"
+
+
+def build_fort_status(player: dict) -> str:
+    fort_level = player.get("buildings", {}).get("fort", 0)
+    if fort_level <= 0:
+        return ""
+
+    loaded = sum(1 for value in player.get("fort_defense", {}).values() if value)
+    captives = len(player.get("captives", []))
+    marker = "🟢" if loaded else "🔴"
+    return f"🏰 Форт: {marker} ловушки {loaded} | плен {captives}"
+
+
+def build_base_summary(player: dict) -> str:
+    buildings = player.get("buildings", {})
+    fort_level = buildings.get("fort", 0)
+    header_icon = get_headquarters_icon(fort_level)
+
+    lines = [
+        f"{header_icon} **ГЛАВНЫЙ ШТАБ**",
+        f"{player.get('user_name', 'Путник')} | версия `{ALCHEMY_ALPHA_VERSION}`",
+        "",
+        f"🎒 Склад: {build_storage_status(player)}",
+        f"📚 Наследие: {build_heritage_status(player)}",
+    ]
+    lines.extend(build_lab_status_lines(player))
+
+    optional_lines = [
+        build_production_status(player),
+        build_barracks_status(player),
+        build_expeditions_status(player),
+        build_fort_status(player),
+    ]
+    lines.extend(line for line in optional_lines if line)
+    return "\n".join(lines)
+
+
+def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
+    buildings = player.get("buildings", {})
+    builder = InlineKeyboardBuilder()
+
+    top_row = [
+        types.InlineKeyboardButton(text="📚", callback_data="heritage_open"),
+        types.InlineKeyboardButton(text="⚗️", callback_data="lab_open"),
+    ]
+    if buildings.get("altar", 0) > 0:
+        top_row.append(types.InlineKeyboardButton(text="🏭", callback_data="altar_open"))
+    top_row.append(types.InlineKeyboardButton(text="🧾", callback_data="alc:changelog"))
+    if buildings.get("barracks", 0) > 0:
+        top_row.append(types.InlineKeyboardButton(text="🧭", callback_data="expeditions_open"))
+    top_row.append(types.InlineKeyboardButton(text="🎒", callback_data="alc:inventory"))
+    top_row.append(types.InlineKeyboardButton(text="❓", callback_data="alc:base_help"))
+    builder.row(*top_row)
+
+    service_rows: list[types.InlineKeyboardButton] = [
+        types.InlineKeyboardButton(text="🏗 Стройка", callback_data="build_open"),
+        types.InlineKeyboardButton(text="📜 Квесты", callback_data="quests_open"),
+        types.InlineKeyboardButton(text="🏆 Ачивки", callback_data="alc:achievements"),
+    ]
+    if buildings.get("barracks", 0) > 0:
+        service_rows.append(types.InlineKeyboardButton(text="🎖 Казармы", callback_data="barracks_open"))
+    if buildings.get("fort", 0) > 0:
+        service_rows.append(types.InlineKeyboardButton(text="🏰 Форт", callback_data="fort_open"))
+
+    for idx in range(0, len(service_rows), 2):
+        builder.row(*service_rows[idx:idx + 2])
+    builder.row(types.InlineKeyboardButton(text="❌ Закрыть", callback_data="alc:base_close"))
+    return builder.as_markup()
+
 
 async def check_achievements(user_id: int, player: dict):
     """Проверяет условия и выдает награды за ачивки при загрузке базы"""
@@ -133,51 +327,12 @@ async def get_base_content(user_id: int):
     if ach_msg:
         player = await db.alchemy_players.find_one({"user_id": user_id})
 
-    inventory = player.get("inventory", {})
-    builder = InlineKeyboardBuilder()
-    
-    active_found = False
-    for code in USE_ITEMS:
-        amount = inventory.get(code, 0)
-        if amount > 0:
-            active_found = True
-            builder.button(text=f"▶️ Использовать {ELEMENTS.get(code, code)} ({amount})", callback_data=f"alc_use:{code}")
-
-    if active_found:
-        builder.adjust(1)
-        
-    # === ИЗМЕНЕННЫЙ БЛОК НАВИГАЦИИ ===
-    main_btns = InlineKeyboardBuilder()
-    main_btns.button(text="🎒 Мой склад", callback_data="alc:inventory")
-    main_btns.button(text="🏆 Достижения", callback_data="alc:achievements")
-    main_btns.button(text="🧾 Альфа и изменения", callback_data="alc:changelog")
-    main_btns.button(text="📜 Доска объявлений", callback_data="quests_open") # <-- НОВАЯ КНОПКА
-    main_btns.button(text="📚 Наследие", callback_data="heritage_open")
-    main_btns.button(text="⚗️ Лаборатория", callback_data="lab_open")
-    main_btns.button(text="🏗 Постройки", callback_data="build_open")
-    if player.get("buildings", {}).get("barracks", 0) > 0:
-        main_btns.button(text="🎖 Казармы", callback_data="barracks_open")
-    if player.get("buildings", {}).get("fort", 0) > 0:
-        main_btns.button(text="🏰 Форт", callback_data="fort_open")
-    
-    if player.get("buildings", {}).get("altar", 0) > 0:
-        main_btns.button(text="🏗 Производство", callback_data="altar_open")
-
-    main_btns.button(text="❌ Закрыть", callback_data="alc:base_close")
-    
-    # Настраиваем сетку: 2 сверху, 2 в центре, и остальные по одной
-    main_btns.adjust(2, 2, 2, 2, 1) 
-    builder.attach(main_btns)
-    # ==================================
-            
-    text = f"🏕 **ГЛАВНЫЙ ШТАБ**\nДобро пожаловать, {player.get('user_name', 'Путник')}!\n"
-    text += f"\nВерсия: **{ALCHEMY_ALPHA_VERSION}**"
-    text += "\n_Тут лежат только активные предметы. Твои ресурсы отсортированы на Складе._"
+    text = build_base_summary(player)
     
     if ach_msg:
         text = f"{ach_msg}\n\n" + text
 
-    return text, builder.as_markup()
+    return text, build_base_keyboard(player)
 
 
 def build_changelog_text() -> str:
@@ -209,6 +364,26 @@ async def show_changelog(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == "alc:base_help")
+async def show_base_help(callback: types.CallbackQuery):
+    await callback.answer(
+        "Эмодзи верхнего ряда:\n"
+        "📚 Наследие\n"
+        "⚗️ Лаборатория\n"
+        "🏭 Производство\n"
+        "🧾 Альфа и изменения\n"
+        "🧭 Экспедиции\n"
+        "🎒 Склад и активация\n"
+        "❓ Эта справка\n\n"
+        "Цвета статусов:\n"
+        "🔴 пусто, не запущено или не собрано\n"
+        "🔵 идет работа, модуль занят или отряд в пути\n"
+        "🟢 готово, собрано или можно забирать\n\n"
+        "Штаб показывает только короткую сводку по базе. Детальные действия открываются из кнопок выше.",
+        show_alert=True,
+    )
+
+
 # ==================== ИНВЕНТАРЬ И НАСТРОЙКИ СЕТКИ ====================
 
 @router.callback_query(F.data == "alc:inventory")
@@ -220,6 +395,7 @@ async def show_inventory(callback: types.CallbackQuery):
     page = base_pages.get(user_id, 0)
     
     visible_items = [(k, v) for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS and k not in USE_ITEMS]
+    active_items = [(code, inventory.get(code, 0)) for code in USE_ITEMS if inventory.get(code, 0) > 0]
     
     storage_lvl = player.get("buildings", {}).get("storage", 0)
     from handlers.alc_core import STORAGE_CAPACITY
@@ -228,12 +404,21 @@ async def show_inventory(callback: types.CallbackQuery):
     used_slots = len([k for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS])
     
     text = f"🎒 **ТВОЙ СКЛАД** [{used_slots}/{max_slots} слотов]\n\n"
+    if active_items:
+        text += "Готово к активации:\n"
+        text += "\n".join(f"• {ELEMENTS.get(code, code)} x{amount}" for code, amount in active_items)
+        text += "\n\n"
     if not visible_items:
-        text += "Здесь хранятся ресурсы для опытов и строек. Пока пусто."
+        text += "Ресурсов на хранении пока нет."
     else:
-        text += "Все ресурсы рассортированы ниже:"
+        text += "Ресурсы на складе:"
 
     builder = InlineKeyboardBuilder()
+    if active_items:
+        for code, amount in active_items:
+            builder.button(text=f"▶️ {ELEMENTS.get(code, code)} x{amount}", callback_data=f"alc_use:{code}")
+        builder.adjust(1)
+
     BASIC_ELEMENTS = ["w", "f", "e", "a"]
     
     basic_items = [(k, v) for k, v in visible_items if k in BASIC_ELEMENTS]
@@ -353,7 +538,6 @@ async def handle_use_item(callback: types.CallbackQuery):
     
     if success:
         await callback.message.answer(result_text, parse_mode="Markdown")
-        text, markup = await get_base_content(callback.from_user.id)
-        await callback.message.edit_text(text, reply_markup=markup, parse_mode="Markdown")
+        await show_inventory(callback)
     else:
         await callback.answer(result_text, show_alert=True)
