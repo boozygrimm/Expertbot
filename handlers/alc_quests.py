@@ -225,7 +225,7 @@ async def turn_in_quest(callback: types.CallbackQuery):
     inv[quest["reward_res"]] = inv.get(quest["reward_res"], 0) + quest["reward_amt"]
     
     quest["done"] = True
-    found_fragment = await try_grant_random_lore_fragment(player, chance=0.10)
+    found_fragment = await try_grant_random_lore_fragment(player, chance=0.5)
     
     # Проверяем лимиты склада
     from handlers.alc_core import STORAGE_CAPACITY, get_used_slots

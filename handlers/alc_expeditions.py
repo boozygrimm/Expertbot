@@ -721,7 +721,7 @@ async def expedition_claim(callback: types.CallbackQuery):
         grant_mission_progress(fighter, "expedition")
 
     player["active_expeditions"] = [item for item in player.get("active_expeditions", []) if item.get("id") != expedition_id]
-    found_fragment = await try_grant_random_lore_fragment(player, chance=0.15)
+    found_fragment = await try_grant_random_lore_fragment(player, chance=1.0)
     outcome_counter = "expeditions_failed" if expedition.get("return_reason") == "отряд едва выжил и бросил лут" else "expeditions_completed"
     counters = increment_action_counter(player, outcome_counter)
     await db.alchemy_players.update_one(
