@@ -366,8 +366,12 @@ async def show_changelog(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "alc:base_help")
 async def show_base_help(callback: types.CallbackQuery):
-    await callback.answer(
-        "Эмодзи верхнего ряда:\n"
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+    builder.adjust(1)
+    await callback.message.edit_text(
+        "❓ **СПРАВКА ПО ШТАБУ**\n\n"
+        "Верхний ряд:\n"
         "📚 Наследие\n"
         "⚗️ Лаборатория\n"
         "🏭 Производство\n"
@@ -379,9 +383,11 @@ async def show_base_help(callback: types.CallbackQuery):
         "🔴 пусто, не запущено или не собрано\n"
         "🔵 идет работа, модуль занят или отряд в пути\n"
         "🟢 готово, собрано или можно забирать\n\n"
-        "Штаб показывает только короткую сводку по базе. Детальные действия открываются из кнопок выше.",
-        show_alert=True,
+        "Штаб показывает короткую сводку. Все действия открываются кнопками сверху.",
+        reply_markup=builder.as_markup(),
+        parse_mode="Markdown",
     )
+    await callback.answer()
 
 
 # ==================== ИНВЕНТАРЬ И НАСТРОЙКИ СЕТКИ ====================
