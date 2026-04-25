@@ -511,6 +511,11 @@ async def normalize_music_query(user_query: str) -> str:
     if not cleaned:
         return ""
 
+    lowered = f" {cleaned.lower()} "
+    for marker in (" оригинал ", " original ", " official audio ", " official ", " audio ", " трек ", " песня ", " песню "):
+        lowered = lowered.replace(marker, " ")
+    cleaned = " ".join(lowered.split())
+
     prompt = (
         "Ты нормализуешь музыкальные поисковые запросы для SoundCloud/YouTube поиска.\n"
         "Преобразуй кривой, разговорный или транслитный запрос в короткий, чистый запрос для поиска ОРИГИНАЛЬНОГО трека.\n"

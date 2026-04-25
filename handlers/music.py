@@ -33,6 +33,15 @@ UNDESIRED_TITLE_MARKERS = {
     "speed up",
     "mashup",
 }
+ARTIST_HINT_BLACKLIST = {
+    "original",
+    "оригинал",
+    "official",
+    "audio",
+    "video",
+    "lyrics",
+    "lyric",
+}
 PREFERRED_AUDIO_EXTS = {"mp3", "m4a", "mp4", "aac", "opus", "ogg", "webm"}
 music_pick_sessions: dict[str, dict] = {}
 
@@ -57,13 +66,31 @@ def _has_undesired_marker(text: str) -> bool:
     return any(marker in lowered for marker in UNDESIRED_TITLE_MARKERS)
 
 
+def _split_artist_title(normalized_query: str) -> tuple[list[str], list[str]]:
+    tokens = [token for token in _tokenize(normalized_query) if token not in ARTIST_HINT_BLACKLIST]
+    if len(tokens) <= 1:
+        return [], tokens
+    if len(tokens) == 2:
+        return [tokens[0]], [tokens[1]]
+    return [tokens[0]], tokens[1:]
+
+
+def _contains_all(tokens: list[str], haystack: str) -> bool:
+    return bool(tokens) and all(token in haystack for token in tokens)
+
+
 def _score_candidate(entry: dict, normalized_query: str) -> int:
     title = str(entry.get("title", "") or "")
     uploader = str(entry.get("uploader", "") or "")
-    haystack = f"{title} {uploader}".lower()
+    artist = str(entry.get("artist", "") or "")
+    channel = str(entry.get("channel", "") or "")
+    creator = str(entry.get("creator", "") or "")
+    haystack = f"{title} {uploader} {artist} {channel} {creator}".lower()
     query_tokens = _tokenize(normalized_query)
     title_tokens = set(_tokenize(title))
     uploader_tokens = set(_tokenize(uploader))
+    artist_tokens = set(_tokenize(artist))
+    artist_query_tokens, title_query_tokens = _split_artist_title(normalized_query)
 
     score = 0
     for token in query_tokens:
@@ -71,11 +98,34 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
             score += 3
         elif token in uploader_tokens:
             score += 2
+        elif token in artist_tokens:
+            score += 4
         elif token in haystack:
             score += 1
 
     if query_tokens and all(token in haystack for token in query_tokens):
         score += 4
+
+    artist_haystack = f"{uploader} {artist} {channel} {creator}".lower()
+    title_haystack = title.lower()
+
+    if artist_query_tokens:
+        if _contains_all(artist_query_tokens, artist_haystack):
+            score += 8
+        elif _contains_all(artist_query_tokens, title_haystack):
+            score += 1
+        else:
+            score -= 10
+
+    if title_query_tokens:
+        if _contains_all(title_query_tokens, title_haystack):
+            score += 6
+        elif _contains_all(title_query_tokens, haystack):
+            score += 2
+
+    if artist_query_tokens and title_query_tokens:
+        if _contains_all(artist_query_tokens, artist_haystack) and _contains_all(title_query_tokens, title_haystack):
+            score += 10
 
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
         score -= 8
@@ -85,6 +135,23 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         score += 1
 
     return score
+
+
+def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
+    artist_tokens, title_tokens = _split_artist_title(normalized_query)
+    artist_haystack = " ".join(
+        str(candidate.get(field, "") or "")
+        for field in ("performer", "uploader", "artist", "channel", "creator")
+    ).lower()
+    title_haystack = str(candidate.get("title", "") or "").lower()
+
+    if artist_tokens and not _contains_all(artist_tokens, artist_haystack):
+        return False
+    if title_tokens and not _contains_all(title_tokens, title_haystack):
+        return False
+    if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
+        return False
+    return True
 
 
 def _candidate_label(candidate: dict, index: int) -> str:
@@ -139,6 +206,10 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         candidate = {
             "title": entry.get("title", query.title()),
             "performer": entry.get("uploader", "Unknown Artist"),
+            "uploader": entry.get("uploader", "Unknown Artist"),
+            "artist": entry.get("artist", ""),
+            "channel": entry.get("channel", ""),
+            "creator": entry.get("creator", ""),
             "webpage_url": webpage_url,
             "duration": int(entry.get("duration", 0) or 0),
             "score": _score_candidate(entry, query),
@@ -153,6 +224,9 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         ),
         reverse=True,
     )
+    probable_originals = [candidate for candidate in candidates if _is_probable_original(candidate, query)]
+    if probable_originals:
+        return probable_originals[:3]
     return candidates[:3]
 
 
