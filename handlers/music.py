@@ -1,5 +1,3 @@
-import os
-import uuid
 import asyncio
 import logging
 import yt_dlp
@@ -11,83 +9,87 @@ download_semaphore = asyncio.Semaphore(1)
 
 logger = logging.getLogger(__name__)
 
-def download_audio_sync(query: str) -> tuple:
-    """Синхронное скачивание аудио через SoundCloud."""
-    base_dir = "/tmp"
-    filename = uuid.uuid4().hex
-    filepath = os.path.join(base_dir, f"{filename}.mp3")
+def resolve_audio_url_sync(query: str) -> tuple:
+    """Ищет прямой URL аудио без локального скачивания."""
+    max_telegram_url_size = 20 * 1024 * 1024
 
     duration_filter = yt_dlp.utils.match_filter_func("duration >? 60 & duration <? 1800")
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': os.path.join(base_dir, f"{filename}.%(ext)s"),
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
         'noplaylist': True,
         'quiet': True,
-        'extract_audio': True,
         'match_filter': duration_filter,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"scsearch5:{query}", download=True)
-            title = query.title()
-            performer = "Unknown Artist"
+            info = ydl.extract_info(f"scsearch5:{query}", download=False)
+            if not info or 'entries' not in info:
+                return None, "Ничего не найдено", None, None
 
-            if info and 'entries' in info:
-                for entry in info['entries']:
-                    if entry is None:
-                        continue
-                    title = entry.get('title', title)
-                    performer = entry.get('uploader', performer)
-                    break
+            for entry in info['entries']:
+                if entry is None:
+                    continue
+                source_url = entry.get('webpage_url') or entry.get('url')
+                if not source_url:
+                    continue
 
-            if os.path.exists(filepath):
-                return filepath, title, performer
-    except Exception as e:
-        logger.exception("SoundCloud download error for query=%r", query)
+                try:
+                    full_info = ydl.extract_info(source_url, download=False)
+                except Exception:
+                    logger.warning("Failed to resolve candidate for query=%r url=%r", query, source_url)
+                    continue
 
-    if os.path.exists(filepath):
-        try:
-            os.remove(filepath)
-        except OSError:
-            logger.warning("Failed to remove temp audio file %s", filepath)
+                audio_url = full_info.get('url')
+                if not audio_url or not str(audio_url).startswith(("http://", "https://")):
+                    continue
 
-    return None, "Ничего не найдено", None
+                ext = (full_info.get('ext') or '').lower()
+                if ext not in {'mp3', 'm4a'}:
+                    continue
+
+                filesize = full_info.get('filesize') or full_info.get('filesize_approx')
+                if filesize and int(filesize) > max_telegram_url_size:
+                    continue
+
+                title = full_info.get('title', entry.get('title', query.title()))
+                performer = full_info.get('uploader', entry.get('uploader', 'Unknown Artist'))
+                webpage_url = full_info.get('webpage_url', source_url)
+                return audio_url, title, performer, webpage_url
+    except Exception:
+        logger.exception("SoundCloud resolve error for query=%r", query)
+
+    return None, "Ничего не найдено", None, None
 
 @router.message(Command("song"))
 async def cmd_search_song(message: types.Message, command: CommandObject):
-    query = command.args 
+    query = command.args
 
     if not query:
         return await message.reply("Укажи песню. Пример: /song rammstein sonne")
 
     status_msg = await message.reply("🎵 Ищу трек в SoundCloud...")
     async with download_semaphore:
-        filepath, title, performer = await asyncio.to_thread(download_audio_sync, query)
+        audio_url, title, performer, webpage_url = await asyncio.to_thread(resolve_audio_url_sync, query)
 
-    if filepath and os.path.exists(filepath):
+    if audio_url:
+        sent_ok = False
         try:
-            await status_msg.edit_text("📤 Отправляю файл...")
-            audio = types.FSInputFile(filepath)
-            await message.answer_audio(audio=audio, title=title, performer=performer)
-        except Exception as e:
-            logger.exception("Audio send error for query=%r", query)
-            await status_msg.edit_text(f"❌ Ошибка отправки аудио: {e}")
+            await status_msg.edit_text("📤 Передаю ссылку Telegram...")
+            await message.answer_audio(audio=audio_url, title=title, performer=performer)
+            sent_ok = True
+        except Exception:
+            logger.exception("Audio URL send error for query=%r", query)
+            if webpage_url:
+                await status_msg.edit_text(f"❌ Telegram не забрал аудио. Вот ссылка на трек:\n{webpage_url}")
+            else:
+                await status_msg.edit_text("❌ Telegram не смог забрать аудио по ссылке.")
         finally:
-            if os.path.exists(filepath):
+            if sent_ok:
                 try:
-                    os.remove(filepath)
-                except OSError:
-                    logger.warning("Failed to remove temp audio file %s", filepath)
-            try:
-                await status_msg.delete()
-            except Exception:
-                logger.warning("Failed to delete status message for query=%r", query)
+                    await status_msg.delete()
+                except Exception:
+                    logger.warning("Failed to delete status message for query=%r", query)
     else:
-        await status_msg.edit_text("❌ Не нашёл трек подходящей длительности (от 1 до 30 минут).")
+        await status_msg.edit_text("❌ Не нашёл подходящий прямой аудиофайл (1-30 минут, до 20 МБ).")
         
