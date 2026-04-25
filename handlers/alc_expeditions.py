@@ -446,7 +446,7 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
     team_limit = get_expedition_team_limit(guild_level)
     slot_limit = get_expedition_slot_limit(barracks_level)
     grid_size = int(player.get("inv_grid", 3) or 3)
-    if grid_size not in {1, 2, 3, 4}:
+    if grid_size not in {2, 3, 4}:
         grid_size = 3
     fighters = get_available_fighters(player, include_zero_stamina=False)
     user_id = player.get("user_id", 0)
@@ -484,22 +484,24 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
         if nav_row:
             builder.row(*nav_row)
 
-    next_grid = {1: 2, 2: 3, 3: 4, 4: 1}[grid_size]
-    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"expedition_set_grid:{next_grid}")
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    controls = InlineKeyboardBuilder()
+    controls.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"expedition_set_grid:{next_grid}")
 
     can_launch = bool(draft) and len(draft) <= team_limit and len(active) < slot_limit
-    builder.button(text="🚀 Отправить", callback_data="expedition_launch" if can_launch else "expedition_nope")
-    builder.button(text="🧹 Очистить", callback_data="expedition_clear")
-    builder.button(text="🔄 Обновить", callback_data="expeditions_open")
+    controls.button(text="🚀 Отправить", callback_data="expedition_launch" if can_launch else "expedition_nope")
+    controls.button(text="🧹 Очистить", callback_data="expedition_clear")
+    controls.button(text="🔄 Обновить", callback_data="expeditions_open")
 
     for expedition in active:
-        builder.button(
+        controls.button(
             text=f"📻 Экспедиция {expedition['id'][:4]}",
             callback_data=f"expedition_view:{expedition['id']}",
         )
 
-    builder.button(text="🔙 В Казармы", callback_data="barracks_open")
-    builder.adjust(1)
+    controls.button(text="🔙 В Казармы", callback_data="barracks_open")
+    controls.adjust(1)
+    builder.attach(controls)
     return builder.as_markup()
 
 
@@ -709,7 +711,7 @@ async def expedition_page(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("expedition_set_grid:"))
 async def expedition_set_grid(callback: types.CallbackQuery):
     new_grid = int(callback.data.split(":")[1])
-    if new_grid not in {1, 2, 3, 4}:
+    if new_grid not in {2, 3, 4}:
         new_grid = 3
     expedition_pages[callback.from_user.id] = 0
     await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})

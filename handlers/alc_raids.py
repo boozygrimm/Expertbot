@@ -230,7 +230,7 @@ def build_raids_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboard
     guild_level = player.get("buildings", {}).get("guild", 0)
     team_limit = get_expedition_team_limit(guild_level)
     grid_size = int(player.get("inv_grid", 3) or 3)
-    if grid_size not in {1, 2, 3, 4}:
+    if grid_size not in {2, 3, 4}:
         grid_size = 3
     fighters = get_available_fighters(player, include_zero_stamina=True)
     user_id = player.get("user_id", 0)
@@ -267,15 +267,17 @@ def build_raids_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboard
         if nav_row:
             builder.row(*nav_row)
 
-    next_grid = {1: 2, 2: 3, 3: 4, 4: 1}[grid_size]
-    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"raid_set_grid:{next_grid}")
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    controls = InlineKeyboardBuilder()
+    controls.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"raid_set_grid:{next_grid}")
     can_prepare = 3 <= len(draft) <= team_limit and inventory.get("energy", 0) > 0
-    builder.button(text="⚡ Подготовить", callback_data="raid_prepare" if can_prepare else "raid_nope")
-    builder.button(text="🧹 Очистить", callback_data="raid_clear")
+    controls.button(text="⚡ Подготовить", callback_data="raid_prepare" if can_prepare else "raid_nope")
+    controls.button(text="🧹 Очистить", callback_data="raid_clear")
     if player.get("raid_squad", {}).get("fighter_ids"):
-        builder.button(text="↩️ Расформировать", callback_data="raid_disband")
-    builder.button(text="🔙 В Казармы", callback_data="barracks_open")
-    builder.adjust(1)
+        controls.button(text="↩️ Расформировать", callback_data="raid_disband")
+    controls.button(text="🔙 В Казармы", callback_data="barracks_open")
+    controls.adjust(1)
+    builder.attach(controls)
     return builder.as_markup()
 
 
@@ -754,7 +756,7 @@ async def raid_page(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("raid_set_grid:"))
 async def raid_set_grid(callback: types.CallbackQuery):
     new_grid = int(callback.data.split(":")[1])
-    if new_grid not in {1, 2, 3, 4}:
+    if new_grid not in {2, 3, 4}:
         new_grid = 3
     raid_pages[callback.from_user.id] = 0
     await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
