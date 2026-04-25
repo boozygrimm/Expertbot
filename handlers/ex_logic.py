@@ -23,6 +23,14 @@ from handlers.admin_panel import is_feature_enabled
 
 router = Router()
 logger = logging.getLogger(__name__)
+CHAT_MUSIC_FALSE_POSITIVES = (
+    "подпевай",
+    "подпой",
+    "спой",
+    "спойка",
+    "напой",
+    "напевай",
+)
 
 HELP_TEXT = (
     "🤖 **Как общаться с Эксом:**\n\n"
@@ -54,6 +62,9 @@ async def delete_after(msg: types.Message, delay: int = 120):
 
 async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
     text_lower = query.lower().strip()
+
+    if any(text_lower.startswith(trigger) for trigger in CHAT_MUSIC_FALSE_POSITIVES):
+        return "CHAT", query
 
     if match := re.match(r"^(?:нарисуй|сгенерируй|изобрази)\s+(.+)", text_lower):
         return "IMAGE", match.group(1).strip()
@@ -87,6 +98,7 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
         "ПРАВИЛА:\n"
         "1. Если запрос — это шутка, реакция, ругательство или обычный диалог "
         "(например: 'Не хами', 'Ути пути', 'Привет') — ВСЕГДА выбирай CHAT.\n"
+        "1.1. Команды вроде 'подпевай', 'спой', 'напой', если в них нет явного названия песни, — это CHAT, а не MUSIC.\n"
         "2. Выбирай SEARCH, MUSIC, WEATHER, IMAGE и GOSSIP ТОЛЬКО если пользователь "
         "прямо просит выполнить это действие.\n"
         "3. Если сомневаешься — выбирай CHAT.\n\n"

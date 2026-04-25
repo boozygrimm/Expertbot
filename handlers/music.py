@@ -230,24 +230,9 @@ def search_track_candidates_sync(query: str) -> list[dict]:
     return candidates[:3]
 
 
-def pick_best_candidate(candidates: list[dict]) -> dict | None:
-    if not candidates:
-        return None
-    if len(candidates) == 1:
-        return candidates[0]
-
-    best = candidates[0]
-    second = candidates[1]
-    if best["score"] >= 8 and best["score"] - second["score"] >= 3:
-        return best
-    if best["score"] >= 11:
-        return best
-    return None
-
-
 def download_audio_sync(query: str) -> tuple:
     candidates = search_track_candidates_sync(query)
-    candidate = pick_best_candidate(candidates) or (candidates[0] if candidates else None)
+    candidate = candidates[0] if candidates else None
     if not candidate:
         return None, "Ничего не найдено", None
 
@@ -288,7 +273,7 @@ def download_candidate_audio_sync(candidate: dict) -> tuple:
 
 def resolve_audio_url_sync(query: str) -> tuple:
     candidates = search_track_candidates_sync(query)
-    candidate = pick_best_candidate(candidates) or (candidates[0] if candidates else None)
+    candidate = candidates[0] if candidates else None
     if not candidate:
         return None, "Ничего не найдено", None
     return candidate["webpage_url"], candidate["title"], candidate["performer"]
@@ -342,10 +327,6 @@ async def handle_music_request(message: types.Message, query: str):
             f"❌ Не нашёл трек по запросу «{display_query}». Попробуй указать исполнителя или точнее название."
         )
 
-    best = pick_best_candidate(candidates)
-    if best:
-        return await _send_downloaded_audio(message, best, status_msg)
-
     session_id = uuid.uuid4().hex[:10]
     music_pick_sessions[session_id] = {
         "user_id": message.from_user.id if message.from_user else 0,
@@ -353,7 +334,7 @@ async def handle_music_request(message: types.Message, query: str):
         "normalized_query": display_query,
         "candidates": candidates,
     }
-    lines = [f"🎵 Нашёл несколько вариантов для **{display_query}**. Выбери нужный:"]
+    lines = [f"🎵 Нашёл варианты для **{display_query}**. Выбери нужный:"]
     for index, candidate in enumerate(candidates, start=1):
         lines.append(f"{index}. {candidate['title']} — {candidate['performer']}")
     await status_msg.edit_text(
