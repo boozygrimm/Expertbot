@@ -16,7 +16,7 @@ from handlers.viselitsa import start_hangman
 from handlers.anachronism import start_anachronism
 from handlers.pole_chudes import start_game
 from handlers.reports import parse_gossip_count, send_persona_selection
-from handlers.music import download_audio_sync
+from handlers.music import resolve_audio_url_sync
 from handlers.web_search import smart_web_search
 from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
@@ -423,18 +423,13 @@ async def handle_ex_request(message: types.Message):
 
         status_msg = await message.reply(f"🎵 Ищу трек: «{clean_query}»...")
         try:
-            filepath, title, performer = await asyncio.to_thread(download_audio_sync, clean_query)
-            if filepath and os.path.exists(filepath):
-                try:
-                    await message.answer_audio(
-                        audio=types.FSInputFile(filepath),
-                        title=title,
-                        performer=performer,
-                    )
-                    await status_msg.delete()
-                finally:
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
+            track_url, title, performer = await asyncio.to_thread(resolve_audio_url_sync, clean_query)
+            if track_url:
+                text = f"🎵 **{title}**"
+                if performer:
+                    text += f"\n👤 {performer}"
+                text += f"\n🔗 {track_url}"
+                await status_msg.edit_text(text, parse_mode="Markdown", disable_web_page_preview=False)
             else:
                 msg = await status_msg.edit_text(
                     f"❌ Не нашел трек по запросу «{clean_query}». Попробуй указать исполнителя "

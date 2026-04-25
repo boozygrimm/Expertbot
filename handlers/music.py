@@ -39,6 +39,12 @@ def resolve_audio_url_sync(query: str) -> tuple:
 
     return None, "Ничего не найдено", None
 
+
+def download_audio_sync(query: str) -> tuple:
+    """Совместимость со старым кодом: музыки-файла больше нет, возвращаем ссылку как title-only fallback."""
+    track_url, title, performer = resolve_audio_url_sync(query)
+    return track_url, title, performer
+
 @router.message(Command("song"))
 async def cmd_search_song(message: types.Message, command: CommandObject):
     query = command.args
