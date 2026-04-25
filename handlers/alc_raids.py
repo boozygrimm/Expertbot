@@ -37,6 +37,8 @@ router = Router()
 FORT_SLOTS = {1: ["moat"], 2: ["moat", "catapult"], 3: ["moat", "catapult", "aura"]}
 TRAP_LABELS = {"moat": "Ров", "catapult": "Катапульта", "aura": "Распылитель"}
 raid_drafts: dict[int, list[str]] = {}
+raid_pages: dict[int, int] = {}
+RAID_ROWS_PER_PAGE = 10
 fort_item_pages: dict[tuple[int, str], int] = {}
 fort_captive_pages: dict[int, int] = {}
 LIVE_PLAYER_WINDOW = 36 * 3600
@@ -227,13 +229,46 @@ def build_raids_keyboard(player: dict, draft: list[str]) -> types.InlineKeyboard
     inventory = player.get("inventory", {})
     guild_level = player.get("buildings", {}).get("guild", 0)
     team_limit = get_expedition_team_limit(guild_level)
+    grid_size = int(player.get("inv_grid", 3) or 3)
+    if grid_size not in {1, 2, 3, 4}:
+        grid_size = 3
+    fighters = get_available_fighters(player, include_zero_stamina=True)
+    user_id = player.get("user_id", 0)
+    items_per_page = grid_size * RAID_ROWS_PER_PAGE
+    total_pages = max(1, (len(fighters) + items_per_page - 1) // items_per_page)
+    current_page = raid_pages.get(user_id, 0)
+    if current_page >= total_pages:
+        current_page = max(0, total_pages - 1)
+    raid_pages[user_id] = current_page
+    page_start = current_page * items_per_page
+    page_fighters = fighters[page_start: page_start + items_per_page]
     builder = InlineKeyboardBuilder()
-    for fighter in get_available_fighters(player, include_zero_stamina=True)[:20]:
+    row = []
+    for fighter in page_fighters:
         marker = "✅" if fighter["id"] in draft else "▫️"
-        builder.button(
-            text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
-            callback_data=f"raid_pick:{fighter['id']}",
+        row.append(
+            types.InlineKeyboardButton(
+                text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
+                callback_data=f"raid_pick:{fighter['id']}",
+            )
         )
+        if len(row) == grid_size:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+
+    if total_pages > 1:
+        nav_row = []
+        if current_page > 0:
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"raid_page:{current_page - 1}"))
+        if current_page < total_pages - 1:
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"raid_page:{current_page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
+
+    next_grid = {1: 2, 2: 3, 3: 4, 4: 1}[grid_size]
+    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"raid_set_grid:{next_grid}")
     can_prepare = 3 <= len(draft) <= team_limit and inventory.get("energy", 0) > 0
     builder.button(text="⚡ Подготовить", callback_data="raid_prepare" if can_prepare else "raid_nope")
     builder.button(text="🧹 Очистить", callback_data="raid_clear")
@@ -577,6 +612,7 @@ async def raid_nope(callback: types.CallbackQuery):
 @router.callback_query(F.data == "raid_clear")
 async def raid_clear(callback: types.CallbackQuery):
     raid_drafts[callback.from_user.id] = []
+    raid_pages[callback.from_user.id] = 0
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     await callback.message.edit_text(
         render_raids_menu(player, []),
@@ -697,6 +733,37 @@ async def fort_open(callback: types.CallbackQuery):
     await callback.message.edit_text(
         render_fort_menu(player, page),
         reply_markup=build_fort_keyboard(player, page),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("raid_page:"))
+async def raid_page(callback: types.CallbackQuery):
+    raid_pages[callback.from_user.id] = int(callback.data.split(":")[1])
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    draft = cleanup_raid_draft(player, callback.from_user.id)
+    await callback.message.edit_text(
+        render_raids_menu(player, draft),
+        reply_markup=build_raids_keyboard(player, draft),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("raid_set_grid:"))
+async def raid_set_grid(callback: types.CallbackQuery):
+    new_grid = int(callback.data.split(":")[1])
+    if new_grid not in {1, 2, 3, 4}:
+        new_grid = 3
+    raid_pages[callback.from_user.id] = 0
+    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    player["inv_grid"] = new_grid
+    draft = cleanup_raid_draft(player, callback.from_user.id)
+    await callback.message.edit_text(
+        render_raids_menu(player, draft),
+        reply_markup=build_raids_keyboard(player, draft),
         parse_mode="Markdown",
     )
     await callback.answer()

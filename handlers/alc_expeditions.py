@@ -119,6 +119,8 @@ LOOT_TABLE = [
 MEETING_SPECIALS = ["alchemist", "wanderer", "hero", "scientist"]
 MEETING_PACKS = ["pack_s", "pack_s", "pack_m", "pack_m", "pack_l"]
 expedition_drafts: dict[int, list[str]] = {}
+expedition_pages: dict[int, int] = {}
+EXPEDITION_ROWS_PER_PAGE = 10
 
 
 def get_role_name(fighter_or_unit) -> str:
@@ -443,14 +445,47 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
     active = player.get("active_expeditions", [])
     team_limit = get_expedition_team_limit(guild_level)
     slot_limit = get_expedition_slot_limit(barracks_level)
+    grid_size = int(player.get("inv_grid", 3) or 3)
+    if grid_size not in {1, 2, 3, 4}:
+        grid_size = 3
+    fighters = get_available_fighters(player, include_zero_stamina=False)
+    user_id = player.get("user_id", 0)
+    items_per_page = grid_size * EXPEDITION_ROWS_PER_PAGE
+    total_pages = max(1, (len(fighters) + items_per_page - 1) // items_per_page)
+    current_page = expedition_pages.get(user_id, 0)
+    if current_page >= total_pages:
+        current_page = max(0, total_pages - 1)
+    expedition_pages[user_id] = current_page
+    page_start = current_page * items_per_page
+    page_fighters = fighters[page_start: page_start + items_per_page]
     builder = InlineKeyboardBuilder()
 
-    for fighter in get_available_fighters(player, include_zero_stamina=False)[:20]:
+    row = []
+    for fighter in page_fighters:
         marker = "✅" if fighter["id"] in draft else "▫️"
-        builder.button(
-            text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
-            callback_data=f"expedition_pick:{fighter['id']}",
+        row.append(
+            types.InlineKeyboardButton(
+                text=f"{marker} {get_fighter_title(fighter)} [{fighter['stamina']}/{get_fighter_stamina_cap(fighter)}]",
+                callback_data=f"expedition_pick:{fighter['id']}",
+            )
         )
+        if len(row) == grid_size:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+
+    if total_pages > 1:
+        nav_row = []
+        if current_page > 0:
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"expedition_page:{current_page - 1}"))
+        if current_page < total_pages - 1:
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"expedition_page:{current_page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
+
+    next_grid = {1: 2, 2: 3, 3: 4, 4: 1}[grid_size]
+    builder.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"expedition_set_grid:{next_grid}")
 
     can_launch = bool(draft) and len(draft) <= team_limit and len(active) < slot_limit
     builder.button(text="🚀 Отправить", callback_data="expedition_launch" if can_launch else "expedition_nope")
@@ -628,6 +663,7 @@ async def expedition_nope(callback: types.CallbackQuery):
 @router.callback_query(F.data == "expedition_clear")
 async def expedition_clear(callback: types.CallbackQuery):
     expedition_drafts[callback.from_user.id] = []
+    expedition_pages[callback.from_user.id] = 0
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     await safe_edit_text(callback.message, render_expeditions_text(player, []), build_expeditions_keyboard(player, []))
     await callback.answer("Черновик очищен.")
@@ -657,6 +693,29 @@ async def expedition_pick(callback: types.CallbackQuery):
         draft.append(fighter_id)
 
     expedition_drafts[user_id] = draft
+    await safe_edit_text(callback.message, render_expeditions_text(player, draft), build_expeditions_keyboard(player, draft))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("expedition_page:"))
+async def expedition_page(callback: types.CallbackQuery):
+    expedition_pages[callback.from_user.id] = int(callback.data.split(":")[1])
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    draft = cleanup_expedition_draft(player, callback.from_user.id)
+    await safe_edit_text(callback.message, render_expeditions_text(player, draft), build_expeditions_keyboard(player, draft))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("expedition_set_grid:"))
+async def expedition_set_grid(callback: types.CallbackQuery):
+    new_grid = int(callback.data.split(":")[1])
+    if new_grid not in {1, 2, 3, 4}:
+        new_grid = 3
+    expedition_pages[callback.from_user.id] = 0
+    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    player["inv_grid"] = new_grid
+    draft = cleanup_expedition_draft(player, callback.from_user.id)
     await safe_edit_text(callback.message, render_expeditions_text(player, draft), build_expeditions_keyboard(player, draft))
     await callback.answer()
 
