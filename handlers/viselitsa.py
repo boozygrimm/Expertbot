@@ -13,6 +13,7 @@ from database import db
 from handlers.pole_chudes import unpin_and_delete_after_delay, delete_after_delay
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 active_hangman_games = {}
 VOWELS = set("АЕЁИОУЫЭЮЯ")
@@ -102,8 +103,10 @@ async def start_hangman(message: types.Message):
     }
     
     await update_hangman_message(message.bot, chat_id)
-    try: await status_msg.pin(disable_notification=True)
-    except Exception: pass
+    try:
+        await status_msg.pin(disable_notification=True)
+    except Exception as e:
+        logger.debug("Failed to pin hangman status message in chat %s: %s", chat_id, e)
     asyncio.create_task(delete_after_delay(message))
 
 def get_hangman_kb(game):
@@ -162,8 +165,8 @@ async def update_hangman_message(bot, chat_id):
             reply_markup=get_hangman_kb(game),
             parse_mode="Markdown"
         )
-    except Exception: 
-        pass
+    except Exception as e:
+        logger.debug("Failed to update hangman main message in chat %s: %s", chat_id, e)
 
 async def hm_timeout_task(chat_id, user_id, bot):
     await asyncio.sleep(30) # Динамика: 30 секунд на раздумья

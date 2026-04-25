@@ -1,6 +1,7 @@
 import re
 import asyncio
 import random
+import logging
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -11,6 +12,7 @@ from ai_logic import get_expert_report
 from config import get_msk_now
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 def parse_gossip_count(text: str | None, default: int = 50) -> int:
@@ -54,8 +56,10 @@ async def run_expert_report(message: types.Message, persona: dict, count: int):
         # 2. Генерация
         report = await get_expert_report(history_text, persona['p_id'])
         
-        try: await status_msg.delete()
-        except: pass
+        try:
+            await status_msg.delete()
+        except Exception as e:
+            logger.debug("Failed to delete status message in report: %s", e)
 
         if report:
             header = f"{persona['emoji']} **МНЕНИЕ ЭКСПЕРТА: {persona['name'].upper()}**\n{'-'*20}\n"

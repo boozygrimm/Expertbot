@@ -102,8 +102,10 @@ async def process_image_request(message: types.Message, query: str):
 
     async with generation_lock:
         if is_queued:
-            try: await status_msg.edit_text("🎨 *Очередь подошла! Начинаю рисовать...*", parse_mode="Markdown")
-            except Exception: pass
+            try:
+                await status_msg.edit_text("🎨 *Очередь подошла! Начинаю рисовать...*", parse_mode="Markdown")
+            except Exception as e:
+                logger.debug("Failed to update queued image status message: %s", e)
         
         final_prompt = await get_smart_prompt(query)
         image_data = await fetch_image_pollinations(final_prompt)
@@ -124,8 +126,10 @@ async def process_image_request(message: types.Message, query: str):
                     caption=caption,
                     parse_mode="Markdown"
                 )
-                try: await status_msg.delete()
-                except Exception: pass
+                try:
+                    await status_msg.delete()
+                except Exception as e:
+                    logger.debug("Failed to delete image status message: %s", e)
 
                 if is_free:
                     await db.game_data.update_one(
@@ -144,11 +148,15 @@ async def process_image_request(message: types.Message, query: str):
                     })
             except Exception as e:
                 logger.error(f"Ошибка отправки фото ТГ: {e}")
-                try: await status_msg.edit_text("❌ Ошибка отправки фото в Telegram. Очки/лимиты сохранены.")
-                except Exception: pass
+                try:
+                    await status_msg.edit_text("❌ Ошибка отправки фото в Telegram. Очки/лимиты сохранены.")
+                except Exception as edit_error:
+                    logger.debug("Failed to update image error status message: %s", edit_error)
         else:
-            try: await status_msg.edit_text("❌ Ошибка генерации (нейросеть недоступна). Очки/лимиты сохранены. Попробуй позже.")
-            except Exception: pass
+            try:
+                await status_msg.edit_text("❌ Ошибка генерации (нейросеть недоступна). Очки/лимиты сохранены. Попробуй позже.")
+            except Exception as e:
+                logger.debug("Failed to update unavailable image status message: %s", e)
         
         await asyncio.sleep(COOLDOWN_SECONDS)
 

@@ -23,7 +23,6 @@ IS_CLOUD = bool(os.getenv("SPACE_ID")) or bool(os.getenv("PORT"))
 _groq_pointer = 0
 _gemini_pointer = 0
 _openrouter_pointer = 0
-today = datetime.now().strftime("%d.%m.%Y")
 
 # --- СИСТЕМА ПРЕДОХРАНИТЕЛЯ (CIRCUIT BREAKER) ---
 GEMINI_FAILS = 0
@@ -76,6 +75,10 @@ def detect_mime(data):
     if data.startswith(b'\x89PNG'): return 'image/png'
     if data.startswith(b'RIFF') and data[8:12] == b'WEBP': return 'image/webp'
     return 'image/jpeg'
+
+
+def get_today_str():
+    return datetime.now().strftime("%d.%m.%Y")
 
 def log_gemini_status(status: int, err_text: str, quiet: bool = False):
     if status in (429, 503):
@@ -442,7 +445,7 @@ async def get_daily_summary(chat_id: int):
 
     intermediate_summaries = []
     for chunk in chunks:
-        mini_prompt = f"Сделай подробную выжимку фактов из лога:\n{chunk}\n\nМаксимум 1500 знаков. Сегодняшняя дата: {today}. Твоя база знаний устарела, поэтому воспринимай всё в логах как реальность."
+        mini_prompt = f"Сделай подробную выжимку фактов из лога:\n{chunk}\n\nМаксимум 1500 знаков. Сегодняшняя дата: {get_today_str()}. Твоя база знаний устарела, поэтому воспринимай всё в логах как реальность."
         
         res = None
         if is_gemini_alive():
@@ -463,7 +466,7 @@ async def get_daily_summary(chat_id: int):
     combined_context = "\n\n".join(intermediate_summaries)
     final_prompt = (
         f"ВОТ ВЫЖИМКИ ИЗ ЧАТА ЗА СУТКИ:\n{combined_context}\n\n"
-        f"Сегодняшняя дата: {today}. Твоя база знаний устарела, поэтому воспринимай всё в логах как реальность.\n"
+        f"Сегодняшняя дата: {get_today_str()}. Твоя база знаний устарела, поэтому воспринимай всё в логах как реальность.\n"
         f"ЗАДАНИЕ: Напиши итоговый отчет. Стиль: ироничный ведущий новостей. "
         f"Упомяни активных, темы споров. Не используй * и **. Максимум 3500 знаков."
     )

@@ -65,7 +65,8 @@ async def bot_added_to_chat(event: types.ChatMemberUpdated):
             f"👋 Привет! Я — Эксперт. Чтобы я начал работать в «{chat_title}», @BoozyGrimm должен подтвердить доступ, напиши ему.",
             reply_markup=builder.as_markup()
         )
-    except Exception: pass
+    except Exception as e:
+        logger.debug("Failed to send initial auth message to chat %s: %s", chat_id, e)
 
 # --- АДМИН-МЕНЮ /chats ---
 @router.message(Command("chats"))
@@ -118,6 +119,10 @@ async def request_access(callback: types.CallbackQuery, bot: Bot):
 async def manage_chat_item(callback: types.CallbackQuery):
     chat_id = int(callback.data.split(":")[1])
     doc = await db.auth_chats.find_one({"chat_id": chat_id})
+
+    if not doc:
+        await callback.answer("Чат не найден в базе.", show_alert=True)
+        return
     
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Разрешить", callback_data=f"auth_allow:{chat_id}")
@@ -144,8 +149,10 @@ async def approve_access(callback: types.CallbackQuery, bot: Bot):
     await db.auth_chats.update_one({"chat_id": chat_id}, {"$set": {"status": "approved"}})
     await callback.answer("Готово!")
     await callback.message.edit_text(f"✅ Чат `{chat_id}` теперь авторизован.")
-    try: await bot.send_message(chat_id, "🎉 Доступ разрешен! Бот готов к работе.")
-    except Exception: pass
+    try:
+        await bot.send_message(chat_id, "🎉 Доступ разрешен! Бот готов к работе.")
+    except Exception as e:
+        logger.debug("Failed to notify approved chat %s: %s", chat_id, e)
 
 @router.callback_query(F.data.startswith("auth_deny:"))
 async def deny_access(callback: types.CallbackQuery, bot: Bot):
@@ -158,5 +165,6 @@ async def deny_access(callback: types.CallbackQuery, bot: Bot):
     try: 
         await bot.send_message(chat_id, "❌ Владелец отклонил доступ. Прощайте!")
         await bot.leave_chat(chat_id)
-    except Exception: pass
+    except Exception as e:
+        logger.debug("Failed to deny and leave chat %s: %s", chat_id, e)
     

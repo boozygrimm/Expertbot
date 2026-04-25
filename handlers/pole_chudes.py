@@ -12,6 +12,7 @@ from ai_logic import generate_with_retry
 from database import db
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 active_games = {}
 VOWELS = set("АЕЁИОУЫЭЮЯ")
@@ -81,8 +82,8 @@ async def delete_after_delay(message: types.Message, delay: int = 10):
     await asyncio.sleep(delay)
     try: 
         await message.delete()
-    except Exception: 
-        pass
+    except Exception as e:
+        logger.debug("Failed to delete delayed message in pole chudes chat %s: %s", message.chat.id, e)
 
 async def get_comment(event_type):
     return random.choice(BOT_COMMENTS.get(event_type, ["Интересный поворот."]))
@@ -152,8 +153,8 @@ async def update_main_message(bot, chat_id):
             reply_markup=get_main_kb(game),
             parse_mode="Markdown"
         )
-    except Exception: 
-        pass
+    except Exception as e:
+        logger.debug("Failed to update pole chudes main message in chat %s: %s", chat_id, e)
 
 async def turn_timeout_task(chat_id, user_id, bot):
     await asyncio.sleep(60)
