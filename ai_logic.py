@@ -505,6 +505,37 @@ async def generate_fast_image_prompt(user_query: str):
         await asyncio.sleep(random.uniform(2.0, 3.5)) 
     return None
 
+
+async def normalize_music_query(user_query: str) -> str:
+    cleaned = " ".join((user_query or "").strip().split())
+    if not cleaned:
+        return ""
+
+    prompt = (
+        "Ты нормализуешь музыкальные поисковые запросы для SoundCloud/YouTube поиска.\n"
+        "Преобразуй кривой, разговорный или транслитный запрос в короткий, чистый запрос для поиска ОРИГИНАЛЬНОГО трека.\n"
+        "Правила:\n"
+        "1. Убери мусорные слова: включи, найди, поставь, песню, трек, please и т.п.\n"
+        "2. Если запрос написан русским транслитом английской песни, аккуратно восстанови латиницу.\n"
+        "3. Старайся вернуть 'artist title' или просто 'title'.\n"
+        "4. Не добавляй слова remix, cover, live, slowed, reverb, nightcore, karaoke, edit, version, instrumental, lyrics, audio, official, video, если пользователь их явно не просил.\n"
+        "5. Не объясняй ничего. Верни только итоговый поисковый запрос одной строкой.\n\n"
+        f"Запрос: {cleaned}"
+    )
+
+    res, status = await try_openrouter(
+        prompt,
+        model="google/gemma-3-27b-it:free",
+        max_tokens=64,
+    )
+    if status == 200 and res:
+        normalized = " ".join(res.strip().splitlines()[0].split())
+        normalized = normalized.strip(" '\"`")
+        if normalized:
+            return normalized
+
+    return cleaned
+
 async def transcribe_audio_groq(file_path: str) -> str:
     if not GROQ_KEYS: return "❌ Ошибка: Нет ключей Groq"
     url = "https://api.groq.com/openai/v1/audio/transcriptions"

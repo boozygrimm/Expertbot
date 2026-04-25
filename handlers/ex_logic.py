@@ -16,7 +16,7 @@ from handlers.viselitsa import start_hangman
 from handlers.anachronism import start_anachronism
 from handlers.pole_chudes import start_game
 from handlers.reports import parse_gossip_count, send_persona_selection
-from handlers.music import resolve_audio_url_sync
+from handlers.music import handle_music_request
 from handlers.web_search import smart_web_search
 from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
@@ -420,22 +420,8 @@ async def handle_ex_request(message: types.Message):
     if intent == "MUSIC":
         if not await is_feature_enabled(message.chat.id, "music"):
             return
-
-        status_msg = await message.reply(f"🎵 Ищу трек: «{clean_query}»...")
         try:
-            track_url, title, performer = await asyncio.to_thread(resolve_audio_url_sync, clean_query)
-            if track_url:
-                text = f"🎵 **{title}**"
-                if performer:
-                    text += f"\n👤 {performer}"
-                text += f"\n🔗 {track_url}"
-                await status_msg.edit_text(text, parse_mode="Markdown", disable_web_page_preview=False)
-            else:
-                msg = await status_msg.edit_text(
-                    f"❌ Не нашел трек по запросу «{clean_query}». Попробуй указать исполнителя "
-                    "или более точное название."
-                )
-                asyncio.create_task(delete_after(msg, 10))
+            await handle_music_request(message, clean_query)
         except Exception as e:
             logger.error(
                 "Music error: chat_id=%s user_id=%s query=%s error=%s",
@@ -444,8 +430,8 @@ async def handle_ex_request(message: types.Message):
                 clean_query,
                 e,
             )
-            msg = await status_msg.edit_text(
-                "❌ Не смог скачать или отправить аудио. Возможно, источник временно недоступен."
+            msg = await message.reply(
+                "❌ Не смог подобрать или отправить трек. Возможно, источник временно недоступен."
             )
             asyncio.create_task(delete_after(msg, 15))
         return
