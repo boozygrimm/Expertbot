@@ -382,13 +382,15 @@ async def open_quests(callback: types.CallbackQuery):
         text += f"Статус: {status}\n\n"
         
         if not q["done"]:
-            builder.button(text=f"Сдать {i_name}", callback_data=f"quest_turnin:{q['id']}")
+            turnin_button = types.InlineKeyboardButton(text=f"Сдать {i_name}", callback_data=f"quest_turnin:{q['id']}")
             if pin_limit > 0:
                 pin_text = f"📌 Снять {i_name}" if q.get("pinned") else f"📌 Закрепить {i_name}"
-                builder.button(text=pin_text, callback_data=f"quest_pin:{q['id']}")
+                pin_button = types.InlineKeyboardButton(text=pin_text, callback_data=f"quest_pin:{q['id']}")
+                builder.row(turnin_button, pin_button)
+            else:
+                builder.row(turnin_button)
             
-    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    builder.adjust(1)
+    builder.row(types.InlineKeyboardButton(text="🔙 В Штаб", callback_data="alc:base_return"))
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
