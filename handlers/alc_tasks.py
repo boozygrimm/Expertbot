@@ -65,7 +65,7 @@ async def check_alchemy_stamina():
             continue
         user_id = player["user_id"]
         try:
-            await bot.send_message(user_id, "⚡ Выносливость восстановлена! Жми /base")
+            await bot.send_message(user_id, "⚡ Выносливость восстановлена! Жми /поход")
             await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"stamina_notified": True}})
         except Exception:
             await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"stamina_notified": True}})

@@ -26,7 +26,7 @@ from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
 
-BARRACKS_ROWS_PER_PAGE = 8
+BARRACKS_ROWS_PER_PAGE = 10
 BARRACKS_HOF_PER_PAGE = 10
 barracks_pages: dict[int, int] = {}
 barracks_hof_pages: dict[int, int] = {}
@@ -251,7 +251,9 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         )
 
     fighters = get_player_fighters(player)
-    grid_size = player.get("inv_grid", 3)
+    grid_size = int(player.get("inv_grid", 3) or 3)
+    if grid_size not in {1, 2, 3, 4}:
+        grid_size = 3
     available_units = get_available_barracks_units(barracks_level)
     capacity = get_barracks_capacity(barracks_level)
     roster_fighters = [fighter for fighter in fighters if fighter.get("status") != "dead"]
@@ -358,7 +360,7 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"barracks_page:{current_page + 1}"))
         if nav_row:
             builder.row(*nav_row)
-    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    next_grid = {1: 2, 2: 3, 3: 4, 4: 1}[grid_size]
     controls = InlineKeyboardBuilder()
     controls.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"barracks_set_grid:{next_grid}")
     controls.button(text="🏅 Зал славы", callback_data="barracks_hof")
@@ -563,6 +565,8 @@ async def barracks_page(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("barracks_set_grid:"))
 async def barracks_set_grid(callback: types.CallbackQuery):
     new_grid = int(callback.data.split(":")[1])
+    if new_grid not in {1, 2, 3, 4}:
+        new_grid = 3
     await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
     barracks_pages[callback.from_user.id] = 0
     await render_barracks_menu(callback.message, callback.from_user.id)

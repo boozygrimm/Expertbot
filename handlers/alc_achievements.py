@@ -33,6 +33,26 @@ def format_reward_label(reward_item: str, reward_count: int) -> str:
         item_name = "💨 Дух Воздуха"
     elif reward_item == "energy":
         item_name = "🎇 Энергия"
+    elif reward_item == "glass":
+        item_name = "🪟 Стекло"
+    elif reward_item == "brick":
+        item_name = "🧱 Кирпич"
+    elif reward_item == "metal":
+        item_name = "🔩 Металл"
+    elif reward_item == "stone":
+        item_name = "🪨 Камень"
+    elif reward_item == "sand":
+        item_name = "🏖 Песок"
+    elif reward_item == "wood":
+        item_name = "🪵 Древесина"
+    elif reward_item == "clay":
+        item_name = "🟤 Глина"
+    elif reward_item == "paper":
+        item_name = "📄 Бумага"
+    elif reward_item == "book":
+        item_name = "📚 Книга"
+    elif reward_item == "life":
+        item_name = "🧬 Жизнь"
     return f"{item_name} x{reward_count}"
 
 # ==================== СИСТЕМА АЧИВОК ====================
@@ -216,6 +236,12 @@ ACHIEVEMENTS = {
 }
 
 ACHIEVEMENTS.update({
+    "quest_first": {"name": "📜 Первое поручение", "desc": "Сдать первый квест с доски объявлений.", "condition": lambda p: action_counter(p, "quests_completed") >= 1, "reward_item": "pack_s", "reward_count": 1},
+    "quest_regular": {"name": "🗂 Конторский алхимик", "desc": "Сдать 10 квестов и не умереть от рутины.", "condition": lambda p: action_counter(p, "quests_completed") >= 10, "reward_item": "recipe_scroll", "reward_count": 1},
+    "quest_strategist": {"name": "📌 Холодный расчёт", "desc": "Пять раз закрепить выгодный заказ на потом.", "condition": lambda p: action_counter(p, "quests_pinned") >= 5, "reward_item": "energy", "reward_count": 3},
+    "quest_reserved": {"name": "🧾 Дисциплина склада", "desc": "Сдать 3 закреплённых квеста.", "condition": lambda p: action_counter(p, "quests_pinned_completed") >= 3, "reward_item": "pack_m", "reward_count": 1},
+    "quest_golden": {"name": "✨ Золотая жила", "desc": "Закрыть первый золотой заказ.", "condition": lambda p: action_counter(p, "quests_golden_completed") >= 1, "reward_item": "recipe_scroll", "reward_count": 2},
+    "quest_golden_master": {"name": "👑 Охотник за жиром", "desc": "Закрыть 5 золотых заказов.", "condition": lambda p: action_counter(p, "quests_golden_completed") >= 5, "reward_item": "pack_l", "reward_count": 1},
     "expedition_first": {"name": "🧭 Первый вылаз", "desc": "Запустить первую алхимическую экспедицию.", "condition": lambda p: action_counter(p, "expeditions_started") >= 1, "reward_item": "pack_s", "reward_count": 1},
     "expedition_return": {"name": "🏁 Вернулись живыми", "desc": "Успешно завершить 3 экспедиции.", "condition": lambda p: action_counter(p, "expeditions_completed") >= 3, "reward_item": "recipe_scroll", "reward_count": 1},
     "expedition_survivor": {"name": "🩹 Обожжённый, но упрямый", "desc": "Пережить проваленную экспедицию и вернуться домой.", "condition": lambda p: action_counter(p, "expeditions_failed") >= 1, "reward_item": "spirit_w", "reward_count": 1},

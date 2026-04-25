@@ -23,6 +23,10 @@ DEFAULT_ACTION_COUNTERS = {
     "expeditions_completed": 0,
     "expeditions_failed": 0,
     "expeditions_retreats": 0,
+    "quests_completed": 0,
+    "quests_pinned": 0,
+    "quests_pinned_completed": 0,
+    "quests_golden_completed": 0,
     "raids_prepared": 0,
     "raids_started": 0,
     "raids_won": 0,
@@ -193,6 +197,46 @@ def format_duration(left_sec: int) -> str:
         return f"{hours} ч. {mins} мин."
     return f"{mins} мин."
 
+
+async def send_expedition_menu(target_message: types.Message, user_id: int, user_name: str):
+    player = await get_or_create_player(user_id, user_name)
+    if player.get("tutorial_step", 0) == 0:
+        bot_info = await target_message.bot.get_me()
+        if target_message.chat.type != "private":
+            await target_message.reply(
+                "🧪 Перед первым походом надо пережить один контролируемый алхимический взрыв. Жми и переходи в ЛС.",
+                reply_markup=build_intro_menu(bot_info.username),
+            )
+            return
+        intro_text, _ = await run_alchemy_intro(user_id, user_name)
+        await target_message.answer(intro_text, parse_mode="Markdown")
+        return
+
+    now = time.time()
+    last_mine = player.get("last_mine", 0)
+    has_base = player.get("tutorial_step", 0) >= 1 or "active_base" in player.get("inventory", {})
+    bot_info = await target_message.bot.get_me()
+
+    actual_cooldown = get_alchemy_cooldown(player)
+    if now - last_mine < actual_cooldown:
+        left_sec = int(actual_cooldown - (now - last_mine))
+        builder = InlineKeyboardBuilder()
+        btn_text = "🏕 Моя База" if has_base else "🎒 Инвентарь"
+        builder.button(text=btn_text, url=f"https://t.me/{bot_info.username}?start=alcbase")
+        await target_message.answer(
+            f"⏳ Алхимик отдыхает!\n"
+            f"Следующий поход через: **{format_duration(left_sec)}**",
+            parse_mode="Markdown",
+            reply_markup=builder.as_markup(),
+        )
+        return
+
+    await target_message.answer(
+        f"🗺 **КАРТА ЭКСПЕДИЦИИ**\nКуда отправимся в этот раз, {user_name}?",
+        reply_markup=build_locations_menu(bot_info.username, has_base),
+        parse_mode="Markdown",
+    )
+
 def build_locations_menu(bot_username: str, has_base: bool):
     """Интерфейс выбора локации для экспедиции."""
     b = InlineKeyboardBuilder()
@@ -342,47 +386,7 @@ async def use_item_logic(user_id: int, item_code: str):
 
 @router.message(Command("pohod", "поход", "добыча"))
 async def start_expedition(message: types.Message):
-    user_id = message.from_user.id
-    player = await get_or_create_player(user_id, message.from_user.first_name)
-    if player.get("tutorial_step", 0) == 0:
-        bot_info = await message.bot.get_me()
-        if message.chat.type != "private":
-            msg = await message.reply(
-                "🧪 Перед первым походом надо пережить один контролируемый алхимический взрыв. Жми и переходи в ЛС.",
-                reply_markup=build_intro_menu(bot_info.username),
-            )
-            asyncio.create_task(delete_after_delay(message, 10))
-            asyncio.create_task(delete_after_delay(msg, 20))
-            return
-        intro_text, _ = await run_alchemy_intro(user_id, message.from_user.first_name)
-        return await message.answer(intro_text, parse_mode="Markdown")
-    
-    now = time.time()
-    last_mine = player.get("last_mine", 0)
-    has_base = player.get("tutorial_step", 0) >= 1 or "active_base" in player.get("inventory", {})
-    bot_info = await message.bot.get_me()
-    
-    actual_cooldown = get_alchemy_cooldown(player)
-    if now - last_mine < actual_cooldown:
-        left_sec = int(actual_cooldown - (now - last_mine))
-        builder = InlineKeyboardBuilder()
-        btn_text = "🏕 Моя База" if has_base else "🎒 Инвентарь"
-        builder.button(text=btn_text, url=f"https://t.me/{bot_info.username}?start=alcbase")
-        
-        msg = await message.reply(
-            f"⏳ Алхимик отдыхает!\n"
-            f"Следующий поход через: **{format_duration(left_sec)}**",
-            parse_mode="Markdown",
-            reply_markup=builder.as_markup()
-        )
-        asyncio.create_task(delete_after_delay(message, 10))
-        asyncio.create_task(delete_after_delay(msg, 10))
-        return
-
-    msg = await message.answer(
-        f"🗺 **КАРТА ЭКСПЕДИЦИИ**\nКуда отправимся в этот раз, {message.from_user.first_name}?",
-        reply_markup=build_locations_menu(bot_info.username, has_base)
-    )
+    await send_expedition_menu(message, message.from_user.id, message.from_user.first_name)
     asyncio.create_task(delete_after_delay(message, 5))
 
 @router.callback_query(F.data.startswith("alc:go:"))

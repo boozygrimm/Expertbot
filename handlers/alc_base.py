@@ -8,13 +8,37 @@ from aiogram.filters import CommandStart, CommandObject, Command
 from database import db
 from handlers.alc_recipes import ELEMENTS
 from handlers.pole_chudes import delete_after_delay
-from handlers.alc_achievements import ACHIEVEMENTS
-from handlers.alc_core import get_or_create_player, run_alchemy_intro
+from handlers.alc_achievements import ACHIEVEMENTS, format_reward_label
+from handlers.alc_core import (
+    format_duration,
+    get_or_create_player,
+    get_stamina_ready_at,
+    run_alchemy_intro,
+    send_expedition_menu,
+)
 
 router = Router()
 
-ALCHEMY_ALPHA_VERSION = "0.8.2.5"
+ALCHEMY_ALPHA_VERSION = "0.8.4.0"
 ALCHEMY_CHANGELOG = [
+    ("0.8.4.0", [
+        "На доске появились редкие золотые заказы: они заметнее в списке, дают более вкусную, но не ломаную награду и хорошо сочетаются с закреплением.",
+        "Добавлены квестовые счётчики в общую статистику игрока: теперь достижения корректно учитывают обычные, закреплённые и золотые заказы.",
+        "Список достижений и одноразовое окно новых ачивок обновлены под новые награды и не ломаются на свежих типах ресурсов.",
+    ]),
+    ("0.8.3.1", [
+        "На доске заданий появились профили наград: снабжение, исследование и мастерская. Теперь квест отличается не только предметом, но и типом выгоды.",
+        "Закрепление квестов стало интереснее: вместе с задачей игрок сохраняет и её профиль награды до следующего обновления.",
+        "Разброс наград за квесты расширен умеренно: больше вариантов паков, ресурсов и редких мелких бонусов без явной имбы.",
+    ]),
+    ("0.8.3.0", [
+        "Штаб стал короче и полезнее: добавлен статус выносливости алхимика, строка Наследия убрана, а строка Казарм сокращена до строй/поход.",
+        "Склад в сводке теперь показывает число активируемых предметов, а в окне Склада появилась подсказка про выгодное объединение бустпаков в Лаборатории.",
+        "Кнопка Лаборатории перенесена вниз, а при готовой выносливости вместо 'Закрыть' появляется кнопка 'В ПОХОД!' с мгновенным выходом в карту экспедиции.",
+        "Уведомление о восстановлении выносливости теперь ведет сразу на /поход.",
+        "Казармы получили сетку 1-2-3-4 в ряд и более позднюю пагинацию: она включается только после 10 рядов.",
+        "На доске заданий добавлено закрепление квестов: Гильдия позволяет сохранить 1-3 заказа на следующий день.",
+    ]),
     ("0.8.2.5", [
         "Исправлен жадный текстовый хендлер редактора Наследий: обычные сообщения снова не перехватываются вне активной сессии.",
         "Главный штаб подчищен по интерфейсу: строка общего статуса Лаборатории убрана, Склад перенесен в первую кнопку, а Ачивки подняты в верхний ряд.",
@@ -100,22 +124,18 @@ def format_process_status(process: dict | None, *, running_text: str, ready_text
 
 
 def build_storage_status(player: dict) -> str:
-    from handlers.alc_core import STORAGE_CAPACITY
-
     inventory = player.get("inventory", {})
-    storage_lvl = player.get("buildings", {}).get("storage", 0)
-    max_slots = STORAGE_CAPACITY.get(storage_lvl, 20)
-    used_slots = len([k for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS])
-    marker = "🔴" if used_slots >= max_slots else "🟢"
-    return f"{marker} {used_slots}/{max_slots}"
+    activatable = sum(max(0, int(inventory.get(code, 0) or 0)) for code in USE_ITEMS)
+    marker = "🟢" if activatable else "🔴"
+    return f"{marker} активаций {activatable}"
 
 
-def build_heritage_status(player: dict) -> str:
-    stands = player.get("active_stands", [])
-    slots = len(stands)
-    active = sum(1 for stand in stands if stand)
-    marker = "🟢" if active else "🔴"
-    return f"{marker} {active}/{slots} стендов"
+def build_stamina_status(player: dict) -> str:
+    ready_at = get_stamina_ready_at(player)
+    now = int(time.time())
+    if player.get("last_mine", 0) <= 0 or ready_at <= now:
+        return "⚡ Поход: 🟢 готов"
+    return f"⚡ Поход: 🔵 не готов | {format_duration(ready_at - now)}"
 
 
 def build_lab_status_lines(player: dict) -> list[str]:
@@ -181,10 +201,9 @@ def build_barracks_status(player: dict) -> str:
         return "🎖 Казармы: 🔴 пусто"
 
     ready = len([fighter for fighter in roster if fighter.get("status") == "available" and int(fighter.get("stamina", 0)) > 0])
-    tired = len([fighter for fighter in roster if fighter.get("status") == "available" and int(fighter.get("stamina", 0)) <= 0])
     away = len([fighter for fighter in roster if fighter.get("status") in {"expedition", "raid"}])
     marker = "🔵" if away else "🟢"
-    return f"🎖 Казармы: {marker} строй {ready} | поход {away} | отдых {tired}"
+    return f"🎖 Казармы: {marker} строй {ready} | поход {away}"
 
 
 def build_expeditions_status(player: dict) -> str:
@@ -222,8 +241,8 @@ def build_base_summary(player: dict) -> str:
         f"{header_icon} **ГЛАВНЫЙ ШТАБ**",
         f"{player.get('user_name', 'Путник')} | версия `{ALCHEMY_ALPHA_VERSION}`",
         "",
+        build_stamina_status(player),
         f"🎒 Склад: {build_storage_status(player)}",
-        f"📚 Наследие: {build_heritage_status(player)}",
     ]
     lines.extend(build_lab_status_lines(player))
 
@@ -271,6 +290,7 @@ def build_changelog_page(page: int) -> tuple[str, types.InlineKeyboardMarkup]:
 def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     buildings = player.get("buildings", {})
     builder = InlineKeyboardBuilder()
+    stamina_ready = get_stamina_ready_at(player) <= int(time.time())
 
     top_row = [
         types.InlineKeyboardButton(text="🎒", callback_data="alc:inventory"),
@@ -286,7 +306,6 @@ def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     builder.row(*top_row)
 
     service_rows: list[types.InlineKeyboardButton] = [
-        types.InlineKeyboardButton(text="⚗️ Лаборатория", callback_data="lab_open"),
         types.InlineKeyboardButton(text="🏗 Стройка", callback_data="build_open"),
         types.InlineKeyboardButton(text="📜 Квесты", callback_data="quests_open"),
     ]
@@ -297,7 +316,11 @@ def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
 
     for idx in range(0, len(service_rows), 2):
         builder.row(*service_rows[idx:idx + 2])
-    builder.row(types.InlineKeyboardButton(text="❌ Закрыть", callback_data="alc:base_close"))
+    builder.row(types.InlineKeyboardButton(text="⚗️ Лаборатория", callback_data="lab_open"))
+    if stamina_ready:
+        builder.row(types.InlineKeyboardButton(text="В ПОХОД!", callback_data="alc:base_pohod"))
+    else:
+        builder.row(types.InlineKeyboardButton(text="❌ Закрыть", callback_data="alc:base_close"))
     return builder.as_markup()
 
 
@@ -326,8 +349,8 @@ async def check_achievements(user_id: int, player: dict):
         msgs = ["🎉 **ВЫ ПОЛУЧИЛИ НОВЫЕ ДОСТИЖЕНИЯ!** 🎉"]
         for ach_id in new_unlocked:
             ach = ACHIEVEMENTS[ach_id]
-            r_name = ELEMENTS.get(ach['reward_item'], ach['reward_item'])
-            msgs.append(f"🏆 **{ach['name']}**\n_Награда: {r_name} x{ach['reward_count']}_")
+            reward_label = format_reward_label(ach["reward_item"], ach["reward_count"])
+            msgs.append(f"🏆 **{ach['name']}**\n_Награда: {reward_label}_")
         return "\n\n".join(msgs)
     return None
 
@@ -383,11 +406,12 @@ async def show_base_help(callback: types.CallbackQuery):
         "🧭 Экспедиции\n"
         "❓ Эта справка\n\n"
         "Большие кнопки ниже:\n"
-        "⚗️ Лаборатория\n"
         "🏗 Стройка\n"
         "📜 Квесты\n"
         "🎖 Казармы\n"
-        "🏰 Форт\n\n"
+        "🏰 Форт\n"
+        "⚗️ Лаборатория\n"
+        "❌ Закрыть или В ПОХОД!, если выносливость уже откатилась\n\n"
         "Цвета статусов:\n"
         "🔴 пусто, не запущено или не собрано\n"
         "🔵 идет работа, модуль занят или отряд в пути\n"
@@ -418,8 +442,9 @@ async def show_inventory(callback: types.CallbackQuery):
     if active_items:
         text += "Готово к активации:\n"
         text += "\n".join(f"• {ELEMENTS.get(code, code)} x{amount}" for code, amount in active_items)
+        text += "\n\n💡 Бустпаки выгоднее сначала соединять в Лаборатории."
     else:
-        text += "Сейчас здесь нет предметов, которые можно активировать."
+        text += "Сейчас здесь нет предметов, которые можно активировать.\n\n💡 Бустпаки выгоднее сначала соединять в Лаборатории."
 
     builder = InlineKeyboardBuilder()
     if active_items:
@@ -465,6 +490,13 @@ async def ret_base(callback: types.CallbackQuery):
 async def close_base_window(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.answer()
+
+
+@router.callback_query(F.data == "alc:base_pohod")
+async def close_and_start_pohod(callback: types.CallbackQuery):
+    await callback.message.delete()
+    await callback.answer()
+    await send_expedition_menu(callback.message, callback.from_user.id, callback.from_user.first_name)
 
 @router.callback_query(F.data.startswith("alc_use:"))
 async def handle_use_item(callback: types.CallbackQuery):
