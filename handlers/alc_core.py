@@ -18,6 +18,122 @@ router = Router()
 
 COOLDOWN = 4 * 3600 # 4 часа
 STORAGE_CAPACITY = {0: 20, 1: 50, 2: 150, 3: 350}
+STARTER_DISCOVERIES = ["lava", "stone", "steam", "swamp", "life", "algae", "moss", "bacteria"]
+STARTER_WORLD_REWARD_POOL = ["spirit_f", "spirit_w", "spirit_e", "spirit_a"]
+STARTER_BIOME_SLOTS = {
+    "matter": {
+        "lava": {"label": "🌋 Лавовое ядро", "absurd": 2, "capacity": 1},
+        "stone": {"label": "🪨 Каменное ядро", "absurd": 0, "capacity": 2},
+    },
+    "medium": {
+        "steam": {"label": "☁️ Паровая среда", "absurd": 1, "capacity": 1},
+        "swamp": {"label": "🐸 Болотная среда", "absurd": 0, "capacity": 2},
+    },
+    "life": {
+        "bacteria": {"label": "🦠 Бактериальная жизнь", "absurd": 1, "capacity": 1},
+        "moss": {"label": "🌿 Моховая жизнь", "absurd": 0, "capacity": 2},
+    },
+}
+WORLD_ARCHETYPES = {
+    ("stone", "swamp", "moss"): {
+        "id": "nursery",
+        "name": "🌱 Колыбельная чаща",
+        "role": "опора",
+        "capacity_bonus": 0,
+        "support_bonus": 2,
+        "strain_cost": 1,
+        "bonuses": {"farm_yield": 1, "aero_yield": 1, "river_bonus": 2},
+        "humor": "укоризненно смотрит на хаотичных соседей и держит мир в тонусе",
+    },
+    ("stone", "steam", "bacteria"): {
+        "id": "forge",
+        "name": "⚙️ Паровой шов",
+        "role": "промышленный",
+        "capacity_bonus": 1,
+        "support_bonus": 1,
+        "strain_cost": 2,
+        "bonuses": {"mine_yield": 1, "factory_yield": 1, "mountains_bonus": 2, "cave_bonus": 2},
+        "humor": "с шипением скрепляет реальность промышленным упрямством",
+    },
+    ("lava", "swamp", "moss"): {
+        "id": "wildfire",
+        "name": "🌋 Цветущий разлом",
+        "role": "добывающий",
+        "capacity_bonus": 1,
+        "support_bonus": 0,
+        "strain_cost": 3,
+        "bonuses": {"volcano_bonus": 3, "factory_yield": 1},
+        "humor": "живёт вопреки здравому смыслу и пахнет авантюрой",
+    },
+    ("lava", "steam", "bacteria"): {
+        "id": "volatile",
+        "name": "💥 Шипящий кошмар",
+        "role": "нестабильный",
+        "capacity_bonus": 2,
+        "support_bonus": -1,
+        "strain_cost": 5,
+        "bonuses": {"global_loot_bonus": 2, "rare_find_bonus": 0.05},
+        "humor": "очень хочет взорваться, но пока ограничивается угрозами",
+    },
+}
+DEFAULT_WORLD_ARCHETYPE = {
+    "id": "patchwork",
+    "name": "🧩 Лоскутный карман",
+    "role": "универсальный",
+    "capacity_bonus": 0,
+    "support_bonus": 0,
+    "strain_cost": 2,
+    "bonuses": {},
+    "humor": "держится на алхимической изоленте и сомнительных обещаниях",
+}
+WORLD_FOCUS_OPTIONS = {
+    "tech": {
+        "item": "electricity",
+        "label": "⚡ Технофокус",
+        "capacity_bonus": 1,
+        "support_bonus": 0,
+        "strain_delta": 1,
+        "bonuses": {"factory_yield": 1, "cave_bonus": 1, "global_loot_bonus": 1},
+    },
+    "lore": {
+        "item": "book",
+        "label": "📖 Лор-фокус",
+        "capacity_bonus": 0,
+        "support_bonus": 1,
+        "strain_delta": 0,
+        "bonuses": {"rare_find_bonus": 0.03},
+    },
+    "war": {
+        "item": "weapon",
+        "label": "🗡 Военный фокус",
+        "capacity_bonus": 1,
+        "support_bonus": 0,
+        "strain_delta": 1,
+        "bonuses": {"mountains_bonus": 2, "volcano_bonus": 1, "global_loot_bonus": 1},
+    },
+    "wild": {
+        "item": "forest",
+        "label": "🌲 Дикий фокус",
+        "capacity_bonus": 0,
+        "support_bonus": 1,
+        "strain_delta": 0,
+        "bonuses": {"river_bonus": 2, "farm_yield": 1, "aero_yield": 1},
+    },
+}
+WORLD_TIER_LABELS = {
+    1: "микробиом",
+    2: "малый биом",
+    3: "средний биом",
+    4: "большой биом",
+    5: "огромный биом",
+}
+WORLD_SUPPORT_COSTS = {
+    0: {"stone": 6, "wood": 4, "energy": 1},
+    1: {"stone": 10, "glass": 3, "energy": 2},
+    2: {"brick": 8, "metal": 4, "energy": 3},
+    3: {"glass": 8, "metal": 6, "energy": 4},
+    4: {"diamond": 1, "glass": 10, "energy": 6},
+}
 DEFAULT_ACTION_COUNTERS = {
     "expeditions_started": 0,
     "expeditions_completed": 0,
@@ -64,6 +180,10 @@ DEFAULT_PLAYER_TEMPLATE = {
     "action_counters": DEFAULT_ACTION_COUNTERS,
     "raid_history": {},
     "raid_protection_until": 0,
+    "worlds": [],
+    "world_failures": 0,
+    "world_tutorial": {"active": False, "created": False},
+    "world_support_level": 0,
 }
 
 # Таблица выпадения из лутбоксов
@@ -85,6 +205,296 @@ def get_used_slots(inventory: dict) -> int:
 
 def get_heritage_slots(level: int) -> int:
     return max(1, min(5, int(level or 1)))
+
+
+def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
+    worlds = player.get("worlds", [])
+    if not isinstance(worlds, list):
+        worlds = []
+
+    normalized_worlds: list[dict] = []
+    for idx, world in enumerate(worlds, start=1):
+        if not isinstance(world, dict):
+            continue
+        capacity = max(0, int(world.get("capacity", 0) or 0))
+        normalized_worlds.append(
+            {
+                "id": str(world.get("id") or f"world_{idx}"),
+                "name": str(world.get("name") or f"Карман {idx}"),
+                "description": str(world.get("description") or ""),
+                "tier": max(1, int(world.get("tier", 1) or 1)),
+                "capacity": capacity,
+                "absurdity": max(0, int(world.get("absurdity", 0) or 0)),
+                "support_bonus": int(world.get("support_bonus", 0) or 0),
+                "strain_cost": max(0, int(world.get("strain_cost", 0) or 0)),
+                "status": str(world.get("status") or "stable"),
+                "humor": str(world.get("humor") or ""),
+                "archetype": str(world.get("archetype") or "patchwork"),
+                "role": str(world.get("role") or "универсальный"),
+                "focus": str(world.get("focus") or ""),
+                "focus_label": str(world.get("focus_label") or ""),
+                "slots": {
+                    "matter": str(((world.get("slots") or {}).get("matter")) or ""),
+                    "medium": str(((world.get("slots") or {}).get("medium")) or ""),
+                    "life": str(((world.get("slots") or {}).get("life")) or ""),
+                },
+                "starter": bool(world.get("starter", False)),
+            }
+        )
+
+    world_tutorial = player.get("world_tutorial", {})
+    normalized_tutorial = {
+        "active": bool(world_tutorial.get("active", False)),
+        "created": bool(world_tutorial.get("created", False)),
+    }
+    buildings = player.get("buildings", {})
+    inventory = player.get("inventory", {})
+    meaningful_buildings = {
+        key: max(0, int(value or 0))
+        for key, value in buildings.items()
+        if key != "heritage_center"
+    }
+    is_legacy = bool(
+        not normalized_worlds
+        and not normalized_tutorial["active"]
+        and (
+            inventory.get("active_base", 0) > 0
+            or any(level > 0 for level in meaningful_buildings.values())
+            or int(buildings.get("heritage_center", 1) or 1) > 1
+        )
+    )
+    return normalized_worlds, is_legacy, normalized_tutorial
+
+
+def get_world_capacity_total(player: dict) -> int:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return 999
+    return sum(max(0, int(world.get("capacity", 0) or 0)) for world in worlds)
+
+
+def get_world_capacity_used(player: dict) -> int:
+    buildings = player.get("buildings", {})
+    used = 0
+    for building_id, level in buildings.items():
+        if building_id == "heritage_center":
+            used += max(0, int(level or 0) - 1)
+            continue
+        used += max(0, int(level or 0) - 1)
+    return used
+
+
+def get_world_capacity_left(player: dict) -> int:
+    return get_world_capacity_total(player) - get_world_capacity_used(player)
+
+
+def get_world_support_level(player: dict) -> int:
+    return max(0, int(player.get("world_support_level", 0) or 0))
+
+
+def get_world_strain(player: dict) -> int:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return 0
+    strain = 0
+    for world in worlds:
+        strain += max(1, int(world.get("strain_cost", 0) or 0))
+    if len(worlds) > 1:
+        strain += len(worlds) - 1
+    return strain
+
+
+def get_world_stability_limit(player: dict) -> int:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return 999
+    buildings = player.get("buildings", {})
+    support_bonus = sum(int(world.get("support_bonus", 0) or 0) for world in worlds)
+    return 5 + get_world_support_level(player) * 2 + support_bonus + max(0, int(buildings.get("fort", 0) or 0)) + max(0, int(buildings.get("heritage_center", 1) or 1) - 1)
+
+
+def get_world_strain_left(player: dict) -> int:
+    return get_world_stability_limit(player) - get_world_strain(player)
+
+
+def is_world_overloaded(player: dict) -> bool:
+    return get_world_strain(player) > get_world_stability_limit(player)
+
+
+def get_world_support_cost(player: dict) -> dict[str, int]:
+    level = get_world_support_level(player)
+    return dict(WORLD_SUPPORT_COSTS.get(level, {"diamond": 1, "metal": 10, "glass": 12, "energy": 8}))
+
+
+def get_world_effects(player: dict) -> dict[str, float]:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy or not worlds:
+        return {}
+
+    effects: dict[str, float] = {}
+    for world in worlds:
+        slots = world.get("slots", {})
+        key = (slots.get("matter", ""), slots.get("medium", ""), slots.get("life", ""))
+        archetype = WORLD_ARCHETYPES.get(key, DEFAULT_WORLD_ARCHETYPE)
+        bonuses = archetype.get("bonuses", {})
+        for bonus_id, bonus_value in bonuses.items():
+            effects[bonus_id] = effects.get(bonus_id, 0) + bonus_value
+        focus_id = str(world.get("focus") or "")
+        if focus_id in WORLD_FOCUS_OPTIONS:
+            for bonus_id, bonus_value in WORLD_FOCUS_OPTIONS[focus_id].get("bonuses", {}).items():
+                effects[bonus_id] = effects.get(bonus_id, 0) + bonus_value
+    return effects
+
+
+def get_world_role_counts(player: dict) -> dict[str, int]:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy or not worlds:
+        return {}
+
+    counts: dict[str, int] = {}
+    for world in worlds:
+        role = str(world.get("role") or "универсальный")
+        counts[role] = counts.get(role, 0) + 1
+    return counts
+
+
+def get_world_focus_counts(player: dict) -> dict[str, int]:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy or not worlds:
+        return {}
+    counts: dict[str, int] = {}
+    for world in worlds:
+        focus_id = str(world.get("focus") or "")
+        if not focus_id:
+            continue
+        counts[focus_id] = counts.get(focus_id, 0) + 1
+    return counts
+
+
+def check_world_role_requirements(player: dict, requirements: dict[str, int] | None) -> tuple[bool, str | None]:
+    if not requirements:
+        return True, None
+
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return True, None
+    if not worlds:
+        return False, "Нужны подходящие биомы мира. Пока под ногами только пустота."
+
+    counts = get_world_role_counts(player)
+    missing_parts = []
+    for role, required in requirements.items():
+        current = counts.get(role, 0)
+        if current < required:
+            missing_parts.append(f"{role}: {current}/{required}")
+    if missing_parts:
+        return False, "Не хватает профильных биомов: " + ", ".join(missing_parts) + "."
+    return True, None
+
+
+def check_world_focus_requirements(player: dict, requirements: dict[str, int] | None) -> tuple[bool, str | None]:
+    if not requirements:
+        return True, None
+
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return True, None
+    if not worlds:
+        return False, "Нужны зрелые биомы с нужным фокусом."
+
+    counts = get_world_focus_counts(player)
+    missing_parts = []
+    for focus_id, required in requirements.items():
+        current = counts.get(focus_id, 0)
+        if current < required:
+            label = WORLD_FOCUS_OPTIONS.get(focus_id, {}).get("label", focus_id)
+            missing_parts.append(f"{label}: {current}/{required}")
+    if missing_parts:
+        return False, "Не хватает зрелых фокусов мира: " + ", ".join(missing_parts) + "."
+    return True, None
+
+
+def get_building_world_capacity_cost(building_id: str, next_level: int) -> int:
+    if next_level <= 1:
+        return 0
+    if building_id == "heritage_center":
+        return 1
+    return 1
+
+
+def can_upgrade_with_world_capacity(player: dict, building_id: str, next_level: int) -> tuple[bool, str | None]:
+    worlds, is_legacy, _ = ensure_world_state(player)
+    if is_legacy:
+        return True, None
+    if is_world_overloaded(player):
+        left = get_world_strain_left(player)
+        return False, f"Мир уже трещит по швам: перегруз {abs(left)}. Сначала укрепи каркас Вселенной."
+    required = get_building_world_capacity_cost(building_id, next_level)
+    if required <= 0:
+        return True, None
+    if not worlds:
+        return False, "Сначала стабилизируй хотя бы один биом. Пока здания висят в пустоте."
+
+    left = get_world_capacity_left(player)
+    if left >= required:
+        return True, None
+    return False, f"Не хватает вместимости мира: нужно {required}, свободно {max(0, left)}."
+
+
+def build_starter_world_preview(slots: dict[str, str], focus_id: str | None = None) -> tuple[str, str, int, int, str]:
+    matter = STARTER_BIOME_SLOTS["matter"][slots["matter"]]
+    medium = STARTER_BIOME_SLOTS["medium"][slots["medium"]]
+    life = STARTER_BIOME_SLOTS["life"][slots["life"]]
+    archetype_key = (slots["matter"], slots["medium"], slots["life"])
+    archetype = WORLD_ARCHETYPES.get(archetype_key, DEFAULT_WORLD_ARCHETYPE)
+    focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
+    capacity = matter["capacity"] + medium["capacity"] + life["capacity"] + archetype["capacity_bonus"] + (focus["capacity_bonus"] if focus else 0)
+    absurdity = matter["absurd"] + medium["absurd"] + life["absurd"]
+    tier = 1 if capacity <= 4 else 2
+    name = archetype["name"]
+    humor = (
+        archetype["humor"]
+        if archetype["id"] != "patchwork"
+        else "трещит, но держится"
+        if absurdity >= 3
+        else "выглядит подозрительно живым"
+        if absurdity >= 1
+        else "стоит уверенно и даже не дымит"
+    )
+    description = (
+        f"{matter['label']}, {medium['label']} и {life['label']}."
+        f" Архетип: {archetype['name']} ({archetype['role']})."
+        + (f" Фокус: {focus['label']}." if focus else "")
+        + f" Абсурдность: {absurdity}. Вместимость: {capacity}."
+    )
+    return name, description, capacity, absurdity, humor
+
+
+def evaluate_world_creation(player: dict, slots: dict[str, str], focus_id: str | None = None) -> tuple[bool, int, int]:
+    _, _, capacity, absurdity, _ = build_starter_world_preview(slots, focus_id=focus_id)
+    attempt_number = len(player.get("worlds", [])) + 1
+    if attempt_number == 1:
+        return True, capacity, absurdity
+
+    focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
+    future_world = {
+        "capacity": capacity,
+        "absurdity": absurdity,
+        "strain_cost": max(1, WORLD_ARCHETYPES.get((slots["matter"], slots["medium"], slots["life"]), DEFAULT_WORLD_ARCHETYPE)["strain_cost"] + (focus["strain_delta"] if focus else 0)),
+        "support_bonus": WORLD_ARCHETYPES.get((slots["matter"], slots["medium"], slots["life"]), DEFAULT_WORLD_ARCHETYPE)["support_bonus"] + (focus["support_bonus"] if focus else 0),
+    }
+    current_worlds = list(player.get("worlds", []))
+    simulated_player = dict(player)
+    simulated_player["worlds"] = current_worlds + [future_world]
+    overload = max(0, get_world_strain(simulated_player) - get_world_stability_limit(simulated_player))
+    fail_chance = absurdity * 15 + overload * 15
+    if attempt_number == 2:
+        fail_chance += 10
+    else:
+        fail_chance += 20 + min(25, (attempt_number - 3) * 5)
+    fail_chance = max(0, min(85, fail_chance))
+    roll = random.randint(1, 100)
+    return roll > fail_chance, capacity, absurdity
 
 async def get_or_create_player(user_id: int, user_name: str):
     """Инициализация профиля."""
@@ -161,6 +571,22 @@ async def get_or_create_player(user_id: int, user_name: str):
             player[field] = normalized_player.get(field)
             update_fields[field] = normalized_player.get(field)
 
+    worlds, _, world_tutorial = ensure_world_state(player)
+    if player.get("worlds") != worlds:
+        player["worlds"] = worlds
+        update_fields["worlds"] = worlds
+    if player.get("world_tutorial") != world_tutorial:
+        player["world_tutorial"] = world_tutorial
+        update_fields["world_tutorial"] = world_tutorial
+    failures = max(0, int(player.get("world_failures", 0) or 0))
+    if player.get("world_failures") != failures:
+        player["world_failures"] = failures
+        update_fields["world_failures"] = failures
+    support_level = max(0, int(player.get("world_support_level", 0) or 0))
+    if player.get("world_support_level") != support_level:
+        player["world_support_level"] = support_level
+        update_fields["world_support_level"] = support_level
+
     if update_fields:
         await db.alchemy_players.update_one({"user_id": user_id}, {"$set": update_fields})
     return player
@@ -211,10 +637,15 @@ async def send_expedition_menu(target_message: types.Message, user_id: int, user
         intro_text, _ = await run_alchemy_intro(user_id, user_name)
         await target_message.answer(intro_text, parse_mode="Markdown")
         return
+    if player.get("tutorial_step", 0) < 3:
+        await target_message.answer(
+            "🌍 Сначала собери первый микробиом в штабе. Без опоры мироздание не пускает тебя в нормальный поход."
+        )
+        return
 
     now = time.time()
     last_mine = player.get("last_mine", 0)
-    has_base = player.get("tutorial_step", 0) >= 1 or "active_base" in player.get("inventory", {})
+    has_base = player.get("inventory", {}).get("active_base", 0) > 0 or player.get("tutorial_step", 0) >= 2
     bot_info = await target_message.bot.get_me()
 
     actual_cooldown = get_alchemy_cooldown(player)
@@ -266,10 +697,11 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
     starters = {
         "base_crystal": 1,
         "pack_s": 1,
-        "w": 6,
-        "f": 6,
-        "e": 6,
-        "a": 6,
+        "w": 10,
+        "f": 10,
+        "e": 10,
+        "a": 10,
+        "energy": 2,
         "stone": 2,
         "wood": 2,
     }
@@ -282,20 +714,24 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
             "$set": {
                 "inventory": inventory,
                 "tutorial_step": 1,
+                "discovered": sorted(set(player.get("discovered", [])) | set(STARTER_DISCOVERIES)),
+                "world_tutorial": {"active": False, "created": False},
             }
         },
     )
     text = (
-        "Пшик, пшик... **БАМММ!**\n\n"
-        "Колба рванула, лаборатория завоняла жженой травой, а в пепле остался странный кристалл.\n"
-        "Похоже, это твой первый якорь базы. Я сложил рядом стартовый набор и немного сырья, пока потолок не рухнул снова.\n\n"
+        "\"Пшик, пшик, пшик... А это так должно было?!! **БАМММ!**\"\n\n"
+        "Это последнее, что ты услышал, прежде чем очнуться в пустоте. Под рукой оказался манящий кристалл базы, рядом валялись коробочки и сырье."
+        " Пахнет катастрофой, но старт у создателя всегда такой.\n\n"
         "Получено:\n"
         "• 🔮 Кристалл Базы x1\n"
         "• 📦 Малый набор x1\n"
-        "• Базовые стихии по 6\n"
+        "• Базовые стихии по 10\n"
+        "• 🎇 Энергия x2\n"
         "• 🪨 Камень x2\n"
         "• 🪵 Древесина x2\n\n"
-        "Теперь открой /base, активируй Кристалл Базы и постарайся больше не нюхать дым прямо из реторты."
+        "Я еще подсунул тебе несколько стартовых рецептов: Лава, Камень, Пар, Болото, Жизнь, Водоросли, Мох и Бактерия."
+        " Открой /base, активируй Кристалл Базы и попробуй собрать из этого первый микробиом."
     )
     return text, True
 
@@ -343,14 +779,23 @@ async def use_item_logic(user_id: int, item_code: str):
         
         inv["active_base"] = 1
         text = ("✅ **База активирована!**\n\n"
-                "Кристалл вспыхнул ослепительным светом и развернулся в пространственный карман. "
-                "Теперь ты полноправный Алхимик! Твои первые шаги:\n"
-                "1️⃣ Смешай 🔥 + 🪨 = **Лава**\n"
-                "2️⃣ Смешай **Лава** + **Вода** = **Камень**\n"
-                "3️⃣ Собрав 2 Камня и 5 Земли, построй **Склад** в меню 'Постройки'.")
+                "Кристалл вспыхнул и развернул вокруг тебя карманную пустоту. На стене загорелось:\n"
+                "`мир уничтожен, требуется создатель`\n\n"
+                "Сначала собери первый микробиом. Вариантов немного, но они уже настоящие:\n"
+                "1. 🔥 + 🪨 = **Лава**\n"
+                "2. 💧 + 🔥 = **Пар**\n"
+                "3. 💧 + 🪨 = **Болото**\n"
+                "4. 🎇 + **Болото** = **Жизнь**\n"
+                "5. **Жизнь** + 💧 = **Водоросли**\n"
+                "6. **Водоросли** + **Болото** = **Мох**\n"
+                "7. **Жизнь** + **Болото** = **Бактерия**\n\n"
+                "Когда что-нибудь из этого добудешь, возвращайся в штаб и жми на создание микробиома.")
         
         # Завершаем туториал
-        await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"tutorial_step": 1}})
+        await db.alchemy_players.update_one(
+            {"user_id": user_id},
+            {"$set": {"tutorial_step": 2, "world_tutorial": {"active": True, "created": False}}},
+        )
         success = True
 
     # 3. СВИТОК РЕЦЕПТА
@@ -415,6 +860,7 @@ async def process_expedition(callback: types.CallbackQuery):
         return await callback.answer("⏳ Силы еще не восстановились!", show_alert=True)
 
     inv = player.get("inventory", {})
+    world_effects = get_world_effects(player)
     
     # 2. Определяем лут в зависимости от локации
     if location == "river": possible_items = ["w", "sand", "cane"]
@@ -423,13 +869,17 @@ async def process_expedition(callback: types.CallbackQuery):
     elif location == "volcano": possible_items = ["f", "lava", "brick"]
     else: possible_items = ["w", "e", "f", "a"]
     
-    # 3. Настройка добычи (база 15-20 штук + новый бонус за гильдию)
-    loot_count = random.randint(15, 20) + guild_loot_bonus
+    location_bonus = int(world_effects.get(f"{location}_bonus", 0) or 0)
+    global_loot_bonus = int(world_effects.get("global_loot_bonus", 0) or 0)
+    rare_find_bonus = float(world_effects.get("rare_find_bonus", 0) or 0)
+    
+    # 3. Настройка добычи (база 15-20 штук + бонус гильдии + бонусы мира)
+    loot_count = random.randint(15, 20) + guild_loot_bonus + location_bonus + global_loot_bonus
     drops = [random.choice(possible_items) for _ in range(loot_count)]
     
     # 4. Повышенные шансы на редкий лут
-    if random.random() < 0.10: drops.append("recipe_scroll")
-    if random.random() < 0.15: drops.append("pack_s")
+    if random.random() < 0.10 + rare_find_bonus: drops.append("recipe_scroll")
+    if random.random() < 0.15 + rare_find_bonus: drops.append("pack_s")
 
     # --- СЮЖЕТ И ТУТОРИАЛ ---
     step = player.get("tutorial_step", 0)
@@ -441,6 +891,10 @@ async def process_expedition(callback: types.CallbackQuery):
     if random.random() < 0.03:
         inv["recipe_scroll"] = inv.get("recipe_scroll", 0) + 1
         narrative_text += "\n\n📜 В грязи лежал древний Свиток Рецепта!"
+    if location_bonus or global_loot_bonus:
+        narrative_text += "\n\n🌍 Мир отозвался на вылазку и подкинул добыче дополнительный импульс."
+    if rare_find_bonus > 0:
+        narrative_text += "\n💥 Нестабильный биом нервно заискрил, поэтому редкости сегодня липнут охотнее."
 
     # Обновляем инвентарь базовыми дропами
     for item in drops:

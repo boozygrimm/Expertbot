@@ -5,7 +5,7 @@ from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot
 from database import db
-from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots
+from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots, get_world_effects
 from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.alc_heritage import get_active_legacy_bonus_map
@@ -80,6 +80,7 @@ async def collect_production_loot():
     async for player in cursor:
         inv = player.get("inventory", {})
         slots = player.get("production_slots", [])
+        world_effects = get_world_effects(player)
         
         storage_lvl = player.get("buildings", {}).get("storage", 0)
         from handlers.alc_core import STORAGE_CAPACITY
@@ -122,6 +123,14 @@ async def collect_production_loot():
                     count = 3
                 else:
                     count = 2 # Базовый буст духа в чужом цехе (х2)
+            if s_type == "mine":
+                count += int(world_effects.get("mine_yield", 0) or 0)
+            elif s_type == "farm":
+                count += int(world_effects.get("farm_yield", 0) or 0)
+            elif s_type == "factory":
+                count += int(world_effects.get("factory_yield", 0) or 0)
+            elif s_type == "aero":
+                count += int(world_effects.get("aero_yield", 0) or 0)
             
             # Сбор лута
             for _ in range(count):
@@ -141,7 +150,7 @@ async def collect_production_loot():
                 slots_changed = True
                 
                 # Шанс 2% найти свиток или пак на производстве
-                if random.random() < 0.02:
+                if random.random() < 0.02 + float(world_effects.get("rare_find_bonus", 0) or 0):
                     bonus = random.choice(["recipe_scroll", "pack_s"])
                     if bonus in inv or get_used_slots(inv) < max_slots:
                         inv[bonus] = inv.get(bonus, 0) + 1

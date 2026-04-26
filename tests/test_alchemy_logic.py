@@ -22,10 +22,11 @@ from handlers.alc_base import (
     build_lab_status_lines,
     build_production_status,
     build_storage_status,
+    build_world_status,
     format_process_status,
     get_headquarters_icon,
 )
-from handlers.alc_core import format_duration, get_alchemy_cooldown, get_heritage_slots, get_used_slots
+from handlers.alc_core import format_duration, get_alchemy_cooldown, get_heritage_slots, get_used_slots, get_world_effects
 from handlers.alc_fighters import (
     FATIGUE_RECOVERY_SECONDS,
     can_pay_cost,
@@ -42,6 +43,8 @@ from handlers.alc_build import (
     build_building_detail_text,
     format_building_cost,
     format_supply_report,
+    get_building_world_focus_requirements,
+    get_building_world_requirements,
     get_building_status,
     get_building_status_emoji,
 )
@@ -211,6 +214,19 @@ class AlchemyCoreTests(unittest.TestCase):
         }
         self.assertEqual(get_used_slots(inventory), 2)
 
+    def test_get_world_effects_aggregates_biome_archetypes(self):
+        player = {
+            "worlds": [
+                {"slots": {"matter": "stone", "medium": "swamp", "life": "moss"}},
+                {"slots": {"matter": "stone", "medium": "steam", "life": "bacteria"}},
+            ]
+        }
+        effects = get_world_effects(player)
+        self.assertEqual(effects["farm_yield"], 1)
+        self.assertEqual(effects["mine_yield"], 1)
+        self.assertEqual(effects["river_bonus"], 2)
+        self.assertEqual(effects["cave_bonus"], 2)
+
 
 class BaseStatusTests(unittest.TestCase):
     def test_get_headquarters_icon_scales_with_fort(self):
@@ -291,18 +307,37 @@ class BaseStatusTests(unittest.TestCase):
             {
                 "user_name": "Тест",
                 "last_mine": 0,
-                "inventory": {"pack_s": 1},
+                "inventory": {"pack_s": 1, "active_base": 1},
                 "buildings": {"fort": 2, "lab": 2, "altar": 1, "barracks": 1},
                 "crucible_process": {"finish_time": 1},
                 "production_slots": [],
                 "fighters": [],
                 "active_expeditions": [],
+                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "не дымит"}],
             }
         )
         self.assertIn("🏰 **ГЛАВНЫЙ ШТАБ**", text)
         self.assertIn("Тест | версия `", text)
+        self.assertIn("🌍 Мир:", text)
         self.assertIn("🎒 Склад: 🟢 активаций 1", text)
         self.assertIn("🔥 Тигель:", text)
+
+    def test_build_world_status_handles_empty_legacy_and_real_world(self):
+        self.assertIn("нужен кристалл базы", build_world_status({"inventory": {}, "buildings": {}}))
+        self.assertIn(
+            "угрожающе потрескивают",
+            build_world_status({"inventory": {"active_base": 1}, "buildings": {"lab": 1}, "tutorial_step": 3}),
+        )
+        self.assertIn(
+            "1/4 вместимости",
+            build_world_status(
+                {
+                    "inventory": {"active_base": 1},
+                    "buildings": {"storage": 2},
+                    "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+                }
+            ),
+        )
 
     def test_build_changelog_page_clamps_page_and_has_back_button(self):
         text, markup = build_changelog_page(999)
@@ -504,14 +539,67 @@ class BuildingLogicTests(unittest.TestCase):
 
     def test_build_building_detail_text_marks_current_level_and_next_upgrade(self):
         player = {
-            "inventory": {"brick": 4, "stone": 6, "metal": 1},
             "buildings": {"storage": 1, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
+            "inventory": {"brick": 4, "stone": 6, "metal": 1, "active_base": 1},
+            "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
         }
         text, can_upgrade = build_building_detail_text(player, "storage")
         self.assertTrue(can_upgrade)
         self.assertIn("✅ вы тут Ур. 1", text)
         self.assertIn("Следующий апгрейд: Ур. 2", text)
         self.assertIn("Лимит: 150 слотов", text)
+        self.assertIn("Вместимость мира", text)
+
+    def test_building_world_requirements_gate_specific_upgrades(self):
+        self.assertEqual(get_building_world_requirements("altar", 2), {"промышленный": 1})
+        player_blocked = {
+            "inventory": {"brick": 10, "metal": 4, "glass": 3, "active_base": 1},
+            "buildings": {"storage": 0, "lab": 0, "altar": 1, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
+            "worlds": [
+                {"name": "Чаща", "capacity": 4, "description": "ok", "humor": "держится", "role": "опора", "support_bonus": 2, "strain_cost": 1}
+            ],
+        }
+        status, can_upgrade, is_maxed = get_building_status("altar", player_blocked)
+        self.assertEqual(status, "🟡 упёрлось в мир")
+        self.assertFalse(can_upgrade)
+        self.assertFalse(is_maxed)
+
+        player_ready = {
+            "inventory": {"brick": 10, "metal": 4, "glass": 3, "active_base": 1},
+            "buildings": {"storage": 0, "lab": 0, "altar": 1, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
+            "worlds": [
+                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2}
+            ],
+        }
+        status, can_upgrade, is_maxed = get_building_status("altar", player_ready)
+        self.assertEqual(status, "🔵 апгрейд доступен")
+        self.assertTrue(can_upgrade)
+        self.assertFalse(is_maxed)
+
+    def test_building_focus_requirements_gate_late_upgrades(self):
+        self.assertEqual(get_building_world_focus_requirements("altar", 3), {"tech": 1})
+        player_blocked = {
+            "inventory": {"electricity": 5, "diamond": 1, "robot": 1, "active_base": 1},
+            "buildings": {"storage": 0, "lab": 0, "altar": 2, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
+            "worlds": [
+                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2}
+            ],
+        }
+        status, can_upgrade, _ = get_building_status("altar", player_blocked)
+        self.assertEqual(status, "🟡 упёрлось в мир")
+        self.assertFalse(can_upgrade)
+
+        player_ready = {
+            "inventory": {"electricity": 5, "diamond": 1, "robot": 1, "active_base": 1},
+            "buildings": {"storage": 0, "lab": 0, "altar": 2, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
+            "worlds": [
+                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2, "focus": "tech"},
+                {"name": "Разлом", "capacity": 4, "description": "ok", "humor": "держится", "role": "добывающий", "support_bonus": 0, "strain_cost": 3},
+            ],
+        }
+        status, can_upgrade, _ = get_building_status("altar", player_ready)
+        self.assertEqual(status, "🔵 апгрейд доступен")
+        self.assertTrue(can_upgrade)
 
     def test_format_supply_report_handles_empty_and_deserters(self):
         self.assertIn("данных пока нет", format_supply_report(None))

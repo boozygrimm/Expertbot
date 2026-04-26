@@ -236,6 +236,10 @@ ACHIEVEMENTS = {
 }
 
 ACHIEVEMENTS.update({
+    "world_first": {"name": "🌍 Первый карман", "desc": "Стабилизировать свой первый биом.", "condition": lambda p: len(p.get("worlds", [])) >= 1, "reward_item": "recipe_scroll", "reward_count": 1},
+    "world_plural": {"name": "🪐 Мир на вырост", "desc": "Удержать 3 биома одновременно.", "condition": lambda p: len(p.get("worlds", [])) >= 3, "reward_item": "pack_m", "reward_count": 1},
+    "world_support_1": {"name": "🛠 Скобы реальности", "desc": "Один раз укрепить каркас мира.", "condition": lambda p: int(p.get("world_support_level", 0) or 0) >= 1, "reward_item": "glass", "reward_count": 3},
+    "world_support_3": {"name": "🏗 Архитектор пустоты", "desc": "Прокачать укрепление мира до 3 уровня.", "condition": lambda p: int(p.get("world_support_level", 0) or 0) >= 3, "reward_item": "pack_l", "reward_count": 1},
     "quest_first": {"name": "📜 Первое поручение", "desc": "Сдать первый квест с доски объявлений.", "condition": lambda p: action_counter(p, "quests_completed") >= 1, "reward_item": "pack_s", "reward_count": 1},
     "quest_regular": {"name": "🗂 Конторский алхимик", "desc": "Сдать 10 квестов и не умереть от рутины.", "condition": lambda p: action_counter(p, "quests_completed") >= 10, "reward_item": "recipe_scroll", "reward_count": 1},
     "quest_strategist": {"name": "📌 Холодный расчёт", "desc": "Пять раз закрепить выгодный заказ на потом.", "condition": lambda p: action_counter(p, "quests_pinned") >= 5, "reward_item": "energy", "reward_count": 3},
