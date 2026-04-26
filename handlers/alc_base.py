@@ -11,13 +11,16 @@ from handlers.alc_recipes import ELEMENTS
 from handlers.pole_chudes import delete_after_delay
 from handlers.alc_achievements import ACHIEVEMENTS, format_reward_label
 from handlers.alc_core import (
+    STARTER_WORLD_REWARD_BUNDLE,
     DEFAULT_WORLD_ARCHETYPE,
     STARTER_BIOME_SLOTS,
     STARTER_WORLD_REWARD_POOL,
+    WORLD_DAILY_SPIRIT_TOKEN,
     WORLD_ARCHETYPES,
     WORLD_LAYER_ORDER,
     WORLD_FOCUS_OPTIONS,
     build_starter_world_preview,
+    build_base_resource_refund,
     build_world_daily_income,
     ensure_world_state,
     evaluate_world_creation,
@@ -32,7 +35,10 @@ from handlers.alc_core import (
     get_world_daily_income,
     get_world_support_cost,
     get_world_support_level,
+    get_world_creation_penalty_percent,
+    get_biome_slot_options,
     has_legacy_world_layout,
+    is_tutorial_biome,
     is_world_overloaded,
     get_or_create_player,
     resolve_world_archetype,
@@ -46,8 +52,13 @@ router = Router()
 universe_focus_modes: dict[int, str | None] = {}
 universe_biome_drafts: dict[int, dict[str, str]] = {}
 
-ALCHEMY_ALPHA_VERSION = "0.9.0.1"
+ALCHEMY_ALPHA_VERSION = "0.9.0.2"
 ALCHEMY_CHANGELOG = [
+    ("0.9.0.2", [
+        "Первый биом снова стал учебным микробиомом: ресурсы на него выдаются заранее, он строится без риска и закрывает только вводный этап базы.",
+        "После учебного микробиома игрок получает нормальный стартовый набор под раннюю игру, а со второго биома возвращается риск БАМММ с честным возвратом вложений.",
+        "Пассивный доход разведен по ролям заново: учебный микробиом приводит 1 случайного духа в сутки, а обычные биомы снова дают разные бонусы и ресурсы по своему типу.",
+    ]),
     ("0.9.0.1", [
         "Старые игроки больше не застревают в аварийной заглушке: при открытии 🌍 они сразу входят в обычную схему создания первого биома.",
         "Текст Модуля Вселенная переписан под новую миграцию: прямо сказано, что старые постройки и ресурсы сохранены, а дальше мир развивается по тем же правилам, что и у новичков.",
@@ -210,6 +221,11 @@ def draft_is_complete(draft: dict[str, str]) -> bool:
     return all(bool(draft.get(layer_id)) for layer_id in WORLD_LAYER_ORDER)
 
 
+def get_layer_options_for_player(player: dict, layer_id: str) -> dict[str, dict]:
+    worlds, _, _ = ensure_world_state(player)
+    return get_biome_slot_options(layer_id, tutorial_only=not bool(worlds))
+
+
 def build_draft_cost(draft: dict[str, str], focus_id: str | None = None) -> dict[str, int]:
     total: dict[str, int] = {}
     for layer_id in WORLD_LAYER_ORDER:
@@ -235,7 +251,13 @@ def build_draft_cost_lines(inventory: dict, cost: dict[str, int]) -> list[str]:
 
 
 def build_daily_income_lines(income: dict[str, int]) -> list[str]:
-    return [f"• {ELEMENTS.get(item_id, item_id)} x{amount}/день" for item_id, amount in income.items()]
+    lines: list[str] = []
+    for item_id, amount in income.items():
+        if item_id == WORLD_DAILY_SPIRIT_TOKEN:
+            lines.append(f"• Случайный дух x{amount}/день")
+        else:
+            lines.append(f"• {ELEMENTS.get(item_id, item_id)} x{amount}/день")
+    return lines
 
 
 def can_activate_base_from_universe(player: dict) -> bool:
@@ -294,7 +316,10 @@ def build_universe_intro_text(player: dict) -> str:
         for item in worlds[:4]:
             focus_suffix = f" + {item.get('focus_label')}" if item.get("focus_label") else ""
             daily_income = dict(item.get("daily_income", {}))
-            daily_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}/день" for item_id, amount in daily_income.items()) or "без ежедневного дохода"
+            if daily_income.get(WORLD_DAILY_SPIRIT_TOKEN):
+                daily_label = "1 случайный дух/день"
+            else:
+                daily_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}/день" for item_id, amount in daily_income.items()) or "без ежедневного дохода"
             archetype_lines.append(
                 f"• {item.get('name', 'Безымянный биом')} [{item.get('role', 'универсальный')}{focus_suffix}]"
                 + f" -> размер {int(item.get('capacity', 0) or 0)}, нагрузка {int(item.get('strain_cost', 0) or 0)}, опора {int(item.get('support_bonus', 0) or 0):+d}, доход {daily_label}"
@@ -329,7 +354,7 @@ def build_universe_intro_text(player: dict) -> str:
     selected_lines = []
     for layer_id in WORLD_LAYER_ORDER:
         option_id = draft.get(layer_id, "")
-        layer_options = STARTER_BIOME_SLOTS[layer_id]
+        layer_options = get_layer_options_for_player(player, layer_id)
         if option_id in layer_options:
             selected_lines.append(f"• {layer_names[layer_id]}: {layer_options[option_id]['label']}")
         else:
@@ -346,10 +371,10 @@ def build_universe_intro_text(player: dict) -> str:
     lines = [
         "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**",
         "",
-        "Биом здесь строится не как здание, а как кусок мира.",
+        "Первый мир здесь учебный: это микробиом, который просто запускает базу и открывает первые уровни зданий.",
         "Сначала собираешь чертёж по слоям: основа -> среда -> энергия -> жизнь.",
-        "Каждый слой требует свою пачку ресурсов. Итог заранее не подписан: роль и размер биома проявятся только после стабилизации.",
-        "Чем тяжелее и богаче слои, тем крупнее биом. Крупный биом даёт больше места под здания и больше ежедневного дохода.",
+        "Ресурсы на учебный микробиом уже выданы. Он не взрывается и не требует угадывать совместимость.",
+        "После него начнётся обычная игра: новые биомы уже собираются под задачу, могут конфликтовать и при плохой сборке бахают.",
         "",
         "Текущий чертёж:",
         *selected_lines,
@@ -394,7 +419,7 @@ def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
             "life": "Жизнь",
         }
         for layer_id in WORLD_LAYER_ORDER:
-            for option_id, meta in STARTER_BIOME_SLOTS[layer_id].items():
+            for option_id, meta in get_layer_options_for_player(player, layer_id).items():
                 count_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in meta.get("cost", {}).items())
                 selected = draft.get(layer_id) == option_id
                 marker = "✅" if selected else "▫️"
@@ -831,13 +856,13 @@ async def universe_focus_select(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("universe_pick:"))
 async def universe_pick_layer(callback: types.CallbackQuery):
     _, layer_id, option_id = callback.data.split(":")
-    if layer_id not in STARTER_BIOME_SLOTS or option_id not in STARTER_BIOME_SLOTS[layer_id]:
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    if layer_id not in STARTER_BIOME_SLOTS or option_id not in get_layer_options_for_player(player, layer_id):
         return await callback.answer("Неизвестный слой биома.", show_alert=True)
 
     draft = get_universe_draft(callback.from_user.id)
     draft[layer_id] = option_id
     universe_biome_drafts[callback.from_user.id] = draft
-    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     await callback.message.edit_text(
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
@@ -867,24 +892,70 @@ async def universe_create(callback: types.CallbackQuery):
         return await callback.answer("Фокус выбран, но нужный предмет уже закончился. Переключи режим или докрафти его.", show_alert=True)
 
     attempt_number = len(worlds) + 1
-    _, capacity, absurdity = evaluate_world_creation(
+    success, capacity, absurdity = evaluate_world_creation(
         player,
         draft,
         focus_id=focus_id,
     )
-    for item_id, amount in total_cost.items():
-        inventory[item_id] -= amount
-        if inventory[item_id] <= 0:
-            del inventory[item_id]
-
     name, description, _, _, humor = build_starter_world_preview(
         draft,
         focus_id=focus_id,
     )
     archetype = WORLD_ARCHETYPES.get(str(resolve_world_archetype(draft).get("role") or ""), DEFAULT_WORLD_ARCHETYPE)
+    support_bonus = archetype["support_base"] + max(0, capacity // 6) + (focus_meta["support_bonus"] if focus_meta else 0)
+    strain_cost = max(1, archetype["strain_base"] + max(0, capacity // 5) + (focus_meta["strain_delta"] if focus_meta else 0))
+
+    for item_id, amount in total_cost.items():
+        inventory[item_id] -= amount
+        if inventory[item_id] <= 0:
+            del inventory[item_id]
+
+    if not success:
+        penalty_percent = get_world_creation_penalty_percent(attempt_number)
+        refund_ratio = max(0.0, float(100 - penalty_percent) / 100.0)
+        refund_cost = build_base_resource_refund(total_cost, ratio=refund_ratio)
+        for item_id, amount in refund_cost.items():
+            inventory[item_id] = inventory.get(item_id, 0) + amount
+
+        await db.alchemy_players.update_one(
+            {"user_id": callback.from_user.id},
+            {
+                "$set": {
+                    "inventory": inventory,
+                    "world_failures": int(player.get("world_failures", 0) or 0) + 1,
+                    "world_tutorial": {"active": True, "created": bool(worlds)},
+                }
+            },
+        )
+
+        refund_lines = [
+            f"• {ELEMENTS.get(item_id, item_id)} x{amount}"
+            for item_id, amount in sorted(refund_cost.items())
+            if amount > 0
+        ] or ["• Ничего спасти не удалось."]
+        if attempt_number == 2:
+            failure_note = "Это первый настоящий риск после учебного микробиома, поэтому мир выплюнул обратно всю стоимость в базовых ресурсах."
+        else:
+            failure_note = f"Мир откусил **{penalty_percent}%** вложенного и вернул остальное в базовых ресурсах."
+
+        await callback.message.edit_text(
+            "💥 **БИОМ НЕ УДЕРЖАЛСЯ**\n\n"
+            f"Попытка #{attempt_number} сорвалась на сочетании **{name}**.\n"
+            f"Абсурдность сборки: `{absurdity}`. Нагрузка проекта: `{strain_cost}`.\n\n"
+            f"{failure_note}\n\n"
+            "Возврат:\n"
+            + "\n".join(refund_lines),
+            reply_markup=build_universe_keyboard(await get_or_create_player(callback.from_user.id, callback.from_user.first_name)),
+            parse_mode="Markdown",
+        )
+        return await callback.answer("Биом бахнул.")
+
     reward_item = random.choice(STARTER_WORLD_REWARD_POOL) if attempt_number == 1 else None
     if reward_item:
         inventory[reward_item] = inventory.get(reward_item, 0) + 1
+    if attempt_number == 1:
+        for item_id, amount in STARTER_WORLD_REWARD_BUNDLE.items():
+            inventory[item_id] = inventory.get(item_id, 0) + amount
 
     worlds.append(
         {
@@ -894,14 +965,14 @@ async def universe_create(callback: types.CallbackQuery):
             "tier": 1,
             "capacity": capacity,
             "absurdity": absurdity,
-            "support_bonus": archetype["support_base"] + max(0, capacity // 6) + (focus_meta["support_bonus"] if focus_meta else 0),
-            "strain_cost": max(1, archetype["strain_base"] + max(0, capacity // 5) + (focus_meta["strain_delta"] if focus_meta else 0)),
+            "support_bonus": support_bonus,
+            "strain_cost": strain_cost,
             "status": "stable",
             "humor": humor,
             "archetype": archetype["id"],
             "focus": focus_id or "",
             "focus_label": focus_meta["label"] if focus_meta else "",
-            "daily_income": build_world_daily_income(archetype, capacity),
+            "daily_income": {WORLD_DAILY_SPIRIT_TOKEN: 1} if attempt_number == 1 and is_tutorial_biome(draft) else build_world_daily_income(archetype, capacity),
             "slots": draft,
             "role": archetype["role"],
             "starter": attempt_number == 1,
@@ -930,8 +1001,14 @@ async def universe_create(callback: types.CallbackQuery):
     success_text += f"Создано: **{name}**\n{description}\n\n"
     if reward_item:
         success_text += f"Награда за первый успешный мир: **{ELEMENTS.get(reward_item, reward_item)} x1**\n"
+    if attempt_number == 1:
+        reward_lines = [
+            f"• {ELEMENTS.get(item_id, item_id)} x{amount}"
+            for item_id, amount in STARTER_WORLD_REWARD_BUNDLE.items()
+        ]
+        success_text += "Стартовый набор после микробиома:\n" + "\n".join(reward_lines) + "\n"
     success_text += (
-        "Теперь у тебя есть опора под ногами: можно расширять базу и собирать следующие биомы под нужные задачи."
+        "Учебный этап закрыт: теперь у тебя есть мир, стартовый запас под стройку и свобода пробовать обычную игру."
         if attempt_number == 1
         else "Мир стал шире. Подбирай следующий биом уже под конкретную цель: стройка, производство, добыча или походы."
     )

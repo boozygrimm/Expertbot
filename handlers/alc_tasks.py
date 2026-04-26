@@ -5,7 +5,7 @@ from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot
 from database import db
-from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots, get_world_daily_income, get_world_effects
+from handlers.alc_core import STORAGE_CAPACITY, WORLD_DAILY_SPIRIT_TOKEN, STARTER_WORLD_REWARD_POOL, get_stamina_ready_at, get_used_slots, get_world_daily_income, get_world_effects
 from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.alc_heritage import get_active_legacy_bonus_map
@@ -309,6 +309,15 @@ async def process_heritage_income():
 
         world_income = get_world_daily_income(player)
         for item_id, amount in world_income.items():
+            if item_id == WORLD_DAILY_SPIRIT_TOKEN:
+                for _ in range(max(0, int(amount or 0))):
+                    spirit_id = random.choice(STARTER_WORLD_REWARD_POOL)
+                    if spirit_id not in inventory and get_used_slots(inventory) >= max_slots:
+                        world_skipped_lines.append(f"{ELEMENTS.get(spirit_id, spirit_id)} x1")
+                        continue
+                    inventory[spirit_id] = inventory.get(spirit_id, 0) + 1
+                    world_granted_lines.append(f"{ELEMENTS.get(spirit_id, spirit_id)} x1")
+                continue
             if item_id not in inventory and get_used_slots(inventory) >= max_slots:
                 world_skipped_lines.append(f"{ELEMENTS.get(item_id, item_id)} x{amount}")
                 continue

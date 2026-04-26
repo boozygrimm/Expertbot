@@ -13,6 +13,7 @@ from ai_summaries import collect_chunk_summaries, split_text_into_chunks
 from app_setup import create_scheduler, handle_healthcheck, set_commands
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from handlers.alc_base import (
+    build_draft_cost,
     can_activate_base_from_universe,
     can_reset_legacy_worlds,
     build_barracks_status,
@@ -30,12 +31,19 @@ from handlers.alc_base import (
     get_headquarters_icon,
 )
 from handlers.alc_core import (
+    STARTER_WORLD_RESOURCE_GRANT,
+    STARTER_WORLD_REWARD_BUNDLE,
+    WORLD_DAILY_SPIRIT_TOKEN,
+    build_base_resource_refund,
     ensure_legacy_base_crystal,
+    evaluate_world_creation,
     format_duration,
     get_alchemy_cooldown,
     get_heritage_slots,
     get_used_slots,
+    get_world_daily_income,
     get_world_effects,
+    is_tutorial_biome,
 )
 from handlers.alc_fighters import (
     FATIGUE_RECOVERY_SECONDS,
@@ -254,6 +262,89 @@ class AlchemyCoreTests(unittest.TestCase):
 
 
 class BaseStatusTests(unittest.TestCase):
+    def test_starter_world_grant_covers_tutorial_microbiome_cost(self):
+        draft = {
+            "foundation": "tutorial_seed",
+            "medium": "tutorial_broth",
+            "energy": "tutorial_pulse",
+            "life": "tutorial_spore",
+        }
+        self.assertTrue(is_tutorial_biome(draft))
+        cost = build_draft_cost(draft, None)
+        self.assertTrue(can_pay_cost(STARTER_WORLD_RESOURCE_GRANT, cost))
+
+    def test_starter_world_reward_bundle_guarantees_storage_materials(self):
+        self.assertGreaterEqual(STARTER_WORLD_REWARD_BUNDLE.get("stone", 0), 2)
+        self.assertGreaterEqual(STARTER_WORLD_REWARD_BUNDLE.get("sand", 0), 2)
+
+    def test_full_refund_converts_failed_biome_cost_to_basic_resources(self):
+        refund = build_base_resource_refund({"steam": 1, "moss": 1}, ratio=1.0)
+        self.assertEqual(refund["f"], 1)
+        self.assertEqual(refund["energy"], 1)
+        self.assertGreaterEqual(refund["w"], 4)
+        self.assertNotIn("steam", refund)
+        self.assertNotIn("moss", refund)
+
+    @patch("handlers.alc_core.random.randint", return_value=1)
+    def test_second_biome_can_fail_when_layers_pull_in_different_directions(self, _randint):
+        success, capacity, absurdity = evaluate_world_creation(
+            {
+                "worlds": [
+                    {
+                        "name": "Микробиом",
+                        "capacity": 4,
+                        "role": "опора",
+                        "support_bonus": 2,
+                        "strain_cost": 1,
+                        "starter": True,
+                    }
+                ]
+            },
+            {
+                "foundation": "metal_frame",
+                "medium": "swamp_basin",
+                "energy": "ember_grid",
+                "life": "spirit_garden",
+            },
+        )
+        self.assertFalse(success)
+        self.assertGreaterEqual(capacity, 1)
+        self.assertGreaterEqual(absurdity, 0)
+
+    def test_tutorial_world_grants_one_random_spirit_per_day(self):
+        income = get_world_daily_income(
+            {
+                "worlds": [
+                    {
+                        "name": "Учебный микробиом",
+                        "capacity": 4,
+                        "role": "опора",
+                        "daily_income": {WORLD_DAILY_SPIRIT_TOKEN: 1},
+                        "starter": True,
+                    }
+                ]
+            }
+        )
+        self.assertEqual(income, {WORLD_DAILY_SPIRIT_TOKEN: 1})
+
+    def test_regular_world_keeps_role_based_daily_income(self):
+        income = get_world_daily_income(
+            {
+                "worlds": [
+                    {
+                        "name": "Индустриальный пояс",
+                        "capacity": 10,
+                        "role": "промышленный",
+                        "daily_income": {},
+                        "starter": False,
+                    }
+                ]
+            }
+        )
+        self.assertEqual(income["metal"], 2)
+        self.assertEqual(income["glass"], 2)
+        self.assertEqual(income["energy"], 2)
+
     def test_can_activate_base_from_universe_only_for_legacy_profiles_without_active_base(self):
         self.assertTrue(can_activate_base_from_universe({"tutorial_step": 1, "inventory": {}, "worlds": []}))
         self.assertFalse(can_activate_base_from_universe({"tutorial_step": 0, "inventory": {}, "worlds": []}))

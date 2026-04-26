@@ -20,9 +20,36 @@ COOLDOWN = 4 * 3600 # 4 часа
 STORAGE_CAPACITY = {0: 20, 1: 50, 2: 150, 3: 350}
 STARTER_DISCOVERIES = ["lava", "stone", "steam", "swamp", "life", "algae", "moss", "bacteria"]
 STARTER_WORLD_REWARD_POOL = ["spirit_f", "spirit_w", "spirit_e", "spirit_a"]
+WORLD_DAILY_SPIRIT_TOKEN = "random_spirit"
 WORLD_LAYER_ORDER = ("foundation", "medium", "energy", "life")
+WORLD_BASE_RESOURCE_ITEMS = {"w", "f", "e", "a", "energy", "stone", "wood"}
+STARTER_WORLD_RESOURCE_GRANT = {
+    "stone": 2,
+    "wood": 2,
+    "swamp": 1,
+    "algae": 1,
+    "steam": 1,
+    "energy": 1,
+    "life": 1,
+    "moss": 1,
+}
+STARTER_WORLD_REWARD_BUNDLE = {
+    "pack_m": 1,
+    "stone": 4,
+    "sand": 4,
+    "wood": 6,
+    "energy": 2,
+}
 STARTER_BIOME_SLOTS = {
     "foundation": {
+        "tutorial_seed": {
+            "label": "🫧 Каменное зерно",
+            "size": 1,
+            "cost": {"stone": 2, "wood": 2},
+            "affinity": "опора",
+            "hint": "учебная опора для первого микробиома",
+            "tutorial": True,
+        },
         "stone_root": {
             "label": "🪨 Каменный корень",
             "size": 3,
@@ -46,6 +73,14 @@ STARTER_BIOME_SLOTS = {
         },
     },
     "medium": {
+        "tutorial_broth": {
+            "label": "🫧 Болотный бульон",
+            "size": 1,
+            "cost": {"swamp": 1, "algae": 1},
+            "affinity": "опора",
+            "hint": "учебная среда, где жизнь может закрепиться",
+            "tutorial": True,
+        },
         "swamp_basin": {
             "label": "🐸 Болотный бассейн",
             "size": 3,
@@ -69,6 +104,14 @@ STARTER_BIOME_SLOTS = {
         },
     },
     "energy": {
+        "tutorial_pulse": {
+            "label": "🫧 Паровой импульс",
+            "size": 1,
+            "cost": {"steam": 1, "energy": 1},
+            "affinity": "опора",
+            "hint": "учебный толчок для первого контура мира",
+            "tutorial": True,
+        },
         "ember_grid": {
             "label": "🔥 Жаровая сеть",
             "size": 2,
@@ -92,6 +135,14 @@ STARTER_BIOME_SLOTS = {
         },
     },
     "life": {
+        "tutorial_spore": {
+            "label": "🫧 Моховая спора",
+            "size": 1,
+            "cost": {"moss": 1, "life": 1},
+            "affinity": "опора",
+            "hint": "учебная жизнь, которая просто должна удержаться",
+            "tutorial": True,
+        },
         "moss_bloom": {
             "label": "🌿 Моховое цветение",
             "size": 3,
@@ -588,7 +639,25 @@ def resolve_legacy_world_role(slots: dict[str, str]) -> str:
     return legacy_map.get((matter, medium, life), "универсальный")
 
 
+def is_tutorial_biome(slots: dict[str, str]) -> bool:
+    for layer_id in WORLD_LAYER_ORDER:
+        option_id = str(slots.get(layer_id, ""))
+        option = STARTER_BIOME_SLOTS.get(layer_id, {}).get(option_id)
+        if not option or not bool(option.get("tutorial", False)):
+            return False
+    return True
+
+
+def get_biome_slot_options(layer_id: str, tutorial_only: bool) -> dict[str, dict]:
+    options = STARTER_BIOME_SLOTS.get(layer_id, {})
+    if tutorial_only:
+        return {option_id: meta for option_id, meta in options.items() if bool(meta.get("tutorial", False))}
+    return {option_id: meta for option_id, meta in options.items() if not bool(meta.get("tutorial", False))}
+
+
 def build_world_daily_income(archetype: dict, capacity: int) -> dict[str, int]:
+    if not archetype:
+        return {}
     capacity = max(1, int(capacity or 0))
     scale = max(1, capacity // 4)
     income: dict[str, int] = {}
@@ -606,6 +675,17 @@ def build_starter_world_preview(slots: dict[str, str], focus_id: str | None = No
     focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
     capacity = foundation["size"] + medium["size"] + energy["size"] + life["size"] + (focus["capacity_bonus"] if focus else 0)
     absurdity = max(0, 12 - capacity)
+    if is_tutorial_biome(slots):
+        name = "🫧 Учебный микробиом"
+        humor = "держится на честном слове и стартовом энтузиазме"
+        description = (
+            f"{foundation['label']}, {medium['label']}, {energy['label']} и {life['label']}."
+            " Это учебный микробиом: он нужен, чтобы запустить мир и открыть первые здания."
+            + (f" Фокус: {focus['label']}." if focus else "")
+            + f" Размер биома: {capacity}. Ежедневно приводит: 1 случайного духа."
+        )
+        return name, description, capacity, absurdity, humor
+
     name = archetype["name"]
     daily_income = build_world_daily_income(archetype, capacity)
     daily_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in daily_income.items())
@@ -623,9 +703,60 @@ def build_starter_world_preview(slots: dict[str, str], focus_id: str | None = No
     return name, description, capacity, absurdity, humor
 
 
+def get_world_creation_penalty_percent(attempt_number: int) -> int:
+    if attempt_number <= 2:
+        return 0
+    return min(15, (attempt_number - 2) * 5)
+
+
+def build_base_resource_refund(cost: dict[str, int], ratio: float = 1.0) -> dict[str, int]:
+    recipe_map = {result: ingredients for ingredients, result in RECIPES.items()}
+
+    def expand_item(item_id: str, amount: int, trail: set[str] | None = None) -> dict[str, int]:
+        trail = trail or set()
+        if item_id in WORLD_BASE_RESOURCE_ITEMS:
+            return {item_id: amount}
+        if item_id in trail or item_id not in recipe_map:
+            return {item_id: amount}
+        left, right = recipe_map[item_id]
+        refund: dict[str, int] = {}
+        for child_id in (left, right):
+            for base_id, base_amount in expand_item(child_id, amount, trail | {item_id}).items():
+                refund[base_id] = refund.get(base_id, 0) + base_amount
+        return refund
+
+    refund: dict[str, int] = {}
+    for item_id, amount in cost.items():
+        for base_id, base_amount in expand_item(item_id, int(amount or 0)).items():
+            scaled = int(base_amount * ratio)
+            if scaled > 0:
+                refund[base_id] = refund.get(base_id, 0) + scaled
+    return refund
+
+
 def evaluate_world_creation(player: dict, slots: dict[str, str], focus_id: str | None = None) -> tuple[bool, int, int]:
+    worlds, _, _ = ensure_world_state(player)
+    attempt_number = len(worlds) + 1
     _, _, capacity, absurdity, _ = build_starter_world_preview(slots, focus_id=focus_id)
-    return True, capacity, absurdity
+    if attempt_number == 1 or is_tutorial_biome(slots):
+        return True, capacity, absurdity
+
+    affinity_scores: dict[str, int] = {}
+    for layer_id in WORLD_LAYER_ORDER:
+        option = STARTER_BIOME_SLOTS[layer_id][slots[layer_id]]
+        affinity = str(option.get("affinity") or "универсальный")
+        affinity_scores[affinity] = affinity_scores.get(affinity, 0) + int(option.get("size", 0) or 0)
+
+    dominant = max(affinity_scores.values()) if affinity_scores else 0
+    total = sum(affinity_scores.values())
+    tension = max(0, total - dominant)
+    diversity = max(0, len(affinity_scores) - 1)
+    focus_risk = 5 if focus_id else 0
+    future_overload = max(0, get_world_strain(player) + tension - get_world_stability_limit(player))
+    fail_chance = min(85, tension * 10 + diversity * 8 + future_overload * 15 + focus_risk)
+    if fail_chance <= 0:
+        return True, capacity, absurdity
+    return random.randint(1, 100) > fail_chance, capacity, absurdity
 
 async def get_or_create_player(user_id: int, user_name: str):
     """Инициализация профиля."""
@@ -845,6 +976,8 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
         "stone": 2,
         "wood": 2,
     }
+    for item_id, amount in STARTER_WORLD_RESOURCE_GRANT.items():
+        starters[item_id] = starters.get(item_id, 0) + amount
     for item_id, amount in starters.items():
         inventory[item_id] = inventory.get(item_id, 0) + amount
 
@@ -869,7 +1002,8 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
         "• Базовые стихии по 10\n"
         "• 🎇 Энергия x2\n"
         "• 🪨 Камень x2\n"
-        "• 🪵 Древесина x2\n\n"
+        "• 🪵 Древесина x2\n"
+        "• 🫧 Заготовки под учебный микробиом\n\n"
         "Я еще подсунул тебе несколько стартовых рецептов: Лава, Камень, Пар, Болото, Жизнь, Водоросли, Мох и Бактерия."
         " Открой /base, активируй Кристалл Базы и начни собирать первый биом слоями."
     )
