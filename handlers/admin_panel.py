@@ -1,4 +1,5 @@
 import re
+import logging
 from collections import OrderedDict
 
 from aiogram import BaseMiddleware, F, Router, types
@@ -12,6 +13,7 @@ from config import ADMIN_ID, get_msk_now
 from database import db
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 FEATURE_PANEL_SETTING = "feature_panel"
 
@@ -462,8 +464,8 @@ async def open_feature_panel(message: types.Message, bot, state: FSMContext):
     await render_feature_panel(message)
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to delete panel command message in chat %s: %s", message.chat.id, e)
 
 
 @router.callback_query(F.data.startswith("feat:toggle:"))

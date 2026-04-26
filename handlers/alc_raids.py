@@ -2,6 +2,7 @@ import random
 import time
 import uuid
 import asyncio
+import logging
 from copy import deepcopy
 
 from aiogram import F, Router, types
@@ -33,6 +34,7 @@ from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.pole_chudes import delete_after_delay
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 FORT_SLOTS = {1: ["moat"], 2: ["moat", "catapult"], 3: ["moat", "catapult", "aura"]}
 TRAP_LABELS = {"moat": "Ров", "catapult": "Катапульта", "aura": "Распылитель"}
@@ -536,8 +538,8 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
 async def send_dm_report(user_id: int, text: str):
     try:
         await bot.send_message(user_id, text, parse_mode="Markdown", reply_markup=build_close_markup())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to send raid DM report to user %s: %s", user_id, e)
 
 
 async def process_random_fort_events():

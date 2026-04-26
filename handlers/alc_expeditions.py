@@ -1,6 +1,7 @@
 import random
 import time
 import uuid
+import logging
 
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
@@ -30,6 +31,7 @@ from handlers.alc_heritage import try_grant_random_lore_fragment
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 MAX_LOGS = 7
 VISIBLE_LOGS = 5
@@ -893,8 +895,8 @@ async def notify_arrived_expeditions():
                 last_notified = True
                 try:
                     await bot.send_message(player["user_id"], f"📻 Экспедиция #{expedition['id'][:4]} вернулась. Открой /base и встреть отряд.")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to notify arrived expedition for user %s: %s", player["user_id"], e)
         if last_notified:
             await db.alchemy_players.update_one(
                 {"user_id": player["user_id"]},
