@@ -40,8 +40,13 @@ from handlers.alc_fighters import can_pay_cost, spend_cost
 router = Router()
 universe_focus_modes: dict[int, str | None] = {}
 
-ALCHEMY_ALPHA_VERSION = "0.9.0.0"
+ALCHEMY_ALPHA_VERSION = "0.9.0.1"
 ALCHEMY_CHANGELOG = [
+    ("0.9.0.1", [
+        "Старые игроки больше не застревают в аварийной заглушке: при открытии 🌍 они сразу входят в обычную схему создания первого биома.",
+        "Текст Модуля Вселенная переписан под новую миграцию: прямо сказано, что старые постройки и ресурсы сохранены, а дальше мир развивается по тем же правилам, что и у новичков.",
+        "Стройка стала суше по интерфейсу: вместо фраз вроде 'апгрейд доступен' и 'всё построено' теперь используются только статусные эмодзи с короткой легендой сверху.",
+    ]),
     ("0.9.0.0", [
         "Запущен Модуль Вселенная: старт алхимии теперь ведет через кристалл базы, создание первого микробиома и отдельное окно мира.",
         "Биомы стали настоящей системой прогрессии: у мира появились вместимость, нагрузка на каркас, укрепление и безопасная миграция старых профилей.",
@@ -171,9 +176,7 @@ def build_stamina_status(player: dict) -> str:
 
 def build_world_status(player: dict) -> str:
     inventory = player.get("inventory", {})
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return "🌍 Мир: 🟡 здания зависли в воздухе и угрожающе потрескивают, но пока держатся"
+    worlds, _, _ = ensure_world_state(player)
     if inventory.get("active_base", 0) <= 0:
         return "🌍 Мир: 🔴 пустота шипит, нужен кристалл базы"
     if not worlds:
@@ -193,13 +196,7 @@ def build_world_status(player: dict) -> str:
 
 def build_universe_intro_text(player: dict) -> str:
     inventory = player.get("inventory", {})
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return (
-            "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
-            "Старый профиль пережил обновление без конфискаций. Здания висят в пустоте, все вокруг тревожно потрескивает,"
-            " но я ничего не отбирал. Позже можно будет аккуратно перевести этот хаос на нормальные биомы."
-        )
+    worlds, _, _ = ensure_world_state(player)
     if inventory.get("active_base", 0) <= 0:
         return (
             "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
@@ -274,6 +271,7 @@ def build_universe_intro_text(player: dict) -> str:
         "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**",
         "",
         "На стене кармана мигает надпись: `мир уничтожен, требуется создатель`.",
+        "Старые постройки и ресурсы уже сохранены. Теперь просто собери первый биом и дальше мир пойдёт по той же схеме, что и у новичков.",
         "Первый микробиом всегда стабилизируется успешно. Второй, если бахнет, бахнет без штрафа. Дальше будет уже смешнее.",
         "Позднее у биомов открывается `фокус`: он тратит более редкий предмет, но делает мир заметно полезнее под конкретный стиль игры.",
         "",
@@ -291,12 +289,12 @@ def build_universe_intro_text(player: dict) -> str:
 
 def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     inventory = player.get("inventory", {})
-    worlds, is_legacy, _ = ensure_world_state(player)
+    worlds, _, _ = ensure_world_state(player)
     builder = InlineKeyboardBuilder()
     advanced_focus_unlocked = len(worlds) >= 2 or get_world_support_level(player) >= 1
     current_focus = universe_focus_modes.get(player.get("user_id"), None)
 
-    if not is_legacy and inventory.get("active_base", 0) > 0 and not worlds:
+    if inventory.get("active_base", 0) > 0 and not worlds:
         for matter_id in STARTER_BIOME_SLOTS["matter"]:
             for medium_id in STARTER_BIOME_SLOTS["medium"]:
                 for life_id in STARTER_BIOME_SLOTS["life"]:
@@ -312,7 +310,7 @@ def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
                         callback_data=f"universe_create:{matter_id}:{medium_id}:{life_id}",
                     )
         builder.button(text="⚗️ В Лабораторию", callback_data="lab_open")
-    elif not is_legacy and inventory.get("active_base", 0) > 0:
+    elif inventory.get("active_base", 0) > 0:
         if advanced_focus_unlocked:
             focus_label = WORLD_FOCUS_OPTIONS.get(current_focus or "", {}).get("label", "без фокуса")
             builder.button(text=f"🎯 Фокус нового биома: {focus_label}", callback_data="universe_focus:none")
@@ -687,9 +685,7 @@ async def universe_open(callback: types.CallbackQuery):
 async def universe_focus_select(callback: types.CallbackQuery):
     focus_id = callback.data.split(":")[1]
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return await callback.answer("Старые профили пока живут без переключателя фокуса.", show_alert=True)
+    worlds, _, _ = ensure_world_state(player)
     if not (len(worlds) >= 2 or get_world_support_level(player) >= 1):
         return await callback.answer("Фокус биома откроется, когда мир чуть повзрослеет.", show_alert=True)
     if focus_id == "none":
@@ -713,9 +709,7 @@ async def universe_focus_select(callback: types.CallbackQuery):
 async def universe_create(callback: types.CallbackQuery):
     matter_id, medium_id, life_id = callback.data.split(":")[1:]
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return await callback.answer("Старые миры пока только угрожающе потрескивают. Этот поток для новых профилей.", show_alert=True)
+    worlds, _, _ = ensure_world_state(player)
 
     inventory = player.get("inventory", {})
     required_items = [matter_id, medium_id, life_id]
@@ -847,9 +841,7 @@ async def universe_create(callback: types.CallbackQuery):
 @router.callback_query(F.data == "universe_fortify")
 async def universe_fortify(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return await callback.answer("Старые профили пока не укрепляются этим способом.", show_alert=True)
+    worlds, _, _ = ensure_world_state(player)
     if not worlds:
         return await callback.answer("Сначала нужен хотя бы один биом.", show_alert=True)
 

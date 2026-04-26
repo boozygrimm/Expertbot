@@ -322,10 +322,10 @@ class BaseStatusTests(unittest.TestCase):
         self.assertIn("🎒 Склад: 🟢 активаций 1", text)
         self.assertIn("🔥 Тигель:", text)
 
-    def test_build_world_status_handles_empty_legacy_and_real_world(self):
+    def test_build_world_status_handles_empty_and_real_world(self):
         self.assertIn("нужен кристалл базы", build_world_status({"inventory": {}, "buildings": {}}))
         self.assertIn(
-            "угрожающе потрескивают",
+            "собери первый микробиом",
             build_world_status({"inventory": {"active_base": 1}, "buildings": {"lab": 1}, "tutorial_step": 3}),
         )
         self.assertIn(
@@ -501,7 +501,7 @@ class BuildingLogicTests(unittest.TestCase):
             "buildings": {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
         }
         status, can_upgrade, is_maxed = get_building_status("storage", player_ready)
-        self.assertEqual(status, "🔵 апгрейд доступен")
+        self.assertEqual(status, "🔵")
         self.assertTrue(can_upgrade)
         self.assertFalse(is_maxed)
 
@@ -510,7 +510,7 @@ class BuildingLogicTests(unittest.TestCase):
             "buildings": {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
         }
         status, can_upgrade, is_maxed = get_building_status("storage", player_blocked)
-        self.assertEqual(status, "🔴 апгрейд недоступен")
+        self.assertEqual(status, "🔴")
         self.assertFalse(can_upgrade)
         self.assertFalse(is_maxed)
 
@@ -519,7 +519,7 @@ class BuildingLogicTests(unittest.TestCase):
             "buildings": {"storage": 3, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
         }
         status, can_upgrade, is_maxed = get_building_status("storage", player_maxed)
-        self.assertEqual(status, "🟢 всё построено")
+        self.assertEqual(status, "🟢")
         self.assertFalse(can_upgrade)
         self.assertTrue(is_maxed)
 
@@ -560,7 +560,7 @@ class BuildingLogicTests(unittest.TestCase):
             ],
         }
         status, can_upgrade, is_maxed = get_building_status("altar", player_blocked)
-        self.assertEqual(status, "🟡 упёрлось в мир")
+        self.assertEqual(status, "🟡")
         self.assertFalse(can_upgrade)
         self.assertFalse(is_maxed)
 
@@ -572,7 +572,7 @@ class BuildingLogicTests(unittest.TestCase):
             ],
         }
         status, can_upgrade, is_maxed = get_building_status("altar", player_ready)
-        self.assertEqual(status, "🔵 апгрейд доступен")
+        self.assertEqual(status, "🔵")
         self.assertTrue(can_upgrade)
         self.assertFalse(is_maxed)
 
@@ -586,7 +586,7 @@ class BuildingLogicTests(unittest.TestCase):
             ],
         }
         status, can_upgrade, _ = get_building_status("altar", player_blocked)
-        self.assertEqual(status, "🟡 упёрлось в мир")
+        self.assertEqual(status, "🟡")
         self.assertFalse(can_upgrade)
 
         player_ready = {
@@ -598,7 +598,7 @@ class BuildingLogicTests(unittest.TestCase):
             ],
         }
         status, can_upgrade, _ = get_building_status("altar", player_ready)
-        self.assertEqual(status, "🔵 апгрейд доступен")
+        self.assertEqual(status, "🔵")
         self.assertTrue(can_upgrade)
 
     def test_format_supply_report_handles_empty_and_deserters(self):

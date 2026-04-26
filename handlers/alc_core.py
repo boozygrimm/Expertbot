@@ -247,29 +247,14 @@ def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
         "active": bool(world_tutorial.get("active", False)),
         "created": bool(world_tutorial.get("created", False)),
     }
-    buildings = player.get("buildings", {})
-    inventory = player.get("inventory", {})
-    meaningful_buildings = {
-        key: max(0, int(value or 0))
-        for key, value in buildings.items()
-        if key != "heritage_center"
-    }
-    is_legacy = bool(
-        not normalized_worlds
-        and not normalized_tutorial["active"]
-        and (
-            inventory.get("active_base", 0) > 0
-            or any(level > 0 for level in meaningful_buildings.values())
-            or int(buildings.get("heritage_center", 1) or 1) > 1
-        )
-    )
+    # Второй элемент кортежа сохранён для совместимости со старыми вызовами,
+    # но отдельного legacy-режима для мира больше нет.
+    is_legacy = False
     return normalized_worlds, is_legacy, normalized_tutorial
 
 
 def get_world_capacity_total(player: dict) -> int:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return 999
+    worlds, _, _ = ensure_world_state(player)
     return sum(max(0, int(world.get("capacity", 0) or 0)) for world in worlds)
 
 
@@ -293,9 +278,7 @@ def get_world_support_level(player: dict) -> int:
 
 
 def get_world_strain(player: dict) -> int:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return 0
+    worlds, _, _ = ensure_world_state(player)
     strain = 0
     for world in worlds:
         strain += max(1, int(world.get("strain_cost", 0) or 0))
@@ -305,9 +288,7 @@ def get_world_strain(player: dict) -> int:
 
 
 def get_world_stability_limit(player: dict) -> int:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return 999
+    worlds, _, _ = ensure_world_state(player)
     buildings = player.get("buildings", {})
     support_bonus = sum(int(world.get("support_bonus", 0) or 0) for world in worlds)
     return 5 + get_world_support_level(player) * 2 + support_bonus + max(0, int(buildings.get("fort", 0) or 0)) + max(0, int(buildings.get("heritage_center", 1) or 1) - 1)
@@ -327,8 +308,8 @@ def get_world_support_cost(player: dict) -> dict[str, int]:
 
 
 def get_world_effects(player: dict) -> dict[str, float]:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy or not worlds:
+    worlds, _, _ = ensure_world_state(player)
+    if not worlds:
         return {}
 
     effects: dict[str, float] = {}
@@ -347,8 +328,8 @@ def get_world_effects(player: dict) -> dict[str, float]:
 
 
 def get_world_role_counts(player: dict) -> dict[str, int]:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy or not worlds:
+    worlds, _, _ = ensure_world_state(player)
+    if not worlds:
         return {}
 
     counts: dict[str, int] = {}
@@ -359,8 +340,8 @@ def get_world_role_counts(player: dict) -> dict[str, int]:
 
 
 def get_world_focus_counts(player: dict) -> dict[str, int]:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy or not worlds:
+    worlds, _, _ = ensure_world_state(player)
+    if not worlds:
         return {}
     counts: dict[str, int] = {}
     for world in worlds:
@@ -375,9 +356,7 @@ def check_world_role_requirements(player: dict, requirements: dict[str, int] | N
     if not requirements:
         return True, None
 
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return True, None
+    worlds, _, _ = ensure_world_state(player)
     if not worlds:
         return False, "Нужны подходящие биомы мира. Пока под ногами только пустота."
 
@@ -396,9 +375,7 @@ def check_world_focus_requirements(player: dict, requirements: dict[str, int] | 
     if not requirements:
         return True, None
 
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return True, None
+    worlds, _, _ = ensure_world_state(player)
     if not worlds:
         return False, "Нужны зрелые биомы с нужным фокусом."
 
@@ -423,9 +400,7 @@ def get_building_world_capacity_cost(building_id: str, next_level: int) -> int:
 
 
 def can_upgrade_with_world_capacity(player: dict, building_id: str, next_level: int) -> tuple[bool, str | None]:
-    worlds, is_legacy, _ = ensure_world_state(player)
-    if is_legacy:
-        return True, None
+    worlds, _, _ = ensure_world_state(player)
     if is_world_overloaded(player):
         left = get_world_strain_left(player)
         return False, f"Мир уже трещит по швам: перегруз {abs(left)}. Сначала укрепи каркас Вселенной."
@@ -433,7 +408,7 @@ def can_upgrade_with_world_capacity(player: dict, building_id: str, next_level: 
     if required <= 0:
         return True, None
     if not worlds:
-        return False, "Сначала стабилизируй хотя бы один биом. Пока здания висят в пустоте."
+        return False, "Сначала стабилизируй хотя бы один биом. Без него мир ещё не даёт новой вместимости."
 
     left = get_world_capacity_left(player)
     if left >= required:

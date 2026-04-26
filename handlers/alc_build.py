@@ -155,7 +155,7 @@ def get_building_status(building_id: str, player: dict) -> tuple[str, bool, bool
     next_level = current_level + 1
     building = BUILDINGS[building_id]
     if next_level not in building["levels"]:
-        return "🟢 всё построено", False, True
+        return "🟢", False, True
 
     cost = building["levels"][next_level]["cost"]
     can_upgrade = all(inventory.get(item_id, 0) >= amount for item_id, amount in cost.items())
@@ -165,15 +165,15 @@ def get_building_status(building_id: str, player: dict) -> tuple[str, bool, bool
     focus_requirements = get_building_world_focus_requirements(building_id, next_level)
     focus_ok, focus_reason = check_world_focus_requirements(player, focus_requirements)
     if can_upgrade and capacity_ok and roles_ok and focus_ok:
-        return "🔵 апгрейд доступен", True, False
+        return "🔵", True, False
     if can_upgrade and (not capacity_ok or not roles_ok or not focus_ok):
-        return "🟡 упёрлось в мир", False, False
-    return "🔴 апгрейд недоступен", False, False
+        return "🟡", False, False
+    return "🔴", False, False
 
 
 def get_building_status_emoji(building_id: str, player: dict) -> str:
     status_line, _, _ = get_building_status(building_id, player)
-    return status_line.split(" ", 1)[0]
+    return status_line
 
 
 def format_building_cost(inventory: dict, cost: dict) -> str:
@@ -368,15 +368,14 @@ async def render_build_menu(message: types.Message, user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
     user_buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
-    text = "🏗 **СТРОЙПЛОЩАДКА**\nСиний - можно строить, красный - ресурсов не хватает, зеленый - всё готово.\n\n"
+    text = "🏗 **СТРОЙПЛОЩАДКА**\n🔵 можно строить, 🟡 упёрлось в мир, 🔴 не хватает условий или ресурсов, 🟢 максимум.\n\n"
     builder = InlineKeyboardBuilder()
 
     for b_id, b_data in BUILDINGS.items():
         lvl = user_buildings.get(b_id, 0)
         status_line, _, _ = get_building_status(b_id, player)
         text += f"{b_data['name']} | Ур. {lvl} | {status_line}\n"
-        status_emoji = get_building_status_emoji(b_id, player)
-        builder.button(text=f"{status_emoji} {b_data['name']}", callback_data=f"build_view:{b_id}")
+        builder.button(text=f"{status_line} {b_data['name']}", callback_data=f"build_view:{b_id}")
 
     builder.adjust(2)
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
