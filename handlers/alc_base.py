@@ -5,6 +5,7 @@ import time
 import asyncio
 
 from aiogram import Router, types, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.filters import CommandStart, CommandObject, Command
 from ai_logic import generate_with_retry
@@ -62,6 +63,14 @@ TUTORIAL_LAYER_HINTS = {
     "energy": {"steam": 1, "energy": 1},
     "life": {"moss": 1, "life": 1},
 }
+
+
+async def safe_edit_text(message: types.Message, text: str, reply_markup=None, parse_mode: str | None = "Markdown"):
+    try:
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 ALCHEMY_ALPHA_VERSION = "0.9.0.2"
 ALCHEMY_CHANGELOG = [
@@ -429,11 +438,9 @@ def can_activate_base_from_universe(player: dict) -> bool:
 
 
 def can_reset_legacy_worlds(player: dict) -> bool:
-    inventory = player.get("inventory", {})
     worlds, _, _ = ensure_world_state(player)
     return (
         int(player.get("tutorial_step", 0) or 0) >= 1
-        and int(inventory.get("active_base", 0) or 0) > 0
         and bool(worlds)
         and not bool(player.get("world_legacy_reset_used", False))
         and has_legacy_world_layout(player)
@@ -456,6 +463,12 @@ def build_universe_intro_text(player: dict) -> str:
         "life": "Жизнь",
     }
     if inventory.get("active_base", 0) <= 0:
+        if can_reset_legacy_worlds(player):
+            return (
+                "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
+                "Старый мир найден, но профиль ещё не переведён на новую базовую схему.\n"
+                "Жми кнопку ниже: одноразовая активация кристалла сбросит только старые биомы, включит базу и переведёт тебя на новую слойную сборку мира."
+            )
         if can_activate_base_from_universe(player):
             return (
                 "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
@@ -595,9 +608,9 @@ def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
 
     if can_activate_base_from_universe(player):
         builder.button(text="🔮 Активировать Кристалл", callback_data="universe_activate_base")
+    elif can_reset_legacy_worlds(player):
+        builder.button(text="🔮 Активировать Кристалл Сброса", callback_data="universe_reset_legacy")
     elif inventory.get("active_base", 0) > 0:
-        if can_reset_legacy_worlds(player):
-            builder.button(text="🔮 Активировать Кристалл Сброса", callback_data="universe_reset_legacy")
         if advanced_focus_unlocked and not tutorial_mode:
             focus_label = WORLD_FOCUS_OPTIONS.get(current_focus or "", {}).get("label", "без фокуса")
             builder.button(text=f"🎯 Фокус нового биома: {focus_label}", callback_data="universe_focus:none")
@@ -893,7 +906,7 @@ async def get_base_content(user_id: int):
 @router.callback_query(F.data == "alc:changelog")
 async def show_changelog(callback: types.CallbackQuery):
     text, markup = build_changelog_page(0)
-    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="HTML")
     await callback.answer()
 
 
@@ -901,7 +914,7 @@ async def show_changelog(callback: types.CallbackQuery):
 async def show_changelog_page(callback: types.CallbackQuery):
     page = int(callback.data.split(":")[2])
     text, markup = build_changelog_page(page)
-    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+    await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="HTML")
     await callback.answer()
 
 
@@ -910,7 +923,7 @@ async def show_base_help(callback: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         "❓ **СПРАВКА ПО ШТАБУ**\n\n"
         "Верхний ряд:\n"
         "🎒 Склад и активация\n"
@@ -969,7 +982,7 @@ async def show_inventory(callback: types.CallbackQuery):
         builder.adjust(1)
     builder.row(types.InlineKeyboardButton(text="🔙 В Штаб", callback_data="alc:base_return"))
     
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
 
 @router.callback_query(F.data == "universe_open")
@@ -990,7 +1003,7 @@ async def universe_open(callback: types.CallbackQuery):
             {"$set": {"world_tutorial": tutorial}},
         )
         player["world_tutorial"] = tutorial
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1012,7 +1025,7 @@ async def universe_activate_base(callback: types.CallbackQuery):
         {"$set": {"inventory": inventory, "tutorial_step": max(2, int(player.get("tutorial_step", 0) or 0)), "world_tutorial": {"active": True, "created": False, "hints_shown": False}}},
     )
     refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(refreshed_player),
         reply_markup=build_universe_keyboard(refreshed_player),
         parse_mode="Markdown",
@@ -1028,10 +1041,14 @@ async def universe_reset_legacy(callback: types.CallbackQuery):
 
     universe_focus_modes[callback.from_user.id] = None
     universe_biome_drafts[callback.from_user.id] = {layer_id: {} for layer_id in WORLD_LAYER_ORDER}
+    inventory = dict(player.get("inventory", {}))
+    inventory.pop("base_crystal", None)
+    inventory["active_base"] = 1
     await db.alchemy_players.update_one(
         {"user_id": callback.from_user.id},
         {
             "$set": {
+                "inventory": inventory,
                 "worlds": [],
                 "world_failures": 0,
                 "world_support_level": 0,
@@ -1042,7 +1059,7 @@ async def universe_reset_legacy(callback: types.CallbackQuery):
         },
     )
     refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(refreshed_player),
         reply_markup=build_universe_keyboard(refreshed_player),
         parse_mode="Markdown",
@@ -1066,7 +1083,7 @@ async def universe_focus_select(callback: types.CallbackQuery):
         if int(player.get("inventory", {}).get(meta["item"], 0) or 0) <= 0:
             return await callback.answer("Для этого фокуса сейчас нет нужного предмета.", show_alert=True)
         universe_focus_modes[callback.from_user.id] = focus_id
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1081,7 +1098,7 @@ async def universe_select_layer(callback: types.CallbackQuery):
     if layer_id not in WORLD_LAYER_ORDER:
         return await callback.answer("Неизвестный слой.", show_alert=True)
     universe_active_layers[callback.from_user.id] = layer_id
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1096,7 +1113,7 @@ async def universe_set_step(callback: types.CallbackQuery):
         return await callback.answer("Шаг недоступен.", show_alert=True)
     universe_add_steps[callback.from_user.id] = step
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1132,7 +1149,7 @@ async def universe_add_resource(callback: types.CallbackQuery):
     draft[layer_id][item_id] = int(draft[layer_id].get(item_id, 0) or 0) + add_amount
     universe_biome_drafts[callback.from_user.id] = draft
     universe_active_layers[callback.from_user.id] = layer_id
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1146,11 +1163,14 @@ async def universe_clear_layer(callback: types.CallbackQuery):
     if layer_id not in WORLD_LAYER_ORDER:
         return await callback.answer("Неизвестный слой.", show_alert=True)
     draft = get_universe_draft(callback.from_user.id)
+    if not draft.get(layer_id):
+        universe_active_layers[callback.from_user.id] = layer_id
+        return await callback.answer("Слой уже пуст.")
     draft[layer_id] = {}
     universe_biome_drafts[callback.from_user.id] = draft
     universe_active_layers[callback.from_user.id] = layer_id
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1160,10 +1180,14 @@ async def universe_clear_layer(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "universe_reset_draft")
 async def universe_reset_draft(callback: types.CallbackQuery):
+    current_draft = get_universe_draft(callback.from_user.id)
+    if not any(current_draft.get(layer_id) for layer_id in WORLD_LAYER_ORDER):
+        universe_active_layers[callback.from_user.id] = WORLD_LAYER_ORDER[0]
+        return await callback.answer("Черновик уже пуст.")
     universe_biome_drafts[callback.from_user.id] = {layer_id: {} for layer_id in WORLD_LAYER_ORDER}
     universe_active_layers[callback.from_user.id] = WORLD_LAYER_ORDER[0]
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(player),
         reply_markup=build_universe_keyboard(player),
         parse_mode="Markdown",
@@ -1243,7 +1267,7 @@ async def universe_create(callback: types.CallbackQuery):
         else:
             failure_note = f"Мир откусил **{penalty_percent}%** вложенного и вернул остальное в базовых ресурсах."
 
-        await callback.message.edit_text(
+        await safe_edit_text(callback.message, 
             "💥 **БИОМ НЕ УДЕРЖАЛСЯ**\n\n"
             f"Попытка #{attempt_number} сорвалась на сочетании **{name}**.\n"
             f"Абсурдность сборки: `{absurdity}`. Нагрузка проекта: `{strain_cost}`.\n\n"
@@ -1320,7 +1344,7 @@ async def universe_create(callback: types.CallbackQuery):
         else "Мир стал шире. Подбирай следующий биом уже под конкретную цель: стройка, производство, добыча или походы."
     )
     success_text += overloaded_note
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         success_text,
         reply_markup=build_universe_keyboard(refreshed_player),
         parse_mode="Markdown",
@@ -1348,7 +1372,7 @@ async def universe_fortify(callback: types.CallbackQuery):
         {"$set": {"inventory": inventory, "world_support_level": next_level}},
     )
     refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await callback.message.edit_text(
+    await safe_edit_text(callback.message, 
         build_universe_intro_text(refreshed_player),
         reply_markup=build_universe_keyboard(refreshed_player),
         parse_mode="Markdown",
@@ -1384,7 +1408,7 @@ async def cmd_base(message: types.Message):
 @router.callback_query(F.data == "alc:base_return")
 async def ret_base(callback: types.CallbackQuery):
     text, markup = await get_base_content(callback.from_user.id)
-    await callback.message.edit_text(text, reply_markup=markup, parse_mode="Markdown")
+    await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="Markdown")
 
 @router.callback_query(F.data == "alc:base_close")
 async def close_base_window(callback: types.CallbackQuery):

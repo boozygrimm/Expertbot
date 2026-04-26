@@ -17,6 +17,7 @@ from handlers.alc_base import (
     can_activate_base_from_universe,
     can_reset_legacy_worlds,
     get_layer_resource_pool,
+    safe_edit_text,
     get_tutorial_layer_target,
     is_tutorial_world_open,
     build_barracks_status,
@@ -32,6 +33,8 @@ from handlers.alc_base import (
     build_world_status,
     format_process_status,
     get_headquarters_icon,
+    universe_clear_layer,
+    universe_reset_draft,
 )
 from handlers.alc_core import (
     STARTER_WORLD_RESOURCE_GRANT,
@@ -208,6 +211,53 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result, ["sum:a", "sum:c"])
 
+    async def test_universe_clear_layer_does_not_edit_when_layer_already_empty(self):
+        callback = AsyncMock()
+        callback.data = "universe_clear:foundation"
+        callback.from_user.id = 101
+        callback.from_user.first_name = "Tester"
+
+        with patch("handlers.alc_base.universe_biome_drafts", {101: {"foundation": {}, "medium": {}, "energy": {}, "life": {}}}), patch(
+            "handlers.alc_base.universe_active_layers", {}
+        ):
+            await universe_clear_layer(callback)
+
+        callback.answer.assert_awaited_once_with("Слой уже пуст.")
+        callback.message.edit_text.assert_not_awaited()
+
+    async def test_universe_reset_draft_does_not_edit_when_draft_already_empty(self):
+        callback = AsyncMock()
+        callback.data = "universe_reset_draft"
+        callback.from_user.id = 202
+        callback.from_user.first_name = "Tester"
+
+        with patch("handlers.alc_base.universe_biome_drafts", {202: {"foundation": {}, "medium": {}, "energy": {}, "life": {}}}), patch(
+            "handlers.alc_base.universe_active_layers", {}
+        ):
+            await universe_reset_draft(callback)
+
+        callback.answer.assert_awaited_once_with("Черновик уже пуст.")
+        callback.message.edit_text.assert_not_awaited()
+
+    async def test_safe_edit_text_ignores_only_message_not_modified(self):
+        from aiogram.exceptions import TelegramBadRequest
+
+        message = AsyncMock()
+        message.edit_text.side_effect = TelegramBadRequest(method=AsyncMock(), message="Bad Request: message is not modified")
+
+        await safe_edit_text(message, "same text")
+
+        message.edit_text.assert_awaited_once()
+
+    async def test_safe_edit_text_reraises_other_telegram_errors(self):
+        from aiogram.exceptions import TelegramBadRequest
+
+        message = AsyncMock()
+        message.edit_text.side_effect = TelegramBadRequest(method=AsyncMock(), message="Bad Request: chat not found")
+
+        with self.assertRaises(TelegramBadRequest):
+            await safe_edit_text(message, "text")
+
 
 class AlchemyCoreTests(unittest.TestCase):
     def test_get_heritage_slots_clamps_level(self):
@@ -373,6 +423,16 @@ class BaseStatusTests(unittest.TestCase):
                 }
             )
         )
+        self.assertTrue(
+            can_reset_legacy_worlds(
+                {
+                    "tutorial_step": 3,
+                    "inventory": {},
+                    "worlds": [{"slots": {"matter": "stone", "medium": "swamp", "life": "moss"}}],
+                    "world_legacy_reset_used": False,
+                }
+            )
+        )
         self.assertFalse(
             can_reset_legacy_worlds(
                 {
@@ -393,6 +453,18 @@ class BaseStatusTests(unittest.TestCase):
                 }
             )
         )
+
+    def test_build_universe_intro_text_offers_reset_for_legacy_world_without_active_base(self):
+        text = build_universe_intro_text(
+            {
+                "tutorial_step": 3,
+                "inventory": {},
+                "worlds": [{"slots": {"matter": "stone", "medium": "swamp", "life": "moss"}}],
+                "user_id": 1,
+            }
+        )
+        self.assertIn("одноразовая активация кристалла", text)
+        self.assertIn("сбросит только старые биомы", text)
 
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")
