@@ -101,8 +101,13 @@ def get_element_emoji(item_id: str) -> str:
     parts = label.split(" ", 1)
     return parts[0] if len(parts) > 1 else "❓"
 
-ALCHEMY_ALPHA_VERSION = "0.9.0.2"
+ALCHEMY_ALPHA_VERSION = "0.9.0.3"
 ALCHEMY_CHANGELOG = [
+    ("0.9.0.3", [
+        "В модуле Вселенная теперь явно показана цена следующего укрепления каркаса и его эффект, так что нагрузка мира больше не выглядит скрытой лотереей.",
+        "В окна слоёв вернулись контролы x1/x5/x10 и сетка x2/x3/x4, а рядом с ними добавлены короткие подсказки по тому, какие сочетания тянут биом в опору, добычу, производство или походы.",
+        "У каждого биома появилась постоянная кнопка БАМММ!: ей можно вручную схлопнуть лишний карман и забрать salvage-лут, включая зависший учебный биом у старых профилей.",
+    ]),
     ("0.9.0.2", [
         "Первый биом снова стал учебным микробиомом: ресурсы на него выдаются заранее, он строится без риска и закрывает только вводный этап базы.",
         "После учебного микробиома игрок получает нормальный стартовый набор под раннюю игру, а со второго биома возвращается риск БАМММ с честным возвратом вложений.",
@@ -323,6 +328,10 @@ def build_daily_income_lines(income: dict[str, int]) -> list[str]:
     return lines
 
 
+def format_cost_label(cost: dict[str, int]) -> str:
+    return ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in cost.items()) or "бесплатно"
+
+
 def collapse_starter_biome(worlds: list[dict]) -> tuple[list[dict], dict[str, int], dict | None]:
     collapsed_world: dict | None = None
     remaining_worlds: list[dict] = []
@@ -334,6 +343,21 @@ def collapse_starter_biome(worlds: list[dict]) -> tuple[list[dict], dict[str, in
     if collapsed_world is None:
         return list(worlds), {}, None
     return remaining_worlds, dict(STARTER_BIOME_COLLAPSE_BUNDLE), collapsed_world
+
+
+def build_bammm_rewards(world: dict) -> dict[str, int]:
+    if world.get("starter"):
+        return dict(STARTER_BIOME_COLLAPSE_BUNDLE)
+
+    rewards: dict[str, int] = {
+        "stone": max(1, int(world.get("capacity", 0) or 0) // 3),
+        "wood": max(1, int(world.get("capacity", 0) or 0) // 4),
+    }
+    for item_id, amount in dict(world.get("daily_income", {})).items():
+        if item_id == WORLD_DAILY_SPIRIT_TOKEN:
+            continue
+        rewards[item_id] = rewards.get(item_id, 0) + max(1, int(amount or 0))
+    return {item_id: amount for item_id, amount in rewards.items() if amount > 0}
 
 
 def get_layer_resource_pool(player: dict, layer_id: str) -> list[str]:
@@ -514,6 +538,7 @@ def build_universe_intro_text(player: dict) -> str:
 
     blueprint = build_world_blueprint(player, draft, focus_id=universe_focus_modes.get(player.get("user_id"), None))
     lines = ["🌍 **МОДУЛЬ ВСЕЛЕННАЯ**", ""]
+    support_cost = get_world_support_cost(player)
 
     if worlds:
         main_world = worlds[0]
@@ -526,6 +551,7 @@ def build_universe_intro_text(player: dict) -> str:
             f"Свободно: **{max(0, get_world_capacity_left(player))}**",
             f"Нагрузка: **{get_world_strain(player)}/{get_world_stability_limit(player)}**",
             f"Укрепление: **{get_world_support_level(player)}**",
+            f"Следующее укрепление: **+2 к лимиту нагрузки** за {format_cost_label(support_cost)}",
         ])
         if is_world_overloaded(player):
             lines.extend(["", f"⚠️ Перегруз мира: **{abs(get_world_strain_left(player))}**"])
@@ -605,6 +631,7 @@ def build_universe_biomes_text(player: dict, page: int = 0) -> str:
         f"Вместимость: **{get_world_capacity_used(player)}/{get_world_capacity_total(player)}**",
         f"Нагрузка: **{get_world_strain(player)}/{get_world_stability_limit(player)}**",
         f"Укрепление: **{get_world_support_level(player)}**",
+        f"Следующее укрепление: **+2 к лимиту нагрузки** за {format_cost_label(get_world_support_cost(player))}",
         "",
         "**Текущий чертёж**",
     ]
@@ -689,8 +716,9 @@ def build_universe_biome_detail_text(player: dict, biome_index: int, page: int =
 
 def build_universe_biome_detail_keyboard(biome_index: int, page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.button(text="💥 БАМММ!", callback_data=f"universe_bammm:{biome_index}:{page}")
     builder.button(text="🔙 Назад", callback_data=f"universe_biomes:{page}")
-    builder.adjust(1)
+    builder.adjust(1, 1)
     return builder.as_markup()
 
 
@@ -711,6 +739,7 @@ def build_universe_layer_text(player: dict, layer_id: str, page: int = 0) -> str
         "",
         f"Закладка слоя: **{format_layer_bucket(bucket)}**",
         f"Состояние слоя: _{build_layer_hint_line(blueprint, layer_id)}_",
+        f"Управление: шаг **x{int(universe_add_steps.get(player.get('user_id', 0), 5) or 5)}** | сетка **x{grid_size}**",
     ]
     tip = LAYER_ARCHETYPE_TIPS.get(layer_id)
     if tip:
@@ -755,6 +784,17 @@ def build_universe_layer_keyboard(player: dict, layer_id: str, page: int = 0) ->
             row = []
     if row:
         builder.row(*row)
+
+    builder.row(
+        types.InlineKeyboardButton(text=("✅ x1" if int(universe_add_steps.get(player.get("user_id", 0), 5) or 5) == 1 else "x1"), callback_data="universe_step:1"),
+        types.InlineKeyboardButton(text=("✅ x5" if int(universe_add_steps.get(player.get("user_id", 0), 5) or 5) == 5 else "x5"), callback_data="universe_step:5"),
+        types.InlineKeyboardButton(text=("✅ x10" if int(universe_add_steps.get(player.get("user_id", 0), 5) or 5) == 10 else "x10"), callback_data="universe_step:10"),
+    )
+    builder.row(
+        types.InlineKeyboardButton(text=("✅ x2" if grid_size == 2 else "x2"), callback_data="universe_grid:2"),
+        types.InlineKeyboardButton(text=("✅ x3" if grid_size == 3 else "x3"), callback_data="universe_grid:3"),
+        types.InlineKeyboardButton(text=("✅ x4" if grid_size == 4 else "x4"), callback_data="universe_grid:4"),
+    )
 
     if total_pages > 1:
         nav_row = []
@@ -1146,6 +1186,41 @@ async def universe_biome_view(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("universe_bammm:"))
+async def universe_bammm(callback: types.CallbackQuery):
+    _, biome_index_raw, page_raw = callback.data.split(":")
+    biome_index = int(biome_index_raw)
+    page = int(page_raw)
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    worlds, _, _ = ensure_world_state(player)
+    if biome_index < 0 or biome_index >= len(worlds):
+        return await callback.answer("Биом уже исчез.", show_alert=True)
+    if len(worlds) <= 1:
+        return await callback.answer("Последний биом схлопывать нельзя. Иначе базе просто негде жить.", show_alert=True)
+
+    world = worlds[biome_index]
+    rewards = build_bammm_rewards(world)
+    inventory = player.get("inventory", {})
+    for item_id, amount in rewards.items():
+        inventory[item_id] = inventory.get(item_id, 0) + amount
+    updated_worlds = [item for idx, item in enumerate(worlds) if idx != biome_index]
+    await db.alchemy_players.update_one(
+        {"user_id": callback.from_user.id},
+        {"$set": {"inventory": inventory, "worlds": updated_worlds}},
+    )
+    refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    reward_lines = [f"• {ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in rewards.items()]
+    await safe_edit_text(
+        callback.message,
+        "\"Пшик, пшик, пшик... А это так должно было?!! БАМММ!\"\n\n"
+        f"Биом **{world.get('name', 'Безымянный биом')}** схлопнулся и осыпался salvage-лутом:\n"
+        + "\n".join(reward_lines),
+        reply_markup=build_universe_biomes_keyboard(refreshed_player, page),
+        parse_mode="Markdown",
+    )
+    await callback.answer("Биом схлопнулся.")
+
+
 @router.callback_query(F.data.startswith("universe_layer_open:"))
 async def universe_layer_open(callback: types.CallbackQuery):
     _, layer_id, page = callback.data.split(":")
@@ -1270,6 +1345,25 @@ async def universe_set_step(callback: types.CallbackQuery):
         parse_mode="Markdown",
     )
     await callback.answer(f"Шаг: {step}")
+
+
+@router.callback_query(F.data.startswith("universe_grid:"))
+async def universe_set_grid(callback: types.CallbackQuery):
+    grid_size = int(callback.data.split(":")[1])
+    if grid_size not in (2, 3, 4):
+        return await callback.answer("Сетка недоступна.", show_alert=True)
+    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": grid_size}})
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    player["inv_grid"] = grid_size
+    layer_id = get_active_universe_layer(callback.from_user.id)
+    universe_layer_pages[(callback.from_user.id, layer_id)] = 0
+    await safe_edit_text(
+        callback.message,
+        build_universe_layer_text(player, layer_id, 0),
+        reply_markup=build_universe_layer_keyboard(player, layer_id, 0),
+        parse_mode="Markdown",
+    )
+    await callback.answer(f"Сетка: x{grid_size}")
 
 
 @router.callback_query(F.data.startswith("universe_add:"))

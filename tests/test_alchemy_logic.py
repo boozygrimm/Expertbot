@@ -31,6 +31,7 @@ from handlers.alc_base import (
     build_production_status,
     build_storage_status,
     build_universe_keyboard,
+    build_universe_layer_keyboard,
     build_universe_layer_text,
     build_universe_intro_text,
     build_world_status,
@@ -505,6 +506,37 @@ class BaseStatusTests(unittest.TestCase):
             "foundation",
         )
         self.assertIn("Камень тянет в опору", text)
+
+    def test_build_universe_intro_text_shows_fortify_cost(self):
+        text = build_universe_intro_text(
+            {
+                "user_id": 1,
+                "tutorial_step": 3,
+                "inventory": {"active_base": 1},
+                "world_support_level": 0,
+                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+            }
+        )
+        self.assertIn("Следующее укрепление", text)
+        self.assertIn("Камень", text)
+
+    def test_build_universe_layer_keyboard_shows_step_and_grid_controls(self):
+        markup = build_universe_layer_keyboard(
+            {
+                "user_id": 1,
+                "inventory": {"active_base": 1, "stone": 2, "wood": 2},
+                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+                "inv_grid": 3,
+            },
+            "foundation",
+        )
+        labels = [button.text for row in markup.inline_keyboard for button in row]
+        self.assertIn("x1", labels)
+        self.assertIn("✅ x5", labels)
+        self.assertIn("x10", labels)
+        self.assertIn("x2", labels)
+        self.assertIn("✅ x3", labels)
+        self.assertIn("x4", labels)
 
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")
