@@ -194,10 +194,26 @@ def build_world_status(player: dict) -> str:
     return f"🌍 Мир: 🟢 {main_world.get('name', 'Безымянный карман')} | {used}/{total} вместимости | каркас {strain}/{limit} | опора {support_bonus:+d}"
 
 
+def can_activate_base_from_universe(player: dict) -> bool:
+    inventory = player.get("inventory", {})
+    worlds, _, _ = ensure_world_state(player)
+    return (
+        int(player.get("tutorial_step", 0) or 0) >= 1
+        and int(inventory.get("active_base", 0) or 0) <= 0
+        and not worlds
+    )
+
+
 def build_universe_intro_text(player: dict) -> str:
     inventory = player.get("inventory", {})
     worlds, _, _ = ensure_world_state(player)
     if inventory.get("active_base", 0) <= 0:
+        if can_activate_base_from_universe(player):
+            return (
+                "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
+                "Старый контур базы найден, но кристалл в инвентаре не пережил миграцию.\n"
+                "Жми кнопку ниже: модуль один раз развернёт базу прямо отсюда и пустит тебя к первому биому."
+            )
         return (
             "🌍 **МОДУЛЬ ВСЕЛЕННАЯ**\n\n"
             "Сначала активируй 🔮 Кристалл Базы на складе. Без него здесь только пустота и твои сомнительные решения."
@@ -294,7 +310,9 @@ def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     advanced_focus_unlocked = len(worlds) >= 2 or get_world_support_level(player) >= 1
     current_focus = universe_focus_modes.get(player.get("user_id"), None)
 
-    if inventory.get("active_base", 0) > 0 and not worlds:
+    if can_activate_base_from_universe(player):
+        builder.button(text="🔮 Активировать Кристалл", callback_data="universe_activate_base")
+    elif inventory.get("active_base", 0) > 0 and not worlds:
         for matter_id in STARTER_BIOME_SLOTS["matter"]:
             for medium_id in STARTER_BIOME_SLOTS["medium"]:
                 for life_id in STARTER_BIOME_SLOTS["life"]:
@@ -679,6 +697,28 @@ async def universe_open(callback: types.CallbackQuery):
         parse_mode="Markdown",
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "universe_activate_base")
+async def universe_activate_base(callback: types.CallbackQuery):
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    if not can_activate_base_from_universe(player):
+        return await callback.answer("База уже активирована или этот обход больше не нужен.", show_alert=True)
+
+    inventory = dict(player.get("inventory", {}))
+    inventory.pop("base_crystal", None)
+    inventory["active_base"] = 1
+    await db.alchemy_players.update_one(
+        {"user_id": callback.from_user.id},
+        {"$set": {"inventory": inventory, "tutorial_step": max(2, int(player.get("tutorial_step", 0) or 0)), "world_tutorial": {"active": True, "created": False}}},
+    )
+    refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    await callback.message.edit_text(
+        build_universe_intro_text(refreshed_player),
+        reply_markup=build_universe_keyboard(refreshed_player),
+        parse_mode="Markdown",
+    )
+    await callback.answer("База развернута. Теперь можно собирать первый биом.")
 
 
 @router.callback_query(F.data.startswith("universe_focus:"))

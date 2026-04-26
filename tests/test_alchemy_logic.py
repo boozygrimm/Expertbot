@@ -13,6 +13,7 @@ from ai_summaries import collect_chunk_summaries, split_text_into_chunks
 from app_setup import create_scheduler, handle_healthcheck, set_commands
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from handlers.alc_base import (
+    can_activate_base_from_universe,
     build_barracks_status,
     build_base_summary,
     build_changelog_page,
@@ -22,11 +23,19 @@ from handlers.alc_base import (
     build_lab_status_lines,
     build_production_status,
     build_storage_status,
+    build_universe_intro_text,
     build_world_status,
     format_process_status,
     get_headquarters_icon,
 )
-from handlers.alc_core import format_duration, get_alchemy_cooldown, get_heritage_slots, get_used_slots, get_world_effects
+from handlers.alc_core import (
+    ensure_legacy_base_crystal,
+    format_duration,
+    get_alchemy_cooldown,
+    get_heritage_slots,
+    get_used_slots,
+    get_world_effects,
+)
 from handlers.alc_fighters import (
     FATIGUE_RECOVERY_SECONDS,
     can_pay_cost,
@@ -194,6 +203,21 @@ class AlchemyCoreTests(unittest.TestCase):
         self.assertEqual(get_heritage_slots(3), 3)
         self.assertEqual(get_heritage_slots(99), 5)
 
+    def test_ensure_legacy_base_crystal_restores_missing_progress_item(self):
+        inventory, changed = ensure_legacy_base_crystal({"tutorial_step": 1, "inventory": {"stone": 5}})
+        self.assertTrue(changed)
+        self.assertEqual(inventory["base_crystal"], 1)
+        self.assertEqual(inventory["stone"], 5)
+
+    def test_ensure_legacy_base_crystal_skips_new_and_active_players(self):
+        new_inventory, new_changed = ensure_legacy_base_crystal({"tutorial_step": 0, "inventory": {}})
+        self.assertFalse(new_changed)
+        self.assertEqual(new_inventory, {})
+
+        active_inventory, active_changed = ensure_legacy_base_crystal({"tutorial_step": 2, "inventory": {"active_base": 1}})
+        self.assertFalse(active_changed)
+        self.assertEqual(active_inventory, {"active_base": 1})
+
     def test_get_alchemy_cooldown_uses_guild_reduction(self):
         self.assertEqual(get_alchemy_cooldown({"buildings": {"guild": 0}}), 4 * 3600)
         self.assertEqual(get_alchemy_cooldown({"buildings": {"guild": 1}}), 3 * 3600 + 30 * 60)
@@ -229,6 +253,12 @@ class AlchemyCoreTests(unittest.TestCase):
 
 
 class BaseStatusTests(unittest.TestCase):
+    def test_can_activate_base_from_universe_only_for_legacy_profiles_without_active_base(self):
+        self.assertTrue(can_activate_base_from_universe({"tutorial_step": 1, "inventory": {}, "worlds": []}))
+        self.assertFalse(can_activate_base_from_universe({"tutorial_step": 0, "inventory": {}, "worlds": []}))
+        self.assertFalse(can_activate_base_from_universe({"tutorial_step": 2, "inventory": {"active_base": 1}, "worlds": []}))
+        self.assertFalse(can_activate_base_from_universe({"tutorial_step": 2, "inventory": {}, "worlds": [{"name": "Карман"}]}))
+
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")
         self.assertEqual(get_headquarters_icon(1), "🏕")
@@ -338,6 +368,11 @@ class BaseStatusTests(unittest.TestCase):
                 }
             ),
         )
+
+    def test_build_universe_intro_text_offers_direct_activation_for_legacy_profile(self):
+        text = build_universe_intro_text({"tutorial_step": 1, "inventory": {}, "worlds": []})
+        self.assertIn("кнопку ниже", text)
+        self.assertIn("первому биому", text)
 
     def test_build_changelog_page_clamps_page_and_has_back_button(self):
         text, markup = build_changelog_page(999)

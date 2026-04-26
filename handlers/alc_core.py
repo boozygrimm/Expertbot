@@ -207,6 +207,24 @@ def get_heritage_slots(level: int) -> int:
     return max(1, min(5, int(level or 1)))
 
 
+def ensure_legacy_base_crystal(player: dict) -> tuple[dict, bool]:
+    """Докладывает кристалл старым игрокам, которые застряли без базы."""
+    inventory = player.get("inventory", {})
+    if not isinstance(inventory, dict):
+        inventory = {}
+
+    if int(player.get("tutorial_step", 0) or 0) < 1:
+        return inventory, False
+    if int(inventory.get("active_base", 0) or 0) > 0:
+        return inventory, False
+    if int(inventory.get("base_crystal", 0) or 0) > 0:
+        return inventory, False
+
+    updated_inventory = deepcopy(inventory)
+    updated_inventory["base_crystal"] = 1
+    return updated_inventory, True
+
+
 def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
     worlds = player.get("worlds", [])
     if not isinstance(worlds, list):
@@ -545,6 +563,11 @@ async def get_or_create_player(user_id: int, user_name: str):
         if player.get(field) != normalized_player.get(field):
             player[field] = normalized_player.get(field)
             update_fields[field] = normalized_player.get(field)
+
+    legacy_inventory, base_crystal_added = ensure_legacy_base_crystal(player)
+    if base_crystal_added:
+        player["inventory"] = legacy_inventory
+        update_fields["inventory"] = legacy_inventory
 
     worlds, _, world_tutorial = ensure_world_state(player)
     if player.get("worlds") != worlds:
