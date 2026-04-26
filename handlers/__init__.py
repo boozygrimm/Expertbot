@@ -1,2 +1,5 @@
-from . import logger, reports, pole_chudes, ex_logic, music, web_search, admin_cron, admin_panel
-from . import alc_expeditions, alc_raids
+"""Handlers package.
+
+Submodules are imported explicitly by the app entrypoint when needed.
+Keeping this file lightweight avoids side effects during unit tests.
+"""
