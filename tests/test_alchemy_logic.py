@@ -181,6 +181,62 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "text")
         mock_transcribe.assert_awaited_once_with("voice.ogg")
 
+    async def test_get_daily_summary_uses_23_hour_window(self):
+        class FakeCursor:
+            def __init__(self, docs):
+                self.docs = docs
+
+            def sort(self, *_args, **_kwargs):
+                return self
+
+            def limit(self, *_args, **_kwargs):
+                return self
+
+            async def to_list(self, length=None):
+                return self.docs[:length]
+
+        class FakeMessages:
+            def __init__(self, docs):
+                self.docs = docs
+
+            def find(self, query):
+                self.query = query
+                return FakeCursor(self.docs)
+
+        fake_now = datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc)
+        old_report = {
+            "chat_id": 777,
+            "user_name": "Bot",
+            "text": "📰 вчерашний отчет",
+            "createdAt": fake_now.replace(day=26, hour=12, minute=30),
+        }
+        recent_messages = [
+            {
+                "chat_id": 777,
+                "user_name": f"user{i}",
+                "text": f"msg {i}",
+                "createdAt": fake_now.replace(hour=11, minute=i),
+            }
+            for i in range(15)
+        ]
+        docs = [old_report, *recent_messages]
+        fake_db = type("FakeDB", (), {"messages": FakeMessages(docs)})()
+
+        async def fake_collect(chunks, *_args, **_kwargs):
+            joined = "\n".join(chunks)
+            self.assertNotIn("вчерашний отчет", joined)
+            self.assertIn("msg 0", joined)
+            return ["summary"]
+
+        with patch("database.db", fake_db), \
+             patch("ai_logic.get_msk_now", return_value=fake_now), \
+             patch("ai_logic.collect_chunk_summaries", new=AsyncMock(side_effect=fake_collect)), \
+             patch("ai_logic.is_gemini_alive", return_value=False), \
+             patch("ai_logic.try_openrouter", new=AsyncMock(return_value=("final report", 200))):
+            result = await ai_logic.get_daily_summary(777)
+
+        self.assertEqual(result, "final report")
+
     async def test_ai_logic_generate_fast_image_prompt_wrapper_keeps_old_contract(self):
         with patch("ai_logic._generate_fast_image_prompt", new=AsyncMock(return_value="prompt")) as mock_generate:
             result = await ai_logic.generate_fast_image_prompt("кот")

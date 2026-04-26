@@ -31,6 +31,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 IS_CLOUD = bool(os.getenv("SPACE_ID")) or bool(os.getenv("PORT"))
+DAILY_SUMMARY_WINDOW_HOURS = 23
 
 SYSTEM_GUARD = (
     "Ты работаешь в Telegram-чате. Твои ответы должны быть емкими и гарантированно умещаться в лимит вывода. "
@@ -242,11 +243,12 @@ async def get_daily_summary(chat_id: int):
     if not all_messages: return "Никто ничего не писал за эти сутки."
 
     now = get_msk_now()
+    window = timedelta(hours=DAILY_SUMMARY_WINDOW_HOURS)
     valid_msgs = []
     for m in all_messages:
         try:
             msg_time = datetime.fromisoformat(m['createdAt']) if isinstance(m['createdAt'], str) else m['createdAt']
-            if now - msg_time <= timedelta(hours=24): valid_msgs.append(m)
+            if now - msg_time < window: valid_msgs.append(m)
         except Exception:
             valid_msgs.append(m)
             
