@@ -5,7 +5,7 @@ from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot
 from database import db
-from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots, get_world_effects
+from handlers.alc_core import STORAGE_CAPACITY, get_stamina_ready_at, get_used_slots, get_world_daily_income, get_world_effects
 from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.alc_heritage import get_active_legacy_bonus_map
@@ -14,9 +14,10 @@ from config import get_msk_now
 logger = logging.getLogger(__name__)
 
 
-def build_daily_report_text(supply_report: dict | None, heritage_report: dict | None) -> str:
+def build_daily_report_text(supply_report: dict | None, heritage_report: dict | None, world_report: dict | None = None) -> str:
     supply_report = supply_report or {}
     heritage_report = heritage_report or {}
+    world_report = world_report or {}
     drained = supply_report.get("drained_energy", 0)
     served_units = supply_report.get("served_units", 0)
     deserters = supply_report.get("deserters", 0)
@@ -26,6 +27,8 @@ def build_daily_report_text(supply_report: dict | None, heritage_report: dict | 
     date_label = supply_report.get("date_label") or heritage_report.get("date_label", "сегодня")
     heritage_lines = heritage_report.get("granted_lines", [])
     skipped_lines = heritage_report.get("skipped_lines", [])
+    world_lines = world_report.get("granted_lines", [])
+    world_skipped_lines = world_report.get("skipped_lines", [])
 
     lines = [
         f"📊 <b>УТРЕННИЙ ОТЧЕТ</b> [{date_label}]",
@@ -48,6 +51,13 @@ def build_daily_report_text(supply_report: dict | None, heritage_report: dict | 
         lines.append("• Активных начислений не было.")
     if skipped_lines:
         lines.extend(f"• Не влезло на склад: {entry}" for entry in skipped_lines)
+    lines.extend(["", "Биомы мира:"])
+    if world_lines:
+        lines.extend(f"• Получено: {entry}" for entry in world_lines)
+    else:
+        lines.append("• Биомы сегодня ничего не принесли.")
+    if world_skipped_lines:
+        lines.extend(f"• Не влезло на склад: {entry}" for entry in world_skipped_lines)
     return "\n".join(lines)
 
 
@@ -199,6 +209,9 @@ async def process_barracks_upkeep():
         heritage_report = player.get("heritage_report", {})
         if heritage_report.get("date_label") != today_label:
             heritage_report = {}
+        world_report = player.get("world_report", {})
+        if world_report.get("date_label") != today_label:
+            world_report = {}
 
         fighters = [fighter for fighter in get_player_fighters(player) if fighter.get("status") != "dead"]
         drained_energy = 0
@@ -254,15 +267,16 @@ async def process_barracks_upkeep():
                     "barracks_report": report,
                     "last_barracks_drain": today_label,
                     "heritage_report": heritage_report,
+                    "world_report": world_report,
                 }
             },
         )
 
-        if fighters or heritage_report.get("granted_lines") or heritage_report.get("skipped_lines"):
+        if fighters or heritage_report.get("granted_lines") or heritage_report.get("skipped_lines") or world_report.get("granted_lines") or world_report.get("skipped_lines"):
             try:
                 await bot.send_message(
                     user_id,
-                    build_daily_report_text(report, heritage_report),
+                    build_daily_report_text(report, heritage_report, world_report),
                     reply_markup=build_report_close_markup(),
                     parse_mode="HTML",
                 )
@@ -274,34 +288,32 @@ async def process_heritage_income():
     today_label = get_msk_now().strftime("%Y-%m-%d")
     cursor = db.alchemy_players.find(
         {
-            "active_stands.0": {"$exists": True},
+            "$or": [
+                {"active_stands.0": {"$exists": True}},
+                {"worlds.0": {"$exists": True}},
+            ],
             "last_heritage_income": {"$ne": today_label},
         }
     )
 
     async for player in cursor:
         bonus_map = await get_active_legacy_bonus_map(player)
-        if not bonus_map:
-            await db.alchemy_players.update_one(
-                {"user_id": player["user_id"]},
-                {
-                    "$set": {
-                        "last_heritage_income": today_label,
-                        "heritage_report": {
-                            "date_label": today_label,
-                            "granted_lines": [],
-                            "skipped_lines": [],
-                        },
-                    }
-                },
-            )
-            continue
 
         inventory = player.get("inventory", {})
         storage_lvl = player.get("buildings", {}).get("storage", 0)
         max_slots = STORAGE_CAPACITY.get(storage_lvl, 20)
         granted_lines = []
         skipped_lines = []
+        world_granted_lines = []
+        world_skipped_lines = []
+
+        world_income = get_world_daily_income(player)
+        for item_id, amount in world_income.items():
+            if item_id not in inventory and get_used_slots(inventory) >= max_slots:
+                world_skipped_lines.append(f"{ELEMENTS.get(item_id, item_id)} x{amount}")
+                continue
+            inventory[item_id] = inventory.get(item_id, 0) + amount
+            world_granted_lines.append(f"{ELEMENTS.get(item_id, item_id)} x{amount}")
 
         for item_id, amount in bonus_map.items():
             if item_id not in inventory and get_used_slots(inventory) >= max_slots:
@@ -320,6 +332,11 @@ async def process_heritage_income():
                         "date_label": today_label,
                         "granted_lines": granted_lines,
                         "skipped_lines": skipped_lines,
+                    },
+                    "world_report": {
+                        "date_label": today_label,
+                        "granted_lines": world_granted_lines,
+                        "skipped_lines": world_skipped_lines,
                     },
                 }
             },

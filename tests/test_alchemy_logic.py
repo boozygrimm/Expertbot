@@ -14,6 +14,7 @@ from app_setup import create_scheduler, handle_healthcheck, set_commands
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from handlers.alc_base import (
     can_activate_base_from_universe,
+    can_reset_legacy_worlds,
     build_barracks_status,
     build_base_summary,
     build_changelog_page,
@@ -258,6 +259,38 @@ class BaseStatusTests(unittest.TestCase):
         self.assertFalse(can_activate_base_from_universe({"tutorial_step": 0, "inventory": {}, "worlds": []}))
         self.assertFalse(can_activate_base_from_universe({"tutorial_step": 2, "inventory": {"active_base": 1}, "worlds": []}))
         self.assertFalse(can_activate_base_from_universe({"tutorial_step": 2, "inventory": {}, "worlds": [{"name": "Карман"}]}))
+
+    def test_can_reset_legacy_worlds_only_once_for_old_world_layouts(self):
+        self.assertTrue(
+            can_reset_legacy_worlds(
+                {
+                    "tutorial_step": 3,
+                    "inventory": {"active_base": 1},
+                    "worlds": [{"slots": {"matter": "stone", "medium": "swamp", "life": "moss"}}],
+                    "world_legacy_reset_used": False,
+                }
+            )
+        )
+        self.assertFalse(
+            can_reset_legacy_worlds(
+                {
+                    "tutorial_step": 3,
+                    "inventory": {"active_base": 1},
+                    "worlds": [{"slots": {"foundation": "stone_root", "medium": "swamp_basin", "energy": "spore_cycle", "life": "moss_bloom"}}],
+                    "world_legacy_reset_used": False,
+                }
+            )
+        )
+        self.assertFalse(
+            can_reset_legacy_worlds(
+                {
+                    "tutorial_step": 3,
+                    "inventory": {"active_base": 1},
+                    "worlds": [{"slots": {"matter": "stone", "medium": "swamp", "life": "moss"}}],
+                    "world_legacy_reset_used": True,
+                }
+            )
+        )
 
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")

@@ -20,72 +20,154 @@ COOLDOWN = 4 * 3600 # 4 часа
 STORAGE_CAPACITY = {0: 20, 1: 50, 2: 150, 3: 350}
 STARTER_DISCOVERIES = ["lava", "stone", "steam", "swamp", "life", "algae", "moss", "bacteria"]
 STARTER_WORLD_REWARD_POOL = ["spirit_f", "spirit_w", "spirit_e", "spirit_a"]
+WORLD_LAYER_ORDER = ("foundation", "medium", "energy", "life")
 STARTER_BIOME_SLOTS = {
-    "matter": {
-        "lava": {"label": "🌋 Лавовое ядро", "absurd": 2, "capacity": 1},
-        "stone": {"label": "🪨 Каменное ядро", "absurd": 0, "capacity": 2},
+    "foundation": {
+        "stone_root": {
+            "label": "🪨 Каменный корень",
+            "size": 3,
+            "cost": {"stone": 6, "sand": 3, "wood": 2},
+            "affinity": "опора",
+            "hint": "тяжёлая основа под спокойный рост",
+        },
+        "lava_bed": {
+            "label": "🌋 Лавовый пласт",
+            "size": 3,
+            "cost": {"lava": 4, "stone": 4, "brick": 2, "energy": 1},
+            "affinity": "добывающий",
+            "hint": "жёсткая геология под мощную добычу",
+        },
+        "metal_frame": {
+            "label": "🛠 Металлический костяк",
+            "size": 4,
+            "cost": {"metal": 4, "brick": 3, "glass": 2, "energy": 1},
+            "affinity": "промышленный",
+            "hint": "каркас под техничный и плотный мир",
+        },
     },
     "medium": {
-        "steam": {"label": "☁️ Паровая среда", "absurd": 1, "capacity": 1},
-        "swamp": {"label": "🐸 Болотная среда", "absurd": 0, "capacity": 2},
+        "swamp_basin": {
+            "label": "🐸 Болотный бассейн",
+            "size": 3,
+            "cost": {"swamp": 2, "sand": 2, "algae": 2},
+            "affinity": "опора",
+            "hint": "вязкая среда, где жизнь цепляется лучше всего",
+        },
+        "steam_front": {
+            "label": "☁️ Паровой фронт",
+            "size": 2,
+            "cost": {"steam": 3, "glass": 2, "metal": 1},
+            "affinity": "экспедиционный",
+            "hint": "подвижная среда с постоянным давлением",
+        },
+        "sealed_dome": {
+            "label": "🔮 Герметичный купол",
+            "size": 3,
+            "cost": {"glass": 4, "brick": 2, "energy": 1},
+            "affinity": "промышленный",
+            "hint": "контролируемая среда для сложных контуров",
+        },
+    },
+    "energy": {
+        "ember_grid": {
+            "label": "🔥 Жаровая сеть",
+            "size": 2,
+            "cost": {"energy": 3, "lava": 2, "steam": 1},
+            "affinity": "добывающий",
+            "hint": "подпитывает тяжёлые узлы и добычу",
+        },
+        "spark_mesh": {
+            "label": "⚡ Искровая сетка",
+            "size": 3,
+            "cost": {"energy": 2, "electricity": 2, "metal": 2},
+            "affinity": "промышленный",
+            "hint": "любит механику, цеха и точный контроль",
+        },
+        "spore_cycle": {
+            "label": "🫧 Споровый цикл",
+            "size": 2,
+            "cost": {"energy": 2, "life": 1, "algae": 2},
+            "affinity": "опора",
+            "hint": "медленный, но устойчивый источник роста",
+        },
     },
     "life": {
-        "bacteria": {"label": "🦠 Бактериальная жизнь", "absurd": 1, "capacity": 1},
-        "moss": {"label": "🌿 Моховая жизнь", "absurd": 0, "capacity": 2},
+        "moss_bloom": {
+            "label": "🌿 Моховое цветение",
+            "size": 3,
+            "cost": {"moss": 3, "algae": 2, "life": 1},
+            "affinity": "опора",
+            "hint": "стабилизирует биом и делает его обжитым",
+        },
+        "bacteria_hive": {
+            "label": "🦠 Бактериальный улей",
+            "size": 2,
+            "cost": {"bacteria": 3, "life": 1, "swamp": 1},
+            "affinity": "экспедиционный",
+            "hint": "агрессивная жизнь, которая быстро захватывает среду",
+        },
+        "spirit_garden": {
+            "label": "✨ Духосад",
+            "size": 3,
+            "cost": {"life": 2, "moss": 2, "energy": 1, "paper": 1},
+            "affinity": "универсальный",
+            "hint": "редкая жизнь, которую можно направить в любую сторону",
+        },
     },
 }
 WORLD_ARCHETYPES = {
-    ("stone", "swamp", "moss"): {
+    "опора": {
         "id": "nursery",
-        "name": "🌱 Колыбельная чаща",
+        "name": "🌱 Колыбельный массив",
         "role": "опора",
-        "capacity_bonus": 0,
-        "support_bonus": 2,
-        "strain_cost": 1,
+        "support_base": 2,
+        "strain_base": 1,
         "bonuses": {"farm_yield": 1, "aero_yield": 1, "river_bonus": 2},
-        "humor": "укоризненно смотрит на хаотичных соседей и держит мир в тонусе",
+        "daily_income": {"wood": 2, "stone": 1},
+        "humor": "тихо наращивает почву и терпеливо держит мир на себе",
     },
-    ("stone", "steam", "bacteria"): {
+    "промышленный": {
         "id": "forge",
-        "name": "⚙️ Паровой шов",
+        "name": "⚙️ Индустриальный пояс",
         "role": "промышленный",
-        "capacity_bonus": 1,
-        "support_bonus": 1,
-        "strain_cost": 2,
+        "support_base": 1,
+        "strain_base": 2,
         "bonuses": {"mine_yield": 1, "factory_yield": 1, "mountains_bonus": 2, "cave_bonus": 2},
-        "humor": "с шипением скрепляет реальность промышленным упрямством",
+        "daily_income": {"metal": 1, "glass": 1, "energy": 1},
+        "humor": "гудит, коптит и превращает пустоту в инфраструктуру",
     },
-    ("lava", "swamp", "moss"): {
+    "добывающий": {
         "id": "wildfire",
-        "name": "🌋 Цветущий разлом",
+        "name": "🌋 Разломный карьер",
         "role": "добывающий",
-        "capacity_bonus": 1,
-        "support_bonus": 0,
-        "strain_cost": 3,
-        "bonuses": {"volcano_bonus": 3, "factory_yield": 1},
-        "humor": "живёт вопреки здравому смыслу и пахнет авантюрой",
+        "support_base": 0,
+        "strain_base": 3,
+        "bonuses": {"volcano_bonus": 3, "mine_yield": 1},
+        "daily_income": {"stone": 2, "brick": 1, "lava": 1},
+        "humor": "трещит, роет и всё время просит ещё топлива",
     },
-    ("lava", "steam", "bacteria"): {
-        "id": "volatile",
-        "name": "💥 Шипящий кошмар",
-        "role": "нестабильный",
-        "capacity_bonus": 2,
-        "support_bonus": -1,
-        "strain_cost": 5,
-        "bonuses": {"global_loot_bonus": 2, "rare_find_bonus": 0.05},
-        "humor": "очень хочет взорваться, но пока ограничивается угрозами",
+    "экспедиционный": {
+        "id": "expedition",
+        "name": "🚀 Фронтирный пояс",
+        "role": "экспедиционный",
+        "support_base": 0,
+        "strain_base": 3,
+        "bonuses": {"global_loot_bonus": 1, "rare_find_bonus": 0.03},
+        "daily_income": {"paper": 1, "energy": 1, "sand": 1},
+        "humor": "раскачивает границы мира и постоянно смотрит наружу",
+    },
+    "универсальный": {
+        "id": "patchwork",
+        "name": "🧩 Лоскутный карман",
+        "role": "универсальный",
+        "support_base": 1,
+        "strain_base": 2,
+        "bonuses": {"farm_yield": 1},
+        "daily_income": {"stone": 1, "wood": 1},
+        "humor": "собран из разного, но неожиданно живуч",
     },
 }
-DEFAULT_WORLD_ARCHETYPE = {
-    "id": "patchwork",
-    "name": "🧩 Лоскутный карман",
-    "role": "универсальный",
-    "capacity_bonus": 0,
-    "support_bonus": 0,
-    "strain_cost": 2,
-    "bonuses": {},
-    "humor": "держится на алхимической изоленте и сомнительных обещаниях",
-}
+DEFAULT_WORLD_ARCHETYPE = WORLD_ARCHETYPES["универсальный"]
 WORLD_FOCUS_OPTIONS = {
     "tech": {
         "item": "electricity",
@@ -184,6 +266,7 @@ DEFAULT_PLAYER_TEMPLATE = {
     "world_failures": 0,
     "world_tutorial": {"active": False, "created": False},
     "world_support_level": 0,
+    "world_legacy_reset_used": False,
 }
 
 # Таблица выпадения из лутбоксов
@@ -251,9 +334,16 @@ def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
                 "role": str(world.get("role") or "универсальный"),
                 "focus": str(world.get("focus") or ""),
                 "focus_label": str(world.get("focus_label") or ""),
+                "daily_income": {
+                    str(item_id): max(0, int(amount or 0))
+                    for item_id, amount in dict(world.get("daily_income", {})).items()
+                    if int(amount or 0) > 0
+                },
                 "slots": {
                     "matter": str(((world.get("slots") or {}).get("matter")) or ""),
+                    "foundation": str(((world.get("slots") or {}).get("foundation")) or ((world.get("slots") or {}).get("matter")) or ""),
                     "medium": str(((world.get("slots") or {}).get("medium")) or ""),
+                    "energy": str(((world.get("slots") or {}).get("energy")) or ""),
                     "life": str(((world.get("slots") or {}).get("life")) or ""),
                 },
                 "starter": bool(world.get("starter", False)),
@@ -269,6 +359,15 @@ def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
     # но отдельного legacy-режима для мира больше нет.
     is_legacy = False
     return normalized_worlds, is_legacy, normalized_tutorial
+
+
+def has_legacy_world_layout(player: dict) -> bool:
+    worlds, _, _ = ensure_world_state(player)
+    for world in worlds:
+        slots = world.get("slots", {})
+        if slots.get("matter") or not slots.get("foundation") or not slots.get("energy"):
+            return True
+    return False
 
 
 def get_world_capacity_total(player: dict) -> int:
@@ -333,16 +432,39 @@ def get_world_effects(player: dict) -> dict[str, float]:
     effects: dict[str, float] = {}
     for world in worlds:
         slots = world.get("slots", {})
-        key = (slots.get("matter", ""), slots.get("medium", ""), slots.get("life", ""))
-        archetype = WORLD_ARCHETYPES.get(key, DEFAULT_WORLD_ARCHETYPE)
+        role = str(world.get("role") or "")
+        if role in {"", "универсальный"} and slots.get("matter"):
+            role = resolve_legacy_world_role(slots)
+        archetype = WORLD_ARCHETYPES.get(role, DEFAULT_WORLD_ARCHETYPE)
         bonuses = archetype.get("bonuses", {})
+        scale = max(1.0, float(int(world.get("capacity", 0) or 0)) / 10.0)
         for bonus_id, bonus_value in bonuses.items():
-            effects[bonus_id] = effects.get(bonus_id, 0) + bonus_value
+            if isinstance(bonus_value, float):
+                effects[bonus_id] = effects.get(bonus_id, 0) + round(bonus_value * scale, 4)
+            else:
+                effects[bonus_id] = effects.get(bonus_id, 0) + max(1, int(round(bonus_value * scale)))
         focus_id = str(world.get("focus") or "")
         if focus_id in WORLD_FOCUS_OPTIONS:
             for bonus_id, bonus_value in WORLD_FOCUS_OPTIONS[focus_id].get("bonuses", {}).items():
                 effects[bonus_id] = effects.get(bonus_id, 0) + bonus_value
     return effects
+
+
+def get_world_daily_income(player: dict) -> dict[str, int]:
+    worlds, _, _ = ensure_world_state(player)
+    if not worlds:
+        return {}
+
+    income: dict[str, int] = {}
+    for world in worlds:
+        daily_income = dict(world.get("daily_income", {}))
+        if not daily_income:
+            role = str(world.get("role") or "")
+            archetype = WORLD_ARCHETYPES.get(role, DEFAULT_WORLD_ARCHETYPE)
+            daily_income = build_world_daily_income(archetype, int(world.get("capacity", 0) or 0))
+        for item_id, amount in daily_income.items():
+            income[item_id] = income.get(item_id, 0) + max(0, int(amount or 0))
+    return income
 
 
 def get_world_role_counts(player: dict) -> dict[str, int]:
@@ -434,60 +556,76 @@ def can_upgrade_with_world_capacity(player: dict, building_id: str, next_level: 
     return False, f"Не хватает вместимости мира: нужно {required}, свободно {max(0, left)}."
 
 
+def resolve_world_archetype(slots: dict[str, str]) -> dict:
+    scores: dict[str, int] = {}
+    for layer_id in WORLD_LAYER_ORDER:
+        option_id = slots.get(layer_id, "")
+        layer_options = STARTER_BIOME_SLOTS.get(layer_id, {})
+        option = layer_options.get(option_id)
+        if not option:
+            continue
+        affinity = str(option.get("affinity") or "универсальный")
+        scores[affinity] = scores.get(affinity, 0) + int(option.get("size", 0) or 0)
+
+    if not scores:
+        return DEFAULT_WORLD_ARCHETYPE
+
+    ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    role = ordered[0][0]
+    return WORLD_ARCHETYPES.get(role, DEFAULT_WORLD_ARCHETYPE)
+
+
+def resolve_legacy_world_role(slots: dict[str, str]) -> str:
+    matter = str(slots.get("matter", ""))
+    medium = str(slots.get("medium", ""))
+    life = str(slots.get("life", ""))
+    legacy_map = {
+        ("stone", "swamp", "moss"): "опора",
+        ("stone", "steam", "bacteria"): "промышленный",
+        ("lava", "swamp", "moss"): "добывающий",
+        ("lava", "steam", "bacteria"): "экспедиционный",
+    }
+    return legacy_map.get((matter, medium, life), "универсальный")
+
+
+def build_world_daily_income(archetype: dict, capacity: int) -> dict[str, int]:
+    capacity = max(1, int(capacity or 0))
+    scale = max(1, capacity // 4)
+    income: dict[str, int] = {}
+    for item_id, amount in archetype.get("daily_income", {}).items():
+        income[item_id] = max(1, int(amount or 0)) * scale
+    return income
+
+
 def build_starter_world_preview(slots: dict[str, str], focus_id: str | None = None) -> tuple[str, str, int, int, str]:
-    matter = STARTER_BIOME_SLOTS["matter"][slots["matter"]]
+    foundation = STARTER_BIOME_SLOTS["foundation"][slots["foundation"]]
     medium = STARTER_BIOME_SLOTS["medium"][slots["medium"]]
+    energy = STARTER_BIOME_SLOTS["energy"][slots["energy"]]
     life = STARTER_BIOME_SLOTS["life"][slots["life"]]
-    archetype_key = (slots["matter"], slots["medium"], slots["life"])
-    archetype = WORLD_ARCHETYPES.get(archetype_key, DEFAULT_WORLD_ARCHETYPE)
+    archetype = resolve_world_archetype(slots)
     focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
-    capacity = matter["capacity"] + medium["capacity"] + life["capacity"] + archetype["capacity_bonus"] + (focus["capacity_bonus"] if focus else 0)
-    absurdity = matter["absurd"] + medium["absurd"] + life["absurd"]
-    tier = 1 if capacity <= 4 else 2
+    capacity = foundation["size"] + medium["size"] + energy["size"] + life["size"] + (focus["capacity_bonus"] if focus else 0)
+    absurdity = max(0, 12 - capacity)
     name = archetype["name"]
+    daily_income = build_world_daily_income(archetype, capacity)
+    daily_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in daily_income.items())
     humor = (
         archetype["humor"]
         if archetype["id"] != "patchwork"
-        else "трещит, но держится"
-        if absurdity >= 3
-        else "выглядит подозрительно живым"
-        if absurdity >= 1
-        else "стоит уверенно и даже не дымит"
+        else "получился неровным, но пригодным для жизни"
     )
     description = (
-        f"{matter['label']}, {medium['label']} и {life['label']}."
+        f"{foundation['label']}, {medium['label']}, {energy['label']} и {life['label']}."
         f" Архетип: {archetype['name']} ({archetype['role']})."
         + (f" Фокус: {focus['label']}." if focus else "")
-        + f" Абсурдность: {absurdity}. Вместимость: {capacity}."
+        + f" Размер биома: {capacity}. Ежедневно приносит: {daily_label}."
     )
     return name, description, capacity, absurdity, humor
 
 
 def evaluate_world_creation(player: dict, slots: dict[str, str], focus_id: str | None = None) -> tuple[bool, int, int]:
     _, _, capacity, absurdity, _ = build_starter_world_preview(slots, focus_id=focus_id)
-    attempt_number = len(player.get("worlds", [])) + 1
-    if attempt_number == 1:
-        return True, capacity, absurdity
-
-    focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
-    future_world = {
-        "capacity": capacity,
-        "absurdity": absurdity,
-        "strain_cost": max(1, WORLD_ARCHETYPES.get((slots["matter"], slots["medium"], slots["life"]), DEFAULT_WORLD_ARCHETYPE)["strain_cost"] + (focus["strain_delta"] if focus else 0)),
-        "support_bonus": WORLD_ARCHETYPES.get((slots["matter"], slots["medium"], slots["life"]), DEFAULT_WORLD_ARCHETYPE)["support_bonus"] + (focus["support_bonus"] if focus else 0),
-    }
-    current_worlds = list(player.get("worlds", []))
-    simulated_player = dict(player)
-    simulated_player["worlds"] = current_worlds + [future_world]
-    overload = max(0, get_world_strain(simulated_player) - get_world_stability_limit(simulated_player))
-    fail_chance = absurdity * 15 + overload * 15
-    if attempt_number == 2:
-        fail_chance += 10
-    else:
-        fail_chance += 20 + min(25, (attempt_number - 3) * 5)
-    fail_chance = max(0, min(85, fail_chance))
-    roll = random.randint(1, 100)
-    return roll > fail_chance, capacity, absurdity
+    return True, capacity, absurdity
 
 async def get_or_create_player(user_id: int, user_name: str):
     """Инициализация профиля."""
@@ -584,6 +722,10 @@ async def get_or_create_player(user_id: int, user_name: str):
     if player.get("world_support_level") != support_level:
         player["world_support_level"] = support_level
         update_fields["world_support_level"] = support_level
+    legacy_reset_used = bool(player.get("world_legacy_reset_used", False))
+    if player.get("world_legacy_reset_used") != legacy_reset_used:
+        player["world_legacy_reset_used"] = legacy_reset_used
+        update_fields["world_legacy_reset_used"] = legacy_reset_used
 
     if update_fields:
         await db.alchemy_players.update_one({"user_id": user_id}, {"$set": update_fields})
@@ -689,7 +831,7 @@ def build_intro_menu(bot_username: str):
 async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
     player = await get_or_create_player(user_id, user_name)
     if player.get("tutorial_step", 0) >= 1:
-        return "Ты уже пережил первый алхимический БАМММ. Открывай /base и продолжай.", False
+        return "Старт уже пройден. Открывай /base и продолжай развитие мира.", False
 
     inventory = player.get("inventory", {})
     starters = {
@@ -729,7 +871,7 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
         "• 🪨 Камень x2\n"
         "• 🪵 Древесина x2\n\n"
         "Я еще подсунул тебе несколько стартовых рецептов: Лава, Камень, Пар, Болото, Жизнь, Водоросли, Мох и Бактерия."
-        " Открой /base, активируй Кристалл Базы и попробуй собрать из этого первый микробиом."
+        " Открой /base, активируй Кристалл Базы и начни собирать первый биом слоями."
     )
     return text, True
 
@@ -779,7 +921,9 @@ async def use_item_logic(user_id: int, item_code: str):
         text = ("✅ **База активирована!**\n\n"
                 "Кристалл вспыхнул и развернул вокруг тебя карманную пустоту. На стене загорелось:\n"
                 "`мир уничтожен, требуется создатель`\n\n"
-                "Сначала собери первый микробиом. Вариантов немного, но они уже настоящие:\n"
+                "Сначала собери первый биом. Он даст миру место для дальнейшего развития.\n\n"
+                "Для старта тебе пригодятся материалы под четыре слоя: основа, среда, энергия и жизнь.\n"
+                "Базовые связки для старта:\n"
                 "1. 🔥 + 🪨 = **Лава**\n"
                 "2. 💧 + 🔥 = **Пар**\n"
                 "3. 💧 + 🪨 = **Болото**\n"
@@ -787,7 +931,7 @@ async def use_item_logic(user_id: int, item_code: str):
                 "5. **Жизнь** + 💧 = **Водоросли**\n"
                 "6. **Водоросли** + **Болото** = **Мох**\n"
                 "7. **Жизнь** + **Болото** = **Бактерия**\n\n"
-                "Когда что-нибудь из этого добудешь, возвращайся в штаб и жми на создание микробиома.")
+                "Когда соберёшь детали, возвращайся в штаб и укладывай их в чертёж биома по слоям.")
         
         # Завершаем туториал
         await db.alchemy_players.update_one(
@@ -892,7 +1036,7 @@ async def process_expedition(callback: types.CallbackQuery):
     if location_bonus or global_loot_bonus:
         narrative_text += "\n\n🌍 Мир отозвался на вылазку и подкинул добыче дополнительный импульс."
     if rare_find_bonus > 0:
-        narrative_text += "\n💥 Нестабильный биом нервно заискрил, поэтому редкости сегодня липнут охотнее."
+        narrative_text += "\n✨ Экспедиционный биом расширил окно поиска, поэтому редкости сегодня липнут охотнее."
 
     # Обновляем инвентарь базовыми дропами
     for item in drops:

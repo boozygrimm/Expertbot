@@ -109,10 +109,10 @@ def get_building_world_requirements(building_id: str, next_level: int) -> dict[s
         ("altar", 2): {"промышленный": 1},
         ("altar", 3): {"промышленный": 1, "добывающий": 1},
         ("guild", 2): {"опора": 1},
-        ("guild", 3): {"опора": 1, "нестабильный": 1},
+        ("guild", 3): {"опора": 1, "экспедиционный": 1},
         ("barracks", 2): {"промышленный": 1},
         ("barracks", 3): {"промышленный": 1, "добывающий": 1},
-        ("barracks", 4): {"промышленный": 1, "нестабильный": 1},
+        ("barracks", 4): {"промышленный": 1, "экспедиционный": 1},
         ("fort", 2): {"опора": 1},
         ("fort", 3): {"опора": 2},
         ("heritage_center", 4): {"опора": 1, "универсальный": 1},
@@ -177,12 +177,15 @@ def get_building_status_emoji(building_id: str, player: dict) -> str:
 
 
 def format_building_cost(inventory: dict, cost: dict) -> str:
+    if not cost:
+        return "• Бесплатно."
+
     parts = []
     for item_id, amount in cost.items():
         have = int(inventory.get(item_id, 0) or 0)
         marker = "✅" if have >= amount else "❌"
-        parts.append(f"{marker} {ELEMENTS.get(item_id, item_id)}: {have}/{amount}")
-    return ", ".join(parts) if parts else "Бесплатно."
+        parts.append(f"• {marker} {ELEMENTS.get(item_id, item_id)}: {have}/{amount}")
+    return "\n".join(parts)
 
 
 def build_building_detail_text(player: dict, building_id: str) -> tuple[str, bool]:
@@ -204,37 +207,10 @@ def build_building_detail_text(player: dict, building_id: str) -> tuple[str, boo
     if help_line:
         lines.extend(["", f"💡 {help_line}"])
 
-    next_capacity_cost = get_building_world_capacity_cost(building_id, next_level)
-    capacity_ok, capacity_reason = can_upgrade_with_world_capacity(player, building_id, next_level)
-    if next_capacity_cost > 0 and next_level in building["levels"]:
-        world_left = max(0, get_world_capacity_left(player))
-        marker = "✅" if capacity_ok else "❌"
-        lines.extend(["", f"🌍 {marker} Вместимость мира: {world_left}/{next_capacity_cost} свободно для следующего апгрейда"])
-        if capacity_reason and not capacity_ok:
-            lines.append(f"⚠️ {capacity_reason}")
-
     role_requirements = get_building_world_requirements(building_id, next_level)
     roles_ok, roles_reason = check_world_role_requirements(player, role_requirements)
-    if role_requirements and next_level in building["levels"]:
-        role_counts = get_world_role_counts(player)
-        role_state = ", ".join(f"{role} {role_counts.get(role, 0)}/{amount}" for role, amount in role_requirements.items())
-        marker = "✅" if roles_ok else "❌"
-        lines.extend(["", f"🧬 {marker} Профиль мира: {role_state}"])
-        if roles_reason and not roles_ok:
-            lines.append(f"⚠️ {roles_reason}")
-
     focus_requirements = get_building_world_focus_requirements(building_id, next_level)
     focus_ok, focus_reason = check_world_focus_requirements(player, focus_requirements)
-    if focus_requirements and next_level in building["levels"]:
-        focus_counts = get_world_focus_counts(player)
-        focus_state = ", ".join(
-            f"{WORLD_FOCUS_OPTIONS.get(focus_id, {}).get('label', focus_id)} {focus_counts.get(focus_id, 0)}/{amount}"
-            for focus_id, amount in focus_requirements.items()
-        )
-        marker = "✅" if focus_ok else "❌"
-        lines.extend(["", f"🎯 {marker} Зрелый фокус: {focus_state}"])
-        if focus_reason and not focus_ok:
-            lines.append(f"⚠️ {focus_reason}")
 
     lines.extend(["", "Уровни:"])
     if current_level <= 0:
@@ -247,16 +223,51 @@ def build_building_detail_text(player: dict, building_id: str) -> tuple[str, boo
 
     if not is_maxed and next_level in building["levels"]:
         next_data = building["levels"][next_level]
+        next_capacity_cost = get_building_world_capacity_cost(building_id, next_level)
+        capacity_ok, capacity_reason = can_upgrade_with_world_capacity(player, building_id, next_level)
+        world_requirement_lines: list[str] = []
+
+        if next_capacity_cost > 0:
+            world_left = max(0, get_world_capacity_left(player))
+            marker = "✅" if capacity_ok else "❌"
+            world_requirement_lines.append(
+                f"• {marker} Вместимость мира: {world_left}/{next_capacity_cost} свободно для следующего апгрейда"
+            )
+            if capacity_reason and not capacity_ok:
+                world_requirement_lines.append(f"• ⚠️ {capacity_reason}")
+
+        if role_requirements:
+            role_counts = get_world_role_counts(player)
+            role_state = ", ".join(f"{role} {role_counts.get(role, 0)}/{amount}" for role, amount in role_requirements.items())
+            marker = "✅" if roles_ok else "❌"
+            world_requirement_lines.append(f"• {marker} Биомы: {role_state}")
+            if roles_reason and not roles_ok:
+                world_requirement_lines.append(f"• ⚠️ {roles_reason}")
+
+        if focus_requirements:
+            focus_counts = get_world_focus_counts(player)
+            focus_state = ", ".join(
+                f"{WORLD_FOCUS_OPTIONS.get(focus_id, {}).get('label', focus_id)} {focus_counts.get(focus_id, 0)}/{amount}"
+                for focus_id, amount in focus_requirements.items()
+            )
+            marker = "✅" if focus_ok else "❌"
+            world_requirement_lines.append(f"• {marker} Фокусы: {focus_state}")
+            if focus_reason and not focus_ok:
+                world_requirement_lines.append(f"• ⚠️ {focus_reason}")
+
+        if not world_requirement_lines:
+            world_requirement_lines.append("• Ничего сверх обычных ресурсов.")
+
         lines.extend([
             "",
             f"Следующий апгрейд: Ур. {next_level}",
             f"📈 {next_data['effect_desc']}",
-            f"💰 {format_building_cost(inventory, next_data['cost'])}",
+            "💰 Цена ресурсами:",
+            format_building_cost(inventory, next_data["cost"]),
+            "",
+            "🌍 Нужно от мира:",
+            "\n".join(world_requirement_lines),
         ])
-        if role_requirements:
-            lines.append(f"🌍 Требуются биомы: {format_world_requirements(role_requirements)}")
-        if focus_requirements:
-            lines.append(f"🎯 Требуются фокусы: {format_focus_requirements(focus_requirements)}")
     else:
         lines.extend(["", "🌟 Все уровни уже построены."])
 
@@ -368,7 +379,7 @@ async def render_build_menu(message: types.Message, user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
     user_buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
-    text = "🏗 **СТРОЙПЛОЩАДКА**\n🔵 можно строить, 🟡 упёрлось в мир, 🔴 не хватает условий или ресурсов, 🟢 максимум.\n\n"
+    text = "🏗 **СТРОЙПЛОЩАДКА**\n🔵 можно строить, 🟡 ресурсы есть, но мир не готов, 🔴 не хватает цены или условий, 🟢 максимум.\nОткрой здание кнопкой ниже: там отдельно показаны цена ресурсами и требования мира.\n\n"
     builder = InlineKeyboardBuilder()
 
     for b_id, b_data in BUILDINGS.items():
