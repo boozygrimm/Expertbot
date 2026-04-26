@@ -7,6 +7,19 @@ os.environ.setdefault("TELEGRAM_TOKEN", "123456:TESTTOKEN")
 
 from app_setup import create_scheduler, handle_healthcheck, set_commands
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
+from handlers.alc_base import (
+    build_barracks_status,
+    build_base_summary,
+    build_changelog_page,
+    build_expeditions_status,
+    build_fort_status,
+    build_base_keyboard,
+    build_lab_status_lines,
+    build_production_status,
+    build_storage_status,
+    format_process_status,
+    get_headquarters_icon,
+)
 from handlers.alc_core import format_duration, get_alchemy_cooldown, get_heritage_slots, get_used_slots
 from handlers.alc_fighters import (
     FATIGUE_RECOVERY_SECONDS,
@@ -18,6 +31,7 @@ from handlers.alc_fighters import (
     refresh_fighter,
     spend_cost,
 )
+from handlers.alc_tasks import build_daily_report_text, build_report_close_markup
 from handlers.alc_heritage import normalize_lore_doc, with_bammm
 from handlers.alc_build import (
     build_building_detail_text,
@@ -123,6 +137,151 @@ class AlchemyCoreTests(unittest.TestCase):
             "energy": 1,
         }
         self.assertEqual(get_used_slots(inventory), 2)
+
+
+class BaseStatusTests(unittest.TestCase):
+    def test_get_headquarters_icon_scales_with_fort(self):
+        self.assertEqual(get_headquarters_icon(0), "🛖")
+        self.assertEqual(get_headquarters_icon(1), "🏕")
+        self.assertEqual(get_headquarters_icon(2), "🏰")
+        self.assertEqual(get_headquarters_icon(3), "🏯")
+
+    def test_format_process_status_handles_empty_running_and_ready(self):
+        self.assertEqual(
+            format_process_status(None, running_text="варит", ready_text="готово"),
+            "🔴 пусто",
+        )
+        running = format_process_status({"finish_time": 4_000_000_000}, running_text="варит", ready_text="готово")
+        self.assertEqual(running, "🔵 варит")
+        ready = format_process_status({"finish_time": 1}, running_text="варит", ready_text="готово")
+        self.assertEqual(ready, "🟢 готово")
+
+    def test_build_storage_status_counts_only_activatable_items(self):
+        player = {"inventory": {"pack_s": 2, "recipe_scroll": 1, "stone": 9}}
+        self.assertEqual(build_storage_status(player), "🟢 активаций 3")
+        self.assertEqual(build_storage_status({"inventory": {"stone": 1}}), "🔴 активаций 0")
+
+    def test_build_lab_status_lines_reflect_levels_and_processes(self):
+        self.assertEqual(build_lab_status_lines({"buildings": {"lab": 0}}), [])
+        lines = build_lab_status_lines(
+            {
+                "buildings": {"lab": 3},
+                "crucible_process": {"finish_time": 4_000_000_000},
+                "retort_process": {"finish_time": 1},
+            }
+        )
+        self.assertEqual(len(lines), 2)
+        self.assertIn("🔥 Тигель: 🔵 переплавляет", lines[0])
+        self.assertIn("🧪 Реторта: 🟢 фракции готовы", lines[1])
+
+    def test_build_production_barracks_expeditions_and_fort_statuses(self):
+        self.assertEqual(build_production_status({"buildings": {"altar": 0}}), "")
+        production = build_production_status(
+            {
+                "buildings": {"altar": 2},
+                "production_slots": [{"assigned_at": 4_000_000_000}, {"assigned_at": 0, "stopped": True}],
+            }
+        )
+        self.assertIn("🏭 Производство: 🔵 1/2 в работе", production)
+
+        barracks = build_barracks_status(
+            {
+                "buildings": {"barracks": 1},
+                "fighters": [
+                    {"status": "available", "stamina": 2},
+                    {"status": "expedition", "stamina": 1},
+                    {"status": "dead", "stamina": 1},
+                ],
+            }
+        )
+        self.assertEqual(barracks, "🎖 Казармы: 🔵 строй 1 | поход 1")
+
+        expeditions = build_expeditions_status(
+            {
+                "buildings": {"barracks": 1},
+                "active_expeditions": [{"status": "arrived"}, {"status": "running"}],
+            }
+        )
+        self.assertEqual(expeditions, "🧭 Экспедиции: 🟢 ждут 1 | в пути 1")
+
+        fort = build_fort_status(
+            {
+                "buildings": {"fort": 1},
+                "fort_defense": {"moat": "stone", "catapult": None},
+                "captives": [1, 2],
+            }
+        )
+        self.assertEqual(fort, "🏰 Форт: 🟢 ловушки 1 | плен 2")
+
+    def test_build_base_summary_includes_key_sections(self):
+        text = build_base_summary(
+            {
+                "user_name": "Тест",
+                "last_mine": 0,
+                "inventory": {"pack_s": 1},
+                "buildings": {"fort": 2, "lab": 2, "altar": 1, "barracks": 1},
+                "crucible_process": {"finish_time": 1},
+                "production_slots": [],
+                "fighters": [],
+                "active_expeditions": [],
+            }
+        )
+        self.assertIn("🏰 **ГЛАВНЫЙ ШТАБ**", text)
+        self.assertIn("Тест | версия `", text)
+        self.assertIn("🎒 Склад: 🟢 активаций 1", text)
+        self.assertIn("🔥 Тигель:", text)
+
+    def test_build_changelog_page_clamps_page_and_has_back_button(self):
+        text, markup = build_changelog_page(999)
+        self.assertIn("🧾 <b>АЛЬФА ИЗМЕНЕНИЙ</b>", text)
+        self.assertIn("Текущая версия:", text)
+        self.assertEqual(markup.inline_keyboard[-1][0].text, "🔙 В Штаб")
+
+    def test_build_base_keyboard_shows_optional_sections(self):
+        markup = build_base_keyboard(
+            {
+                "last_mine": 0,
+                "buildings": {"altar": 1, "barracks": 1, "fort": 1},
+            }
+        )
+        button_texts = [button.text for row in markup.inline_keyboard for button in row]
+        self.assertIn("🏭", button_texts)
+        self.assertIn("🧭", button_texts)
+        self.assertIn("🏰 Форт", button_texts)
+
+
+class ReportTextTests(unittest.TestCase):
+    def test_build_daily_report_text_handles_full_and_empty_reports(self):
+        empty = build_daily_report_text(None, None)
+        self.assertIn("📊 <b>УТРЕННИЙ ОТЧЕТ</b> [сегодня]", empty)
+        self.assertIn("Активных начислений не было.", empty)
+
+        report = build_daily_report_text(
+            {
+                "drained_energy": 5,
+                "served_units": 3,
+                "deserters": 1,
+                "exhausted_units": 2,
+                "xp_lost": 4,
+                "energy_left": 7,
+                "date_label": "2026-04-26",
+            },
+            {
+                "granted_lines": ["Камень x2"],
+                "skipped_lines": ["Металл x1"],
+            },
+        )
+        self.assertIn("Списано энергии: 5", report)
+        self.assertIn("Остались без отдыха: 2", report)
+        self.assertIn("Дезертировало: 1", report)
+        self.assertIn("Получено: Камень x2", report)
+        self.assertIn("Не влезло на склад: Металл x1", report)
+
+    def test_build_report_close_markup_has_single_close_button(self):
+        markup = build_report_close_markup()
+        self.assertEqual(len(markup.inline_keyboard), 1)
+        self.assertEqual(markup.inline_keyboard[0][0].text, "❌ Закрыть")
+        self.assertEqual(markup.inline_keyboard[0][0].callback_data, "alc:base_close")
 
 
 class FighterLogicTests(unittest.TestCase):
