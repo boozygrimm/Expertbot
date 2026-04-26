@@ -16,6 +16,9 @@ from handlers.alc_base import (
     build_draft_cost,
     can_activate_base_from_universe,
     can_reset_legacy_worlds,
+    get_layer_resource_pool,
+    get_tutorial_layer_target,
+    is_tutorial_world_open,
     build_barracks_status,
     build_base_summary,
     build_changelog_page,
@@ -273,6 +276,14 @@ class BaseStatusTests(unittest.TestCase):
         cost = build_draft_cost(draft, None)
         self.assertTrue(can_pay_cost(STARTER_WORLD_RESOURCE_GRANT, cost))
 
+    def test_tutorial_world_only_exposes_hinted_resources_by_layer(self):
+        player = {"inventory": {"active_base": 1}, "worlds": []}
+        self.assertTrue(is_tutorial_world_open(player))
+        self.assertEqual(get_layer_resource_pool(player, "foundation"), ["stone", "wood"])
+        self.assertEqual(get_layer_resource_pool(player, "medium"), ["swamp", "algae"])
+        self.assertEqual(get_tutorial_layer_target("energy", "steam"), 1)
+        self.assertEqual(get_tutorial_layer_target("life", "moss"), 1)
+
     def test_starter_world_reward_bundle_guarantees_storage_materials(self):
         self.assertGreaterEqual(STARTER_WORLD_REWARD_BUNDLE.get("stone", 0), 2)
         self.assertGreaterEqual(STARTER_WORLD_REWARD_BUNDLE.get("sand", 0), 2)
@@ -497,6 +508,30 @@ class BaseStatusTests(unittest.TestCase):
         text = build_universe_intro_text({"tutorial_step": 1, "inventory": {}, "worlds": []})
         self.assertIn("кнопку ниже", text)
         self.assertIn("первому биому", text)
+
+    def test_build_universe_intro_text_shows_one_time_tutorial_hints(self):
+        text = build_universe_intro_text(
+            {
+                "tutorial_step": 2,
+                "inventory": {"active_base": 1},
+                "worlds": [],
+                "world_tutorial": {"active": True, "created": False, "hints_shown": False},
+            }
+        )
+        self.assertIn("Одноразовые подсказки", text)
+        self.assertIn("Камня и Древесины", text)
+        self.assertIn("Стартовых ресурсов", text)
+
+    def test_build_universe_intro_text_hides_tutorial_hints_after_first_show(self):
+        text = build_universe_intro_text(
+            {
+                "tutorial_step": 2,
+                "inventory": {"active_base": 1},
+                "worlds": [],
+                "world_tutorial": {"active": True, "created": False, "hints_shown": True},
+            }
+        )
+        self.assertNotIn("Одноразовые подсказки", text)
 
     def test_build_changelog_page_clamps_page_and_has_back_button(self):
         text, markup = build_changelog_page(999)

@@ -315,7 +315,7 @@ DEFAULT_PLAYER_TEMPLATE = {
     "raid_protection_until": 0,
     "worlds": [],
     "world_failures": 0,
-    "world_tutorial": {"active": False, "created": False},
+    "world_tutorial": {"active": False, "created": False, "hints_shown": False},
     "world_support_level": 0,
     "world_legacy_reset_used": False,
 }
@@ -405,6 +405,7 @@ def ensure_world_state(player: dict) -> tuple[list[dict], bool, dict]:
     normalized_tutorial = {
         "active": bool(world_tutorial.get("active", False)),
         "created": bool(world_tutorial.get("created", False)),
+        "hints_shown": bool(world_tutorial.get("hints_shown", False)),
     }
     # Второй элемент кортежа сохранён для совместимости со старыми вызовами,
     # но отдельного legacy-режима для мира больше нет.
@@ -655,6 +656,151 @@ def get_biome_slot_options(layer_id: str, tutorial_only: bool) -> dict[str, dict
     return {option_id: meta for option_id, meta in options.items() if not bool(meta.get("tutorial", False))}
 
 
+def is_resource_draft(draft: dict) -> bool:
+    return any(isinstance(value, dict) for value in draft.values())
+
+
+def normalize_resource_bucket(bucket: dict | None) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    for item_id, amount in dict(bucket or {}).items():
+        amount_int = max(0, int(amount or 0))
+        if amount_int > 0:
+            normalized[str(item_id)] = amount_int
+    return normalized
+
+
+def build_resource_draft_slots(player: dict, draft: dict[str, dict[str, int]]) -> tuple[dict[str, str], dict[str, dict]]:
+    tutorial_only = not bool(ensure_world_state(player)[0])
+    slots: dict[str, str] = {}
+    reports: dict[str, dict] = {}
+
+    for layer_id in WORLD_LAYER_ORDER:
+        bucket = normalize_resource_bucket(draft.get(layer_id, {}))
+        options = get_biome_slot_options(layer_id, tutorial_only=tutorial_only)
+        if not options:
+            continue
+
+        best_option_id = next(iter(options))
+        best_score = -10_000.0
+        best_foreign = 0
+        best_matched = 0
+        layer_total = sum(bucket.values())
+
+        for option_id, meta in options.items():
+            cost = dict(meta.get("cost", {}))
+            matched = sum(min(bucket.get(item_id, 0), int(amount or 0)) for item_id, amount in cost.items())
+            relevant_extra = sum(max(0, bucket.get(item_id, 0) - int(amount or 0)) for item_id, amount in cost.items())
+            foreign = sum(amount for item_id, amount in bucket.items() if item_id not in cost)
+            score = matched * 3.0 + relevant_extra * 0.35 - foreign * 1.15 + float(meta.get("size", 0) or 0)
+            if score > best_score:
+                best_option_id = option_id
+                best_score = score
+                best_foreign = foreign
+                best_matched = matched
+
+        slots[layer_id] = best_option_id
+        base_cost = sum(int(amount or 0) for amount in options[best_option_id].get("cost", {}).values())
+        reports[layer_id] = {
+            "invested": layer_total,
+            "matched": best_matched,
+            "foreign": best_foreign,
+            "baseline": base_cost,
+            "score": best_score,
+        }
+
+    return slots, reports
+
+
+def build_world_blueprint(player: dict, draft: dict, focus_id: str | None = None) -> dict:
+    focus = WORLD_FOCUS_OPTIONS.get(focus_id or "")
+
+    if is_resource_draft(draft):
+        slots, reports = build_resource_draft_slots(player, draft)
+        if not all(draft.get(layer_id) for layer_id in WORLD_LAYER_ORDER):
+            return {
+                "slots": slots,
+                "reports": reports,
+                "capacity": 0,
+                "absurdity": 0,
+                "fail_chance": 0,
+                "is_tutorial": False,
+            }
+
+        archetype = resolve_world_archetype(slots)
+        base_capacity = sum(int(STARTER_BIOME_SLOTS[layer_id][slots[layer_id]].get("size", 0) or 0) for layer_id in WORLD_LAYER_ORDER)
+        mass_bonus = 0
+        chaos = 0
+        role_scores: dict[str, int] = {}
+        for layer_id in WORLD_LAYER_ORDER:
+            report = reports.get(layer_id, {})
+            option = STARTER_BIOME_SLOTS[layer_id][slots[layer_id]]
+            role = str(option.get("affinity") or "универсальный")
+            role_scores[role] = role_scores.get(role, 0) + int(option.get("size", 0) or 0)
+            invested = int(report.get("invested", 0) or 0)
+            baseline = max(1, int(report.get("baseline", 0) or 0))
+            foreign = int(report.get("foreign", 0) or 0)
+            mass_bonus += max(0, invested - baseline) // 6
+            chaos += foreign + max(0, invested - baseline * 2)
+
+        capacity = base_capacity + min(4, mass_bonus) + (focus["capacity_bonus"] if focus else 0)
+        total_role_score = sum(role_scores.values())
+        dominant = max(role_scores.values()) if role_scores else 0
+        tension = max(0, total_role_score - dominant)
+        absurdity = max(0, 12 - capacity + tension + chaos // 4)
+        support_bonus = archetype["support_base"] + max(0, capacity // 6) + (focus["support_bonus"] if focus else 0)
+        strain_cost = max(1, archetype["strain_base"] + max(0, capacity // 5) + tension // 3 + chaos // 8 + (focus["strain_delta"] if focus else 0))
+        is_tutorial = is_tutorial_biome(slots)
+
+        worlds, _, _ = ensure_world_state(player)
+        attempt_number = len(worlds) + 1
+        if attempt_number == 1 and is_tutorial:
+            fail_chance = 0
+        else:
+            future_overload = max(0, get_world_strain(player) + strain_cost - get_world_stability_limit(player))
+            fail_chance = min(85, tension * 7 + chaos * 2 + future_overload * 15 + (5 if focus else 0))
+
+        return {
+            "slots": slots,
+            "reports": reports,
+            "archetype": archetype,
+            "capacity": capacity,
+            "absurdity": absurdity,
+            "support_bonus": support_bonus,
+            "strain_cost": strain_cost,
+            "fail_chance": fail_chance,
+            "is_tutorial": is_tutorial,
+        }
+
+    archetype = resolve_world_archetype(draft)
+    _, _, capacity, absurdity, _ = build_starter_world_preview(draft, focus_id=focus_id)
+    support_bonus = archetype["support_base"] + max(0, capacity // 6) + (focus["support_bonus"] if focus else 0)
+    strain_cost = max(1, archetype["strain_base"] + max(0, capacity // 5) + (focus["strain_delta"] if focus else 0))
+    worlds, _, _ = ensure_world_state(player)
+    attempt_number = len(worlds) + 1
+    affinity_scores: dict[str, int] = {}
+    for layer_id in WORLD_LAYER_ORDER:
+        option = STARTER_BIOME_SLOTS[layer_id][draft[layer_id]]
+        affinity = str(option.get("affinity") or "универсальный")
+        affinity_scores[affinity] = affinity_scores.get(affinity, 0) + int(option.get("size", 0) or 0)
+    dominant = max(affinity_scores.values()) if affinity_scores else 0
+    total = sum(affinity_scores.values())
+    tension = max(0, total - dominant)
+    diversity = max(0, len(affinity_scores) - 1)
+    future_overload = max(0, get_world_strain(player) + strain_cost - get_world_stability_limit(player))
+    fail_chance = 0 if attempt_number == 1 or is_tutorial_biome(draft) else min(85, absurdity * 8 + tension * 6 + diversity * 8 + future_overload * 15 + (5 if focus else 0))
+    return {
+        "slots": draft,
+        "reports": {},
+        "archetype": archetype,
+        "capacity": capacity,
+        "absurdity": absurdity,
+        "support_bonus": support_bonus,
+        "strain_cost": strain_cost,
+        "fail_chance": fail_chance,
+        "is_tutorial": is_tutorial_biome(draft),
+    }
+
+
 def build_world_daily_income(archetype: dict, capacity: int) -> dict[str, int]:
     if not archetype:
         return {}
@@ -735,25 +881,10 @@ def build_base_resource_refund(cost: dict[str, int], ratio: float = 1.0) -> dict
 
 
 def evaluate_world_creation(player: dict, slots: dict[str, str], focus_id: str | None = None) -> tuple[bool, int, int]:
-    worlds, _, _ = ensure_world_state(player)
-    attempt_number = len(worlds) + 1
-    _, _, capacity, absurdity, _ = build_starter_world_preview(slots, focus_id=focus_id)
-    if attempt_number == 1 or is_tutorial_biome(slots):
-        return True, capacity, absurdity
-
-    affinity_scores: dict[str, int] = {}
-    for layer_id in WORLD_LAYER_ORDER:
-        option = STARTER_BIOME_SLOTS[layer_id][slots[layer_id]]
-        affinity = str(option.get("affinity") or "универсальный")
-        affinity_scores[affinity] = affinity_scores.get(affinity, 0) + int(option.get("size", 0) or 0)
-
-    dominant = max(affinity_scores.values()) if affinity_scores else 0
-    total = sum(affinity_scores.values())
-    tension = max(0, total - dominant)
-    diversity = max(0, len(affinity_scores) - 1)
-    focus_risk = 5 if focus_id else 0
-    future_overload = max(0, get_world_strain(player) + tension - get_world_stability_limit(player))
-    fail_chance = min(85, tension * 10 + diversity * 8 + future_overload * 15 + focus_risk)
+    blueprint = build_world_blueprint(player, slots, focus_id=focus_id)
+    capacity = int(blueprint.get("capacity", 0) or 0)
+    absurdity = int(blueprint.get("absurdity", 0) or 0)
+    fail_chance = int(blueprint.get("fail_chance", 0) or 0)
     if fail_chance <= 0:
         return True, capacity, absurdity
     return random.randint(1, 100) > fail_chance, capacity, absurdity
@@ -988,7 +1119,7 @@ async def run_alchemy_intro(user_id: int, user_name: str) -> tuple[str, bool]:
                 "inventory": inventory,
                 "tutorial_step": 1,
                 "discovered": sorted(set(player.get("discovered", [])) | set(STARTER_DISCOVERIES)),
-                "world_tutorial": {"active": False, "created": False},
+                "world_tutorial": {"active": False, "created": False, "hints_shown": False},
             }
         },
     )
@@ -1070,7 +1201,7 @@ async def use_item_logic(user_id: int, item_code: str):
         # Завершаем туториал
         await db.alchemy_players.update_one(
             {"user_id": user_id},
-            {"$set": {"tutorial_step": 2, "world_tutorial": {"active": True, "created": False}}},
+            {"$set": {"tutorial_step": 2, "world_tutorial": {"active": True, "created": False, "hints_shown": False}}},
         )
         success = True
 
