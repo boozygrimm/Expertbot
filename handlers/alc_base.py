@@ -14,6 +14,7 @@ from handlers.alc_recipes import ELEMENTS
 from handlers.pole_chudes import delete_after_delay
 from handlers.alc_achievements import ACHIEVEMENTS, format_reward_label
 from handlers.alc_core import (
+    STARTER_BIOME_COLLAPSE_BUNDLE,
     STARTER_WORLD_REWARD_BUNDLE,
     DEFAULT_WORLD_ARCHETYPE,
     STARTER_BIOME_SLOTS,
@@ -72,6 +73,12 @@ TUTORIAL_LAYER_HINTS = {
     "medium": {"swamp": 1, "algae": 1},
     "energy": {"steam": 1, "energy": 1},
     "life": {"moss": 1, "life": 1},
+}
+LAYER_ARCHETYPE_TIPS = {
+    "foundation": "🪨 Камень тянет в опору, лава в добычу, металл в промышленность.",
+    "medium": "🌫 Болото держит опору и добычу, пар толкает в походы, купол в производство.",
+    "energy": "⚡ Жар усиливает добычу, искра любит промышленность, споры держат мир устойчивым.",
+    "life": "🧬 Мох закрепляет опору и добычу, бактерии ведут в экспедиции, духосад делает смесь гибче.",
 }
 
 
@@ -314,6 +321,19 @@ def build_daily_income_lines(income: dict[str, int]) -> list[str]:
         else:
             lines.append(f"• {ELEMENTS.get(item_id, item_id)} x{amount}/день")
     return lines
+
+
+def collapse_starter_biome(worlds: list[dict]) -> tuple[list[dict], dict[str, int], dict | None]:
+    collapsed_world: dict | None = None
+    remaining_worlds: list[dict] = []
+    for world in worlds:
+        if collapsed_world is None and world.get("starter"):
+            collapsed_world = world
+            continue
+        remaining_worlds.append(world)
+    if collapsed_world is None:
+        return list(worlds), {}, None
+    return remaining_worlds, dict(STARTER_BIOME_COLLAPSE_BUNDLE), collapsed_world
 
 
 def get_layer_resource_pool(player: dict, layer_id: str) -> list[str]:
@@ -560,7 +580,7 @@ def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
         builder.button(text="⚡ Энергия", callback_data="universe_layer_open:energy:0")
         builder.button(text="🧬 Жизнь", callback_data="universe_layer_open:life:0")
         builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
-        builder.adjust(2, 2, 2)
+        builder.adjust(1, 2, 2, 1)
         return builder.as_markup()
 
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
@@ -692,6 +712,9 @@ def build_universe_layer_text(player: dict, layer_id: str, page: int = 0) -> str
         f"Закладка слоя: **{format_layer_bucket(bucket)}**",
         f"Состояние слоя: _{build_layer_hint_line(blueprint, layer_id)}_",
     ]
+    tip = LAYER_ARCHETYPE_TIPS.get(layer_id)
+    if tip:
+        lines.extend(["", tip])
     if is_tutorial_world_open(player):
         targets = TUTORIAL_LAYER_HINTS.get(layer_id, {})
         if targets:
@@ -1442,6 +1465,13 @@ async def universe_create(callback: types.CallbackQuery):
             "starter": attempt_number == 1,
         }
     )
+    collapse_rewards: dict[str, int] = {}
+    collapsed_world: dict | None = None
+    if attempt_number == 2:
+        worlds, collapse_rewards, collapsed_world = collapse_starter_biome(worlds)
+        for item_id, amount in collapse_rewards.items():
+            inventory[item_id] = inventory.get(item_id, 0) + amount
+
     universe_biome_drafts[callback.from_user.id] = {layer_id: {} for layer_id in WORLD_LAYER_ORDER}
     universe_active_layers[callback.from_user.id] = WORLD_LAYER_ORDER[0]
 
@@ -1472,6 +1502,19 @@ async def universe_create(callback: types.CallbackQuery):
             for item_id, amount in STARTER_WORLD_REWARD_BUNDLE.items()
         ]
         success_text += "Стартовый набор после микробиома:\n" + "\n".join(reward_lines) + "\n"
+    elif collapsed_world and collapse_rewards:
+        collapse_lines = [
+            f"• {ELEMENTS.get(item_id, item_id)} x{amount}"
+            for item_id, amount in collapse_rewards.items()
+        ]
+        success_text += (
+            f'\n\n💥 "**Пшик, пшик, пшик... А это так должно было?!! БАМММ!**" '
+            f"Так схлопнулся первый биом **{collapsed_world.get('name', 'Учебный микробиом')}**: "
+            "он и так слишком долго держался на честном слове.\n"
+            "Перед тем как развалиться, успел выдать остатки накопленного:\n"
+            + "\n".join(collapse_lines)
+            + "\n"
+        )
     success_text += (
         "Учебный этап закрыт: теперь у тебя есть мир, стартовый запас под стройку и свобода пробовать обычную игру."
         if attempt_number == 1

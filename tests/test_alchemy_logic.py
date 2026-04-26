@@ -16,6 +16,7 @@ from handlers.alc_base import (
     build_draft_cost,
     can_activate_base_from_universe,
     can_reset_legacy_worlds,
+    collapse_starter_biome,
     get_layer_resource_pool,
     safe_edit_text,
     get_tutorial_layer_target,
@@ -30,6 +31,7 @@ from handlers.alc_base import (
     build_production_status,
     build_storage_status,
     build_universe_keyboard,
+    build_universe_layer_text,
     build_universe_intro_text,
     build_world_status,
     format_process_status,
@@ -38,6 +40,7 @@ from handlers.alc_base import (
     universe_reset_draft,
 )
 from handlers.alc_core import (
+    STARTER_BIOME_COLLAPSE_BUNDLE,
     STARTER_WORLD_RESOURCE_GRANT,
     STARTER_WORLD_REWARD_BUNDLE,
     WORLD_DAILY_SPIRIT_TOKEN,
@@ -405,7 +408,19 @@ class BaseStatusTests(unittest.TestCase):
         )
         self.assertEqual(income["metal"], 2)
         self.assertEqual(income["glass"], 2)
+        self.assertEqual(income["brick"], 2)
         self.assertEqual(income["energy"], 2)
+
+    def test_collapse_starter_biome_removes_first_world_and_returns_bonus_bundle(self):
+        remaining_worlds, rewards, collapsed_world = collapse_starter_biome(
+            [
+                {"name": "Учебный микробиом", "starter": True},
+                {"name": "Индустриальный пояс", "starter": False},
+            ]
+        )
+        self.assertEqual([world["name"] for world in remaining_worlds], ["Индустриальный пояс"])
+        self.assertEqual(rewards, STARTER_BIOME_COLLAPSE_BUNDLE)
+        self.assertEqual(collapsed_world["name"], "Учебный микробиом")
 
     def test_can_activate_base_from_universe_only_for_legacy_profiles_without_active_base(self):
         self.assertTrue(can_activate_base_from_universe({"tutorial_step": 1, "inventory": {}, "worlds": []}))
@@ -476,8 +491,20 @@ class BaseStatusTests(unittest.TestCase):
                 "worlds": [],
             }
         )
+        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 1])
         labels = [button.text for row in markup.inline_keyboard for button in row]
         self.assertEqual(labels, ["🧬 Биомы", "🪨 Основа", "🌫 Среда", "⚡ Энергия", "🧬 Жизнь", "🔙 В Штаб"])
+
+    def test_build_universe_layer_text_shows_short_archetype_tip(self):
+        text = build_universe_layer_text(
+            {
+                "user_id": 1,
+                "inventory": {"active_base": 1},
+                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+            },
+            "foundation",
+        )
+        self.assertIn("Камень тянет в опору", text)
 
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")
@@ -830,24 +857,12 @@ class BuildingLogicTests(unittest.TestCase):
         self.assertIn("Вместимость мира", text)
 
     def test_building_world_requirements_gate_specific_upgrades(self):
-        self.assertEqual(get_building_world_requirements("altar", 2), {"промышленный": 1})
-        player_blocked = {
-            "inventory": {"brick": 10, "metal": 4, "glass": 3, "active_base": 1},
-            "buildings": {"storage": 0, "lab": 0, "altar": 1, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
-            "worlds": [
-                {"name": "Чаща", "capacity": 4, "description": "ok", "humor": "держится", "role": "опора", "support_bonus": 2, "strain_cost": 1}
-            ],
-        }
-        status, can_upgrade, is_maxed = get_building_status("altar", player_blocked)
-        self.assertEqual(status, "🟡")
-        self.assertFalse(can_upgrade)
-        self.assertFalse(is_maxed)
-
+        self.assertEqual(get_building_world_requirements("altar", 2), {})
         player_ready = {
             "inventory": {"brick": 10, "metal": 4, "glass": 3, "active_base": 1},
             "buildings": {"storage": 0, "lab": 0, "altar": 1, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
             "worlds": [
-                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2}
+                {"name": "Чаща", "capacity": 4, "description": "ok", "humor": "держится", "role": "опора", "support_bonus": 2, "strain_cost": 1}
             ],
         }
         status, can_upgrade, is_maxed = get_building_status("altar", player_ready)
@@ -856,24 +871,12 @@ class BuildingLogicTests(unittest.TestCase):
         self.assertFalse(is_maxed)
 
     def test_building_focus_requirements_gate_late_upgrades(self):
-        self.assertEqual(get_building_world_focus_requirements("altar", 3), {"tech": 1})
-        player_blocked = {
-            "inventory": {"electricity": 5, "diamond": 1, "robot": 1, "active_base": 1},
-            "buildings": {"storage": 0, "lab": 0, "altar": 2, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
-            "worlds": [
-                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2}
-            ],
-        }
-        status, can_upgrade, _ = get_building_status("altar", player_blocked)
-        self.assertEqual(status, "🟡")
-        self.assertFalse(can_upgrade)
-
+        self.assertEqual(get_building_world_focus_requirements("altar", 3), {})
         player_ready = {
             "inventory": {"electricity": 5, "diamond": 1, "robot": 1, "active_base": 1},
             "buildings": {"storage": 0, "lab": 0, "altar": 2, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1},
             "worlds": [
-                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2, "focus": "tech"},
-                {"name": "Разлом", "capacity": 4, "description": "ok", "humor": "держится", "role": "добывающий", "support_bonus": 0, "strain_cost": 3},
+                {"name": "Шов", "capacity": 4, "description": "ok", "humor": "держится", "role": "промышленный", "support_bonus": 1, "strain_cost": 2}
             ],
         }
         status, can_upgrade, _ = get_building_status("altar", player_ready)

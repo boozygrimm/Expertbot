@@ -6,15 +6,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from handlers.alc_core import (
     can_upgrade_with_world_capacity,
-    check_world_focus_requirements,
-    check_world_role_requirements,
     get_building_world_capacity_cost,
     get_heritage_slots,
     get_or_create_player,
     get_world_capacity_left,
-    get_world_focus_counts,
-    get_world_role_counts,
-    WORLD_FOCUS_OPTIONS,
 )
 from handlers.alc_fighters import (
     build_fighter_label,
@@ -105,20 +100,7 @@ def get_building_help_line(building_id: str, level: int) -> str:
 
 
 def get_building_world_requirements(building_id: str, next_level: int) -> dict[str, int]:
-    requirements: dict[tuple[str, int], dict[str, int]] = {
-        ("altar", 2): {"промышленный": 1},
-        ("altar", 3): {"промышленный": 1, "добывающий": 1},
-        ("guild", 2): {"опора": 1},
-        ("guild", 3): {"опора": 1, "экспедиционный": 1},
-        ("barracks", 2): {"промышленный": 1},
-        ("barracks", 3): {"промышленный": 1, "добывающий": 1},
-        ("barracks", 4): {"промышленный": 1, "экспедиционный": 1},
-        ("fort", 2): {"опора": 1},
-        ("fort", 3): {"опора": 2},
-        ("heritage_center", 4): {"опора": 1, "универсальный": 1},
-        ("heritage_center", 5): {"опора": 1, "промышленный": 1, "добывающий": 1},
-    }
-    return dict(requirements.get((building_id, next_level), {}))
+    return {}
 
 
 def format_world_requirements(requirements: dict[str, int]) -> str:
@@ -128,24 +110,13 @@ def format_world_requirements(requirements: dict[str, int]) -> str:
 
 
 def get_building_world_focus_requirements(building_id: str, next_level: int) -> dict[str, int]:
-    requirements: dict[tuple[str, int], dict[str, int]] = {
-        ("altar", 3): {"tech": 1},
-        ("guild", 3): {"wild": 1},
-        ("barracks", 4): {"war": 1},
-        ("barracks", 5): {"war": 1, "tech": 1},
-        ("heritage_center", 5): {"lore": 1},
-    }
-    return dict(requirements.get((building_id, next_level), {}))
+    return {}
 
 
 def format_focus_requirements(requirements: dict[str, int]) -> str:
     if not requirements:
         return "Без зрелого фокуса."
-    parts = []
-    for focus_id, amount in requirements.items():
-        label = WORLD_FOCUS_OPTIONS.get(focus_id, {}).get("label", focus_id)
-        parts.append(f"{label} {amount}")
-    return ", ".join(parts)
+    return ", ".join(f"{focus_id} {amount}" for focus_id, amount in requirements.items())
 
 
 def get_building_status(building_id: str, player: dict) -> tuple[str, bool, bool]:
@@ -160,13 +131,9 @@ def get_building_status(building_id: str, player: dict) -> tuple[str, bool, bool
     cost = building["levels"][next_level]["cost"]
     can_upgrade = all(inventory.get(item_id, 0) >= amount for item_id, amount in cost.items())
     capacity_ok, capacity_reason = can_upgrade_with_world_capacity(player, building_id, next_level)
-    role_requirements = get_building_world_requirements(building_id, next_level)
-    roles_ok, roles_reason = check_world_role_requirements(player, role_requirements)
-    focus_requirements = get_building_world_focus_requirements(building_id, next_level)
-    focus_ok, focus_reason = check_world_focus_requirements(player, focus_requirements)
-    if can_upgrade and capacity_ok and roles_ok and focus_ok:
+    if can_upgrade and capacity_ok:
         return "🔵", True, False
-    if can_upgrade and (not capacity_ok or not roles_ok or not focus_ok):
+    if can_upgrade and not capacity_ok:
         return "🟡", False, False
     return "🔴", False, False
 
@@ -207,11 +174,6 @@ def build_building_detail_text(player: dict, building_id: str) -> tuple[str, boo
     if help_line:
         lines.extend(["", f"💡 {help_line}"])
 
-    role_requirements = get_building_world_requirements(building_id, next_level)
-    roles_ok, roles_reason = check_world_role_requirements(player, role_requirements)
-    focus_requirements = get_building_world_focus_requirements(building_id, next_level)
-    focus_ok, focus_reason = check_world_focus_requirements(player, focus_requirements)
-
     lines.extend(["", "Уровни:"])
     if current_level <= 0:
         lines.append("• Пока не построено.")
@@ -235,25 +197,6 @@ def build_building_detail_text(player: dict, building_id: str) -> tuple[str, boo
             )
             if capacity_reason and not capacity_ok:
                 world_requirement_lines.append(f"• ⚠️ {capacity_reason}")
-
-        if role_requirements:
-            role_counts = get_world_role_counts(player)
-            role_state = ", ".join(f"{role} {role_counts.get(role, 0)}/{amount}" for role, amount in role_requirements.items())
-            marker = "✅" if roles_ok else "❌"
-            world_requirement_lines.append(f"• {marker} Биомы: {role_state}")
-            if roles_reason and not roles_ok:
-                world_requirement_lines.append(f"• ⚠️ {roles_reason}")
-
-        if focus_requirements:
-            focus_counts = get_world_focus_counts(player)
-            focus_state = ", ".join(
-                f"{WORLD_FOCUS_OPTIONS.get(focus_id, {}).get('label', focus_id)} {focus_counts.get(focus_id, 0)}/{amount}"
-                for focus_id, amount in focus_requirements.items()
-            )
-            marker = "✅" if focus_ok else "❌"
-            world_requirement_lines.append(f"• {marker} Фокусы: {focus_state}")
-            if focus_reason and not focus_ok:
-                world_requirement_lines.append(f"• ⚠️ {focus_reason}")
 
         if not world_requirement_lines:
             world_requirement_lines.append("• Ничего сверх обычных ресурсов.")
@@ -788,15 +731,7 @@ async def upg_logic(callback: types.CallbackQuery):
     capacity_ok, capacity_reason = can_upgrade_with_world_capacity(player, b_id, nxt_lvl)
     if not capacity_ok:
         return await callback.answer(capacity_reason or "Мир пока не выдержит этот апгрейд.", show_alert=True)
-    role_requirements = get_building_world_requirements(b_id, nxt_lvl)
-    roles_ok, roles_reason = check_world_role_requirements(player, role_requirements)
-    if not roles_ok:
-        return await callback.answer(roles_reason or "Миру не хватает нужных биомов под этот апгрейд.", show_alert=True)
-    focus_requirements = get_building_world_focus_requirements(b_id, nxt_lvl)
-    focus_ok, focus_reason = check_world_focus_requirements(player, focus_requirements)
-    if not focus_ok:
-        return await callback.answer(focus_reason or "Не хватает зрелых фокусов мира под этот апгрейд.", show_alert=True)
-    
+
     for item, amt in cost.items():
         inv[item] -= amt
     

@@ -40,6 +40,15 @@ STARTER_WORLD_REWARD_BUNDLE = {
     "wood": 6,
     "energy": 2,
 }
+STARTER_BIOME_COLLAPSE_BUNDLE = {
+    "stone": 3,
+    "wood": 3,
+    "sand": 2,
+    "brick": 2,
+    "glass": 1,
+    "metal": 1,
+    "energy": 1,
+}
 STARTER_BIOME_SLOTS = {
     "foundation": {
         "tutorial_seed": {
@@ -174,7 +183,7 @@ WORLD_ARCHETYPES = {
         "support_base": 2,
         "strain_base": 1,
         "bonuses": {"farm_yield": 1, "aero_yield": 1, "river_bonus": 2},
-        "daily_income": {"wood": 2, "stone": 1},
+        "daily_income": {"wood": 2, "stone": 1, "moss": 1, "life": 1},
         "humor": "тихо наращивает почву и терпеливо держит мир на себе",
     },
     "промышленный": {
@@ -184,7 +193,7 @@ WORLD_ARCHETYPES = {
         "support_base": 1,
         "strain_base": 2,
         "bonuses": {"mine_yield": 1, "factory_yield": 1, "mountains_bonus": 2, "cave_bonus": 2},
-        "daily_income": {"metal": 1, "glass": 1, "energy": 1},
+        "daily_income": {"metal": 1, "glass": 1, "brick": 1, "energy": 1},
         "humor": "гудит, коптит и превращает пустоту в инфраструктуру",
     },
     "добывающий": {
@@ -194,7 +203,7 @@ WORLD_ARCHETYPES = {
         "support_base": 0,
         "strain_base": 3,
         "bonuses": {"volcano_bonus": 3, "mine_yield": 1},
-        "daily_income": {"stone": 2, "brick": 1, "lava": 1},
+        "daily_income": {"stone": 2, "sand": 1, "lava": 1, "metal": 1},
         "humor": "трещит, роет и всё время просит ещё топлива",
     },
     "экспедиционный": {
@@ -204,7 +213,7 @@ WORLD_ARCHETYPES = {
         "support_base": 0,
         "strain_base": 3,
         "bonuses": {"global_loot_bonus": 1, "rare_find_bonus": 0.03},
-        "daily_income": {"paper": 1, "energy": 1, "sand": 1},
+        "daily_income": {"paper": 1, "energy": 1, "sand": 1, "bacteria": 1},
         "humor": "раскачивает границы мира и постоянно смотрит наружу",
     },
     "универсальный": {
@@ -214,7 +223,7 @@ WORLD_ARCHETYPES = {
         "support_base": 1,
         "strain_base": 2,
         "bonuses": {"farm_yield": 1},
-        "daily_income": {"stone": 1, "wood": 1},
+        "daily_income": {"stone": 1, "wood": 1, "glass": 1},
         "humor": "собран из разного, но неожиданно живуч",
     },
 }
