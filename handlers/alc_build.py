@@ -92,6 +92,88 @@ def get_building_help_line(building_id: str, level: int) -> str:
     }
     return hints.get(building_id, "")
 
+
+def get_building_status(building_id: str, player: dict) -> tuple[str, bool, bool]:
+    inventory = player.get("inventory", {})
+    buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
+    current_level = buildings.get(building_id, 0)
+    next_level = current_level + 1
+    building = BUILDINGS[building_id]
+    if next_level not in building["levels"]:
+        return "🟢 всё построено", False, True
+
+    cost = building["levels"][next_level]["cost"]
+    can_upgrade = all(inventory.get(item_id, 0) >= amount for item_id, amount in cost.items())
+    if can_upgrade:
+        return "🔵 апгрейд доступен", True, False
+    return "🔴 апгрейд недоступен", False, False
+
+
+def get_building_status_emoji(building_id: str, player: dict) -> str:
+    status_line, _, _ = get_building_status(building_id, player)
+    return status_line.split(" ", 1)[0]
+
+
+def format_building_cost(inventory: dict, cost: dict) -> str:
+    parts = []
+    for item_id, amount in cost.items():
+        have = int(inventory.get(item_id, 0) or 0)
+        marker = "✅" if have >= amount else "❌"
+        parts.append(f"{marker} {ELEMENTS.get(item_id, item_id)}: {have}/{amount}")
+    return ", ".join(parts) if parts else "Бесплатно."
+
+
+def build_building_detail_text(player: dict, building_id: str) -> tuple[str, bool]:
+    inventory = player.get("inventory", {})
+    buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
+    building = BUILDINGS[building_id]
+    current_level = buildings.get(building_id, 0)
+    next_level = current_level + 1
+    status_line, can_upgrade, is_maxed = get_building_status(building_id, player)
+
+    lines = [
+        f"{building['name']}",
+        f"Статус: {status_line}",
+        "",
+        building["desc"],
+    ]
+
+    help_line = get_building_help_line(building_id, current_level)
+    if help_line:
+        lines.extend(["", f"💡 {help_line}"])
+
+    lines.extend(["", "Уровни:"])
+    if current_level <= 0:
+        lines.append("• Пока не построено.")
+    else:
+        for level in range(1, current_level + 1):
+            effect_desc = building["levels"].get(level, {}).get("effect_desc", "")
+            marker = "✅" if level < current_level else "✅ вы тут"
+            lines.append(f"• {marker} Ур. {level}: {effect_desc}")
+
+    if not is_maxed and next_level in building["levels"]:
+        next_data = building["levels"][next_level]
+        lines.extend([
+            "",
+            f"Следующий апгрейд: Ур. {next_level}",
+            f"📈 {next_data['effect_desc']}",
+            f"💰 {format_building_cost(inventory, next_data['cost'])}",
+        ])
+    else:
+        lines.extend(["", "🌟 Все уровни уже построены."])
+
+    return "\n".join(lines), can_upgrade
+
+
+def build_building_detail_keyboard(player: dict, building_id: str) -> types.InlineKeyboardMarkup:
+    _, can_upgrade, is_maxed = get_building_status(building_id, player)
+    builder = InlineKeyboardBuilder()
+    if can_upgrade and not is_maxed:
+        builder.button(text="🏗 Строить", callback_data=f"build_upg:{building_id}")
+    builder.button(text="🔙 Вернуться", callback_data="build_open")
+    builder.adjust(1)
+    return builder.as_markup()
+
 BUILDINGS = {
     "storage": {
         "id": "storage",
@@ -186,49 +268,34 @@ BUILDINGS = {
 
 async def render_build_menu(message: types.Message, user_id: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
-    inventory = player.get("inventory", {})
     user_buildings = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
-    text = "🏗 **СТРОЙПЛОЩАДКА**\nРесурсы тратятся на улучшение модулей базы.\n\n"
+    text = "🏗 **СТРОЙПЛОЩАДКА**\nСиний - можно строить, красный - ресурсов не хватает, зеленый - всё готово.\n\n"
     builder = InlineKeyboardBuilder()
 
     for b_id, b_data in BUILDINGS.items():
         lvl = user_buildings.get(b_id, 0)
-        nxt = lvl + 1
-        
-        text += f"**{b_data['name']}** (Ур. {lvl})\n"
-        
-        if nxt in b_data["levels"]:
-            cost = b_data["levels"][nxt]["cost"]
-            cost_str = []
-            can_up = True
-            
-            for item, amt in cost.items():
-                name = ELEMENTS.get(item, item)
-                has = inventory.get(item, 0)
-                emoji = "✅" if has >= amt else "❌"
-                if has < amt: can_up = False
-                cost_str.append(f"{emoji} {name}: {has}/{amt}")
-            
-            text += f"📈 {b_data['levels'][nxt]['effect_desc']}\n"
-            help_line = get_building_help_line(b_id, lvl)
-            if help_line:
-                text += f"💡 {help_line}\n"
-            text += f"💰 {', '.join(cost_str)}\n\n"
-            
-            btn_text = f"⬆️ Улучшить {b_data['name']}" if can_up else f"🔒 Не хватает ресурсов"
-            builder.button(text=btn_text, callback_data=f"build_upg:{b_id}" if can_up else "build_nope")
-        else:
-            help_line = get_building_help_line(b_id, lvl)
-            if help_line:
-                text += f"💡 {help_line}\n"
-            text += "🌟 Максимальный уровень достигнут.\n\n"
+        status_line, _, _ = get_building_status(b_id, player)
+        text += f"{b_data['name']} | Ур. {lvl} | {status_line}\n"
+        status_emoji = get_building_status_emoji(b_id, player)
+        builder.button(text=f"{status_emoji} {b_data['name']}", callback_data=f"build_view:{b_id}")
 
-    builder.adjust(1)
-    # Используем deep_link для возврата в главное меню
+    builder.adjust(2)
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
 
     await message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+
+
+@router.callback_query(F.data.startswith("build_view:"))
+async def build_view(callback: types.CallbackQuery):
+    building_id = callback.data.split(":")[1]
+    player = await db.alchemy_players.find_one({"user_id": callback.from_user.id})
+    if not player or building_id not in BUILDINGS:
+        return await callback.answer("Здание не найдено.", show_alert=True)
+    text, _ = build_building_detail_text(player, building_id)
+    markup = build_building_detail_keyboard(player, building_id)
+    await callback.message.edit_text(text, reply_markup=markup, parse_mode="Markdown")
+    await callback.answer()
 
 
 async def render_barracks_menu(message: types.Message, user_id: int):
@@ -599,13 +666,18 @@ async def upg_logic(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     
     player = await db.alchemy_players.find_one({"user_id": user_id})
+    if not player or b_id not in BUILDINGS:
+        return await callback.answer("Апгрейд недоступен.", show_alert=True)
     inv = player.get("inventory", {})
     builds = player.get("buildings", {"storage": 0, "lab": 0, "altar": 0, "guild": 0, "barracks": 0, "fort": 0, "heritage_center": 1})
     
     nxt_lvl = builds.get(b_id, 0) + 1
+    if nxt_lvl not in BUILDINGS[b_id]["levels"]:
+        return await callback.answer("Тут уже всё построено.", show_alert=True)
     cost = BUILDINGS[b_id]["levels"][nxt_lvl]["cost"]
+    if not can_pay_cost(inv, cost):
+        return await callback.answer("Пока не хватает ресурсов.", show_alert=True)
     
-    # Списываем
     for item, amt in cost.items():
         inv[item] -= amt
     
