@@ -3,13 +3,13 @@ import random
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ai_logic import generate_with_retry
 from database import db
+from config import get_msk_now
 from handlers.pole_chudes import unpin_and_delete_after_delay, delete_after_delay
 
 router = Router()
@@ -82,7 +82,7 @@ async def start_hangman(message: types.Message):
         try:
             await db.pole_history.insert_one({
                 "word": word,
-                "date": datetime.now()
+                "date": get_msk_now()
             })
         except Exception as e:
             logging.error(f"Не удалось сохранить слово виселицы в историю: {e}")
@@ -255,7 +255,7 @@ async def hm_handle_letter(callback: types.CallbackQuery):
                     "user_id": user_id,
                     "user_name": winner_name,
                     "score": final_score,
-                    "date": datetime.now()
+                    "date": get_msk_now()
                 })
             except Exception as e:
                 logging.error(f"Ошибка БД в виселице: {e}")

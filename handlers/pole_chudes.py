@@ -3,13 +3,14 @@ import random
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ai_logic import generate_with_retry
 from database import db
+from config import get_msk_now
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ async def start_game(message: types.Message):
                 try:
                     await db.pole_history.insert_one({
                         "word": word,
-                        "date": datetime.now()
+                        "date": get_msk_now()
                     })
                 except Exception as e:
                     logging.error(f"Не удалось сохранить слово в историю: {e}")
@@ -282,8 +283,8 @@ async def start_game(message: types.Message):
     
     try: 
         await status_msg.pin(disable_notification=True)
-    except Exception: 
-        pass
+    except Exception as e:
+        logger.debug("Failed to pin pole game status message in chat %s: %s", chat_id, e)
         
     asyncio.create_task(delete_after_delay(message))
 
@@ -343,7 +344,7 @@ async def handle_spin(callback: types.CallbackQuery):
                         "user_id": user_id,
                         "user_name": winner_name,
                         "score": final_score,
-                        "date": datetime.now()
+                        "date": get_msk_now()
                     })
                 except Exception as e:
                     logging.error(f"Ошибка БД в поле чудес: {e}")
@@ -423,7 +424,7 @@ async def handle_full_word_text(message: types.Message):
                 "user_id": user_id,
                 "user_name": winner_name,
                 "score": final_score,
-                "date": datetime.now()
+                "date": get_msk_now()
             })
         except Exception as e:
             logging.error(f"Ошибка БД при победе словом: {e}")
@@ -494,7 +495,7 @@ async def handle_letter(callback: types.CallbackQuery):
                     "user_id": user_id,
                     "user_name": winner_name,
                     "score": final_score,
-                    "date": datetime.now()
+                    "date": get_msk_now()
                 })
             except Exception as e:
                 logging.error(f"Ошибка БД в поле чудес: {e}")
@@ -534,7 +535,7 @@ async def show_top(message: types.Message):
         
     match_stage = {"chat_id": chat_id}
     if days:
-        match_stage["date"] = {"$gte": datetime.now() - timedelta(days=days)}
+        match_stage["date"] = {"$gte": get_msk_now() - timedelta(days=days)}
         
     try:
         cursor_wins = db.pole_stats.aggregate([

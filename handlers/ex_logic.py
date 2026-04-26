@@ -59,8 +59,8 @@ async def delete_after(msg: types.Message, delay: int = 120):
     await asyncio.sleep(delay)
     try:
         await msg.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to delete delayed message: chat_id=%s message_id=%s error=%s", msg.chat.id, msg.message_id, e)
 
 
 async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
@@ -123,8 +123,8 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
             clean_query = clean_query.strip()
             if intent in ["MUSIC", "SEARCH", "WEATHER", "IMAGE", "GOSSIP"]:
                 return intent, clean_query
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Intent analysis fallback to CHAT: query=%s error=%s", query, e)
 
     return "CHAT", query
 
@@ -167,8 +167,8 @@ async def generate_persona_opinion(
 
     try:
         await status_msg.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to delete persona status message: chat_id=%s message_id=%s error=%s", message.chat.id, status_msg.message_id, e)
 
     if response:
         try:
@@ -529,8 +529,8 @@ async def handle_ex_request(message: types.Message):
 
     try:
         await status_msg.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to delete chat status message: chat_id=%s message_id=%s error=%s", message.chat.id, status_msg.message_id, e)
 
     if response:
         try:

@@ -3,7 +3,6 @@ import urllib.parse
 import aiohttp
 import logging
 import re
-from datetime import datetime
 from aiogram import Router, types
 from aiogram.filters import Command, CommandObject
 from aiogram.types import BufferedInputFile
@@ -57,7 +56,7 @@ async def process_image_request(message: types.Message, query: str):
     user_name = message.from_user.first_name
 
     # 0. ПРОВЕРКА БЕСПЛАТНЫХ ЛИМИТОВ
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = get_msk_now().strftime("%Y-%m-%d")
     
     usage_doc = await db.game_data.find_one({
         "type": "daily_free_img", 

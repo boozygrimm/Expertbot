@@ -1,10 +1,15 @@
 import os
 import re
 import unittest
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
 os.environ.setdefault("TELEGRAM_TOKEN", "123456:TESTTOKEN")
 
+import ai_logic
+from ai_music_query import cleanup_music_query
+from ai_summaries import collect_chunk_summaries, split_text_into_chunks
 from app_setup import create_scheduler, handle_healthcheck, set_commands
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from handlers.alc_base import (
@@ -110,6 +115,74 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
         response = await handle_healthcheck(None)
         self.assertEqual(response.status, 200)
         self.assertIn("Бот онлайн", response.text)
+
+    async def test_ai_logic_try_groq_wrapper_keeps_old_signature(self):
+        with patch("ai_logic._try_groq", new=AsyncMock(return_value=("ok", 200))) as mock_try_groq:
+            result = await ai_logic.try_groq("ping", use_fast_model=True)
+
+        self.assertEqual(result, ("ok", 200))
+        mock_try_groq.assert_awaited_once_with("ping", ai_logic.SYSTEM_GUARD, use_fast_model=True)
+
+    async def test_ai_logic_make_rest_request_wrapper_injects_guard(self):
+        with patch("ai_logic._make_rest_request", new=AsyncMock(return_value=("ok", 200))) as mock_request:
+            result = await ai_logic.make_rest_request("prompt", "key", media_data=b"img", quiet=True)
+
+        self.assertEqual(result, ("ok", 200))
+        mock_request.assert_awaited_once_with(
+            "prompt",
+            "key",
+            ai_logic.SYSTEM_GUARD,
+            media_data=b"img",
+            model="gemini-3-flash-preview",
+            quiet=True,
+        )
+
+    def test_ai_logic_get_today_str_uses_msk_helper(self):
+        fake_now = datetime(2026, 4, 26, 12, 0, tzinfo=timezone.utc)
+        with patch("ai_logic.get_msk_now", return_value=fake_now):
+            self.assertEqual(ai_logic.get_today_str(), "26.04.2026")
+
+    async def test_ai_logic_transcribe_audio_wrapper_keeps_old_contract(self):
+        with patch("ai_logic._transcribe_audio_groq", new=AsyncMock(return_value="text")) as mock_transcribe:
+            result = await ai_logic.transcribe_audio_groq("voice.ogg")
+
+        self.assertEqual(result, "text")
+        mock_transcribe.assert_awaited_once_with("voice.ogg")
+
+    async def test_ai_logic_generate_fast_image_prompt_wrapper_keeps_old_contract(self):
+        with patch("ai_logic._generate_fast_image_prompt", new=AsyncMock(return_value="prompt")) as mock_generate:
+            result = await ai_logic.generate_fast_image_prompt("кот")
+
+        self.assertEqual(result, "prompt")
+        mock_generate.assert_awaited_once_with("кот")
+
+    async def test_ai_logic_normalize_music_query_wrapper_keeps_old_contract(self):
+        with patch("ai_logic._normalize_music_query", new=AsyncMock(return_value="artist title")) as mock_normalize:
+            result = await ai_logic.normalize_music_query("включи artist title")
+
+        self.assertEqual(result, "artist title")
+        self.assertEqual(mock_normalize.await_args.args[0], "включи artist title")
+        self.assertIs(mock_normalize.await_args.args[1], ai_logic.try_openrouter)
+
+    def test_split_text_into_chunks_preserves_boundaries(self):
+        text = "aaa\nbbb\nccc"
+        chunks = split_text_into_chunks(text, chunk_limit=5)
+        self.assertEqual(chunks, ["aaa", "bbb", "ccc\n"])
+
+    def test_cleanup_music_query_removes_common_noise_words(self):
+        self.assertEqual(cleanup_music_query("  Включи   песню Original Rammstein Sonne  "), "rammstein sonne")
+
+    async def test_collect_chunk_summaries_keeps_non_empty_results(self):
+        async def summarize(prompt: str) -> str:
+            return "" if prompt == "skip:b" else f"sum:{prompt}"
+
+        result = await collect_chunk_summaries(
+            ["a", "b", "c"],
+            lambda chunk: f"skip:{chunk}" if chunk == "b" else chunk,
+            summarize,
+            sleep_range=(0.0, 0.0),
+        )
+        self.assertEqual(result, ["sum:a", "sum:c"])
 
 
 class AlchemyCoreTests(unittest.TestCase):

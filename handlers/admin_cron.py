@@ -138,8 +138,8 @@ async def process_time_set(message: types.Message, bot, state: FSMContext):
     try:
         chat_info = await bot.get_chat(target_chat_id)
         chat_title = chat_info.title
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to resolve chat title for %s while setting cron: %s", target_chat_id, e)
 
     await db.settings.update_one(
         {"setting": "daily_report", "chat_id": target_chat_id},
@@ -167,8 +167,8 @@ async def cb_cron_menu_stop(callback: types.CallbackQuery, bot):
         try:
             chat_info = await bot.get_chat(cid)
             title = chat_info.title
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to resolve chat title for %s while listing cron stop targets: %s", cid, e)
             
         builder.button(text=f"❌ {title} ({rep.get('time')})", callback_data=f"c_stop:{cid}")
         
@@ -193,8 +193,8 @@ async def cb_cron_select_stop(callback: types.CallbackQuery, bot):
     try:
         chat_info = await bot.get_chat(chat_id)
         chat_title = chat_info.title
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to resolve chat title for %s while stopping cron: %s", chat_id, e)
 
     await callback.message.edit_text(f"⏸ Расписание для группы **{chat_title}** остановлено.", parse_mode="Markdown")
 
@@ -216,8 +216,8 @@ async def cb_cron_status(callback: types.CallbackQuery, bot):
         try:
             chat_info = await bot.get_chat(cid)
             title = chat_info.title
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to resolve chat title for %s while listing cron status: %s", cid, e)
         lines.append(f"• **{title}** ⏰ {rep.get('time')}")
         
     builder = InlineKeyboardBuilder()

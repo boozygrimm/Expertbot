@@ -4,6 +4,7 @@ import re
 from aiogram import Router, types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
+from config import get_msk_now
 from handlers.alc_core import increment_action_counter
 from handlers.alc_heritage import try_grant_random_lore_fragment
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
@@ -327,7 +328,7 @@ async def generate_daily_quests(user_id, player):
     for idx, quest in enumerate(quests):
         quest["id"] = idx
         
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    today_str = get_msk_now().strftime("%Y-%m-%d")
     daily_data = {"date": today_str, "quests": quests}
     
     await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"daily_quests": daily_data}})
@@ -337,7 +338,7 @@ async def generate_daily_quests(user_id, player):
 async def open_quests(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await db.alchemy_players.find_one({"user_id": user_id})
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    today_str = get_msk_now().strftime("%Y-%m-%d")
     
     daily_data = player.get("daily_quests", {})
     

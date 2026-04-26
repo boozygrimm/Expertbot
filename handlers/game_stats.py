@@ -3,8 +3,8 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from database import db
 from handlers.pole_chudes import delete_after_delay 
-from datetime import datetime
 import re
+from config import get_msk_now
 
 router = Router()
 
@@ -100,7 +100,7 @@ async def admin_promo_code(message: types.Message):
         "user_id": target_user_id,
         "user_name": target_user_name,
         "score": amount,
-        "date": datetime.now()
+        "date": get_msk_now()
     })
     
     await message.answer(f"💰 **СИСТЕМНОЕ ПОПОЛНЕНИЕ!**\nИгроку **{target_user_name}** начислено **{amount}** очков.")
