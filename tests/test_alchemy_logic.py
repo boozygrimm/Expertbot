@@ -1,9 +1,12 @@
 import os
+import re
 import unittest
 
 os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
 os.environ.setdefault("TELEGRAM_TOKEN", "123456:TESTTOKEN")
 
+from app_setup import create_scheduler, handle_healthcheck, set_commands
+from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from handlers.alc_core import format_duration, get_alchemy_cooldown, get_heritage_slots, get_used_slots
 from handlers.alc_fighters import (
     FATIGUE_RECOVERY_SECONDS,
@@ -47,6 +50,52 @@ from handlers.alc_quests import (
     get_valid_quest_items,
     is_invalid_quest_item,
 )
+
+
+class FakeBot:
+    def __init__(self):
+        self.calls = []
+
+    async def set_my_commands(self, commands, scope):
+        self.calls.append((commands, scope))
+
+
+class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
+    def test_build_bot_commands_preserves_order_and_fields(self):
+        commands = build_bot_commands([("help", "Справка"), ("base", "Штаб")])
+        self.assertEqual([command.command for command in commands], ["help", "base"])
+        self.assertEqual([command.description for command in commands], ["Справка", "Штаб"])
+
+    def test_command_specs_use_valid_telegram_names(self):
+        pattern = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+        for command, _ in USER_PRIVATE_COMMAND_SPECS + ADMIN_PRIVATE_COMMAND_SPECS + GROUP_COMMAND_SPECS:
+            self.assertRegex(command, pattern)
+        self.assertIn(("lore_help", "Справка по лору"), ADMIN_PRIVATE_COMMAND_SPECS)
+
+    async def test_set_commands_registers_three_scopes(self):
+        fake_bot = FakeBot()
+        await set_commands(fake_bot)
+        self.assertEqual(len(fake_bot.calls), 3)
+        self.assertEqual([call[0][0].command for call in fake_bot.calls], ["help", "help", "help"])
+        self.assertEqual([type(call[1]).__name__ for call in fake_bot.calls], [
+            "BotCommandScopeAllPrivateChats",
+            "BotCommandScopeChat",
+            "BotCommandScopeAllGroupChats",
+        ])
+
+    def test_create_scheduler_registers_expected_jobs(self):
+        scheduler = create_scheduler()
+        jobs = scheduler.get_jobs()
+        self.assertEqual(len(jobs), 8)
+        job_ids = {job.func_ref.rsplit(":", 1)[-1] for job in jobs if job.func_ref}
+        self.assertIn("check_cron_time", job_ids)
+        self.assertIn("check_alchemy_stamina", job_ids)
+        self.assertIn("process_random_fort_events", job_ids)
+
+    async def test_handle_healthcheck_returns_ok_text(self):
+        response = await handle_healthcheck(None)
+        self.assertEqual(response.status, 200)
+        self.assertIn("Бот онлайн", response.text)
 
 
 class AlchemyCoreTests(unittest.TestCase):

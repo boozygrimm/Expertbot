@@ -895,7 +895,7 @@ async def lore_edit(message: types.Message, command: CommandObject):
     await show_lore_editor_home(message)
 
 
-@router.message(Command("справкалор"))
+@router.message(Command("lore_help", "справкалор"))
 async def lore_help(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
