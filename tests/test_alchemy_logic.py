@@ -29,6 +29,7 @@ from handlers.alc_base import (
     build_lab_status_lines,
     build_production_status,
     build_storage_status,
+    build_universe_keyboard,
     build_universe_intro_text,
     build_world_status,
     format_process_status,
@@ -465,6 +466,18 @@ class BaseStatusTests(unittest.TestCase):
         )
         self.assertIn("одноразовая активация кристалла", text)
         self.assertIn("сбросит только старые биомы", text)
+
+    def test_build_universe_keyboard_has_only_six_root_buttons_for_active_world_module(self):
+        markup = build_universe_keyboard(
+            {
+                "user_id": 1,
+                "tutorial_step": 3,
+                "inventory": {"active_base": 1},
+                "worlds": [],
+            }
+        )
+        labels = [button.text for row in markup.inline_keyboard for button in row]
+        self.assertEqual(labels, ["🧬 Биомы", "🪨 Основа", "🌫 Среда", "⚡ Энергия", "🧬 Жизнь", "🔙 В Штаб"])
 
     def test_get_headquarters_icon_scales_with_fort(self):
         self.assertEqual(get_headquarters_icon(0), "🛖")

@@ -57,6 +57,16 @@ universe_focus_modes: dict[int, str | None] = {}
 universe_biome_drafts: dict[int, dict[str, dict[str, int]]] = {}
 universe_active_layers: dict[int, str] = {}
 universe_add_steps: dict[int, int] = {}
+universe_layer_pages: dict[tuple[int, str], int] = {}
+universe_biome_pages: dict[int, int] = {}
+UNIVERSE_ROWS_PER_PAGE = 10
+UNIVERSE_BIOMES_PER_PAGE = 6
+UNIVERSE_LAYER_LABELS = {
+    "foundation": "Основа",
+    "medium": "Среда",
+    "energy": "Энергия",
+    "life": "Жизнь",
+}
 TUTORIAL_LAYER_HINTS = {
     "foundation": {"stone": 2, "wood": 2},
     "medium": {"swamp": 1, "algae": 1},
@@ -71,6 +81,18 @@ async def safe_edit_text(message: types.Message, text: str, reply_markup=None, p
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():
             raise
+
+
+def get_element_name(item_id: str) -> str:
+    label = str(ELEMENTS.get(item_id, item_id))
+    parts = label.split(" ", 1)
+    return parts[1] if len(parts) > 1 else label
+
+
+def get_element_emoji(item_id: str) -> str:
+    label = str(ELEMENTS.get(item_id, item_id))
+    parts = label.split(" ", 1)
+    return parts[0] if len(parts) > 1 else "❓"
 
 ALCHEMY_ALPHA_VERSION = "0.9.0.2"
 ALCHEMY_CHANGELOG = [
@@ -451,17 +473,7 @@ def build_universe_intro_text(player: dict) -> str:
     inventory = player.get("inventory", {})
     worlds, _, _ = ensure_world_state(player)
     world_tutorial = dict(player.get("world_tutorial", {}))
-    current_focus = universe_focus_modes.get(player.get("user_id"), None)
     draft = get_universe_draft(player.get("user_id"))
-    active_layer = get_active_universe_layer(player.get("user_id"))
-    add_step = int(universe_add_steps.get(player.get("user_id", 0), 5) or 5)
-    blueprint = build_world_blueprint(player, draft, focus_id=current_focus)
-    layer_names = {
-        "foundation": "Основа",
-        "medium": "Среда",
-        "energy": "Энергия",
-        "life": "Жизнь",
-    }
     if inventory.get("active_base", 0) <= 0:
         if can_reset_legacy_worlds(player):
             return (
@@ -480,187 +492,260 @@ def build_universe_intro_text(player: dict) -> str:
             "Сначала активируй 🔮 Кристалл Базы на складе. Без него здесь нет мира, а значит и развивать базу пока негде."
         )
 
-    top_lines = ["🌍 **МОДУЛЬ ВСЕЛЕННАЯ**", ""]
-    tutorial_mode = not bool(worlds)
+    blueprint = build_world_blueprint(player, draft, focus_id=universe_focus_modes.get(player.get("user_id"), None))
+    lines = ["🌍 **МОДУЛЬ ВСЕЛЕННАЯ**", ""]
+
     if worlds:
-        world = worlds[0]
-        extra_worlds = max(0, len(worlds) - 1)
-        reset_notice = (
-            "\n\n🔮 Для старого мира доступна одноразовая активация кристалла: она сбросит только биомы и переведёт тебя на новую слойную схему сборки."
-            if can_reset_legacy_worlds(player)
-            else ""
-        )
-        archetype_lines = []
-        for item in worlds[:4]:
-            focus_suffix = f" + {item.get('focus_label')}" if item.get("focus_label") else ""
-            daily_income = dict(item.get("daily_income", {}))
-            if daily_income.get(WORLD_DAILY_SPIRIT_TOKEN):
-                daily_label = "1 случайный дух/день"
-            else:
-                daily_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}/день" for item_id, amount in daily_income.items()) or "без ежедневного дохода"
-            archetype_lines.append(
-                f"• {item.get('name', 'Безымянный биом')} [{item.get('role', 'универсальный')}{focus_suffix}]"
-                + f" -> размер {int(item.get('capacity', 0) or 0)}, нагрузка {int(item.get('strain_cost', 0) or 0)}, опора {int(item.get('support_bonus', 0) or 0):+d}, доход {daily_label}"
-            )
-        daily_lines = build_daily_income_lines(get_world_daily_income(player))
-        overload_line = (
-            f"\n⚠️ Перегруз: **{abs(get_world_strain_left(player))}**. Мир надо укрепить, прежде чем бездумно наращивать стройку."
-            if is_world_overloaded(player)
-            else ""
-        )
-        top_lines.extend([
-            "Биомы это фундамент базы: они дают место под здания и задают специализацию мира.\n\n"
-            f"Ядро мира: **{world.get('name', 'Безымянный мир')}**\n"
-            f"{world.get('description', 'Описание пока переживает миграцию.')}\n\n"
-            f"Биомов собрано: **{len(worlds)}**"
-            + (f" (+{extra_worlds} дополнительных)" if extra_worlds else "")
-            + "\n"
-            f"Места под развитие: **{get_world_capacity_used(player)}/{get_world_capacity_total(player)}** занято\n"
-            f"Свободно: **{max(0, get_world_capacity_left(player))}**\n"
-            f"Нагрузка на мир: **{get_world_strain(player)}/{get_world_stability_limit(player)}**\n"
-            f"Уровень укрепления: **{get_world_support_level(player)}**\n"
-            "Собранные биомы:\n" + "\n".join(archetype_lines),
-        ])
-        if daily_lines:
-            top_lines.extend(["", "Ежедневный доход мира:", *daily_lines])
-        top_lines.extend(["", f"Статус: _{world.get('humor', 'мир держится и выполняет свою работу')}_"])
-        if reset_notice:
-            top_lines.append(reset_notice)
-        if overload_line:
-            top_lines.append(overload_line)
-        top_lines.extend(["", "━━━━━━━━", ""])
-    else:
-        top_lines.extend([
-            "🫧 **УЧЕБНЫЙ МИКРОБИОМ**",
-            "Это короткий вводный этап: собери маленький стабильный биом и открой базу.",
-            "Здесь нельзя испортить чертёж лишними ресурсами: учебный режим пускает только нужные материалы и только в нужный слой.",
+        main_world = worlds[0]
+        lines.extend([
+            f"Ядро мира: **{main_world.get('name', 'Безымянный мир')}**",
+            main_world.get("description", "Описание пока переживает миграцию."),
             "",
+            f"Биомов: **{len(worlds)}**",
+            f"Вместимость: **{get_world_capacity_used(player)}/{get_world_capacity_total(player)}**",
+            f"Свободно: **{max(0, get_world_capacity_left(player))}**",
+            f"Нагрузка: **{get_world_strain(player)}/{get_world_stability_limit(player)}**",
+            f"Укрепление: **{get_world_support_level(player)}**",
+        ])
+        if is_world_overloaded(player):
+            lines.extend(["", f"⚠️ Перегруз мира: **{abs(get_world_strain_left(player))}**"])
+    else:
+        lines.extend([
+            "🫧 **УЧЕБНЫЙ МИКРОБИОМ**",
+            "Собери первый биом по четырём слоям: основа, среда, энергия и жизнь.",
+            "Главный экран теперь только для навигации. Все ресурсы лежат внутри кнопок слоёв.",
         ])
         if not bool(world_tutorial.get("hints_shown", False)):
-            top_lines.extend([
-                "🧭 Одноразовые подсказки для учебного микробиома:",
+            lines.extend([
+                "",
+                "🧭 Одноразовые подсказки:",
                 "• Основа: начни с Камня и Древесины.",
                 "• Среда: влей Болото и Водоросли.",
                 "• Энергия: добавь Пар и Энергию.",
                 "• Жизнь: закрепи Мохом и Жизнью.",
-                "• Стартовых ресурсов на этот учебный набор хватает, если собрать их по подсказанным рецептам.",
-                "",
+                "• Стартовых ресурсов на этот учебный набор хватает.",
             ])
 
-    draft_cost = build_draft_cost(draft, current_focus)
-    lines = list(top_lines)
-    lines.extend([
-        f"Активный слой: **{layer_names[active_layer]}**" + (f" | шаг добавления: **{add_step}**" if not tutorial_mode else ""),
-        "",
-        "Слои чертежа:",
-    ])
+    lines.extend(["", "**Текущий чертёж**"])
     for layer_id in WORLD_LAYER_ORDER:
-        bucket = draft.get(layer_id, {})
-        marker = "👉" if layer_id == active_layer else "•"
-        lines.append(f"{marker} {layer_names[layer_id]}: {format_layer_bucket(bucket)}")
-        lines.append(f"   {build_layer_hint_line(blueprint, layer_id)}")
+        lines.append(f"• {UNIVERSE_LAYER_LABELS[layer_id]}: {format_layer_bucket(draft.get(layer_id, {}))}")
 
-    if current_focus and not tutorial_mode:
-        focus_meta = WORLD_FOCUS_OPTIONS.get(current_focus)
-        if focus_meta:
-            lines.extend(["", f"Фокус биома: **{focus_meta['label']}**"])
-
+    draft_cost = build_draft_cost(draft, universe_focus_modes.get(player.get("user_id"), None))
     if draft_cost:
-        lines.extend(["", "Цена текущей закладки:", *build_draft_cost_lines(inventory, draft_cost)])
+        lines.extend(["", "Цена чертежа:", *build_draft_cost_lines(inventory, draft_cost)])
 
     hint_lines = build_blueprint_hint_lines(player, blueprint)
     if hint_lines:
-        lines.extend(["", "Предварительная оценка:", *hint_lines])
+        lines.extend(["", "Оценка:", *hint_lines])
+    if draft_is_complete(draft):
+        lines.extend(["", "🧬 Чертёж собран. Стабилизация доступна внутри кнопки `Биомы`."])
+    else:
+        lines.extend(["", "💡 Открой нужный слой и докинь ресурсы."])
 
-    pool = get_layer_resource_pool(player, active_layer)
-    if pool:
-        pool_lines = []
-        for item_id in pool:
-            free_amount = get_remaining_inventory_amount(inventory, draft, item_id)
-            invested = int(draft.get(active_layer, {}).get(item_id, 0) or 0)
-            if tutorial_mode:
-                target = get_tutorial_layer_target(active_layer, item_id)
-                pool_lines.append(f"• {ELEMENTS.get(item_id, item_id)}: свободно {free_amount}, в слое {invested}/{target}")
-            else:
-                pool_lines.append(f"• {ELEMENTS.get(item_id, item_id)}: свободно {free_amount}, в слое {invested}")
-        lines.extend(["", "По активному слою:", *pool_lines[:8]])
-
-    lines.extend([
-        "",
-        "💡 Нажми слой, затем накидывай в него ресурсы." + (
-            " В учебном режиме достаточно просто пройтись по подсказанным материалам."
-            if tutorial_mode
-            else " Точное имя и тип биома не раскрываются до стабилизации."
-        ),
-    ])
-    return "\n".join([line for line in lines if line])
+    return "\n".join(lines)
 
 
 def build_universe_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     inventory = player.get("inventory", {})
-    worlds, _, _ = ensure_world_state(player)
-    tutorial_mode = not bool(worlds)
     builder = InlineKeyboardBuilder()
-    advanced_focus_unlocked = len(worlds) >= 2 or get_world_support_level(player) >= 1
-    current_focus = universe_focus_modes.get(player.get("user_id"), None)
-    draft = get_universe_draft(player.get("user_id"))
-    active_layer = get_active_universe_layer(player.get("user_id"))
 
     if can_activate_base_from_universe(player):
         builder.button(text="🔮 Активировать Кристалл", callback_data="universe_activate_base")
     elif can_reset_legacy_worlds(player):
         builder.button(text="🔮 Активировать Кристалл Сброса", callback_data="universe_reset_legacy")
     elif inventory.get("active_base", 0) > 0:
-        if advanced_focus_unlocked and not tutorial_mode:
-            focus_label = WORLD_FOCUS_OPTIONS.get(current_focus or "", {}).get("label", "без фокуса")
-            builder.button(text=f"🎯 Фокус нового биома: {focus_label}", callback_data="universe_focus:none")
-            for focus_id, meta in WORLD_FOCUS_OPTIONS.items():
-                count = int(inventory.get(meta["item"], 0) or 0)
-                if count > 0:
-                    builder.button(
-                        text=f"{meta['label']} x{count}",
-                        callback_data=f"universe_focus:{focus_id}",
-                    )
-        layer_names = {
-            "foundation": "Основа",
-            "medium": "Среда",
-            "energy": "Энергия",
-            "life": "Жизнь",
-        }
-        for layer_id in WORLD_LAYER_ORDER:
-            invested_total = sum(int(amount or 0) for amount in draft.get(layer_id, {}).values())
-            marker = "👉" if layer_id == active_layer else "▫️"
-            builder.button(
-                text=f"{marker} {layer_names[layer_id]} | {invested_total}",
-                callback_data=f"universe_layer:{layer_id}",
-            )
-        if not tutorial_mode:
-            for step in (1, 5, 10):
-                marker = "✅" if int(universe_add_steps.get(player.get("user_id", 0), 5) or 5) == step else "▫️"
-                builder.button(text=f"{marker} шаг {step}", callback_data=f"universe_step:{step}")
-        for item_id in get_layer_resource_pool(player, active_layer):
-            free_amount = get_remaining_inventory_amount(inventory, draft, item_id)
-            invested = int(draft.get(active_layer, {}).get(item_id, 0) or 0)
-            builder.button(
-                text=f"{ELEMENTS.get(item_id, item_id)} {free_amount} [{invested}]",
-                callback_data=f"universe_add:{active_layer}:{item_id}",
-            )
-        builder.button(text="🧹 Очистить слой", callback_data=f"universe_clear:{active_layer}")
-        if not tutorial_mode:
-            builder.button(text="♻️ Сбросить весь чертёж", callback_data="universe_reset_draft")
-        if draft_is_complete(draft):
-            builder.button(text="🧬 Стабилизировать биом", callback_data="universe_create")
-        if not tutorial_mode:
-            support_cost = get_world_support_cost(player)
-            cost_label = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in support_cost.items())
-            builder.button(text=f"🛠 Укрепить мир | {cost_label}", callback_data="universe_fortify")
-        builder.button(text="⚗️ В Лабораторию", callback_data="lab_open")
+        builder.button(text="🧬 Биомы", callback_data="universe_biomes:0")
+        builder.button(text="🪨 Основа", callback_data="universe_layer_open:foundation:0")
+        builder.button(text="🌫 Среда", callback_data="universe_layer_open:medium:0")
+        builder.button(text="⚡ Энергия", callback_data="universe_layer_open:energy:0")
+        builder.button(text="🧬 Жизнь", callback_data="universe_layer_open:life:0")
+        builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+        builder.adjust(2, 2, 2)
+        return builder.as_markup()
 
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    if tutorial_mode:
-        builder.adjust(2, 2, 2, 2, 1, 1, 1)
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_universe_biomes_text(player: dict, page: int = 0) -> str:
+    worlds, _, _ = ensure_world_state(player)
+    draft = get_universe_draft(player.get("user_id"))
+    blueprint = build_world_blueprint(player, draft, focus_id=universe_focus_modes.get(player.get("user_id"), None))
+    total_pages = max(1, (len(worlds) + UNIVERSE_BIOMES_PER_PAGE - 1) // UNIVERSE_BIOMES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * UNIVERSE_BIOMES_PER_PAGE
+    page_worlds = worlds[start:start + UNIVERSE_BIOMES_PER_PAGE]
+
+    lines = [
+        "🧬 **БИОМЫ**",
+        f"Страница: **{page + 1}/{total_pages}**",
+        "",
+        f"Собрано биомов: **{len(worlds)}**",
+        f"Вместимость: **{get_world_capacity_used(player)}/{get_world_capacity_total(player)}**",
+        f"Нагрузка: **{get_world_strain(player)}/{get_world_stability_limit(player)}**",
+        f"Укрепление: **{get_world_support_level(player)}**",
+        "",
+        "**Текущий чертёж**",
+    ]
+    for layer_id in WORLD_LAYER_ORDER:
+        lines.append(f"• {UNIVERSE_LAYER_LABELS[layer_id]}: {format_layer_bucket(draft.get(layer_id, {}))}")
+
+    hint_lines = build_blueprint_hint_lines(player, blueprint)
+    if hint_lines:
+        lines.extend(["", "Оценка чертежа:", *hint_lines])
+
+    if page_worlds:
+        lines.extend(["", "Выбери биом ниже, чтобы открыть справку по нему."])
     else:
-        builder.adjust(2, 3, 2, 2, 2, 1, 1, 1)
+        lines.extend(["", "Пока здесь пусто. Сначала собери слои и стабилизируй первый биом."])
+    return "\n".join(lines)
+
+
+def build_universe_biomes_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMarkup:
+    worlds, _, _ = ensure_world_state(player)
+    builder = InlineKeyboardBuilder()
+    total_pages = max(1, (len(worlds) + UNIVERSE_BIOMES_PER_PAGE - 1) // UNIVERSE_BIOMES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * UNIVERSE_BIOMES_PER_PAGE
+    page_worlds = worlds[start:start + UNIVERSE_BIOMES_PER_PAGE]
+
+    if draft_is_complete(get_universe_draft(player.get("user_id"))):
+        builder.button(text="🧬 Стабилизировать текущий биом", callback_data="universe_create")
+    if any(get_universe_draft(player.get("user_id")).get(layer_id) for layer_id in WORLD_LAYER_ORDER):
+        builder.button(text="♻️ Сбросить чертёж", callback_data="universe_reset_draft")
+    if worlds:
+        support_cost = get_world_support_cost(player)
+        cost_label = ", ".join(f"{get_element_name(item_id)} x{amount}" for item_id, amount in support_cost.items())
+        builder.button(text=f"🛠 Укрепить мир | {cost_label}", callback_data="universe_fortify")
+    if can_reset_legacy_worlds(player):
+        builder.button(text="🔮 Кристалл Сброса", callback_data="universe_reset_legacy")
+
+    for idx, world in enumerate(page_worlds, start=start):
+        builder.button(text=f"• {world.get('name', 'Безымянный биом')}", callback_data=f"universe_biome_view:{idx}:{page}")
+
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"universe_biomes:{page - 1}"))
+        if page < total_pages - 1:
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"universe_biomes:{page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
+
+    builder.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data="universe_open"))
+    return builder.as_markup()
+
+
+def build_universe_biome_detail_text(player: dict, biome_index: int, page: int = 0) -> str:
+    worlds, _, _ = ensure_world_state(player)
+    if biome_index < 0 or biome_index >= len(worlds):
+        return "🧬 **БИОМ НЕ НАЙДЕН**\n\nВернись назад и открой список заново."
+
+    world = worlds[biome_index]
+    daily_lines = build_daily_income_lines(dict(world.get("daily_income", {})))
+    lines = [
+        f"🧬 **{world.get('name', 'Безымянный биом')}**",
+        world.get("description", "Описание не сохранилось."),
+        "",
+        f"Роль: **{world.get('role', 'универсальный')}**",
+        f"Размер: **{int(world.get('capacity', 0) or 0)}**",
+        f"Нагрузка: **{int(world.get('strain_cost', 0) or 0)}**",
+        f"Опора: **{int(world.get('support_bonus', 0) or 0):+d}**",
+    ]
+    if world.get("focus_label"):
+        lines.append(f"Фокус: **{world['focus_label']}**")
+    lines.extend(["", "Слои:"])
+    for layer_id in WORLD_LAYER_ORDER:
+        slot_id = str(world.get("slots", {}).get(layer_id, "") or "")
+        slot_meta = STARTER_BIOME_SLOTS.get(layer_id, {}).get(slot_id, {})
+        slot_label = slot_meta.get("label") or slot_id or "пусто"
+        lines.append(f"• {UNIVERSE_LAYER_LABELS[layer_id]}: {slot_label}")
+    if daily_lines:
+        lines.extend(["", "Ежедневный доход:", *daily_lines])
+    lines.extend(["", f"Статус: _{world.get('humor', 'мир держится')}_"])
+    return "\n".join(lines)
+
+
+def build_universe_biome_detail_keyboard(biome_index: int, page: int = 0) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Назад", callback_data=f"universe_biomes:{page}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_universe_layer_text(player: dict, layer_id: str, page: int = 0) -> str:
+    draft = get_universe_draft(player.get("user_id"))
+    bucket = draft.get(layer_id, {})
+    blueprint = build_world_blueprint(player, draft, focus_id=universe_focus_modes.get(player.get("user_id"), None))
+    pool = get_layer_resource_pool(player, layer_id)
+    inventory = player.get("inventory", {})
+    grid_size = max(1, int(player.get("inv_grid", 3) or 3))
+    items_per_page = grid_size * UNIVERSE_ROWS_PER_PAGE
+    total_pages = max(1, (len(pool) + items_per_page - 1) // items_per_page) if pool else 1
+    page = max(0, min(page, total_pages - 1))
+
+    lines = [
+        f"🌍 **{UNIVERSE_LAYER_LABELS[layer_id].upper()}**",
+        f"Страница ресурсов: **{page + 1}/{total_pages}**",
+        "",
+        f"Закладка слоя: **{format_layer_bucket(bucket)}**",
+        f"Состояние слоя: _{build_layer_hint_line(blueprint, layer_id)}_",
+    ]
+    if is_tutorial_world_open(player):
+        targets = TUTORIAL_LAYER_HINTS.get(layer_id, {})
+        if targets:
+            lines.extend(["", "Учебная подсказка:"])
+            for item_id, target in targets.items():
+                invested = int(bucket.get(item_id, 0) or 0)
+                free_amount = get_remaining_inventory_amount(inventory, draft, item_id)
+                lines.append(f"• {ELEMENTS.get(item_id, item_id)}: свободно {free_amount}, в слое {invested}/{target}")
+    else:
+        lines.extend(["", "Ресурсы в кнопках ниже добавляются по 1 за нажатие."])
+        for item_id in pool:
+            free_amount = get_remaining_inventory_amount(inventory, draft, item_id)
+            invested = int(bucket.get(item_id, 0) or 0)
+            lines.append(f"• {ELEMENTS.get(item_id, item_id)}: свободно {free_amount}, в слое {invested}")
+    return "\n".join(lines)
+
+
+def build_universe_layer_keyboard(player: dict, layer_id: str, page: int = 0) -> types.InlineKeyboardMarkup:
+    draft = get_universe_draft(player.get("user_id"))
+    inventory = player.get("inventory", {})
+    pool = get_layer_resource_pool(player, layer_id)
+    grid_size = max(1, int(player.get("inv_grid", 3) or 3))
+    items_per_page = grid_size * UNIVERSE_ROWS_PER_PAGE
+    total_pages = max(1, (len(pool) + items_per_page - 1) // items_per_page) if pool else 1
+    page = max(0, min(page, total_pages - 1))
+    start_idx = page * items_per_page
+    page_items = pool[start_idx:start_idx + items_per_page]
+
+    builder = InlineKeyboardBuilder()
+    row: list[types.InlineKeyboardButton] = []
+    for item_id in page_items:
+        free_amount = get_remaining_inventory_amount(inventory, draft, item_id)
+        invested = int(draft.get(layer_id, {}).get(item_id, 0) or 0)
+        button_text = f"{get_element_emoji(item_id)} {get_element_name(item_id)} {free_amount} [{invested}]"
+        row.append(types.InlineKeyboardButton(text=button_text, callback_data=f"universe_add:{layer_id}:{item_id}:{page}"))
+        if len(row) == grid_size:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"universe_layer_open:{layer_id}:{page - 1}"))
+        if page < total_pages - 1:
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"universe_layer_open:{layer_id}:{page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
+
+    builder.row(
+        types.InlineKeyboardButton(text="🧹 Очистить слой", callback_data=f"universe_clear:{layer_id}:{page}"),
+        types.InlineKeyboardButton(text="🔙 Назад", callback_data="universe_open"),
+    )
     return builder.as_markup()
 
 
@@ -1011,6 +1096,51 @@ async def universe_open(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("universe_biomes:"))
+async def universe_biomes_open(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[1])
+    universe_biome_pages[callback.from_user.id] = page
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    await safe_edit_text(
+        callback.message,
+        build_universe_biomes_text(player, page),
+        reply_markup=build_universe_biomes_keyboard(player, page),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("universe_biome_view:"))
+async def universe_biome_view(callback: types.CallbackQuery):
+    _, biome_index, page = callback.data.split(":")
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    await safe_edit_text(
+        callback.message,
+        build_universe_biome_detail_text(player, int(biome_index), int(page)),
+        reply_markup=build_universe_biome_detail_keyboard(int(biome_index), int(page)),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("universe_layer_open:"))
+async def universe_layer_open(callback: types.CallbackQuery):
+    _, layer_id, page = callback.data.split(":")
+    if layer_id not in WORLD_LAYER_ORDER:
+        return await callback.answer("Неизвестный слой.", show_alert=True)
+    page_int = max(0, int(page))
+    universe_active_layers[callback.from_user.id] = layer_id
+    universe_layer_pages[(callback.from_user.id, layer_id)] = page_int
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    await safe_edit_text(
+        callback.message,
+        build_universe_layer_text(player, layer_id, page_int),
+        reply_markup=build_universe_layer_keyboard(player, layer_id, page_int),
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == "universe_activate_base")
 async def universe_activate_base(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
@@ -1084,8 +1214,8 @@ async def universe_focus_select(callback: types.CallbackQuery):
             return await callback.answer("Для этого фокуса сейчас нет нужного предмета.", show_alert=True)
         universe_focus_modes[callback.from_user.id] = focus_id
     await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
+        build_universe_biomes_text(player, universe_biome_pages.get(callback.from_user.id, 0)),
+        reply_markup=build_universe_biomes_keyboard(player, universe_biome_pages.get(callback.from_user.id, 0)),
         parse_mode="Markdown",
     )
     await callback.answer("Фокус обновлён.")
@@ -1094,16 +1224,11 @@ async def universe_focus_select(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("universe_layer:"))
 async def universe_select_layer(callback: types.CallbackQuery):
     layer_id = callback.data.split(":")[1]
-    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     if layer_id not in WORLD_LAYER_ORDER:
         return await callback.answer("Неизвестный слой.", show_alert=True)
-    universe_active_layers[callback.from_user.id] = layer_id
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
-        parse_mode="Markdown",
-    )
-    await callback.answer("Слой выбран.")
+    page = universe_layer_pages.get((callback.from_user.id, layer_id), 0)
+    callback.data = f"universe_layer_open:{layer_id}:{page}"
+    return await universe_layer_open(callback)
 
 
 @router.callback_query(F.data.startswith("universe_step:"))
@@ -1113,9 +1238,12 @@ async def universe_set_step(callback: types.CallbackQuery):
         return await callback.answer("Шаг недоступен.", show_alert=True)
     universe_add_steps[callback.from_user.id] = step
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
+    layer_id = get_active_universe_layer(callback.from_user.id)
+    page = universe_layer_pages.get((callback.from_user.id, layer_id), 0)
+    await safe_edit_text(
+        callback.message,
+        build_universe_layer_text(player, layer_id, page),
+        reply_markup=build_universe_layer_keyboard(player, layer_id, page),
         parse_mode="Markdown",
     )
     await callback.answer(f"Шаг: {step}")
@@ -1123,7 +1251,9 @@ async def universe_set_step(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("universe_add:"))
 async def universe_add_resource(callback: types.CallbackQuery):
-    _, layer_id, item_id = callback.data.split(":")
+    parts = callback.data.split(":")
+    _, layer_id, item_id = parts[:3]
+    page = int(parts[3]) if len(parts) > 3 else universe_layer_pages.get((callback.from_user.id, layer_id), 0)
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     if layer_id not in WORLD_LAYER_ORDER or item_id not in get_layer_resource_pool(player, layer_id):
         return await callback.answer("Этот ресурс сюда не кладётся.", show_alert=True)
@@ -1149,9 +1279,10 @@ async def universe_add_resource(callback: types.CallbackQuery):
     draft[layer_id][item_id] = int(draft[layer_id].get(item_id, 0) or 0) + add_amount
     universe_biome_drafts[callback.from_user.id] = draft
     universe_active_layers[callback.from_user.id] = layer_id
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
+    universe_layer_pages[(callback.from_user.id, layer_id)] = page
+    await safe_edit_text(callback.message,
+        build_universe_layer_text(player, layer_id, page),
+        reply_markup=build_universe_layer_keyboard(player, layer_id, page),
         parse_mode="Markdown",
     )
     await callback.answer(f"В слой добавлено: {ELEMENTS.get(item_id, item_id)} x{add_amount}")
@@ -1159,7 +1290,9 @@ async def universe_add_resource(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("universe_clear:"))
 async def universe_clear_layer(callback: types.CallbackQuery):
-    layer_id = callback.data.split(":")[1]
+    parts = callback.data.split(":")
+    layer_id = parts[1]
+    page = int(parts[2]) if len(parts) > 2 else universe_layer_pages.get((callback.from_user.id, layer_id), 0)
     if layer_id not in WORLD_LAYER_ORDER:
         return await callback.answer("Неизвестный слой.", show_alert=True)
     draft = get_universe_draft(callback.from_user.id)
@@ -1170,9 +1303,10 @@ async def universe_clear_layer(callback: types.CallbackQuery):
     universe_biome_drafts[callback.from_user.id] = draft
     universe_active_layers[callback.from_user.id] = layer_id
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
+    universe_layer_pages[(callback.from_user.id, layer_id)] = page
+    await safe_edit_text(callback.message,
+        build_universe_layer_text(player, layer_id, page),
+        reply_markup=build_universe_layer_keyboard(player, layer_id, page),
         parse_mode="Markdown",
     )
     await callback.answer("Слой очищен.")
@@ -1187,9 +1321,9 @@ async def universe_reset_draft(callback: types.CallbackQuery):
     universe_biome_drafts[callback.from_user.id] = {layer_id: {} for layer_id in WORLD_LAYER_ORDER}
     universe_active_layers[callback.from_user.id] = WORLD_LAYER_ORDER[0]
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(player),
-        reply_markup=build_universe_keyboard(player),
+    await safe_edit_text(callback.message,
+        build_universe_biomes_text(player, universe_biome_pages.get(callback.from_user.id, 0)),
+        reply_markup=build_universe_biomes_keyboard(player, universe_biome_pages.get(callback.from_user.id, 0)),
         parse_mode="Markdown",
     )
     await callback.answer("Черновик биома сброшен.")
@@ -1269,7 +1403,7 @@ async def universe_create(callback: types.CallbackQuery):
 
         await safe_edit_text(callback.message, 
             "💥 **БИОМ НЕ УДЕРЖАЛСЯ**\n\n"
-            f"Попытка #{attempt_number} сорвалась на сочетании **{name}**.\n"
+            f"Попытка #{attempt_number} сорвалась на сочетании **{fallback_name}**.\n"
             f"Абсурдность сборки: `{absurdity}`. Нагрузка проекта: `{strain_cost}`.\n\n"
             f"{failure_note}\n\n"
             "Возврат:\n"
@@ -1372,9 +1506,10 @@ async def universe_fortify(callback: types.CallbackQuery):
         {"$set": {"inventory": inventory, "world_support_level": next_level}},
     )
     refreshed_player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    await safe_edit_text(callback.message, 
-        build_universe_intro_text(refreshed_player),
-        reply_markup=build_universe_keyboard(refreshed_player),
+    page = universe_biome_pages.get(callback.from_user.id, 0)
+    await safe_edit_text(callback.message,
+        build_universe_biomes_text(refreshed_player, page),
+        reply_markup=build_universe_biomes_keyboard(refreshed_player, page),
         parse_mode="Markdown",
     )
     await callback.answer(f"Мир укреплён. Уровень опоры: {next_level}.")
