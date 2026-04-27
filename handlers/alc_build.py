@@ -484,11 +484,10 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     controls = InlineKeyboardBuilder()
     controls.button(text=f"⚙️ Сетка: {grid_size} в ряд (Жми для {next_grid})", callback_data=f"barracks_set_grid:{next_grid}")
     controls.button(text="🏅 Зал славы", callback_data="barracks_hof")
-    controls.button(text="🏗 Постройки", callback_data="build_open")
-    controls.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     controls.button(text="☠️ Рейдеры", callback_data="raids_open")
+    controls.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     controls.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    controls.adjust(1)
+    controls.adjust(1, 1, 2, 1)
     builder.attach(controls)
     await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
 
