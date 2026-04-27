@@ -12,7 +12,6 @@ from handlers.alc_core import (
     get_world_capacity_left,
 )
 from handlers.alc_fighters import (
-    build_fighter_label,
     can_name_fighter,
     can_pay_cost,
     find_fighter,
@@ -25,7 +24,7 @@ from handlers.alc_fighters import (
     refresh_fighter,
     spend_cost,
 )
-from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
+from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
 # Важно импортировать функцию отрисовки базы, чтобы кнопка Назад работала красиво
 # Но чтобы избежать циклического импорта, вызовем её через start
 
@@ -93,13 +92,22 @@ def get_element_emoji(item_id: str) -> str:
     return "❓"
 
 
+def get_recipe_hint(unit_id: str) -> str:
+    for ingredients, result in RECIPES.items():
+        if result != unit_id:
+            continue
+        emojis = [get_element_emoji(item_id) for item_id in ingredients]
+        return "+".join(emojis)
+    spirit_id = BATTLE_UNITS.get(unit_id, {}).get("fallback_spirit", "")
+    return get_element_emoji(spirit_id)
+
+
 def get_barracks_unit_list_line(tier: int, unit_ids: list[str]) -> str:
     parts: list[str] = []
     for unit_id in unit_ids:
         unit_name = str(ELEMENTS.get(unit_id, unit_id))
         if tier == 1:
-            spirit_id = BATTLE_UNITS.get(unit_id, {}).get("fallback_spirit", "")
-            parts.append(f"{unit_name} ({get_element_emoji(spirit_id)})")
+            parts.append(f"{unit_name} ({get_recipe_hint(unit_id)})")
         else:
             parts.append(unit_name)
 
@@ -403,12 +411,13 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     active_count = len(roster_fighters)
     available_count = len([fighter for fighter in roster_fighters if fighter.get("status") == "available"])
     tired_count = len([fighter for fighter in roster_fighters if fighter.get("status") == "available" and fighter.get("stamina", 0) <= 0])
+    ready_count = max(0, available_count - tired_count)
     expedition_count = sum(len(expedition.get("fighter_ids", [])) for expedition in player.get("active_expeditions", []) if expedition.get("status") != "arrived")
     raid_count = len(player.get("raid_squad", {}).get("fighter_ids", []))
 
     lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})"]
     lines.append(f"Личный состав: {active_count}/{capacity}")
-    lines.append(f"В строю: {available_count} | Уставшие: {tired_count} | В походах: {expedition_count + raid_count}")
+    lines.append(f"Статус: В строю {ready_count} | Устали {tired_count} | В походе {expedition_count + raid_count}")
     lines.append("")
     lines.append("Можно скрафтить:")
     for tier, unit_ids in available_units.items():
@@ -433,24 +442,9 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     page_start = current_page * items_per_page
     page_fighters = roster_fighters[page_start: page_start + items_per_page]
     if roster_fighters:
-        lines.append("Состав страницы:")
-        for fighter in page_fighters:
-            if fighter.get("status") == "expedition":
-                marker = "🧪"
-                status_text = "в экспедиции"
-            elif fighter.get("status") == "raid":
-                marker = "☠️"
-                status_text = "в рейде"
-            elif fighter.get("stamina", 0) <= 0:
-                marker = "😴"
-                status_text = "отдыхает"
-            else:
-                marker = "🪖"
-                status_text = "в строю"
-            lines.append(f"• {marker} {build_fighter_label(fighter)} | {status_text}")
         if len(roster_fighters) > items_per_page:
-            lines.append("")
             lines.append(f"Страница состава: {current_page + 1}/{total_pages}")
+            lines.append("")
     else:
         lines.append("Личный состав пуст. Боевые рецепты из Лаборатории теперь сразу создают бойцов в ростере.")
 
