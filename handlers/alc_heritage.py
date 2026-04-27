@@ -206,6 +206,29 @@ def get_reward_label(lore_doc: dict) -> str:
     return f"{ELEMENTS.get(payload, payload)} x{amount}"
 
 
+def encode_lore_ref(index: int) -> str:
+    return f"i{index}"
+
+
+async def get_lore_doc_by_ref(ref: str) -> dict | None:
+    value = str(ref or "").strip()
+    if value.startswith("i") and value[1:].isdigit():
+        docs = await get_all_lore_docs()
+        index = int(value[1:])
+        if 0 <= index < len(docs):
+            return docs[index]
+        return None
+    return await get_lore_doc(value)
+
+
+async def get_lore_ref_by_id(collection_id: str) -> str:
+    docs = await get_all_lore_docs()
+    for index, lore_doc in enumerate(docs):
+        if lore_doc["id"] == collection_id:
+            return encode_lore_ref(index)
+    return collection_id
+
+
 async def ensure_default_lore():
     await db.alchemy_lore.delete_one({"id": "forge_legacy"})
     for doc in DEFAULT_LORE_COLLECTIONS:
@@ -267,11 +290,11 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict]) -> types.I
     for idx, stand_id in enumerate(stands):
         if stand_id and stand_id in lore_by_id:
             builder.button(text=f"💎 Стенд {idx + 1}", callback_data=f"heritage_stand:{idx}")
-    for lore_doc in lore_docs:
+    for index, lore_doc in enumerate(lore_docs):
         owned, total = get_collection_progress(player, lore_doc)
         builder.button(
             text=f"{lore_doc['emoji']} {lore_doc['name']} {owned}/{total}",
-            callback_data=f"heritage_view:{lore_doc['id']}",
+            callback_data=f"heritage_view:{encode_lore_ref(index)}",
         )
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
@@ -313,9 +336,10 @@ def build_collection_detail_text(player: dict, lore_doc: dict) -> str:
 def build_collection_detail_keyboard(player: dict, lore_doc: dict) -> types.InlineKeyboardMarkup:
     owned, total = get_collection_progress(player, lore_doc)
     builder = InlineKeyboardBuilder()
+    lore_ref = lore_doc.get("_ref", lore_doc["id"])
     if owned == total and total > 0:
-        builder.button(text="📖 Читать целиком", callback_data=f"heritage_read:{lore_doc['id']}")
-        builder.button(text="💎 Установить на стенд", callback_data=f"heritage_install_prompt:{lore_doc['id']}")
+        builder.button(text="📖 Читать целиком", callback_data=f"heritage_read:{lore_ref}")
+        builder.button(text="💎 Установить на стенд", callback_data=f"heritage_install_prompt:{lore_ref}")
     active_slot = next((idx for idx, stand_id in enumerate(player.get("active_stands", [])) if stand_id == lore_doc["id"]), None)
     if active_slot is not None:
         builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{active_slot}")
@@ -330,7 +354,8 @@ def build_read_text(lore_doc: dict) -> str:
 
 def build_read_keyboard(lore_doc: dict) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_doc['id']}")
+    lore_ref = lore_doc.get("_ref", lore_doc["id"])
+    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -354,10 +379,11 @@ def build_stand_pick_text(player: dict, lore_doc: dict) -> str:
 
 def build_stand_pick_keyboard(player: dict, lore_doc: dict) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    lore_ref = lore_doc.get("_ref", lore_doc["id"])
     for idx, stand_id in enumerate(player.get("active_stands", [])):
         marker = "💎" if stand_id else "▫️"
-        builder.button(text=f"{marker} Стенд {idx + 1}", callback_data=f"heritage_install:{lore_doc['id']}:{idx}")
-    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_doc['id']}")
+        builder.button(text=f"{marker} Стенд {idx + 1}", callback_data=f"heritage_install:{lore_ref}:{idx}")
+    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -498,8 +524,8 @@ def build_lore_editor_home_text(lore_docs: list[dict]) -> str:
 
 def build_lore_editor_home_keyboard(lore_docs: list[dict]) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for lore_doc in lore_docs:
-        builder.button(text=f"{lore_doc['emoji']} {lore_doc['name']}", callback_data=f"loreed:open:{lore_doc['id']}")
+    for index, lore_doc in enumerate(lore_docs):
+        builder.button(text=f"{lore_doc['emoji']} {lore_doc['name']}", callback_data=f"loreed:open:{encode_lore_ref(index)}")
     builder.button(text="➕ Новое наследие", callback_data="loreed:new")
     builder.button(text="🌱 Перезалить сиды", callback_data="loreed:seed")
     builder.button(text="📚 Краткая справка", callback_data="loreed:help")
@@ -524,12 +550,13 @@ def build_lore_editor_collection_text(lore_doc: dict) -> str:
 
 def build_lore_editor_collection_keyboard(lore_doc: dict) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🪪 Основа", callback_data=f"loreed:editbasic:{lore_doc['id']}")
-    builder.button(text="✨ Бонус", callback_data=f"loreed:editbonus:{lore_doc['id']}")
-    builder.button(text="🎁 Награда", callback_data=f"loreed:editreward:{lore_doc['id']}")
-    builder.button(text="🧩 Обрывки", callback_data=f"loreed:editfrags:{lore_doc['id']}")
-    builder.button(text="📖 Текст", callback_data=f"loreed:edittext:{lore_doc['id']}")
-    builder.button(text="👁 Предпросмотр", callback_data=f"loreed:preview:{lore_doc['id']}")
+    lore_ref = lore_doc.get("_ref", lore_doc["id"])
+    builder.button(text="🪪 Основа", callback_data=f"loreed:editbasic:{lore_ref}")
+    builder.button(text="✨ Бонус", callback_data=f"loreed:editbonus:{lore_ref}")
+    builder.button(text="🎁 Награда", callback_data=f"loreed:editreward:{lore_ref}")
+    builder.button(text="🧩 Обрывки", callback_data=f"loreed:editfrags:{lore_ref}")
+    builder.button(text="📖 Текст", callback_data=f"loreed:edittext:{lore_ref}")
+    builder.button(text="👁 Предпросмотр", callback_data=f"loreed:preview:{lore_ref}")
     builder.button(text="🔙 К списку", callback_data="loreed:home")
     builder.adjust(2, 2, 1, 1)
     return builder.as_markup()
@@ -574,9 +601,10 @@ async def show_lore_editor_home(target_message: types.Message):
 
 
 async def show_lore_editor_collection(target_message: types.Message, lore_id: str):
-    lore_doc = await get_lore_doc(lore_id)
+    lore_doc = await get_lore_doc_by_ref(lore_id)
     if not lore_doc:
         return await target_message.answer("Коллекция не найдена.")
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     await target_message.answer(
         build_lore_editor_collection_text(lore_doc),
         reply_markup=build_lore_editor_collection_keyboard(lore_doc),
@@ -606,9 +634,10 @@ async def heritage_open(callback: types.CallbackQuery):
 async def heritage_view(callback: types.CallbackQuery):
     await ensure_default_lore()
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc(callback.data.split(":")[1])
+    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     await callback.message.edit_text(
         build_collection_detail_text(player, lore_doc),
         reply_markup=build_collection_detail_keyboard(player, lore_doc),
@@ -620,9 +649,10 @@ async def heritage_view(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("heritage_read:"))
 async def heritage_read(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc(callback.data.split(":")[1])
+    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     owned, total = get_collection_progress(player, lore_doc)
     if owned != total or total == 0:
         return await callback.answer("Сначала собери все обрывки.", show_alert=True)
@@ -637,9 +667,10 @@ async def heritage_read(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("heritage_install_prompt:"))
 async def heritage_install_prompt(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc(callback.data.split(":")[1])
+    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     owned, total = get_collection_progress(player, lore_doc)
     if owned != total or total == 0:
         return await callback.answer("Нужно собрать коллекцию целиком.", show_alert=True)
@@ -653,10 +684,10 @@ async def heritage_install_prompt(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("heritage_install:"))
 async def heritage_install(callback: types.CallbackQuery):
-    _, collection_id, stand_raw = callback.data.split(":")
+    _, collection_ref, stand_raw = callback.data.split(":")
     stand_index = int(stand_raw)
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc(collection_id)
+    lore_doc = await get_lore_doc_by_ref(collection_ref)
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     owned, total = get_collection_progress(player, lore_doc)
@@ -727,9 +758,10 @@ async def heritage_stand(callback: types.CallbackQuery):
     lore_doc = await get_lore_doc(stands[stand_index])
     if not lore_doc:
         return await callback.answer("Экспонат потерялся из архива.", show_alert=True)
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     await callback.message.edit_text(
         build_stand_detail_text(player, lore_doc, stand_index),
-        reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["id"]),
+        reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["_ref"]),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -799,12 +831,15 @@ async def loreed_open(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:editbasic:"))
 async def loreed_editbasic(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_basic", "id": lore_id}
+    lore_ref = callback.data.split(":")[2]
+    lore_doc = await get_lore_doc_by_ref(lore_ref)
+    if not lore_doc:
+        return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_basic", "id": lore_ref}
     await callback.message.answer(
         "🪪 **ОСНОВА НАСЛЕДИЯ**\n\n"
         "Пришли следующим сообщением:\n"
-        f"`id: {lore_id}`\n"
+        f"`id: {lore_doc['id']}`\n"
         "`name: Название коллекции`\n"
         "`emoji: 📜`\n"
         "`sort: 40`",
@@ -815,8 +850,8 @@ async def loreed_editbasic(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:editbonus:"))
 async def loreed_editbonus(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_bonus", "id": lore_id}
+    lore_ref = callback.data.split(":")[2]
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_bonus", "id": lore_ref}
     await callback.message.answer(
         "✨ **БОНУС НАСЛЕДИЯ**\n\n"
         "Пришли следующим сообщением:\n"
@@ -831,8 +866,8 @@ async def loreed_editbonus(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:editreward:"))
 async def loreed_editreward(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_reward", "id": lore_id}
+    lore_ref = callback.data.split(":")[2]
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_reward", "id": lore_ref}
     await callback.message.answer(
         "🎁 **НАГРАДА НАСЛЕДИЯ**\n\n"
         "Пришли следующим сообщением:\n"
@@ -848,8 +883,8 @@ async def loreed_editreward(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:editfrags:"))
 async def loreed_editfrags(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_fragments", "id": lore_id}
+    lore_ref = callback.data.split(":")[2]
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_fragments", "id": lore_ref}
     await callback.message.answer(
         "🧩 **ОБРЫВКИ**\n\n"
         "Пришли 3 строки в формате:\n"
@@ -863,8 +898,8 @@ async def loreed_editfrags(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:edittext:"))
 async def loreed_edittext(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_text", "id": lore_id}
+    lore_ref = callback.data.split(":")[2]
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_text", "id": lore_ref}
     await callback.message.answer(
         "📖 **ПОЛНЫЙ ТЕКСТ**\n\n"
         "Теперь просто пришли следующим сообщением весь рассказ целиком.\n"
@@ -876,8 +911,8 @@ async def loreed_edittext(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("loreed:preview:"))
 async def loreed_preview(callback: types.CallbackQuery):
-    lore_id = callback.data.split(":")[2]
-    lore_doc = await get_lore_doc(lore_id)
+    lore_ref = callback.data.split(":")[2]
+    lore_doc = await get_lore_doc_by_ref(lore_ref)
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     await callback.message.answer(build_read_text(lore_doc), parse_mode="Markdown")
@@ -948,10 +983,11 @@ async def lore_editor_input(message: types.Message):
             await message.answer(f"Создано наследие `{lore_id}`. Теперь добей его по кнопкам ниже.", parse_mode="Markdown")
             return await show_lore_editor_collection(message, lore_id)
 
-        lore_doc = await get_lore_doc(lore_id)
+        lore_doc = await get_lore_doc_by_ref(lore_id)
         if not lore_doc:
             lore_editor_sessions.pop(message.from_user.id, None)
             return await message.answer("Коллекция потерялась. Открой `/lore_edit` заново.", parse_mode="Markdown")
+        lore_id = lore_doc["id"]
 
         if mode == "edit_basic":
             data = parse_key_value_lines(message.text or "")

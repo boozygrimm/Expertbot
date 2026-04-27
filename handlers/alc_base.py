@@ -652,6 +652,7 @@ def build_universe_biomes_text(player: dict, page: int = 0) -> str:
 def build_universe_biomes_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMarkup:
     worlds, _, _ = ensure_world_state(player)
     builder = InlineKeyboardBuilder()
+    action_rows = 0
     total_pages = max(1, (len(worlds) + UNIVERSE_BIOMES_PER_PAGE - 1) // UNIVERSE_BIOMES_PER_PAGE)
     page = max(0, min(page, total_pages - 1))
     start = page * UNIVERSE_BIOMES_PER_PAGE
@@ -659,17 +660,23 @@ def build_universe_biomes_keyboard(player: dict, page: int = 0) -> types.InlineK
 
     if draft_is_complete(get_universe_draft(player.get("user_id"))):
         builder.button(text="🧬 Стабилизировать текущий биом", callback_data="universe_create")
+        action_rows += 1
     if any(get_universe_draft(player.get("user_id")).get(layer_id) for layer_id in WORLD_LAYER_ORDER):
         builder.button(text="♻️ Сбросить чертёж", callback_data="universe_reset_draft")
+        action_rows += 1
     if worlds:
         support_cost = get_world_support_cost(player)
         cost_label = ", ".join(f"{get_element_name(item_id)} x{amount}" for item_id, amount in support_cost.items())
         builder.button(text=f"🛠 Укрепить мир | {cost_label}", callback_data="universe_fortify")
+        action_rows += 1
     if can_reset_legacy_worlds(player):
         builder.button(text="🔮 Кристалл Сброса", callback_data="universe_reset_legacy")
+        action_rows += 1
 
     for idx, world in enumerate(page_worlds, start=start):
         builder.button(text=f"• {world.get('name', 'Безымянный биом')}", callback_data=f"universe_biome_view:{idx}:{page}")
+    if action_rows or page_worlds:
+        builder.adjust(*([1] * action_rows), *([2] * ((len(page_worlds) + 1) // 2)))
 
     if total_pages > 1:
         nav_row = []

@@ -12,11 +12,9 @@ from handlers.alc_core import (
     get_world_capacity_left,
 )
 from handlers.alc_fighters import (
-    build_fighter_label,
     can_name_fighter,
     can_pay_cost,
     find_fighter,
-    get_available_fighters,
     get_barracks_capacity,
     get_fighter_stamina_cap,
     get_fighter_title,
@@ -84,6 +82,32 @@ def get_available_barracks_units(level: int) -> dict[int, list[str]]:
     for tier_units in grouped.values():
         tier_units.sort(key=lambda unit_id: (BATTLE_UNITS[unit_id]["barracks_level"], ELEMENTS.get(unit_id, unit_id)))
     return dict(sorted(grouped.items()))
+
+
+def get_element_emoji(item_id: str) -> str:
+    label = ELEMENTS.get(item_id, item_id)
+    if isinstance(label, str):
+        parts = label.split(" ", 1)
+        return parts[0] if len(parts) > 1 else "❓"
+    return "❓"
+
+
+def get_barracks_unit_list_line(tier: int, unit_ids: list[str]) -> str:
+    parts: list[str] = []
+    for unit_id in unit_ids:
+        unit_name = str(ELEMENTS.get(unit_id, unit_id))
+        if tier == 1:
+            spirit_id = BATTLE_UNITS.get(unit_id, {}).get("fallback_spirit", "")
+            parts.append(f"{unit_name} ({get_element_emoji(spirit_id)})")
+        else:
+            parts.append(unit_name)
+
+    suffix = ""
+    if tier == 2:
+        suffix = " Можно поднять из Т1 или искать рецепты самому."
+    elif tier == 3:
+        suffix = " Обычно это уже дорогой апгрейд из Т1 или самостоятельный поиск рецептов."
+    return f"• Тир-{tier}: {', '.join(parts)}.{suffix}"
 
 
 def get_building_help_line(building_id: str, level: int) -> str:
@@ -381,25 +405,15 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     expedition_count = sum(len(expedition.get("fighter_ids", [])) for expedition in player.get("active_expeditions", []) if expedition.get("status") != "arrived")
     raid_count = len(player.get("raid_squad", {}).get("fighter_ids", []))
 
-    lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})", "Что доступно:"]
-    lines.extend(get_barracks_effect_lines(barracks_level))
-    lines.append("")
+    lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})"]
     lines.append(f"Личный состав: {active_count}/{capacity}")
     lines.append(f"В строю: {available_count} | Уставшие: {tired_count} | В походах: {expedition_count + raid_count}")
     lines.append("")
-    lines.append("Доступные юниты:")
+    lines.append("Можно скрафтить:")
     for tier, unit_ids in available_units.items():
-        unit_names = ", ".join(ELEMENTS.get(unit_id, unit_id) for unit_id in unit_ids)
-        lines.append(f"• Тир-{tier}: {unit_names}")
-    lines.append("")
-    lines.append("Подсказки для командира:")
-    lines.append("• Теперь каждый боец - отдельная личность с XP и бодростью. Экспедиции качают безопасно, рейды качают опасно.")
-    lines.append("• За каждый выход боец получает 1 XP и теряет 1 бодрость. Бодрость возвращается по 1 ед. каждые 6 часов.")
-    lines.append("• Апгрейд в Т2 доступен с 30 XP, в Т3 - с 70 XP. Если Т3 был скрафчен сразу, имя можно дать уже на 20 XP.")
-    lines.append("• В экспедицию уставший боец не идёт. В рейд при нуле бодрости пойдёт, но шанс потерять его уже почти суицидальный.")
+        lines.append(get_barracks_unit_list_line(tier, unit_ids))
     lines.append("")
 
-    available_fighters = get_available_fighters(player)
     roster_fighters.sort(
         key=lambda item: (
             item.get("status") not in {"available", "expedition", "raid"},
@@ -418,10 +432,6 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     page_start = current_page * items_per_page
     page_fighters = roster_fighters[page_start: page_start + items_per_page]
     if roster_fighters:
-        lines.append("Лидеры по опыту:")
-        for fighter in sorted(available_fighters, key=lambda item: (-item.get("xp", 0), -item.get("tier", 1), get_fighter_title(item)))[:6]:
-            lines.append(f"• {build_fighter_label(fighter)}")
-        lines.append("")
         lines.append("Состав страницы:")
         for fighter in page_fighters:
             if fighter.get("status") == "expedition":
@@ -442,9 +452,6 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             lines.append(f"Страница состава: {current_page + 1}/{total_pages}")
     else:
         lines.append("Личный состав пуст. Боевые рецепты из Лаборатории теперь сразу создают бойцов в ростере.")
-
-    lines.append("")
-    lines.append(format_supply_report(player.get("barracks_report")))
 
     builder = InlineKeyboardBuilder()
     row = []

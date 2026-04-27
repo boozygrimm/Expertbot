@@ -416,6 +416,8 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
     lines = [
         f"🧪 **ЭКСПЕДИЦИИ** [{len(active)}/{slot_limit}]",
         f"Лимит бойцов в отряде: {team_limit}.",
+        "💡 Здесь бойцы качаются безопаснее: получают XP, тратят 1 бодрость и не выходят уставшими.",
+        "💡 Бодрость возвращается по 1 каждые 6 часов.",
         "",
     ]
     if draft is not None:

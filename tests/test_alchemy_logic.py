@@ -67,11 +67,12 @@ from handlers.alc_fighters import (
     spend_cost,
 )
 from handlers.alc_tasks import build_daily_report_text, build_report_close_markup
-from handlers.alc_heritage import normalize_lore_doc, with_bammm
+from handlers.alc_heritage import build_lore_editor_home_keyboard, encode_lore_ref, normalize_lore_doc, with_bammm
 from handlers.alc_build import (
     build_building_detail_text,
     format_building_cost,
     format_supply_report,
+    get_barracks_unit_list_line,
     get_building_world_focus_requirements,
     get_building_world_requirements,
     get_building_status,
@@ -112,6 +113,21 @@ class FakeBot:
 
 
 class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
+    def test_lore_editor_uses_compact_callback_refs(self):
+        lore_docs = [
+            {"id": "богатырские_шахматы_очень_длинный_идентификатор", "name": "Богатырские шахматы", "emoji": "♟️"},
+        ]
+        markup = build_lore_editor_home_keyboard(lore_docs)
+        callback_data = markup.inline_keyboard[0][0].callback_data
+        self.assertEqual(callback_data, f"loreed:open:{encode_lore_ref(0)}")
+        self.assertLessEqual(len(callback_data.encode("utf-8")), 64)
+
+    def test_barracks_tier1_line_includes_recipe_hint_emoji(self):
+        line = get_barracks_unit_list_line(1, ["fire_swordsman", "water_guard"])
+        self.assertIn("🔥", line)
+        self.assertIn("💧", line)
+        self.assertIn("Тир-1", line)
+
     def test_build_bot_commands_preserves_order_and_fields(self):
         commands = build_bot_commands([("help", "Справка"), ("base", "Штаб")])
         self.assertEqual([command.command for command in commands], ["help", "base"])
