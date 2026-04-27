@@ -12,6 +12,7 @@ from handlers.alc_core import (
     get_world_capacity_left,
 )
 from handlers.alc_fighters import (
+    build_fighter_label,
     can_name_fighter,
     can_pay_cost,
     find_fighter,
