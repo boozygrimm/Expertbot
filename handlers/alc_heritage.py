@@ -919,7 +919,16 @@ async def loreed_seed(callback: types.CallbackQuery):
 async def loreed_open(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return
-    await show_lore_editor_collection(callback.message, callback.data.split(":")[2])
+    lore_ref = callback.data.split(":", 2)[2]
+    lore_doc = await get_lore_doc_by_ref(lore_ref)
+    if not lore_doc:
+        return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
+    await callback.message.answer(
+        build_lore_editor_collection_text(lore_doc),
+        reply_markup=build_lore_editor_collection_keyboard(lore_doc),
+        parse_mode="Markdown",
+    )
     await callback.answer()
 
 

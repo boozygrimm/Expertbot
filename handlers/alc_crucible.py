@@ -42,6 +42,7 @@ RETORT_TIME_PER_ITEM = 30    # Добавочное время за КАЖДУЮ
 # =====================================================================
 
 crucible_amounts = {} # Добавить в начало файла alc_crucible.py
+retort_amounts = {}
 
 # Временные хранилища (в памяти)
 active_crucible_mixes = {} 
@@ -370,13 +371,24 @@ async def render_retort(callback: types.CallbackQuery):
             text += "Колба пуста. Положи **один** тип элемента для разложения."
         else:
             name = ELEMENTS.get(current_mix[0], current_mix[0])
-            text += f"🧪 В колбе: **{name}**\nСколько штук разбираем?"
+            item = current_mix[0]
+            max_amt = max(1, int(inventory.get(item, 0) or 0))
+            amt = retort_amounts.get(user_id, 1)
+            if amt > max_amt:
+                amt = max_amt
+            if amt < 1:
+                amt = 1
+            retort_amounts[user_id] = amt
+            text += f"🧪 В колбе: **{name}**\nВыбрано штук: **{amt}** из {max_amt}"
             ctrl_btns = InlineKeyboardBuilder()
-            ctrl_btns.button(text="x1", callback_data="retort_start:1")
-            ctrl_btns.button(text="x5", callback_data="retort_start:5")
-            ctrl_btns.button(text="Max", callback_data="retort_start:max")
+            ctrl_btns.button(text="-5", callback_data="retort_amt:-5")
+            ctrl_btns.button(text="-1", callback_data="retort_amt:-1")
+            ctrl_btns.button(text="+1", callback_data="retort_amt:1")
+            ctrl_btns.button(text="+5", callback_data="retort_amt:5")
+            ctrl_btns.button(text="Максимум", callback_data="retort_amt:max")
+            ctrl_btns.button(text=f"🧪 ЗАПУСТИТЬ РЕТОРТУ ({amt})", callback_data="retort_start_run")
             ctrl_btns.button(text="🗑 Очистить колбу", callback_data="retort_clear")
-            ctrl_btns.adjust(3, 1)
+            ctrl_btns.adjust(4, 1, 1)
             builder.attach(ctrl_btns)
 
         inv_btns = InlineKeyboardBuilder()
@@ -460,12 +472,23 @@ async def retort_add(callback: types.CallbackQuery):
 @router.callback_query(F.data == "retort_clear")
 async def retort_clear(callback: types.CallbackQuery):
     active_retort_mixes.pop(callback.from_user.id, None)
+    retort_amounts.pop(callback.from_user.id, None)
     await render_retort(callback)
 
-@router.callback_query(F.data.startswith("retort_start:"))
-async def retort_start(callback: types.CallbackQuery):
+@router.callback_query(F.data.startswith("retort_amt:"))
+async def retort_change_amt(callback: types.CallbackQuery):
     uid = callback.from_user.id
-    amt_str = callback.data.split(":")[1]
+    val = callback.data.split(":")[1]
+    current = retort_amounts.get(uid, 1)
+    if val == "max":
+        retort_amounts[uid] = 999999
+    else:
+        retort_amounts[uid] = current + int(val)
+    await render_retort(callback)
+
+@router.callback_query(F.data == "retort_start_run")
+async def retort_start_run(callback: types.CallbackQuery):
+    uid = callback.from_user.id
     mix = active_retort_mixes.get(uid, [])
     
     if not mix: return await callback.answer("Колба пуста!")
@@ -479,7 +502,11 @@ async def retort_start(callback: types.CallbackQuery):
         active_retort_mixes.pop(uid, None)
         return await callback.answer("Предмет пропал!", show_alert=True)
         
-    amt = max_amt if amt_str == "max" else min(int(amt_str), max_amt)
+    amt = retort_amounts.get(uid, 1)
+    if amt > max_amt:
+        amt = max_amt
+    if amt < 1:
+        amt = 1
     
     rev_recipes = get_reverse_recipes()
     known = get_known_items(player)
@@ -495,6 +522,7 @@ async def retort_start(callback: types.CallbackQuery):
     }
     
     active_retort_mixes.pop(uid, None)
+    retort_amounts.pop(uid, None)
     await db.alchemy_players.update_one({"user_id": uid}, {"$set": {"inventory": inv, "retort_process": process}})
     await callback.answer(f"🧪 Анализ {amt} шт. запущен!")
     await render_retort(callback)

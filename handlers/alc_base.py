@@ -107,6 +107,9 @@ ALCHEMY_CHANGELOG = [
         "В Наследиях добавлена пагинация списка коллекций: до 10 строк без листания, дальше появляются страницы.",
         "Исправлен баг редактора, из-за которого новое Наследие могло сразу выглядеть так, будто часть обрывков уже поймана.",
         "Для Наследий добавлено отдельное короткое имя кнопки через lore editor, а лаборатория снова скрывает только финальный mega pack.",
+        "В редакторе Наследий подчищено открытие карточек длинных коллекций, так что проблемные записи вроде Архипа и Богатырских шахмат снова открываются штатно.",
+        "Реторта получила такой же удобный выбор количества, как Тигель: с шагами, максимумом и отдельной кнопкой запуска.",
+        "Из окна Биомов убран тупиковый абзац про центральное ядро, а в статусе мира в главном штабе оставлена только вместимость.",
     ]),
     ("0.9.0.4", [
         "Исправлен регресс после упрощения интерфейса Казарм: кнопка открытия снова корректно показывает ростер бойцов вместо рантайм-ошибки.",
@@ -264,11 +267,9 @@ def build_world_status(player: dict) -> str:
 
     total = get_world_capacity_total(player)
     used = get_world_capacity_used(player)
-    strain = get_world_strain(player)
-    limit = get_world_stability_limit(player)
     if is_world_overloaded(player):
-        return f"🌍 Мир: 🔴 вместимость {used}/{total} | прочность {strain}/{limit}"
-    return f"🌍 Мир: 🟢 вместимость {used}/{total} | прочность {strain}/{limit}"
+        return f"🌍 Мир: 🔴 вместимость {used}/{total}"
+    return f"🌍 Мир: 🟢 вместимость {used}/{total}"
 
 
 def get_universe_draft(user_id: int | None) -> dict[str, dict[str, int]]:
@@ -548,11 +549,7 @@ def build_universe_intro_text(player: dict) -> str:
     support_cost = get_world_support_cost(player)
 
     if worlds:
-        main_world = worlds[0]
         lines.extend([
-            f"Ядро мира: **{main_world.get('name', 'Безымянный мир')}**",
-            main_world.get("description", "Описание пока переживает миграцию."),
-            "",
             f"Биомов: **{len(worlds)}**",
             f"Вместимость: **{get_world_capacity_used(player)}/{get_world_capacity_total(player)}**",
             f"Свободно: **{max(0, get_world_capacity_left(player))}**",

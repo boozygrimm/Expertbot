@@ -114,6 +114,14 @@ class FakeBot:
         self.calls.append((commands, scope))
 
 
+class FakeMessage:
+    def __init__(self):
+        self.answers = []
+
+    async def answer(self, text, reply_markup=None, parse_mode=None):
+        self.answers.append({"text": text, "reply_markup": reply_markup, "parse_mode": parse_mode})
+
+
 class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
     def test_lore_editor_uses_compact_callback_refs(self):
         lore_docs = [
@@ -713,6 +721,16 @@ class BaseStatusTests(unittest.TestCase):
         )
         self.assertIn(
             "вместимость 1/4",
+            build_world_status(
+                {
+                    "inventory": {"active_base": 1},
+                    "buildings": {"storage": 2},
+                    "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+                }
+            ),
+        )
+        self.assertNotIn(
+            "прочность",
             build_world_status(
                 {
                     "inventory": {"active_base": 1},
