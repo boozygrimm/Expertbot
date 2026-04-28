@@ -588,15 +588,15 @@ def build_lore_editor_home_keyboard(lore_docs: list[dict]) -> types.InlineKeyboa
 def build_lore_editor_collection_text(lore_doc: dict) -> str:
     fragment_titles = ", ".join(fragment["title"] for fragment in lore_doc.get("fragments", [])) or "пока нет"
     return (
-        "🧾 **КАРТОЧКА НАСЛЕДИЯ**\n"
-        f"ID: `{lore_doc['id']}`\n"
-        f"Имя: {lore_doc['emoji']} {lore_doc['name']}\n"
-        f"Кнопка: {lore_doc.get('button_name') or '-'}\n"
-        f"Бонус: {lore_doc['bonus_type']} +{lore_doc['bonus_value']}\n"
-        f"Разовый дар: {lore_doc['reward_type']} / {lore_doc['reward_payload']} x{lore_doc['reward_amount']}\n"
-        f"Имя дара: {lore_doc.get('reward_name') or '-'}\n"
-        f"Порядок: {lore_doc.get('sort_order', 100)}\n"
-        f"Обрывки: {fragment_titles}\n"
+        "🧾 <b>КАРТОЧКА НАСЛЕДИЯ</b>\n"
+        f"ID: <code>{html.escape(lore_doc['id'])}</code>\n"
+        f"Имя: {html.escape(lore_doc['emoji'])} {html.escape(lore_doc['name'])}\n"
+        f"Кнопка: {html.escape(lore_doc.get('button_name') or '-')}\n"
+        f"Бонус: {html.escape(str(lore_doc['bonus_type']))} +{int(lore_doc['bonus_value'])}\n"
+        f"Разовый дар: {html.escape(str(lore_doc['reward_type']))} / {html.escape(str(lore_doc['reward_payload']))} x{int(lore_doc['reward_amount'])}\n"
+        f"Имя дара: {html.escape(lore_doc.get('reward_name') or '-')}\n"
+        f"Порядок: {int(lore_doc.get('sort_order', 100) or 100)}\n"
+        f"Обрывки: {html.escape(fragment_titles)}\n"
         f"Текст: {len((lore_doc.get('full_text') or '').strip())} символов"
     )
 
@@ -678,7 +678,7 @@ async def show_lore_editor_collection(target_message: types.Message, lore_id: st
     await target_message.answer(
         build_lore_editor_collection_text(lore_doc),
         reply_markup=build_lore_editor_collection_keyboard(lore_doc),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -927,7 +927,7 @@ async def loreed_open(callback: types.CallbackQuery):
     await callback.message.answer(
         build_lore_editor_collection_text(lore_doc),
         reply_markup=build_lore_editor_collection_keyboard(lore_doc),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
