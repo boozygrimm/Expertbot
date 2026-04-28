@@ -17,6 +17,7 @@ LEGACY_FRAGMENT_DAILY_LIMIT = 2
 LEGACY_INSTALL_ENERGY = 50
 DEFAULT_REWARD_ITEM_AMOUNT = 1
 lore_editor_sessions: dict[int, dict] = {}
+HERITAGE_ITEMS_PER_PAGE = 10
 
 DEFAULT_LORE_COLLECTIONS = [
     {
@@ -144,6 +145,7 @@ def normalize_lore_doc(doc: dict) -> dict:
     current = dict(doc)
     current["id"] = str(current.get("id", "")).strip()
     current["name"] = str(current.get("name", current["id"])).strip() or current["id"]
+    current["button_name"] = str(current.get("button_name", "")).strip()[:9]
     current["emoji"] = str(current.get("emoji", "📜")).strip() or "📜"
     current["bonus_type"] = str(current.get("bonus_type", "spirit_f")).strip() or "spirit_f"
     current["bonus_value"] = max(1, min(3, int(current.get("bonus_value", 1) or 1)))
@@ -206,6 +208,20 @@ def get_reward_label(lore_doc: dict) -> str:
     return f"{ELEMENTS.get(payload, payload)} x{amount}"
 
 
+def shorten_heritage_name(name: str, limit: int = 9) -> str:
+    value = str(name or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[: max(1, limit - 1)] + "…"
+
+
+def get_heritage_button_label(lore_doc: dict) -> str:
+    button_name = str(lore_doc.get("button_name", "")).strip()
+    if button_name:
+        return button_name[:9]
+    return shorten_heritage_name(lore_doc.get("name", ""), 9)
+
+
 def encode_lore_ref(index: int) -> str:
     return f"i{index}"
 
@@ -254,48 +270,81 @@ async def get_lore_doc(collection_id: str) -> dict | None:
     return normalize_lore_doc(doc) if doc else None
 
 
-def build_heritage_main_text(player: dict, lore_docs: list[dict]) -> str:
+def build_heritage_main_text(player: dict, lore_docs: list[dict], page: int = 0) -> str:
     level = player.get("buildings", {}).get("heritage_center", 1)
     stands = list(player.get("active_stands", []))
     multiplier = get_heritage_multiplier(player)
+    lore_by_id = {doc["id"]: doc for doc in lore_docs}
+    total_pages = max(1, (len(lore_docs) + HERITAGE_ITEMS_PER_PAGE - 1) // HERITAGE_ITEMS_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * HERITAGE_ITEMS_PER_PAGE
+    page_lore_docs = lore_docs[start:start + HERITAGE_ITEMS_PER_PAGE]
+    stand_labels = []
+    for idx, stand_id in enumerate(stands, start=1):
+        if stand_id and stand_id in lore_by_id:
+            stand_labels.append(f"{idx}:{lore_by_id[stand_id]['name']}")
+        else:
+            stand_labels.append(f"{idx}:пусто")
     lines = [
         f"📚 **НАСЛЕДИЕ** (Ур. {level})",
-        f"Стендов доступно: {len(stands)}",
+        "Стенды: " + " | ".join(stand_labels),
     ]
+    if total_pages > 1:
+        lines.append(f"Страница: {page + 1}/{total_pages}")
     if multiplier > 1:
         lines.append("Мастер-архив активен: все бонусы на стендах удвоены.")
     lines.append("")
     lines.append("Витрина:")
-    lore_by_id = {doc["id"]: doc for doc in lore_docs}
     for idx, stand_id in enumerate(stands, start=1):
         if stand_id and stand_id in lore_by_id:
             lore_doc = lore_by_id[stand_id]
             amount = lore_doc["bonus_value"] * multiplier
-            lines.append(f"💎 Стенд {idx}: {lore_doc['name']} [{get_bonus_label(lore_doc['bonus_type'], amount)}]")
+            lines.append(f"💎 {idx}: {lore_doc['name']} [{get_bonus_label(lore_doc['bonus_type'], amount)}]")
         else:
-            lines.append(f"▫️ Стенд {idx}: пусто")
+            lines.append(f"▫️ {idx}: пусто")
     lines.append("")
     lines.append("Коллекции:")
-    for lore_doc in lore_docs:
+    for lore_doc in page_lore_docs:
         owned, total = get_collection_progress(player, lore_doc)
         marker = "✅" if owned == total and total > 0 else "📜"
         lines.append(f"{marker} {lore_doc['emoji']} {lore_doc['name']} {owned}/{total}")
     return "\n".join(lines)
 
 
-def build_heritage_main_keyboard(player: dict, lore_docs: list[dict]) -> types.InlineKeyboardMarkup:
+def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     stands = list(player.get("active_stands", []))
     lore_by_id = {doc["id"]: doc for doc in lore_docs}
+    total_pages = max(1, (len(lore_docs) + HERITAGE_ITEMS_PER_PAGE - 1) // HERITAGE_ITEMS_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * HERITAGE_ITEMS_PER_PAGE
+    page_lore_docs = lore_docs[start:start + HERITAGE_ITEMS_PER_PAGE]
+    stand_buttons = []
     for idx, stand_id in enumerate(stands):
         if stand_id and stand_id in lore_by_id:
-            builder.button(text=f"💎 Стенд {idx + 1}", callback_data=f"heritage_stand:{idx}")
-    for index, lore_doc in enumerate(lore_docs):
+            stand_buttons.append(types.InlineKeyboardButton(text=f"💎 {idx + 1}", callback_data=f"heritage_stand:{idx}:{page}"))
+    if stand_buttons:
+        builder.row(*stand_buttons)
+    row = []
+    for index, lore_doc in enumerate(page_lore_docs, start=start):
         owned, total = get_collection_progress(player, lore_doc)
-        builder.button(
-            text=f"{lore_doc['emoji']} {lore_doc['name']} {owned}/{total}",
-            callback_data=f"heritage_view:{encode_lore_ref(index)}",
-        )
+        row.append(types.InlineKeyboardButton(
+            text=f"{lore_doc['emoji']} {get_heritage_button_label(lore_doc)} {owned}/{total}",
+            callback_data=f"heritage_view:{encode_lore_ref(index)}:{page}",
+        ))
+        if len(row) == 2:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"heritage_page:{page - 1}"))
+        if page < total_pages - 1:
+            nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"heritage_page:{page + 1}"))
+        if nav_row:
+            builder.row(*nav_row)
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
     return builder.as_markup()
@@ -333,17 +382,17 @@ def build_collection_detail_text(player: dict, lore_doc: dict) -> str:
     return "\n".join(lines)
 
 
-def build_collection_detail_keyboard(player: dict, lore_doc: dict) -> types.InlineKeyboardMarkup:
+def build_collection_detail_keyboard(player: dict, lore_doc: dict, page: int = 0) -> types.InlineKeyboardMarkup:
     owned, total = get_collection_progress(player, lore_doc)
     builder = InlineKeyboardBuilder()
     lore_ref = lore_doc.get("_ref", lore_doc["id"])
     if owned == total and total > 0:
-        builder.button(text="📖 Читать целиком", callback_data=f"heritage_read:{lore_ref}")
-        builder.button(text="💎 Установить на стенд", callback_data=f"heritage_install_prompt:{lore_ref}")
+        builder.button(text="📖 Читать целиком", callback_data=f"heritage_read:{lore_ref}:{page}")
+        builder.button(text="💎 Установить на стенд", callback_data=f"heritage_install_prompt:{lore_ref}:{page}")
     active_slot = next((idx for idx, stand_id in enumerate(player.get("active_stands", [])) if stand_id == lore_doc["id"]), None)
     if active_slot is not None:
-        builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{active_slot}")
-    builder.button(text="🔙 К наследию", callback_data="heritage_open")
+        builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{active_slot}:{page}")
+    builder.button(text="🔙 К наследию", callback_data=f"heritage_page:{page}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -352,10 +401,10 @@ def build_read_text(lore_doc: dict) -> str:
     return f"{lore_doc['emoji']} **{lore_doc['name']}**\n\n{with_bammm(lore_doc.get('full_text', ''))}"
 
 
-def build_read_keyboard(lore_doc: dict) -> types.InlineKeyboardMarkup:
+def build_read_keyboard(lore_doc: dict, page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     lore_ref = lore_doc.get("_ref", lore_doc["id"])
-    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}")
+    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}:{page}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -377,13 +426,16 @@ def build_stand_pick_text(player: dict, lore_doc: dict) -> str:
     return "\n".join(lines)
 
 
-def build_stand_pick_keyboard(player: dict, lore_doc: dict) -> types.InlineKeyboardMarkup:
+def build_stand_pick_keyboard(player: dict, lore_doc: dict, page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     lore_ref = lore_doc.get("_ref", lore_doc["id"])
+    row = []
     for idx, stand_id in enumerate(player.get("active_stands", [])):
         marker = "💎" if stand_id else "▫️"
-        builder.button(text=f"{marker} Стенд {idx + 1}", callback_data=f"heritage_install:{lore_ref}:{idx}")
-    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}")
+        row.append(types.InlineKeyboardButton(text=f"{marker} {idx + 1}", callback_data=f"heritage_install:{lore_ref}:{idx}:{page}"))
+    if row:
+        builder.row(*row)
+    builder.button(text="🔙 Назад", callback_data=f"heritage_view:{lore_ref}:{page}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -398,11 +450,11 @@ def build_stand_detail_text(player: dict, lore_doc: dict, stand_index: int) -> s
     )
 
 
-def build_stand_detail_keyboard(stand_index: int, lore_id: str) -> types.InlineKeyboardMarkup:
+def build_stand_detail_keyboard(stand_index: int, lore_id: str, page: int = 0) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="📖 Открыть коллекцию", callback_data=f"heritage_view:{lore_id}")
-    builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{stand_index}")
-    builder.button(text="🔙 К наследию", callback_data="heritage_open")
+    builder.button(text="📖 Открыть коллекцию", callback_data=f"heritage_view:{lore_id}:{page}")
+    builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{stand_index}:{page}")
+    builder.button(text="🔙 К наследию", callback_data=f"heritage_page:{page}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -539,6 +591,7 @@ def build_lore_editor_collection_text(lore_doc: dict) -> str:
         "🧾 **КАРТОЧКА НАСЛЕДИЯ**\n"
         f"ID: `{lore_doc['id']}`\n"
         f"Имя: {lore_doc['emoji']} {lore_doc['name']}\n"
+        f"Кнопка: {lore_doc.get('button_name') or '-'}\n"
         f"Бонус: {lore_doc['bonus_type']} +{lore_doc['bonus_value']}\n"
         f"Разовый дар: {lore_doc['reward_type']} / {lore_doc['reward_payload']} x{lore_doc['reward_amount']}\n"
         f"Имя дара: {lore_doc.get('reward_name') or '-'}\n"
@@ -552,13 +605,14 @@ def build_lore_editor_collection_keyboard(lore_doc: dict) -> types.InlineKeyboar
     builder = InlineKeyboardBuilder()
     lore_ref = lore_doc.get("_ref", lore_doc["id"])
     builder.button(text="🪪 Основа", callback_data=f"loreed:editbasic:{lore_ref}")
+    builder.button(text="🏷 Кнопка", callback_data=f"loreed:editbutton:{lore_ref}")
     builder.button(text="✨ Бонус", callback_data=f"loreed:editbonus:{lore_ref}")
     builder.button(text="🎁 Награда", callback_data=f"loreed:editreward:{lore_ref}")
     builder.button(text="🧩 Обрывки", callback_data=f"loreed:editfrags:{lore_ref}")
     builder.button(text="📖 Текст", callback_data=f"loreed:edittext:{lore_ref}")
     builder.button(text="👁 Предпросмотр", callback_data=f"loreed:preview:{lore_ref}")
     builder.button(text="🔙 К списку", callback_data="loreed:home")
-    builder.adjust(2, 2, 1, 1)
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -590,6 +644,22 @@ def parse_fragments_text(text: str) -> list[dict]:
     return fragments
 
 
+def namespace_fragment_ids(lore_id: str, fragments: list[dict]) -> list[dict]:
+    namespaced = []
+    seen: set[str] = set()
+    prefix = f"{str(lore_id).strip()}_"
+    for index, fragment in enumerate(fragments, start=1):
+        raw_id = str(fragment.get("id", "")).strip()
+        suffix = raw_id[len(prefix):] if raw_id.startswith(prefix) else raw_id
+        suffix = suffix or f"frag_{index}"
+        namespaced_id = f"{prefix}{suffix}"
+        if namespaced_id in seen:
+            raise ValueError("ID обрывков внутри одного наследия должны быть разными.")
+        seen.add(namespaced_id)
+        namespaced.append({"id": namespaced_id, "title": fragment.get("title", ""), "preview": fragment.get("preview", "")})
+    return namespaced
+
+
 async def show_lore_editor_home(target_message: types.Message):
     await ensure_default_lore()
     lore_docs = await get_all_lore_docs()
@@ -617,16 +687,27 @@ def has_active_lore_editor_session(message: types.Message) -> bool:
     return bool(user and user.id == ADMIN_ID and lore_editor_sessions.get(user.id))
 
 
-@router.callback_query(F.data == "heritage_open")
-async def heritage_open(callback: types.CallbackQuery):
+async def render_heritage_main(message: types.Message, user_id: int, user_name: str, page: int = 0):
     await ensure_default_lore()
-    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    player = await get_or_create_player(user_id, user_name)
     lore_docs = await get_all_lore_docs()
-    await callback.message.edit_text(
-        build_heritage_main_text(player, lore_docs),
-        reply_markup=build_heritage_main_keyboard(player, lore_docs),
+    await message.edit_text(
+        build_heritage_main_text(player, lore_docs, page),
+        reply_markup=build_heritage_main_keyboard(player, lore_docs, page),
         parse_mode="Markdown",
     )
+
+
+@router.callback_query(F.data == "heritage_open")
+async def heritage_open(callback: types.CallbackQuery):
+    await render_heritage_main(callback.message, callback.from_user.id, callback.from_user.first_name, 0)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("heritage_page:"))
+async def heritage_page(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[1])
+    await render_heritage_main(callback.message, callback.from_user.id, callback.from_user.first_name, page)
     await callback.answer()
 
 
@@ -634,13 +715,15 @@ async def heritage_open(callback: types.CallbackQuery):
 async def heritage_view(callback: types.CallbackQuery):
     await ensure_default_lore()
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    lore_doc = await get_lore_doc_by_ref(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     await callback.message.edit_text(
         build_collection_detail_text(player, lore_doc),
-        reply_markup=build_collection_detail_keyboard(player, lore_doc),
+        reply_markup=build_collection_detail_keyboard(player, lore_doc, page),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -649,7 +732,9 @@ async def heritage_view(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("heritage_read:"))
 async def heritage_read(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    lore_doc = await get_lore_doc_by_ref(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
@@ -658,7 +743,7 @@ async def heritage_read(callback: types.CallbackQuery):
         return await callback.answer("Сначала собери все обрывки.", show_alert=True)
     await callback.message.edit_text(
         build_read_text(lore_doc),
-        reply_markup=build_read_keyboard(lore_doc),
+        reply_markup=build_read_keyboard(lore_doc, page),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -667,7 +752,9 @@ async def heritage_read(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("heritage_install_prompt:"))
 async def heritage_install_prompt(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    lore_doc = await get_lore_doc_by_ref(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    lore_doc = await get_lore_doc_by_ref(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
@@ -676,7 +763,7 @@ async def heritage_install_prompt(callback: types.CallbackQuery):
         return await callback.answer("Нужно собрать коллекцию целиком.", show_alert=True)
     await callback.message.edit_text(
         build_stand_pick_text(player, lore_doc),
-        reply_markup=build_stand_pick_keyboard(player, lore_doc),
+        reply_markup=build_stand_pick_keyboard(player, lore_doc, page),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -684,8 +771,9 @@ async def heritage_install_prompt(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("heritage_install:"))
 async def heritage_install(callback: types.CallbackQuery):
-    _, collection_ref, stand_raw = callback.data.split(":")
+    _, collection_ref, stand_raw, *rest = callback.data.split(":")
     stand_index = int(stand_raw)
+    page = int(rest[0]) if rest else 0
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     lore_doc = await get_lore_doc_by_ref(collection_ref)
     if not lore_doc:
@@ -709,7 +797,7 @@ async def heritage_install(callback: types.CallbackQuery):
     inventory["energy"] -= cost
     if inventory.get("energy", 0) <= 0:
         inventory.pop("energy", None)
-    stands[stand_index] = collection_id
+    stands[stand_index] = lore_doc["id"]
     player["inventory"] = inventory
     player["active_stands"] = stands
 
@@ -729,12 +817,14 @@ async def heritage_install(callback: types.CallbackQuery):
     if reward_text:
         message += f"\n{reward_text}"
     await callback.answer(message, show_alert=True)
-    await heritage_open(callback)
+    await render_heritage_main(callback.message, callback.from_user.id, callback.from_user.first_name, page)
 
 
 @router.callback_query(F.data.startswith("heritage_remove:"))
 async def heritage_remove(callback: types.CallbackQuery):
-    stand_index = int(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    stand_index = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     stands = list(player.get("active_stands", []))
     if stand_index < 0 or stand_index >= len(stands) or not stands[stand_index]:
@@ -745,12 +835,14 @@ async def heritage_remove(callback: types.CallbackQuery):
         {"$set": {"active_stands": stands}},
     )
     await callback.answer("Экспонат снят. При повторной установке нужна новая зарядка.", show_alert=True)
-    await heritage_open(callback)
+    await render_heritage_main(callback.message, callback.from_user.id, callback.from_user.first_name, page)
 
 
 @router.callback_query(F.data.startswith("heritage_stand:"))
 async def heritage_stand(callback: types.CallbackQuery):
-    stand_index = int(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    stand_index = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 0
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     stands = list(player.get("active_stands", []))
     if stand_index < 0 or stand_index >= len(stands) or not stands[stand_index]:
@@ -761,7 +853,7 @@ async def heritage_stand(callback: types.CallbackQuery):
     lore_doc["_ref"] = await get_lore_ref_by_id(lore_doc["id"])
     await callback.message.edit_text(
         build_stand_detail_text(player, lore_doc, stand_index),
-        reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["_ref"]),
+        reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["_ref"], page),
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -805,7 +897,9 @@ async def loreed_new(callback: types.CallbackQuery):
         "`id: void_legacy`\n"
         "`name: Наследие Пустоты`\n"
         "`emoji: 🌌`\n"
+        "`button: Пустота`\n"
         "`sort: 40`\n\n"
+        "`sort` — это порядок в списке: чем меньше число, тем выше наследие.\n\n"
         "После этого откроется карточка, и ты добьешь бонус, награду, обрывки и текст кнопками.",
         parse_mode="Markdown",
     )
@@ -842,7 +936,26 @@ async def loreed_editbasic(callback: types.CallbackQuery):
         f"`id: {lore_doc['id']}`\n"
         "`name: Название коллекции`\n"
         "`emoji: 📜`\n"
-        "`sort: 40`",
+        f"`button: {lore_doc.get('button_name', '')}`\n"
+        "`sort: 40`\n\n"
+        "`sort` — порядок в списке. Меньше число поднимает коллекцию выше.",
+        parse_mode="Markdown",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("loreed:editbutton:"))
+async def loreed_editbutton(callback: types.CallbackQuery):
+    lore_ref = callback.data.split(":")[2]
+    lore_doc = await get_lore_doc_by_ref(lore_ref)
+    if not lore_doc:
+        return await callback.answer("Коллекция не найдена.", show_alert=True)
+    lore_editor_sessions[callback.from_user.id] = {"mode": "edit_button", "id": lore_ref}
+    await callback.message.answer(
+        "🏷 **ИМЯ КНОПКИ**\n\n"
+        "Пришли следующим сообщением:\n"
+        f"`button: {lore_doc.get('button_name') or ''}`\n\n"
+        "Лучше держать до 9 символов. Полное название наследия это не меняет.",
         parse_mode="Markdown",
     )
     await callback.answer()
@@ -966,6 +1079,7 @@ async def lore_editor_input(message: types.Message):
                 {
                     "id": lore_id,
                     "name": data.get("name", lore_id),
+                    "button_name": data.get("button", ""),
                     "emoji": data.get("emoji", "📜"),
                     "sort_order": int(data.get("sort", "100") or 100),
                     "bonus_type": "spirit_f",
@@ -994,6 +1108,7 @@ async def lore_editor_input(message: types.Message):
             updates = {
                 "id": data.get("id", lore_doc["id"]),
                 "name": data.get("name", lore_doc["name"]),
+                "button_name": str(data.get("button", lore_doc.get("button_name", ""))).strip()[:9],
                 "emoji": data.get("emoji", lore_doc["emoji"]),
                 "sort_order": int(data.get("sort", str(lore_doc.get("sort_order", 100))) or lore_doc.get("sort_order", 100)),
             }
@@ -1001,6 +1116,11 @@ async def lore_editor_input(message: types.Message):
             if updates["id"] != lore_id:
                 await db.alchemy_lore.delete_one({"id": lore_id})
                 lore_id = updates["id"]
+
+        elif mode == "edit_button":
+            data = parse_key_value_lines(message.text or "")
+            button_name = str(data.get("button", lore_doc.get("button_name", ""))).strip()[:9]
+            await db.alchemy_lore.update_one({"id": lore_id}, {"$set": {"button_name": button_name}})
 
         elif mode == "edit_bonus":
             data = parse_key_value_lines(message.text or "")
@@ -1029,7 +1149,7 @@ async def lore_editor_input(message: types.Message):
             )
 
         elif mode == "edit_fragments":
-            fragments = parse_fragments_text(message.text or "")
+            fragments = namespace_fragment_ids(lore_id, parse_fragments_text(message.text or ""))
             await db.alchemy_lore.update_one({"id": lore_id}, {"$set": {"fragments": fragments}})
 
         elif mode == "edit_text":

@@ -67,7 +67,7 @@ from handlers.alc_fighters import (
     spend_cost,
 )
 from handlers.alc_tasks import build_daily_report_text, build_report_close_markup
-from handlers.alc_heritage import build_lore_editor_home_keyboard, encode_lore_ref, normalize_lore_doc, with_bammm
+from handlers.alc_heritage import HERITAGE_ITEMS_PER_PAGE, build_heritage_main_keyboard, build_heritage_main_text, build_lore_editor_home_keyboard, encode_lore_ref, get_heritage_button_label, namespace_fragment_ids, normalize_lore_doc, with_bammm
 from handlers.alc_build import (
     build_building_detail_text,
     format_building_cost,
@@ -89,6 +89,8 @@ from handlers.alc_expeditions import (
 )
 from handlers.alc_raids import (
     build_public_raid_line,
+    can_load_into_fort,
+    choose_loot_from_inventory,
     get_allowed_fort_slots,
     get_fort_power,
     get_raid_power,
@@ -710,7 +712,7 @@ class BaseStatusTests(unittest.TestCase):
             build_world_status({"inventory": {"active_base": 1}, "buildings": {"lab": 1}, "tutorial_step": 3}),
         )
         self.assertIn(
-            "1/4 вместимости",
+            "вместимость 1/4",
             build_world_status(
                 {
                     "inventory": {"active_base": 1},
@@ -881,6 +883,7 @@ class HeritageLogicTests(unittest.TestCase):
             {
                 "id": " test ",
                 "name": " ",
+                "button_name": "ОченьДлинноеИмя",
                 "bonus_value": 99,
                 "reward_amount": 0,
                 "fragments": [
@@ -894,6 +897,7 @@ class HeritageLogicTests(unittest.TestCase):
         )
         self.assertEqual(doc["id"], "test")
         self.assertEqual(doc["name"], "test")
+        self.assertEqual(doc["button_name"], "ОченьДлин")
         self.assertEqual(doc["bonus_value"], 3)
         self.assertEqual(doc["reward_amount"], 1)
         self.assertEqual([fragment["id"] for fragment in doc["fragments"]], ["one", "two", "three"])
@@ -902,6 +906,38 @@ class HeritageLogicTests(unittest.TestCase):
         text = with_bammm("История мира")
         self.assertIn("БАМММ", text)
         self.assertEqual(with_bammm("Финал уже есть. БАМММ!").count("БАМММ"), 1)
+
+    def test_namespace_fragment_ids_scopes_editor_fragments_to_collection(self):
+        fragments = namespace_fragment_ids(
+            "void_legacy",
+            [
+                {"id": "frag_1", "title": "A", "preview": "a"},
+                {"id": "frag_2", "title": "B", "preview": "b"},
+                {"id": "frag_3", "title": "C", "preview": "c"},
+            ],
+        )
+        self.assertEqual(
+            [fragment["id"] for fragment in fragments],
+            ["void_legacy_frag_1", "void_legacy_frag_2", "void_legacy_frag_3"],
+        )
+
+    def test_get_heritage_button_label_prefers_short_editor_name(self):
+        self.assertEqual(get_heritage_button_label({"name": "Очень длинное наследие", "button_name": "Коротко"}), "Коротко")
+        self.assertEqual(get_heritage_button_label({"name": "Очень длинное наследие", "button_name": ""}), "Очень дл…")
+
+    def test_heritage_main_paginates_after_ten_collections(self):
+        lore_docs = [
+            {"id": f"legacy_{idx}", "name": f"Наследие {idx}", "button_name": "", "emoji": "📜", "fragments": [{"id": f"a{idx}"}, {"id": f"b{idx}"}, {"id": f"c{idx}"}]}
+            for idx in range(HERITAGE_ITEMS_PER_PAGE + 2)
+        ]
+        player = {"buildings": {"heritage_center": 1}, "active_stands": [None], "lore_fragments": {}}
+        text = build_heritage_main_text(player, lore_docs, page=1)
+        markup = build_heritage_main_keyboard(player, lore_docs, page=1)
+        self.assertIn("Страница: 2/2", text)
+        labels = [button.text for row in markup.inline_keyboard for button in row]
+        self.assertIn("⬅️ Назад", labels)
+        self.assertNotIn("Вперёд ➡️", labels)
+        self.assertEqual(labels.count("📜 Наследие… 0/3"), 2)
 
 
 class BuildingLogicTests(unittest.TestCase):
@@ -1058,6 +1094,17 @@ class RaidLogicTests(unittest.TestCase):
         text = build_public_raid_line("Альфа", "Бета", success=False, live_target=False, trap_triggered=True)
         self.assertIn("Альфа", text)
         self.assertIn("Бета", text)
+
+    def test_loot_selection_skips_protected_items(self):
+        loot = choose_loot_from_inventory({"pack_l": 2, "recipe_scroll": 1, "stone": 5, "energy": 3}, count=4)
+        self.assertNotIn("pack_l", loot)
+        self.assertNotIn("recipe_scroll", loot)
+        self.assertTrue(set(loot).issubset({"stone", "energy"}))
+
+    def test_fort_rejects_protected_items(self):
+        self.assertFalse(can_load_into_fort("base_crystal"))
+        self.assertFalse(can_load_into_fort("pack_xl"))
+        self.assertTrue(can_load_into_fort("stone"))
 
 
 class QuestLogicTests(unittest.TestCase):

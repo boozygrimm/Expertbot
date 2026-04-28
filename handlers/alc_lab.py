@@ -79,7 +79,8 @@ def find_recipe_by_query(query: str) -> tuple[tuple[str, str], str] | None:
         if query_norm in {result_name, normalize_recipe_name(result)}:
             return ingredients, result
     return None
-    
+
+
 HIDDEN_ITEMS = ["base_crystal", "active_base"]
 USE_ITEMS = ["pack_s", "pack_m", "pack_l", "pack_xl", "recipe_scroll"]
 
@@ -220,7 +221,7 @@ async def render_lab_window(message_or_query, user_id: int):
             builder.attach(rep_btns)
 
     # --- ИНВЕНТАРЬ (БАЗОВЫЕ ЭЛЕМЕНТЫ + АЛФАВИТ + СЕТКА) ---
-    visible_items = [(k, v) for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS and k != "recipe_scroll"]
+    visible_items = [(k, v) for k, v in inventory.items() if v > 0 and k not in HIDDEN_ITEMS and k != "recipe_scroll" and k != "pack_xl"]
     
     if not visible_items:
         text += "\n\n🎒 Твой инвентарь пуст."

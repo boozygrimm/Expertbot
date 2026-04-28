@@ -48,6 +48,7 @@ RAID_REPEAT_COOLDOWN = 18 * 3600
 RAID_PROTECTION_ON_SUCCESS = 12 * 3600
 FORT_CAPTIVES_PER_PAGE = 8
 FORT_SLOT_ROWS_PER_PAGE = 8
+PROTECTED_RAID_ITEMS = {"base_crystal", "active_base", "recipe_scroll", "pack_s", "pack_m", "pack_l", "pack_xl"}
 
 
 def cleanup_raid_draft(player: dict, user_id: int) -> list[str]:
@@ -77,6 +78,14 @@ def shorten_button_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(1, limit - 1)] + "…"
+
+
+def is_protected_raid_item(item_id: str) -> bool:
+    return item_id in PROTECTED_RAID_ITEMS
+
+
+def can_load_into_fort(item_id: str) -> bool:
+    return item_id not in BATTLE_UNITS and not is_protected_raid_item(item_id)
 
 
 def get_raid_power(units: list, energy: int) -> int:
@@ -342,7 +351,7 @@ def build_fort_slot_keyboard(player: dict, slot_id: str, page: int = 0) -> types
     builder = InlineKeyboardBuilder()
     inventory = player.get("inventory", {})
     grid_size = player.get("inv_grid", 3)
-    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and can_load_into_fort(item_id)]
     items.sort(key=lambda item: ELEMENTS.get(item[0], item[0]))
     page_size = grid_size * FORT_SLOT_ROWS_PER_PAGE
     total_pages = max(1, (len(items) + page_size - 1) // page_size)
@@ -400,7 +409,7 @@ def build_pve_offer_markup() -> types.InlineKeyboardMarkup:
 
 
 def choose_loot_from_inventory(inventory: dict, count: int = 3, max_fraction: float = 0.35, hard_cap: int = 8) -> dict:
-    lootable = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    lootable = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS and not is_protected_raid_item(item_id)]
     random.shuffle(lootable)
     stolen = {}
     for item_id, amount in lootable[:count]:
@@ -408,6 +417,27 @@ def choose_loot_from_inventory(inventory: dict, count: int = 3, max_fraction: fl
         take = min(amount, random.randint(1, limit))
         stolen[item_id] = take
     return stolen
+
+
+def roll_counterattack_recovery(defender: dict, loot: dict[str, int], *, live_target: bool) -> tuple[dict[str, int], dict[str, int]]:
+    if not loot:
+        return loot, {}
+    fort_level = int(defender.get("buildings", {}).get("fort", 0) or 0)
+    chance = min(0.75, 0.18 + fort_level * 0.10 + (0.12 if live_target else 0.0))
+    if random.random() >= chance:
+        return loot, {}
+
+    updated = dict(loot)
+    recovered: dict[str, int] = {}
+    loot_items = list(updated.items())
+    random.shuffle(loot_items)
+    for item_id, amount in loot_items[:2]:
+        saved = max(1, min(amount, int(round(amount * random.uniform(0.35, 0.7)))))
+        updated[item_id] -= saved
+        if updated[item_id] <= 0:
+            del updated[item_id]
+        recovered[item_id] = recovered.get(item_id, 0) + saved
+    return updated, recovered
 
 
 def maybe_trigger_trap(defender: dict, attacker_units: list) -> tuple[bool, str | None, str | None]:
@@ -799,7 +829,7 @@ async def fort_slot(callback: types.CallbackQuery):
     fort_item_pages[(callback.from_user.id, slot_id)] = 0
     grid_size = player.get("inv_grid", 3)
     inventory = player.get("inventory", {})
-    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and can_load_into_fort(item_id)]
     total_pages = max(1, (len(items) + (grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (grid_size * FORT_SLOT_ROWS_PER_PAGE))
     await callback.message.edit_text(
         f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: 1/{total_pages} | Сетка: {grid_size} в ряд.",
@@ -817,7 +847,7 @@ async def fort_page(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     grid_size = player.get("inv_grid", 3)
     inventory = player.get("inventory", {})
-    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and can_load_into_fort(item_id)]
     total_pages = max(1, (len(items) + (grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (grid_size * FORT_SLOT_ROWS_PER_PAGE))
     await callback.message.edit_text(
         f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: {current_page + 1}/{total_pages} | Сетка: {grid_size} в ряд.",
@@ -836,7 +866,7 @@ async def fort_set_grid(callback: types.CallbackQuery):
     await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"inv_grid": new_grid_size}})
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = player.get("inventory", {})
-    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and item_id not in BATTLE_UNITS]
+    items = [(item_id, amount) for item_id, amount in inventory.items() if amount > 0 and can_load_into_fort(item_id)]
     total_pages = max(1, (len(items) + (new_grid_size * FORT_SLOT_ROWS_PER_PAGE) - 1) // (new_grid_size * FORT_SLOT_ROWS_PER_PAGE))
     await callback.message.edit_text(
         f"🧱 **{TRAP_LABELS[slot_id]}**\nВыбери любой предмет для зарядки ловушки.\nСтраница: 1/{total_pages} | Сетка: {new_grid_size} в ряд.",
@@ -853,6 +883,8 @@ async def fort_load(callback: types.CallbackQuery):
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = player.get("inventory", {})
     defense = player.get("fort_defense", {})
+    if not can_load_into_fort(item_id):
+        return await callback.answer("Этот предмет нельзя ставить в ловушку.", show_alert=True)
     if inventory.get(item_id, 0) <= 0:
         return await callback.answer("Предмет уже закончился.", show_alert=True)
     old_item = defense.get(slot_id)
@@ -1090,6 +1122,7 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
         attacker_update = {}
         defender_update = {}
         if report["success"]:
+            report["loot"], report["counter_recovered"] = roll_counterattack_recovery(defender, report["loot"], live_target=report["live_target"])
             for item_id, amount in report["loot"].items():
                 if defender_inventory.get(item_id, 0) >= amount:
                     defender_inventory[item_id] -= amount
@@ -1118,10 +1151,15 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
     asyncio.create_task(delete_after_delay(message, delete_after))
 
     loot_line = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in report["loot"].items()) or "ничего"
+    recovered_line = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in report.get("counter_recovered", {}).items())
     attacker_dm = (
         f"☠️ **ОТЧЁТ О РЕЙДЕ**\n{report['dm_log']}\n\n"
         f"Итог: {'Победа' if report['success'] else 'Поражение'}\n"
         f"Добыча/ошмётки: {loot_line}\n"
+    )
+    if recovered_line:
+        attacker_dm += f"Контратака отбила: {recovered_line}\n"
+    attacker_dm += (
         f"Выжили: {', '.join(get_role_name(unit_id) for unit_id in report['survivors']) or 'никто'}\n"
         f"Погибли: {', '.join(get_role_name(unit_id) for unit_id in report.get('dead_units', [])) or 'нет'}\n"
         f"Пленные: {', '.join(get_role_name(unit_id) for unit_id in report['captives_taken']) or 'нет'}"
@@ -1133,6 +1171,8 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
             f"🛡 **АТАКА НА ФОРТ**\n{report['dm_log']}\n\n"
             f"Итог: {'Нападавший прорвался' if report['success'] else 'Форт устоял'}\n"
             f"Похищено: {loot_line}\n"
-            f"Пленные в подвале: {', '.join(get_role_name(unit_id) for unit_id in report['captives_taken']) or 'нет'}"
         )
+        if recovered_line:
+            defender_dm += f"Контратакой возвращено: {recovered_line}\n"
+        defender_dm += f"Пленные в подвале: {', '.join(get_role_name(unit_id) for unit_id in report['captives_taken']) or 'нет'}"
         await send_dm_report(defender["user_id"], defender_dm)
