@@ -1,3 +1,4 @@
+import html
 import random
 import time
 
@@ -282,11 +283,11 @@ def build_heritage_main_text(player: dict, lore_docs: list[dict], page: int = 0)
     stand_labels = []
     for idx, stand_id in enumerate(stands, start=1):
         if stand_id and stand_id in lore_by_id:
-            stand_labels.append(f"{idx}:{lore_by_id[stand_id]['name']}")
+            stand_labels.append(f"{idx}:{html.escape(lore_by_id[stand_id]['name'])}")
         else:
             stand_labels.append(f"{idx}:пусто")
     lines = [
-        f"📚 **НАСЛЕДИЕ** (Ур. {level})",
+        f"📚 <b>НАСЛЕДИЕ</b> (Ур. {level})",
         "Стенды: " + " | ".join(stand_labels),
     ]
     if total_pages > 1:
@@ -299,7 +300,7 @@ def build_heritage_main_text(player: dict, lore_docs: list[dict], page: int = 0)
         if stand_id and stand_id in lore_by_id:
             lore_doc = lore_by_id[stand_id]
             amount = lore_doc["bonus_value"] * multiplier
-            lines.append(f"💎 {idx}: {lore_doc['name']} [{get_bonus_label(lore_doc['bonus_type'], amount)}]")
+            lines.append(f"💎 {idx}: {html.escape(lore_doc['name'])} [{html.escape(get_bonus_label(lore_doc['bonus_type'], amount))}]")
         else:
             lines.append(f"▫️ {idx}: пусто")
     lines.append("")
@@ -307,7 +308,7 @@ def build_heritage_main_text(player: dict, lore_docs: list[dict], page: int = 0)
     for lore_doc in page_lore_docs:
         owned, total = get_collection_progress(player, lore_doc)
         marker = "✅" if owned == total and total > 0 else "📜"
-        lines.append(f"{marker} {lore_doc['emoji']} {lore_doc['name']} {owned}/{total}")
+        lines.append(f"{marker} {lore_doc['emoji']} {html.escape(lore_doc['name'])} {owned}/{total}")
     return "\n".join(lines)
 
 
@@ -353,10 +354,10 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int 
 def build_collection_detail_text(player: dict, lore_doc: dict) -> str:
     owned, total = get_collection_progress(player, lore_doc)
     lines = [
-        f"{lore_doc['emoji']} **{lore_doc['name']}**",
+        f"{lore_doc['emoji']} <b>{html.escape(lore_doc['name'])}</b>",
         f"Собрано: {owned}/{total}",
-        f"Пассивный бонус: {get_bonus_label(lore_doc['bonus_type'], lore_doc['bonus_value'])}",
-        f"Разовый дар: {get_reward_label(lore_doc)}",
+        f"Пассивный бонус: {html.escape(get_bonus_label(lore_doc['bonus_type'], lore_doc['bonus_value']))}",
+        f"Разовый дар: {html.escape(get_reward_label(lore_doc))}",
         f"Цена установки: ⚡ {get_install_cost(lore_doc)}",
         "",
         "Обрывки:",
@@ -364,9 +365,9 @@ def build_collection_detail_text(player: dict, lore_doc: dict) -> str:
     fragments = player.get("lore_fragments", {})
     for fragment in lore_doc.get("fragments", []):
         marker = "✅" if fragments.get(fragment["id"]) else "▫️"
-        lines.append(f"{marker} {fragment['title']}")
+        lines.append(f"{marker} {html.escape(fragment['title'])}")
         if fragment.get("preview"):
-            lines.append(f"   _{fragment['preview']}_")
+            lines.append(f"   <i>{html.escape(fragment['preview'])}</i>")
     active_slot = None
     for idx, stand_id in enumerate(player.get("active_stands", [])):
         if stand_id == lore_doc["id"]:
@@ -398,7 +399,7 @@ def build_collection_detail_keyboard(player: dict, lore_doc: dict, page: int = 0
 
 
 def build_read_text(lore_doc: dict) -> str:
-    return f"{lore_doc['emoji']} **{lore_doc['name']}**\n\n{with_bammm(lore_doc.get('full_text', ''))}"
+    return f"{lore_doc['emoji']} <b>{html.escape(lore_doc['name'])}</b>\n\n{html.escape(with_bammm(lore_doc.get('full_text', '')))}"
 
 
 def build_read_keyboard(lore_doc: dict, page: int = 0) -> types.InlineKeyboardMarkup:
@@ -411,7 +412,7 @@ def build_read_keyboard(lore_doc: dict, page: int = 0) -> types.InlineKeyboardMa
 
 def build_stand_pick_text(player: dict, lore_doc: dict) -> str:
     lines = [
-        f"💎 **УСТАНОВКА: {lore_doc['name']}**",
+        f"💎 <b>УСТАНОВКА: {html.escape(lore_doc['name'])}</b>",
         f"Цена зарядки: ⚡ {get_install_cost(lore_doc)}",
         "",
         "Выбери стенд:",
@@ -443,10 +444,10 @@ def build_stand_pick_keyboard(player: dict, lore_doc: dict, page: int = 0) -> ty
 def build_stand_detail_text(player: dict, lore_doc: dict, stand_index: int) -> str:
     amount = lore_doc["bonus_value"] * get_heritage_multiplier(player)
     return (
-        f"💎 **СТЕНД {stand_index + 1}**\n"
-        f"Установлено: {lore_doc['name']}\n"
-        f"Активный бонус: {get_bonus_label(lore_doc['bonus_type'], amount)}\n"
-        f"Разовый дар: {get_reward_label(lore_doc)}"
+        f"💎 <b>СТЕНД {stand_index + 1}</b>\n"
+        f"Установлено: {html.escape(lore_doc['name'])}\n"
+        f"Активный бонус: {html.escape(get_bonus_label(lore_doc['bonus_type'], amount))}\n"
+        f"Разовый дар: {html.escape(get_reward_label(lore_doc))}"
     )
 
 
@@ -457,8 +458,7 @@ def build_stand_detail_keyboard(stand_index: int, lore_id: str, page: int = 0) -
     builder.button(text="🔙 К наследию", callback_data=f"heritage_page:{page}")
     builder.adjust(1)
     return builder.as_markup()
-
-
+    
 async def try_grant_random_lore_fragment(player: dict, *, chance: float) -> dict | None:
     progress = dict(player.get("lore_fragment_progress", {}))
     today = get_msk_now().strftime("%Y-%m-%d")
@@ -557,10 +557,9 @@ async def grant_first_legacy_reward(player: dict, lore_doc: dict) -> tuple[bool,
     player["claimed_legacy_rewards"] = claimed
     return True, reward_text
 
-
 def build_lore_editor_home_text(lore_docs: list[dict]) -> str:
     lines = [
-        "🛠 **РЕДАКТОР НАСЛЕДИЯ**",
+        "🛠 <b>РЕДАКТОР НАСЛЕДИЯ</b>",
         "",
         "Как работать:",
         "1. Выбери коллекцию кнопкой ниже или создай новую.",
@@ -570,7 +569,7 @@ def build_lore_editor_home_text(lore_docs: list[dict]) -> str:
         "Коллекции:",
     ]
     for lore_doc in lore_docs:
-        lines.append(f"• {lore_doc['emoji']} {lore_doc['name']} (`{lore_doc['id']}`)")
+        lines.append(f"• {lore_doc['emoji']} {html.escape(lore_doc['name'])} (<code>{html.escape(lore_doc['id'])}</code>)")
     return "\n".join(lines)
 
 
@@ -659,14 +658,13 @@ def namespace_fragment_ids(lore_id: str, fragments: list[dict]) -> list[dict]:
         namespaced.append({"id": namespaced_id, "title": fragment.get("title", ""), "preview": fragment.get("preview", "")})
     return namespaced
 
-
 async def show_lore_editor_home(target_message: types.Message):
     await ensure_default_lore()
     lore_docs = await get_all_lore_docs()
     await target_message.answer(
         build_lore_editor_home_text(lore_docs),
         reply_markup=build_lore_editor_home_keyboard(lore_docs),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -688,13 +686,12 @@ def has_active_lore_editor_session(message: types.Message) -> bool:
 
 
 async def render_heritage_main(message: types.Message, user_id: int, user_name: str, page: int = 0):
-    await ensure_default_lore()
     player = await get_or_create_player(user_id, user_name)
     lore_docs = await get_all_lore_docs()
     await message.edit_text(
         build_heritage_main_text(player, lore_docs, page),
         reply_markup=build_heritage_main_keyboard(player, lore_docs, page),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -713,7 +710,6 @@ async def heritage_page(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("heritage_view:"))
 async def heritage_view(callback: types.CallbackQuery):
-    await ensure_default_lore()
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
     parts = callback.data.split(":")
     lore_doc = await get_lore_doc_by_ref(parts[1])
@@ -724,7 +720,7 @@ async def heritage_view(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_collection_detail_text(player, lore_doc),
         reply_markup=build_collection_detail_keyboard(player, lore_doc, page),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -744,7 +740,7 @@ async def heritage_read(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_read_text(lore_doc),
         reply_markup=build_read_keyboard(lore_doc, page),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -764,7 +760,7 @@ async def heritage_install_prompt(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_stand_pick_text(player, lore_doc),
         reply_markup=build_stand_pick_keyboard(player, lore_doc, page),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -819,7 +815,6 @@ async def heritage_install(callback: types.CallbackQuery):
     await callback.answer(message, show_alert=True)
     await render_heritage_main(callback.message, callback.from_user.id, callback.from_user.first_name, page)
 
-
 @router.callback_query(F.data.startswith("heritage_remove:"))
 async def heritage_remove(callback: types.CallbackQuery):
     parts = callback.data.split(":")
@@ -854,16 +849,8 @@ async def heritage_stand(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_stand_detail_text(player, lore_doc, stand_index),
         reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["_ref"], page),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "loreed:home")
-async def loreed_home(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        return
-    await show_lore_editor_home(callback.message)
     await callback.answer()
 
 
@@ -872,16 +859,16 @@ async def loreed_help(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return
     await callback.message.answer(
-        "📚 **КРАТКО ПО ЛОРУ**\n\n"
-        "1. Жми коллекцию или `Новое наследие`\n"
+        "📚 <b>КРАТКО ПО ЛОРУ</b>\n\n"
+        "1. Жми коллекцию или <code>Новое наследие</code>\n"
         "2. Выбирай шаг: Основа, Бонус, Награда, Обрывки, Текст\n"
         "3. Бот сам пишет шаблон\n"
         "4. Просто отправь следующее сообщение по шаблону\n\n"
         "Самое важное:\n"
-        "• Обрывки - это 3 строки `id | Название | Анонс`\n"
+        "• Обрывки - это 3 строки <code>id | Название | Анонс</code>\n"
         "• Текст - просто отправляется обычным сообщением\n"
-        "• `seed` перезаливает стандартные сиды",
-        parse_mode="Markdown",
+        "• <code>seed</code> перезаливает стандартные сиды",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -892,19 +879,18 @@ async def loreed_new(callback: types.CallbackQuery):
         return
     lore_editor_sessions[callback.from_user.id] = {"mode": "create_basic"}
     await callback.message.answer(
-        "➕ **НОВОЕ НАСЛЕДИЕ**\n\n"
+        "➕ <b>НОВОЕ НАСЛЕДИЕ</b>\n\n"
         "Пришли следующим сообщением:\n"
-        "`id: void_legacy`\n"
-        "`name: Наследие Пустоты`\n"
-        "`emoji: 🌌`\n"
-        "`button: Пустота`\n"
-        "`sort: 40`\n\n"
-        "`sort` — это порядок в списке: чем меньше число, тем выше наследие.\n\n"
+        "<code>id: void_legacy</code>\n"
+        "<code>name: Наследие Пустоты</code>\n"
+        "<code>emoji: 🌌</code>\n"
+        "<code>button: Пустота</code>\n"
+        "<code>sort: 40</code>\n\n"
+        "<code>sort</code> — это порядок в списке: чем меньше число, тем выше наследие.\n\n"
         "После этого откроется карточка, и ты добьешь бонус, награду, обрывки и текст кнопками.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
-
 
 @router.callback_query(F.data == "loreed:seed")
 async def loreed_seed(callback: types.CallbackQuery):
@@ -914,11 +900,36 @@ async def loreed_seed(callback: types.CallbackQuery):
     await callback.message.answer("🌱 Стартовые наследия обновлены.")
     await callback.answer()
 
+@router.message(Command("lore_edit"))
+async def lore_edit(message: types.Message, command: CommandObject):
+    if message.from_user.id != ADMIN_ID:
+        return
+    # Очищаем сессию, если админ вызвал команду заново
+    lore_editor_sessions.pop(message.from_user.id, None)
+    
+    args = (command.args or "").strip().lower()
+    if args == "seed":
+        await ensure_default_lore()
+        return await message.answer("🌱 Стартовые наследия обновлены.")
+    await show_lore_editor_home(message)
+
+@router.callback_query(F.data == "loreed:home")
+async def loreed_home(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    # Сбрасываем сессию при возврате на главную редактора
+    lore_editor_sessions.pop(callback.from_user.id, None)
+    
+    await show_lore_editor_home(callback.message)
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("loreed:open:"))
 async def loreed_open(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         return
+    # Сбрасываем сессию при открытии карточки коллекции
+    lore_editor_sessions.pop(callback.from_user.id, None)
+    
     lore_ref = callback.data.split(":", 2)[2]
     lore_doc = await get_lore_doc_by_ref(lore_ref)
     if not lore_doc:
@@ -931,7 +942,6 @@ async def loreed_open(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-
 @router.callback_query(F.data.startswith("loreed:editbasic:"))
 async def loreed_editbasic(callback: types.CallbackQuery):
     lore_ref = callback.data.split(":")[2]
@@ -940,15 +950,15 @@ async def loreed_editbasic(callback: types.CallbackQuery):
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_basic", "id": lore_ref}
     await callback.message.answer(
-        "🪪 **ОСНОВА НАСЛЕДИЯ**\n\n"
+        "🪪 <b>ОСНОВА НАСЛЕДИЯ</b>\n\n"
         "Пришли следующим сообщением:\n"
-        f"`id: {lore_doc['id']}`\n"
-        "`name: Название коллекции`\n"
-        "`emoji: 📜`\n"
-        f"`button: {lore_doc.get('button_name', '')}`\n"
-        "`sort: 40`\n\n"
-        "`sort` — порядок в списке. Меньше число поднимает коллекцию выше.",
-        parse_mode="Markdown",
+        f"<code>id: {html.escape(lore_doc['id'])}</code>\n"
+        "<code>name: Название коллекции</code>\n"
+        "<code>emoji: 📜</code>\n"
+        f"<code>button: {html.escape(lore_doc.get('button_name', ''))}</code>\n"
+        "<code>sort: 40</code>\n\n"
+        "<code>sort</code> — порядок в списке. Меньше число поднимает коллекцию выше.",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -961,11 +971,11 @@ async def loreed_editbutton(callback: types.CallbackQuery):
         return await callback.answer("Коллекция не найдена.", show_alert=True)
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_button", "id": lore_ref}
     await callback.message.answer(
-        "🏷 **ИМЯ КНОПКИ**\n\n"
+        "🏷 <b>ИМЯ КНОПКИ</b>\n\n"
         "Пришли следующим сообщением:\n"
-        f"`button: {lore_doc.get('button_name') or ''}`\n\n"
+        f"<code>button: {html.escape(lore_doc.get('button_name') or '')}</code>\n\n"
         "Лучше держать до 9 символов. Полное название наследия это не меняет.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -975,13 +985,13 @@ async def loreed_editbonus(callback: types.CallbackQuery):
     lore_ref = callback.data.split(":")[2]
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_bonus", "id": lore_ref}
     await callback.message.answer(
-        "✨ **БОНУС НАСЛЕДИЯ**\n\n"
+        "✨ <b>БОНУС НАСЛЕДИЯ</b>\n\n"
         "Пришли следующим сообщением:\n"
-        "`bonus: spirit_f`\n"
-        "`bonus_value: 3`\n\n"
+        "<code>bonus: spirit_f</code>\n"
+        "<code>bonus_value: 3</code>\n\n"
         "Примеры bonus:\n"
-        "`spirit_f`, `spirit_w`, `spirit_e`, `spirit_a`, `metal`, `energy`, `pack_s`",
-        parse_mode="Markdown",
+        "<code>spirit_f</code>, <code>spirit_w</code>, <code>spirit_e</code>, <code>spirit_a</code>, <code>metal</code>, <code>energy</code>, <code>pack_s</code>",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -991,14 +1001,14 @@ async def loreed_editreward(callback: types.CallbackQuery):
     lore_ref = callback.data.split(":")[2]
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_reward", "id": lore_ref}
     await callback.message.answer(
-        "🎁 **НАГРАДА НАСЛЕДИЯ**\n\n"
+        "🎁 <b>НАГРАДА НАСЛЕДИЯ</b>\n\n"
         "Пришли следующим сообщением:\n"
-        "`reward_type: item`\n"
-        "`reward_payload: pack_l`\n"
-        "`reward_amount: 1`\n"
-        "`reward_name:`\n\n"
-        "Типы: `item`, `recipe`, `fighter`",
-        parse_mode="Markdown",
+        "<code>reward_type: item</code>\n"
+        "<code>reward_payload: pack_l</code>\n"
+        "<code>reward_amount: 1</code>\n"
+        "<code>reward_name:</code>\n\n"
+        "Типы: <code>item</code>, <code>recipe</code>, <code>fighter</code>",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -1008,12 +1018,12 @@ async def loreed_editfrags(callback: types.CallbackQuery):
     lore_ref = callback.data.split(":")[2]
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_fragments", "id": lore_ref}
     await callback.message.answer(
-        "🧩 **ОБРЫВКИ**\n\n"
+        "🧩 <b>ОБРЫВКИ</b>\n\n"
         "Пришли 3 строки в формате:\n"
-        "`frag_1 | Название | Короткий анонс`\n"
-        "`frag_2 | Название | Короткий анонс`\n"
-        "`frag_3 | Название | Короткий анонс`",
-        parse_mode="Markdown",
+        "<code>frag_1 | Название | Короткий анонс</code>\n"
+        "<code>frag_2 | Название | Короткий анонс</code>\n"
+        "<code>frag_3 | Название | Короткий анонс</code>",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -1023,13 +1033,12 @@ async def loreed_edittext(callback: types.CallbackQuery):
     lore_ref = callback.data.split(":")[2]
     lore_editor_sessions[callback.from_user.id] = {"mode": "edit_text", "id": lore_ref}
     await callback.message.answer(
-        "📖 **ПОЛНЫЙ ТЕКСТ**\n\n"
+        "📖 <b>ПОЛНЫЙ ТЕКСТ</b>\n\n"
         "Теперь просто пришли следующим сообщением весь рассказ целиком.\n"
         "Ничего дописывать не надо.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     await callback.answer()
-
 
 @router.callback_query(F.data.startswith("loreed:preview:"))
 async def loreed_preview(callback: types.CallbackQuery):
@@ -1037,37 +1046,25 @@ async def loreed_preview(callback: types.CallbackQuery):
     lore_doc = await get_lore_doc_by_ref(lore_ref)
     if not lore_doc:
         return await callback.answer("Коллекция не найдена.", show_alert=True)
-    await callback.message.answer(build_read_text(lore_doc), parse_mode="Markdown")
+    await callback.message.answer(build_read_text(lore_doc), parse_mode="HTML")
     await callback.answer("Предпросмотр отправлен.")
-
-
-@router.message(Command("lore_edit"))
-async def lore_edit(message: types.Message, command: CommandObject):
-    if message.from_user.id != ADMIN_ID:
-        return
-    args = (command.args or "").strip().lower()
-    if args == "seed":
-        await ensure_default_lore()
-        return await message.answer("🌱 Стартовые наследия обновлены.")
-    await show_lore_editor_home(message)
-
 
 @router.message(Command("lore_help", "справкалор"))
 async def lore_help(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
     await message.answer(
-        "📚 **СПРАВКА ПО ЛОРУ**\n\n"
+        "📚 <b>СПРАВКА ПО ЛОРУ</b>\n\n"
         "Проще всего так:\n"
-        "1. `/lore_edit`\n"
-        "2. Нажми коллекцию или `Новое наследие`\n"
+        "1. <code>/lore_edit</code>\n"
+        "2. Нажми коллекцию или <code>Новое наследие</code>\n"
         "3. Выбери шаг кнопкой\n"
         "4. Отправь следующее сообщение по шаблону от бота\n\n"
         "Что руками помнить не нужно:\n"
         "• для текста просто отправляешь рассказ\n"
-        "• для обрывков нужны 3 строки `id | Название | Анонс`\n"
+        "• для обрывков нужны 3 строки <code>id | Название | Анонс</code>\n"
         "• бонус и награду бот подсказывает отдельным шагом",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -1083,7 +1080,7 @@ async def lore_editor_input(message: types.Message):
             data = parse_key_value_lines(message.text or "")
             lore_id = data.get("id", "").strip()
             if not lore_id:
-                return await message.answer("Нужен `id:`. Пример: `id: void_legacy`", parse_mode="Markdown")
+                return await message.answer("Нужен <code>id:</code>. Пример: <code>id: void_legacy</code>", parse_mode="HTML")
             doc = normalize_lore_doc(
                 {
                     "id": lore_id,
@@ -1103,13 +1100,13 @@ async def lore_editor_input(message: types.Message):
             )
             await db.alchemy_lore.update_one({"id": lore_id}, {"$set": doc}, upsert=True)
             lore_editor_sessions.pop(message.from_user.id, None)
-            await message.answer(f"Создано наследие `{lore_id}`. Теперь добей его по кнопкам ниже.", parse_mode="Markdown")
+            await message.answer(f"Создано наследие <code>{html.escape(lore_id)}</code>. Теперь добей его по кнопкам ниже.", parse_mode="HTML")
             return await show_lore_editor_collection(message, lore_id)
 
         lore_doc = await get_lore_doc_by_ref(lore_id)
         if not lore_doc:
             lore_editor_sessions.pop(message.from_user.id, None)
-            return await message.answer("Коллекция потерялась. Открой `/lore_edit` заново.", parse_mode="Markdown")
+            return await message.answer("Коллекция потерялась. Открой <code>/lore_edit</code> заново.", parse_mode="HTML")
         lore_id = lore_doc["id"]
 
         if mode == "edit_basic":
@@ -1121,11 +1118,12 @@ async def lore_editor_input(message: types.Message):
                 "emoji": data.get("emoji", lore_doc["emoji"]),
                 "sort_order": int(data.get("sort", str(lore_doc.get("sort_order", 100))) or lore_doc.get("sort_order", 100)),
             }
+            # Обновляем документ. Если id изменился, он изменится прямо в этом документе.
             await db.alchemy_lore.update_one({"id": lore_id}, {"$set": updates})
-            if updates["id"] != lore_id:
-                await db.alchemy_lore.delete_one({"id": lore_id})
-                lore_id = updates["id"]
-
+            
+            # Обновляем lore_id для правильного вызова show_lore_editor_collection в конце функции
+            lore_id = updates["id"]
+            
         elif mode == "edit_button":
             data = parse_key_value_lines(message.text or "")
             button_name = str(data.get("button", lore_doc.get("button_name", ""))).strip()[:9]
@@ -1172,4 +1170,4 @@ async def lore_editor_input(message: types.Message):
         await show_lore_editor_collection(message, lore_id)
 
     except ValueError as exc:
-        await message.answer(f"❌ {exc}")
+        await message.answer(f"❌ {html.escape(str(exc))}")
