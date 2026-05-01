@@ -245,17 +245,40 @@ async def get_daily_summary(chat_id: int):
     now = get_msk_now()
     window = timedelta(hours=DAILY_SUMMARY_WINDOW_HOURS)
     valid_msgs = []
+    
     for m in all_messages:
+        # 1. Защита от документов без даты
+        if 'createdAt' not in m:
+            continue
+
         try:
             msg_time = datetime.fromisoformat(m['createdAt']) if isinstance(m['createdAt'], str) else m['createdAt']
-            if now - msg_time < window: valid_msgs.append(m)
-        except Exception:
-            valid_msgs.append(m)
+            
+            # 2. Исправлено: используем временную копию 'current_now', 
+            # чтобы не сломать базовое время 'now' для следующих итераций
+            current_now = now
+            if msg_time.tzinfo is None and current_now.tzinfo is not None:
+                msg_time = msg_time.replace(tzinfo=current_now.tzinfo)
+            elif msg_time.tzinfo is not None and current_now.tzinfo is None:
+                current_now = current_now.replace(tzinfo=msg_time.tzinfo)
+
+            # Проверяем вхождение в суточное окно
+            if current_now - msg_time < window: 
+                valid_msgs.append(m)
+            else:
+                # Наткнулись на сообщение старше суток - прерываем цикл (так как они отсортированы по убыванию)
+                break 
+                
+        except Exception as e:
+            logger.warning(f"Ошибка парсинга даты сообщения в get_daily_summary: {e}")
+            continue
             
     if len(valid_msgs) < 15: return "За сутки было слишком мало активности."
 
     valid_msgs.reverse()
-    history_text = "\n".join([f"{m['user_name']}: {m['text']}" for m in valid_msgs])
+    
+    # 3. Исправлено: защита от None-значений (когда ключ есть, но значение null/None)
+    history_text = "\n".join([f"{m.get('user_name') or 'Unknown'}: {m.get('text') or '[БЕЗ ТЕКСТА/МЕДИА]'}" for m in valid_msgs])
     
     chunks = split_text_into_chunks(history_text, chunk_limit=22000)
 
