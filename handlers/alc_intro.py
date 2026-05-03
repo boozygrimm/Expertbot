@@ -49,6 +49,7 @@ class IntroSession:
     intro_mix: list[str] = field(default_factory=list)  # Временный котёл [item1, item2]
     expedition_count: int = 0            # Счётчик походов в фазе expedition
     biome_filled: set = field(default_factory=set)       # Заполненные слои биома
+    return_target: str | None = None     # Куда возвращаться после лаборатории
 
     def to_dict(self) -> dict:
         """Сериализация для БД"""
@@ -59,6 +60,7 @@ class IntroSession:
             "intro_mix": self.intro_mix,
             "expedition_count": self.expedition_count,
             "biome_filled": list(self.biome_filled),
+            "return_target": self.return_target,
         }
 
     @classmethod
@@ -71,6 +73,7 @@ class IntroSession:
         session.intro_mix = data.get("intro_mix", [])
         session.expedition_count = data.get("expedition_count", 0)
         session.biome_filled = set(data.get("biome_filled", []))
+        session.return_target = data.get("return_target")
         return session
 
 
@@ -122,7 +125,6 @@ INTRO_STARTER_RESOURCES = {
 }
 
 # Цепочка крафтов фазы synthesis: sub_step -> (target_item, hint_text, bonus_count)
-# bonus_count: сколько единиц выдать при успешном крафте (для экономики биома)
 SYNTHESIS_CHAIN = [
     ("swamp", "Смешай Землю 🪨 и Воду 💧. Из болота начинается всё живое.", 1),
     ("lava", "Огонь 🔥 и Земля 🪨 дадут жидкую породу.", 1),
@@ -131,9 +133,9 @@ SYNTHESIS_CHAIN = [
     ("steam", "Вскипяти воду 💧 огнём 🔥. Пар — дыхание механизмов.", 1),
     ("life", "Энергия 🎇 в болоте 🐸 зародит жизнь.", 1),
     ("seed", "Жизнь 🧬 в земле 🪨 даст семя.", 1),
-    ("tree", "Семя 🌱 в земле 🪨 вырастет. Дерево — опора и топливо.", 5),   # x5 для биома
+    ("tree", "Семя 🌱 в земле 🪨 вырастет. Дерево — опора и топливо.", 5),
     ("algae", "Жизнь 🧬 в воде 💧 даст водоросли.", 1),
-    ("moss", "Водоросли 🌿 в болоте 🐸 станут мхом.", 5),   # x5 для биома
+    ("moss", "Водоросли 🌿 в болоте 🐸 станут мхом.", 5),
     ("lake", "Две воды 💧💧 дадут озеро. Глубина для новых духов.", 1),
     ("pressure", "Две земли 🪨🪨 создадут давление. Сила, что ломает и куёт.", 1),
 ]
@@ -141,7 +143,7 @@ SYNTHESIS_CHAIN = [
 # Рецепты для проверки (ingredients -> result)
 RECIPE_MAP = {tuple(sorted(ingredients)): result for ingredients, result in RECIPES.items()}
 
-# Стоимость слоёв учебного биома (снижена до 1 для прохождения)
+# Стоимость слоёв учебного биома
 BIOME_LAYER_COST = {
     "foundation": {"stone": 1, "tree": 1},
     "medium": {"swamp": 1, "moss": 1},
@@ -149,7 +151,7 @@ BIOME_LAYER_COST = {
     "life": {"moss": 1, "life": 1},
 }
 
-# Награды за учебные походы (запас x50 для стройки и крафта)
+# Награды за учебные походы
 EXPEDITION_REWARDS = {
     "volcano": {"lava": 50, "brick": 50, "stone": 50, "sand": 50},
     "mountains": {"metal": 50, "ashes": 50, "reed": 50, "stone": 50},
@@ -160,7 +162,7 @@ BUILDING_ORDER = ["storage", "lab", "altar", "barracks"]
 
 TUTORIAL_BUILDING_COST = {
     "storage": {"stone": 2, "sand": 2},
-    "lab": {},  # Бесплатно для туториала
+    "lab": {},
     "altar": {"stone": 4, "tree": 2, "energy": 2},
     "barracks": {"stone": 6, "tree": 4, "brick": 2, "energy": 2},
 }
@@ -216,12 +218,38 @@ def get_el_emoji(k: str) -> str:
     return "❓"
 
 
+def truncate_text(text: str, limit: int = 4000) -> str:
+    """Обрезает текст если он слишком длинный для Telegram."""
+    if len(text) <= limit:
+        return text
+    return text[:limit - 50] + "\n\n...(сообщение обрезано, слишком длинное)"
+
+
 async def safe_edit_text(message: types.Message, text: str, reply_markup=None, parse_mode: str | None = "Markdown"):
+    """Безопасное редактирование сообщения с fallback на отправку нового."""
+    text = truncate_text(text)
     try:
         return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            raise
+        error = str(exc).lower()
+        if "message is not modified" in error:
+            return None
+        if "message can't be edited" in error or "message to edit not found" in error:
+            # Не можем редактировать — отправляем новое сообщение
+            try:
+                return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            except TelegramBadRequest as exc2:
+                if "message is too long" in str(exc2).lower():
+                    short_text = truncate_text(text, 3500)
+                    return await message.answer(short_text, reply_markup=reply_markup, parse_mode=parse_mode)
+                raise
+        if "message is too long" in error:
+            short_text = truncate_text(text, 3500)
+            try:
+                return await message.edit_text(short_text, reply_markup=reply_markup, parse_mode=parse_mode)
+            except TelegramBadRequest:
+                return await message.answer(short_text, reply_markup=reply_markup, parse_mode=parse_mode)
+        raise
 
 
 def get_inventory(player: dict) -> dict:
@@ -384,30 +412,14 @@ async def intro_activate_crystal(callback: types.CallbackQuery):
 # ФАЗА 2: СИНТЕЗ (synthesis)
 # =====================================================================
 
-async def render_synthesis_window(callback: types.CallbackQuery):
-    """Отрисовывает окно обучающей лаборатории."""
-    user_id = callback.from_user.id
-    session = await get_intro_session(user_id)
-
-    if not session or session.phase != "synthesis":
-        return await callback.answer("Ошибка сессии.", show_alert=True)
-
-    player = await get_or_create_player(user_id, callback.from_user.first_name)
+async def _build_synthesis_ui(user_id: int, session: IntroSession, player: dict) -> tuple[str, types.InlineKeyboardMarkup]:
+    """Строит текст и клавиатуру лаборатории. Возвращает (text, markup)."""
     inventory = get_inventory(player)
     discovered = get_discovered(player)
 
     sub_step = session.sub_step
-    if sub_step >= len(SYNTHESIS_CHAIN):
-        # Все шаги пройдены — переход к биому
-        session.phase = "biome"
-        session.sub_step = 0
-        session.pending_craft = None
-        await save_intro_session(user_id, session)
-        return await render_biome_window(callback)
-
     target_item, hint, bonus_count = SYNTHESIS_CHAIN[sub_step]
     session.pending_craft = target_item
-    await save_intro_session(user_id, session)
 
     # Текущий котёл
     mix = session.intro_mix
@@ -435,13 +447,11 @@ async def render_synthesis_window(callback: types.CallbackQuery):
         builder.button(text="🗑 Очистить котел", callback_data="intro:lab_clear")
     builder.adjust(1)
 
-    # Доступные ресурсы (только базовые + уже открытые + предыдущие результаты цепочки)
+    # Доступные ресурсы
     available_items = set(["w", "f", "e", "a"])
     available_items.update(discovered)
-    # Добавляем результаты предыдущих шагов цепочки
     available_items.update([item for item, _, _ in SYNTHESIS_CHAIN[:sub_step]])
 
-    # Фильтруем: только то, что есть в инвентаре
     visible_items = [(k, inventory.get(k, 0)) for k in available_items if inventory.get(k, 0) > 0]
     visible_items.sort(key=lambda x: get_el_name(x[0]))
 
@@ -460,12 +470,76 @@ async def render_synthesis_window(callback: types.CallbackQuery):
         if row:
             builder.row(*row)
 
+    # Кнопка возврата если мы пришли из биома/стройки
+    if session.return_target:
+        if session.return_target == "biome":
+            builder.button(text="🔙 Вернуться к биому", callback_data="intro:return_to_biome")
+        elif session.return_target == "building":
+            builder.button(text="🔙 Вернуться к стройке", callback_data="intro:return_to_building")
+        builder.adjust(1)
+
     # Подсказка
     builder.button(text="💡 Подсказка", callback_data="intro:hint")
     builder.adjust(1)
 
-    await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    return text, builder.as_markup()
+
+
+async def render_synthesis_window(callback: types.CallbackQuery):
+    """Отрисовывает окно обучающей лаборатории (редактирует сообщение)."""
+    user_id = callback.from_user.id
+    session = await get_intro_session(user_id)
+
+    if not session or session.phase != "synthesis":
+        return await callback.answer("Ошибка сессии.", show_alert=True)
+
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+
+    sub_step = session.sub_step
+    if sub_step >= len(SYNTHESIS_CHAIN):
+        session.phase = "biome"
+        session.sub_step = 0
+        session.pending_craft = None
+        await save_intro_session(user_id, session)
+        return await render_biome_window(callback)
+
+    text, markup = await _build_synthesis_ui(user_id, session, player)
+    await save_intro_session(user_id, session)
+
+    await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="Markdown")
     await callback.answer()
+
+
+async def render_synthesis_window_as_new_message(message: types.Message):
+    """Отправляет лабораторию как НОВОЕ сообщение (для возврата из биома/стройки)."""
+    user_id = message.from_user.id
+    session = await get_intro_session(user_id)
+
+    if not session or session.phase != "synthesis":
+        return await message.answer("Ошибка сессии.")
+
+    player = await get_or_create_player(user_id, message.from_user.first_name or "Путник")
+
+    sub_step = session.sub_step
+    if sub_step >= len(SYNTHESIS_CHAIN):
+        session.phase = "biome"
+        session.sub_step = 0
+        session.pending_craft = None
+        await save_intro_session(user_id, session)
+        # Отправляем биом как новое сообщение
+        fake_callback = types.CallbackQuery(
+            id="restore",
+            from_user=types.User(id=user_id, is_bot=False, first_name=""),
+            chat_instance="",
+            data="restore",
+            message=message,
+        )
+        return await render_biome_window(fake_callback)
+
+    text, markup = await _build_synthesis_ui(user_id, session, player)
+    await save_intro_session(user_id, session)
+
+    await message.answer(text, reply_markup=markup, parse_mode="Markdown")
 
 
 @router.callback_query(F.data.startswith("intro:lab_add:"), IsInIntroPhase("synthesis"))
@@ -483,7 +557,6 @@ async def intro_lab_add(callback: types.CallbackQuery):
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
 
-    # Проверка наличия (учитывая уже положенное в котёл)
     mix_count = session.intro_mix.count(item)
     if inventory.get(item, 0) <= mix_count:
         return await callback.answer("У тебя больше нет этого ингредиента!", show_alert=True)
@@ -517,11 +590,9 @@ async def intro_lab_mix(callback: types.CallbackQuery):
     i1, i2 = session.intro_mix[0], session.intro_mix[1]
     recipe_key = tuple(sorted((i1, i2)))
 
-    # Проверка рецепта
     result = RECIPE_MAP.get(recipe_key)
 
     if not result or result != session.pending_craft:
-        # Неправильно — ресурсы не тратим, просто очищаем котёл
         session.intro_mix = []
         await save_intro_session(user_id, session)
         await callback.answer("💨 Пшик... Пошла вонь. Попробуй другую комбинацию.", show_alert=True)
@@ -532,7 +603,6 @@ async def intro_lab_mix(callback: types.CallbackQuery):
     inventory = get_inventory(player)
     discovered = get_discovered(player)
 
-    # Получаем bonus_count из цепочки
     _, _, bonus_count = SYNTHESIS_CHAIN[session.sub_step]
 
     inventory[i1] -= 1
@@ -558,7 +628,6 @@ async def intro_lab_mix(callback: types.CallbackQuery):
     session.intro_mix = []
     session.sub_step += 1
 
-    # Устанавливаем следующий pending_craft или очищаем
     if session.sub_step < len(SYNTHESIS_CHAIN):
         session.pending_craft = SYNTHESIS_CHAIN[session.sub_step][0]
     else:
@@ -569,7 +638,6 @@ async def intro_lab_mix(callback: types.CallbackQuery):
     await callback.answer(f"🎉 Успех! Получено: {ELEMENTS.get(result, result)} x{bonus_count}", show_alert=True)
 
     if session.sub_step >= len(SYNTHESIS_CHAIN):
-        # Все шаги пройдены — переход к биому
         session.phase = "biome"
         session.sub_step = 0
         await save_intro_session(user_id, session)
@@ -589,7 +657,6 @@ async def intro_hint(callback: types.CallbackQuery):
     if not target_item:
         return await callback.answer("Нет активной задачи.", show_alert=True)
 
-    # Находим рецепт
     for (r1, r2), res in RECIPES.items():
         if res == target_item:
             ing1 = ELEMENTS.get(r1, r1)
@@ -630,7 +697,6 @@ async def render_biome_window(callback: types.CallbackQuery):
 
     builder = InlineKeyboardBuilder()
 
-    # Кнопки слоёв
     layers = {
         "foundation": "🪨 Основа",
         "medium": "🌫 Среда",
@@ -662,7 +728,6 @@ async def render_biome_window(callback: types.CallbackQuery):
 
     builder.adjust(1)
 
-    # Кнопка стабилизации (если все слои заполнены)
     if len(session.biome_filled) == 4:
         builder.button(text="🧬 Стабилизировать биом", callback_data="intro:biome_stabilize")
         builder.adjust(1)
@@ -689,12 +754,10 @@ async def intro_biome_fill(callback: types.CallbackQuery):
 
     required = BIOME_LAYER_COST.get(layer_id, {})
 
-    # Проверка ресурсов
     for item, amount in required.items():
         if inventory.get(item, 0) < amount:
             return await callback.answer(f"Не хватает {ELEMENTS.get(item, item)}!", show_alert=True)
 
-    # Списание
     for item, amount in required.items():
         inventory[item] -= amount
         if inventory[item] <= 0:
@@ -705,7 +768,6 @@ async def intro_biome_fill(callback: types.CallbackQuery):
         {"$set": {"inventory": inventory}}
     )
 
-    # Отмечаем слой как заполненный
     session.biome_filled.add(layer_id)
     await save_intro_session(user_id, session)
 
@@ -732,7 +794,6 @@ async def intro_biome_stabilize(callback: types.CallbackQuery):
     if not session or len(session.biome_filled) != 4:
         return await callback.answer("Заполни все слои!", show_alert=True)
 
-    # Собираем слоты биома
     slots = {
         "foundation": "tutorial_seed",
         "medium": "tutorial_broth",
@@ -742,11 +803,9 @@ async def intro_biome_stabilize(callback: types.CallbackQuery):
 
     player = await get_or_create_player(user_id, callback.from_user.first_name)
 
-    # Создаём биом через существующую механику
     blueprint = build_world_blueprint(player, slots, focus_id=None)
     success, capacity, absurdity = evaluate_world_creation(player, slots, focus_id=None)
 
-    # Учебный биом всегда успешен
     fallback_name, description, _, _, humor = build_starter_world_preview(slots, focus_id=None)
     archetype = DEFAULT_WORLD_ARCHETYPE
 
@@ -786,6 +845,7 @@ async def intro_biome_stabilize(callback: types.CallbackQuery):
     session.phase = "expedition"
     session.sub_step = 0
     session.expedition_count = 0
+    session.return_target = None
     await save_intro_session(user_id, session)
 
     text = (
@@ -819,13 +879,33 @@ async def intro_biome_inventory(callback: types.CallbackQuery):
 @router.callback_query(F.data == "intro:open_lab_from_biome", IsInIntroPhase("biome"))
 async def intro_open_lab_from_biome(callback: types.CallbackQuery):
     """Возврат в лабораторию из биома для докрафта."""
-    await callback.answer("Лаборатория открыта. Скрафти недостающее и возвращайся.", show_alert=True)
-    # Рендерим лабораторию, но запоминаем, что нужно вернуться в биом
     session = await get_intro_session(callback.from_user.id)
     if session:
-        session.pending_craft = "RETURN_TO_BIOME"
+        session.return_target = "biome"
+        # Сохраняем текущее состояние биома, переходим в синтез
+        session.phase = "synthesis"
         await save_intro_session(callback.from_user.id, session)
-    await render_synthesis_window(callback)
+    
+    # Отправляем НОВОЕ сообщение вместо редактирования
+    await callback.message.answer("🧪 Переключено в Лабораторию. Скрафти недостающее и возвращайся к биому.")
+    await render_synthesis_window_as_new_message(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "intro:return_to_biome", IsInIntroPhase("synthesis"))
+async def intro_return_to_biome(callback: types.CallbackQuery):
+    """Возврат из лаборатории в биом."""
+    user_id = callback.from_user.id
+    session = await get_intro_session(user_id)
+    
+    if not session:
+        return await callback.answer("Сессия не найдена.", show_alert=True)
+    
+    session.phase = "biome"
+    session.return_target = None
+    await save_intro_session(user_id, session)
+    
+    await render_biome_window(callback)
 
 
 # =====================================================================
@@ -864,7 +944,6 @@ async def render_expedition_window(callback: types.CallbackQuery):
         builder.adjust(1)
 
     else:
-        # Сводка
         text = (
             "🗺 **КАРТА МИРА**\n\n"
             "Ты открыл базовые маршруты:\n\n"
@@ -891,7 +970,6 @@ async def intro_expedition_go(callback: types.CallbackQuery):
         return await callback.answer("Сессия не найдена.", show_alert=True)
 
     if location == "complete":
-        # Переход к стройке
         session.phase = "building"
         session.sub_step = 0
         await save_intro_session(user_id, session)
@@ -904,7 +982,6 @@ async def intro_expedition_go(callback: types.CallbackQuery):
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
 
-    # Выдача ресурсов
     for item, amount in rewards.items():
         inventory[item] = inventory.get(item, 0) + amount
 
@@ -916,7 +993,6 @@ async def intro_expedition_go(callback: types.CallbackQuery):
     session.expedition_count += 1
     await save_intro_session(user_id, session)
 
-    # Текст результата
     reward_lines = [f"• {ELEMENTS.get(k, k)} x{v}" for k, v in rewards.items()]
     text = (
         f"{'🌋' if location == 'volcano' else '⛰'} **ПОХОД ЗАВЕРШЁН**\n\n"
@@ -955,7 +1031,6 @@ async def render_building_window(callback: types.CallbackQuery):
 
     sub_step = session.sub_step
     if sub_step >= len(BUILDING_ORDER):
-        # Все здания построены
         session.phase = "combat"
         session.sub_step = 0
         await save_intro_session(user_id, session)
@@ -964,7 +1039,6 @@ async def render_building_window(callback: types.CallbackQuery):
     building_id = BUILDING_ORDER[sub_step]
     current_level = buildings.get(building_id, 0)
 
-    # Если уже построено (например, из другого источника), пропускаем
     if current_level >= 1:
         session.sub_step += 1
         await save_intro_session(user_id, session)
@@ -973,20 +1047,17 @@ async def render_building_window(callback: types.CallbackQuery):
     next_level = 1
     building = BUILDINGS.get(building_id, {})
 
-    # Используем учебную стоимость, если здание не из основного справочника
     if building_id in TUTORIAL_BUILDING_COST:
         cost = TUTORIAL_BUILDING_COST[building_id]
         building_name = building.get("name", building_id.capitalize())
         building_desc = building.get("desc", "")
         effect_desc = building.get("levels", {}).get(1, {}).get("effect_desc", "")
     else:
-        # Fallback
         cost = {}
         building_name = building_id.capitalize()
         building_desc = ""
         effect_desc = ""
 
-    # Проверка возможности строительства
     can_build = all(inventory.get(item, 0) >= amount for item, amount in cost.items())
 
     text_lines = [
@@ -1040,11 +1111,9 @@ async def intro_build_do(callback: types.CallbackQuery):
 
     cost = TUTORIAL_BUILDING_COST.get(building_id, {})
 
-    # Проверка ресурсов
     if not all(inventory.get(item, 0) >= amount for item, amount in cost.items()):
         return await callback.answer("Не хватает ресурсов!", show_alert=True)
 
-    # Списание
     for item, amount in cost.items():
         inventory[item] -= amount
         if inventory[item] <= 0:
@@ -1088,12 +1157,32 @@ async def intro_build_hint(callback: types.CallbackQuery):
 @router.callback_query(F.data == "intro:open_lab_from_building", IsInIntroPhase("building"))
 async def intro_open_lab_from_building(callback: types.CallbackQuery):
     """Возврат в лабораторию из стройки для докрафта."""
-    await callback.answer("Лаборатория открыта. Скрафти недостающее и возвращайся.", show_alert=True)
     session = await get_intro_session(callback.from_user.id)
     if session:
-        session.pending_craft = "RETURN_TO_BUILDING"
+        session.return_target = "building"
+        session.phase = "synthesis"
         await save_intro_session(callback.from_user.id, session)
-    await render_synthesis_window(callback)
+    
+    # Отправляем НОВОЕ сообщение
+    await callback.message.answer("🧪 Переключено в Лабораторию. Скрафти недостающее и возвращайся к стройке.")
+    await render_synthesis_window_as_new_message(callback.message)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "intro:return_to_building", IsInIntroPhase("synthesis"))
+async def intro_return_to_building(callback: types.CallbackQuery):
+    """Возврат из лаборатории в стройку."""
+    user_id = callback.from_user.id
+    session = await get_intro_session(user_id)
+    
+    if not session:
+        return await callback.answer("Сессия не найдена.", show_alert=True)
+    
+    session.phase = "building"
+    session.return_target = None
+    await save_intro_session(user_id, session)
+    
+    await render_building_window(callback)
 
 
 # =====================================================================
@@ -1114,7 +1203,6 @@ async def render_combat_window(callback: types.CallbackQuery):
 
     sub_step = session.sub_step
     if sub_step >= len(COMBAT_CHAIN):
-        # Все юниты созданы
         session.phase = "complete"
         session.sub_step = 0
         await save_intro_session(user_id, session)
@@ -1148,10 +1236,8 @@ async def render_combat_window(callback: types.CallbackQuery):
         builder.button(text="🗑 Очистить котел", callback_data="intro:combat_clear")
     builder.adjust(1)
 
-    # Доступные ресурсы
     available_items = set(["w", "f", "e", "a"])
     available_items.update(discovered)
-    # Добавляем духов, если уже созданы
     available_items.update([item for item, _, _ in COMBAT_CHAIN[:sub_step] if item.startswith("spirit_")])
 
     visible_items = [(k, inventory.get(k, 0)) for k in available_items if inventory.get(k, 0) > 0]
@@ -1234,7 +1320,6 @@ async def intro_combat_mix(callback: types.CallbackQuery):
         await callback.answer("💨 Пшик... Попробуй другую комбинацию.", show_alert=True)
         return await render_combat_window(callback)
 
-    # Успех
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
     discovered = get_discovered(player)
@@ -1248,7 +1333,6 @@ async def intro_combat_mix(callback: types.CallbackQuery):
         inventory.pop(i2, None)
 
     if is_battle_unit(result):
-        # Создаём бойца через alc_fighters
         fighter = create_fighter(result, crafted_tier3=BATTLE_UNITS[result]["tier"] >= 3)
         fighters.append(fighter)
     else:
@@ -1318,13 +1402,11 @@ async def render_complete_window(callback: types.CallbackQuery):
     """Финальное окно интро."""
     user_id = callback.from_user.id
 
-    # Установка финального флага
     await db.alchemy_players.update_one(
         {"user_id": user_id},
         {"$set": {"tutorial_step": 100}}
     )
 
-    # Очистка сессии
     await clear_intro_session(user_id)
 
     text = (
@@ -1343,38 +1425,6 @@ async def render_complete_window(callback: types.CallbackQuery):
 
     await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer("Добро пожаловать!")
-
-
-# =====================================================================
-# ОБРАБОТКА ВОЗВРАТА ИЗ ЛАБОРАТОРИИ
-# =====================================================================
-
-@router.callback_query(F.data == "intro:return_to_task")
-async def intro_return_to_task(callback: types.CallbackQuery):
-    """Возврат к текущей фазе из лаборатории."""
-    user_id = callback.from_user.id
-    session = await get_intro_session(user_id)
-
-    if not session:
-        return await callback.answer("Сессия не найдена.", show_alert=True)
-
-    # Очищаем флаг возврата
-    if session.pending_craft in ["RETURN_TO_BIOME", "RETURN_TO_BUILDING"]:
-        session.pending_craft = None
-        await save_intro_session(user_id, session)
-
-    phase_renderers = {
-        "biome": render_biome_window,
-        "building": render_building_window,
-        "expedition": render_expedition_window,
-        "combat": render_combat_window,
-    }
-
-    renderer = phase_renderers.get(session.phase)
-    if renderer:
-        await renderer(callback)
-    else:
-        await callback.answer("Возврат недоступен.", show_alert=True)
 
 
 # =====================================================================
