@@ -987,13 +987,20 @@ async def intro_expedition_go(callback: types.CallbackQuery):
 
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
+    discovered = get_discovered(player)
 
     for item, amount in rewards.items():
         inventory[item] = inventory.get(item, 0) + amount
+        # Добавляем предмет в изученные, если его там ещё нет
+        if item not in discovered:
+            discovered.append(item)
 
     await db.alchemy_players.update_one(
         {"user_id": user_id},
-        {"$set": {"inventory": inventory}}
+        {"$set": {
+            "inventory": inventory,
+            "discovered": discovered
+        }}
     )
 
     session.expedition_count += 1
@@ -1012,7 +1019,6 @@ async def intro_expedition_go(callback: types.CallbackQuery):
 
     await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer("Поход завершён!")
-
 
 @router.callback_query(F.data == "intro:expedition_next", IsInIntroPhase("expedition"))
 async def intro_expedition_next(callback: types.CallbackQuery):
