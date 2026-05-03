@@ -32,6 +32,16 @@ UNDESIRED_TITLE_MARKERS = {
     "sped up",
     "speed up",
     "mashup",
+    "acoustic",
+    "piano",
+    "guitar",
+    "orchestral",
+    "remastered",
+    "reimagined",
+    "rework",
+    "flip",
+    "bootleg",
+    "unofficial",
 }
 ARTIST_HINT_BLACKLIST = {
     "original",
@@ -128,11 +138,16 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
             score += 10
 
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
-        score -= 8
+        score -= 15
 
     duration = int(entry.get("duration", 0) or 0)
     if 120 <= duration <= 420:
         score += 1
+
+    title_words = set(_tokenize(title))
+    query_words = set(query_tokens)
+    if query_words and title_words == query_words:
+        score += 5
 
     return score
 
@@ -151,6 +166,16 @@ def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
         return False
     if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
         return False
+
+    title = str(candidate.get("title", "") or "").lower()
+    normalized = normalized_query.lower()
+
+    title_words = set(_tokenize(title))
+    normalized_words = set(_tokenize(normalized))
+
+    if normalized_words and not normalized_words.issubset(title_words):
+        return False
+
     return True
 
 
@@ -181,12 +206,20 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         "match_filter": duration_filter,
     }
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"scsearch10:{query}", download=False)
-    except Exception:
-        logger.exception("SoundCloud search error for query=%r", query)
-        return []
+    info = None
+    search_queries = [
+        f"scsearch15:{query}",
+    ]
+
+    for search_query in search_queries:
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(search_query, download=False)
+            if info and info.get("entries"):
+                break
+        except Exception:
+            logger.debug("Search failed for query=%r, trying next source", search_query)
+            continue
 
     if not info or "entries" not in info:
         return []
@@ -221,13 +254,14 @@ def search_track_candidates_sync(query: str) -> list[dict]:
             item["score"],
             not _has_undesired_marker(item["title"]),
             -abs(item["duration"] - 240) if item["duration"] else -9999,
+            len(_tokenize(item["title"])),
         ),
         reverse=True,
     )
     probable_originals = [candidate for candidate in candidates if _is_probable_original(candidate, query)]
     if probable_originals:
-        return probable_originals[:3]
-    return candidates[:3]
+        return probable_originals[:5]
+    return candidates[:5]
 
 
 def download_audio_sync(query: str) -> tuple:
