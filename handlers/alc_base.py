@@ -1667,7 +1667,7 @@ async def universe_fortify(callback: types.CallbackQuery):
 async def open_base_menu_start(message: types.Message, command: CommandObject):
     if command.args == "alcintro":
         # Импортируем из твоего нового финального файла
-        from handlers.alc_intro_final import run_new_intro 
+        from handlers.alc_intro import run_new_intro 
         await run_new_intro(message.from_user.id, message.from_user.first_name, message)
         return
         
