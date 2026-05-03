@@ -66,7 +66,7 @@ ELEMENTS = {
     "ashes": "⚱️ Пепел",
     "atomic_bomb": "☢️ Атомная бомба",
     "australia": "🇦🇺 Австралия",
-    "bacon:": "🥓 Бекон",
+    "bacon": "🥓 Бекон",
     "bacteria": "🦠 Бактерия",
     "bamboo": "🎍 Бамбук",
     "banana": "🍌 Банан",
