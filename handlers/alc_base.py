@@ -4,11 +4,6 @@ import random
 import time
 import asyncio
 
-# В CommandStart(deep_link=True) добавить:
-elif command.args == "alcintro":
-    from handlers.alc_intro import run_new_intro
-    await run_new_intro(message.from_user.id, message.from_user.first_name, message)
-
 from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -1671,9 +1666,13 @@ async def universe_fortify(callback: types.CallbackQuery):
 @router.message(CommandStart(deep_link=True))
 async def open_base_menu_start(message: types.Message, command: CommandObject):
     if command.args == "alcintro":
-        text, _ = await run_alchemy_intro(message.from_user.id, message.from_user.first_name)
-        return await message.answer(text, parse_mode="Markdown")
+        # Импортируем из твоего нового финального файла
+        from handlers.alc_intro_final import run_new_intro 
+        await run_new_intro(message.from_user.id, message.from_user.first_name, message)
+        return
+        
     if command.args != "alcbase": return
+    
     text, markup = await get_base_content(message.from_user.id)
     await message.answer(text, reply_markup=markup, parse_mode="Markdown")
 
