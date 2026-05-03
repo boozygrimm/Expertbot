@@ -1665,6 +1665,23 @@ async def universe_fortify(callback: types.CallbackQuery):
 # ==================== БАЗОВЫЕ ХЭНДЛЕРЫ НАВИГАЦИИ ====================
 @router.message(CommandStart(deep_link=True))
 async def open_base_menu_start(message: types.Message, command: CommandObject):
+    from handlers.alc_intro import get_intro_session
+    session = await get_intro_session(message.from_user.id)
+    
+    if command.args == "alcintro":
+        from handlers.alc_intro import run_new_intro 
+        await run_new_intro(message.from_user.id, message.from_user.first_name, message)
+        return
+        
+    if command.args != "alcbase": 
+        return
+    
+    # Если пользователь в процессе обучения — не пускаем в базу
+    if session:
+        await message.answer("🧪 Сначала заверши обучение!")
+        return
+    
+    # ... остальной код без изменений
     if command.args == "alcintro":
         # Импортируем из твоего нового финального файла
         from handlers.alc_intro import run_new_intro 
@@ -1678,6 +1695,14 @@ async def open_base_menu_start(message: types.Message, command: CommandObject):
 
 @router.message(Command("base", "база"))
 async def cmd_base(message: types.Message):
+    # Защита от входа в базу во время обучения
+    from handlers.alc_intro import get_intro_session
+    session = await get_intro_session(message.from_user.id)
+    if session:
+        await message.answer("🧪 Сначала заверши обучение! Используй кнопки в текущем сообщении.")
+        return
+    
+    # ... остальной код без изменений
     if message.chat.type != "private":
         bot_info = await message.bot.get_me()
         builder = InlineKeyboardBuilder()
