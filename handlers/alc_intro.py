@@ -77,8 +77,10 @@ class IntroSession:
         return session
 
 
-# Кэш в памяти для быстрого доступа
+# Кэш в памяти для быстрого доступа и пагинации
 intro_sessions: dict[int, IntroSession] = {}
+intro_lab_pages: dict[int, int] = {}
+intro_combat_pages: dict[int, int] = {}
 
 
 async def get_intro_session(user_id: int) -> IntroSession | None:
@@ -106,6 +108,8 @@ async def save_intro_session(user_id: int, session: IntroSession):
 async def clear_intro_session(user_id: int):
     """Очищает сессию из кэша и БД."""
     intro_sessions.pop(user_id, None)
+    intro_lab_pages.pop(user_id, None)
+    intro_combat_pages.pop(user_id, None)
     await db.alchemy_players.update_one(
         {"user_id": user_id},
         {"$unset": {"intro_state": ""}}
@@ -116,7 +120,6 @@ async def clear_intro_session(user_id: int):
 # КОНСТАНТЫ И ДАННЫЕ
 # =====================================================================
 
-# Стартовые ресурсы для интро (выдаются при активации кристалла)
 INTRO_STARTER_RESOURCES = {
     "w": 150,
     "f": 150,
@@ -124,7 +127,6 @@ INTRO_STARTER_RESOURCES = {
     "a": 150,
 }
 
-# Цепочка крафтов фазы synthesis: sub_step -> (target_item, hint_text, bonus_count)
 SYNTHESIS_CHAIN = [
     ("swamp", "Смешай Землю 🪨 и Воду 💧. Из болота начинается всё живое.", 1),
     ("lava", "Огонь 🔥 и Земля 🪨 дадут жидкую породу.", 1),
@@ -140,10 +142,8 @@ SYNTHESIS_CHAIN = [
     ("pressure", "Две земли 🪨🪨 создадут давление. Сила, что ломает и куёт.", 1),
 ]
 
-# Рецепты для проверки (ingredients -> result)
 RECIPE_MAP = {tuple(sorted(ingredients)): result for ingredients, result in RECIPES.items()}
 
-# Стоимость слоёв учебного биома
 BIOME_LAYER_COST = {
     "foundation": {"stone": 1, "tree": 1},
     "medium": {"swamp": 1, "moss": 1},
@@ -151,13 +151,11 @@ BIOME_LAYER_COST = {
     "life": {"moss": 1, "life": 1},
 }
 
-# Награды за учебные походы
 EXPEDITION_REWARDS = {
     "volcano": {"lava": 50, "brick": 50, "stone": 50, "sand": 50},
     "mountains": {"metal": 50, "ashes": 50, "reed": 50, "stone": 50},
 }
 
-# Порядок строительства зданий и их учебная стоимость
 BUILDING_ORDER = ["storage", "lab", "altar", "barracks"]
 
 TUTORIAL_BUILDING_COST = {
@@ -167,7 +165,6 @@ TUTORIAL_BUILDING_COST = {
     "barracks": {"stone": 6, "tree": 4, "brick": 2, "energy": 2},
 }
 
-# Цепочка боевой алхимии
 COMBAT_CHAIN = [
     ("spirit_f", "Дух Огня: Воздух 💨 + Жизнь 🧬", True),
     ("spirit_w", "Дух Воды: Озеро 🌊 + Жизнь 🧬", True),
@@ -182,7 +179,6 @@ COMBAT_CHAIN = [
 # =====================================================================
 
 class IsInIntroPhase:
-    """Фильтр: пользователь находится в указанной фазе интро (или любой фазе)."""
     def __init__(self, phase: str | None = None):
         self.phase = phase
 
@@ -196,7 +192,6 @@ class IsInIntroPhase:
                 "expedition", "building", "combat", "complete"
             }
         return session.phase == self.phase
-
 
 # =====================================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -219,14 +214,12 @@ def get_el_emoji(k: str) -> str:
 
 
 def truncate_text(text: str, limit: int = 4000) -> str:
-    """Обрезает текст если он слишком длинный для Telegram."""
     if len(text) <= limit:
         return text
     return text[:limit - 50] + "\n\n...(сообщение обрезано, слишком длинное)"
 
 
 async def safe_edit_text(message: types.Message, text: str, reply_markup=None, parse_mode: str | None = "Markdown"):
-    """Безопасное редактирование сообщения с fallback на отправку нового."""
     text = truncate_text(text)
     try:
         return await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
@@ -235,7 +228,6 @@ async def safe_edit_text(message: types.Message, text: str, reply_markup=None, p
         if "message is not modified" in error:
             return None
         if "message can't be edited" in error or "message to edit not found" in error:
-            # Не можем редактировать — отправляем новое сообщение
             try:
                 return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
             except TelegramBadRequest as exc2:
@@ -268,35 +260,27 @@ def get_buildings(player: dict) -> dict:
 
 
 # =====================================================================
-# ТОЧКА ВХОДА
+# ТОЧКА ВХОДА И НАСТРОЙКИ СЕТКИ
 # =====================================================================
 
 async def run_new_intro(user_id: int, user_name: str, message: types.Message):
-    """Главная точка входа для нового интро."""
     player = await get_or_create_player(user_id, user_name)
 
-    # Если обучение уже пройдено — отправляем в штаб
     if player.get("tutorial_step", 0) >= 100:
         text = "🎓 Обучение уже пройдено. Отправляйся в Штаб — /base"
         await message.answer(text)
         return
 
-    # Если был перезапуск и tutorial_step > 0, но сессии нет — восстанавливаем
-    tutorial_step = player.get("tutorial_step", 0)
     session = await get_intro_session(user_id)
 
     if session:
-        # Восстанавливаем текущую фазу
         await _restore_phase(user_id, session, message)
         return
 
-    # Новый игрок — начинаем с пробуждения
     await run_intro_awakening(user_id, user_name, message)
 
 
 async def _restore_phase(user_id: int, session: IntroSession, message: types.Message):
-    """Восстанавливает отображение текущей фазы после рестарта."""
-    # Создаём фейковый callback для рендера
     fake_callback = types.CallbackQuery(
         id="restore",
         from_user=types.User(id=user_id, is_bot=False, first_name=""),
@@ -322,9 +306,26 @@ async def _restore_phase(user_id: int, session: IntroSession, message: types.Mes
         else:
             await renderer(fake_callback)
     else:
-        # Неизвестная фаза — сбрасываем
         await clear_intro_session(user_id)
         await run_intro_awakening(user_id, "", message)
+
+
+@router.callback_query(F.data.startswith("intro:set_grid:"))
+async def intro_set_grid(callback: types.CallbackQuery):
+    """Единый хендлер для изменения сетки в интро."""
+    new_grid = int(callback.data.split(":")[2])
+    await db.alchemy_players.update_one({"user_id": callback.from_user.id}, {"$set": {"inv_grid": new_grid}})
+    
+    session = await get_intro_session(callback.from_user.id)
+    if session:
+        if session.phase == "synthesis":
+            await render_synthesis_window(callback)
+        elif session.phase == "combat":
+            await render_combat_window(callback)
+        else:
+            await callback.answer()
+    else:
+        await callback.answer("Сессия устарела.", show_alert=True)
 
 
 # =====================================================================
@@ -332,14 +333,11 @@ async def _restore_phase(user_id: int, session: IntroSession, message: types.Mes
 # =====================================================================
 
 async def run_intro_awakening(user_id: int, user_name: str, message: types.Message | None = None):
-    """Запускает фазу пробуждения."""
     player = await get_or_create_player(user_id, user_name)
 
-    # Инициализация сессии (сохраняем в БД)
     session = IntroSession(phase="awakening", sub_step=0)
     await save_intro_session(user_id, session)
 
-    # Выдача кристалла
     inventory = get_inventory(player)
     inventory["base_crystal"] = inventory.get("base_crystal", 0) + 1
 
@@ -379,14 +377,11 @@ async def intro_activate_crystal(callback: types.CallbackQuery):
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
 
-    # Активация кристалла
     inventory.pop("base_crystal", None)
 
-    # Выдача стихий
     for item_id, amount in INTRO_STARTER_RESOURCES.items():
         inventory[item_id] = inventory.get(item_id, 0) + amount
 
-    # Дополнительные стартовые ресурсы
     for item_id, amount in STARTER_WORLD_RESOURCE_GRANT.items():
         inventory[item_id] = inventory.get(item_id, 0) + amount
 
@@ -399,7 +394,6 @@ async def intro_activate_crystal(callback: types.CallbackQuery):
         }}
     )
 
-    # Переход к синтезу
     session.phase = "synthesis"
     session.sub_step = 0
     session.pending_craft = SYNTHESIS_CHAIN[0][0]
@@ -413,7 +407,6 @@ async def intro_activate_crystal(callback: types.CallbackQuery):
 # =====================================================================
 
 async def _build_synthesis_ui(user_id: int, session: IntroSession, player: dict) -> tuple[str, types.InlineKeyboardMarkup]:
-    """Строит текст и клавиатуру лаборатории. Возвращает (text, markup)."""
     inventory = get_inventory(player)
     discovered = get_discovered(player)
 
@@ -421,7 +414,6 @@ async def _build_synthesis_ui(user_id: int, session: IntroSession, player: dict)
     target_item, hint, bonus_count = SYNTHESIS_CHAIN[sub_step]
     session.pending_craft = target_item
 
-    # Текущий котёл
     mix = session.intro_mix
     mix_text = ""
     if not mix:
@@ -440,53 +432,71 @@ async def _build_synthesis_ui(user_id: int, session: IntroSession, player: dict)
 
     builder = InlineKeyboardBuilder()
 
-    # Панель котла
     if len(mix) == 2:
         builder.button(text="🌀 СМЕШАТЬ!", callback_data="intro:lab_mix")
     if len(mix) > 0:
         builder.button(text="🗑 Очистить котел", callback_data="intro:lab_clear")
     builder.adjust(1)
 
-    # Доступные ресурсы
     available_items = set(["w", "f", "e", "a"])
     available_items.update(discovered)
     available_items.update([item for item, _, _ in SYNTHESIS_CHAIN[:sub_step]])
+
+    # С пагинацией и сеткой
+    page = intro_lab_pages.get(user_id, 0)
+    grid_size = player.get("inv_grid", 3)
+    ROWS_PER_PAGE = 10
+    items_per_page = grid_size * ROWS_PER_PAGE
 
     visible_items = [(k, inventory.get(k, 0)) for k in available_items if inventory.get(k, 0) > 0]
     visible_items.sort(key=lambda x: get_el_name(x[0]))
 
     if visible_items:
+        total_pages = max(1, (len(visible_items) + items_per_page - 1) // items_per_page)
+        if page >= total_pages: page = max(0, total_pages - 1)
+
+        start_idx = page * items_per_page
+        page_items = visible_items[start_idx : start_idx + items_per_page]
+
         row = []
-        for code, amount in visible_items:
+        for code, amount in page_items:
             emoji = get_el_emoji(code)
-            btn_text = f"{emoji} {amount}"
+            name = get_el_name(code)
+            btn_text = f"{emoji} {amount}" if grid_size == 4 else f"{emoji} {name} {amount}"
             row.append(types.InlineKeyboardButton(
                 text=btn_text,
                 callback_data=f"intro:lab_add:{code}"
             ))
-            if len(row) == 4:
+            if len(row) == grid_size:
                 builder.row(*row)
                 row = []
         if row:
             builder.row(*row)
 
-    # Кнопка возврата если мы пришли из биома/стройки
+        if total_pages > 1:
+            nav_row = []
+            if page > 0:
+                nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"intro:lab_page:{page-1}"))
+            if page < total_pages - 1:
+                nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"intro:lab_page:{page+1}"))
+            if nav_row:
+                builder.row(*nav_row)
+
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    builder.row(types.InlineKeyboardButton(text=f"⚙️ Сетка: {grid_size} в ряд", callback_data=f"intro:set_grid:{next_grid}"))
+
     if session.return_target:
         if session.return_target == "biome":
-            builder.button(text="🔙 Вернуться к биому", callback_data="intro:return_to_biome")
+            builder.row(types.InlineKeyboardButton(text="🔙 Вернуться к биому", callback_data="intro:return_to_biome"))
         elif session.return_target == "building":
-            builder.button(text="🔙 Вернуться к стройке", callback_data="intro:return_to_building")
-        builder.adjust(1)
+            builder.row(types.InlineKeyboardButton(text="🔙 Вернуться к стройке", callback_data="intro:return_to_building"))
 
-    # Подсказка
-    builder.button(text="💡 Подсказка", callback_data="intro:hint")
-    builder.adjust(1)
+    builder.row(types.InlineKeyboardButton(text="💡 Подсказка", callback_data="intro:hint"))
 
     return text, builder.as_markup()
 
 
 async def render_synthesis_window(callback: types.CallbackQuery):
-    """Отрисовывает окно обучающей лаборатории (редактирует сообщение)."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
 
@@ -510,15 +520,13 @@ async def render_synthesis_window(callback: types.CallbackQuery):
     await callback.answer()
 
 
-async def render_synthesis_window_as_new_message(message: types.Message):
-    """Отправляет лабораторию как НОВОЕ сообщение (для возврата из биома/стройки)."""
-    user_id = message.from_user.id
+async def render_synthesis_window_as_new_message(message: types.Message, user_id: int):
     session = await get_intro_session(user_id)
 
     if not session or session.phase != "synthesis":
         return await message.answer("Ошибка сессии.")
 
-    player = await get_or_create_player(user_id, message.from_user.first_name or "Путник")
+    player = await get_or_create_player(user_id, message.chat.first_name or "Путник")
 
     sub_step = session.sub_step
     if sub_step >= len(SYNTHESIS_CHAIN):
@@ -526,7 +534,6 @@ async def render_synthesis_window_as_new_message(message: types.Message):
         session.sub_step = 0
         session.pending_craft = None
         await save_intro_session(user_id, session)
-        # Отправляем биом как новое сообщение
         fake_callback = types.CallbackQuery(
             id="restore",
             from_user=types.User(id=user_id, is_bot=False, first_name=""),
@@ -540,6 +547,13 @@ async def render_synthesis_window_as_new_message(message: types.Message):
     await save_intro_session(user_id, session)
 
     await message.answer(text, reply_markup=markup, parse_mode="Markdown")
+
+
+@router.callback_query(F.data.startswith("intro:lab_page:"), IsInIntroPhase("synthesis"))
+async def intro_lab_page(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[2])
+    intro_lab_pages[callback.from_user.id] = page
+    await render_synthesis_window(callback)
 
 
 @router.callback_query(F.data.startswith("intro:lab_add:"), IsInIntroPhase("synthesis"))
@@ -598,7 +612,6 @@ async def intro_lab_mix(callback: types.CallbackQuery):
         await callback.answer("💨 Пшик... Пошла вонь. Попробуй другую комбинацию.", show_alert=True)
         return await render_synthesis_window(callback)
 
-    # Успех — реальная транзакция
     player = await get_or_create_player(user_id, callback.from_user.first_name)
     inventory = get_inventory(player)
     discovered = get_discovered(player)
@@ -675,7 +688,6 @@ async def intro_hint(callback: types.CallbackQuery):
 # =====================================================================
 
 async def render_biome_window(callback: types.CallbackQuery):
-    """Отрисовывает окно сборки учебного биома."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
 
@@ -841,7 +853,6 @@ async def intro_biome_stabilize(callback: types.CallbackQuery):
         }}
     )
 
-    # Переход к экспедициям
     session.phase = "expedition"
     session.sub_step = 0
     session.expedition_count = 0
@@ -878,23 +889,19 @@ async def intro_biome_inventory(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "intro:open_lab_from_biome", IsInIntroPhase("biome"))
 async def intro_open_lab_from_biome(callback: types.CallbackQuery):
-    """Возврат в лабораторию из биома для докрафта."""
     session = await get_intro_session(callback.from_user.id)
     if session:
         session.return_target = "biome"
-        # Сохраняем текущее состояние биома, переходим в синтез
         session.phase = "synthesis"
         await save_intro_session(callback.from_user.id, session)
     
-    # Отправляем НОВОЕ сообщение вместо редактирования
     await callback.message.answer("🧪 Переключено в Лабораторию. Скрафти недостающее и возвращайся к биому.")
-    await render_synthesis_window_as_new_message(callback.message)
+    await render_synthesis_window_as_new_message(callback.message, callback.from_user.id)
     await callback.answer()
 
 
 @router.callback_query(F.data == "intro:return_to_biome", IsInIntroPhase("synthesis"))
 async def intro_return_to_biome(callback: types.CallbackQuery):
-    """Возврат из лаборатории в биом."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
     
@@ -913,7 +920,6 @@ async def intro_return_to_biome(callback: types.CallbackQuery):
 # =====================================================================
 
 async def render_expedition_window(callback: types.CallbackQuery):
-    """Отрисовывает окно похода."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
 
@@ -1018,7 +1024,6 @@ async def intro_expedition_next(callback: types.CallbackQuery):
 # =====================================================================
 
 async def render_building_window(callback: types.CallbackQuery):
-    """Отрисовывает окно стройки."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
 
@@ -1156,22 +1161,19 @@ async def intro_build_hint(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "intro:open_lab_from_building", IsInIntroPhase("building"))
 async def intro_open_lab_from_building(callback: types.CallbackQuery):
-    """Возврат в лабораторию из стройки для докрафта."""
     session = await get_intro_session(callback.from_user.id)
     if session:
         session.return_target = "building"
         session.phase = "synthesis"
         await save_intro_session(callback.from_user.id, session)
     
-    # Отправляем НОВОЕ сообщение
     await callback.message.answer("🧪 Переключено в Лабораторию. Скрафти недостающее и возвращайся к стройке.")
-    await render_synthesis_window_as_new_message(callback.message)
+    await render_synthesis_window_as_new_message(callback.message, callback.from_user.id)
     await callback.answer()
 
 
 @router.callback_query(F.data == "intro:return_to_building", IsInIntroPhase("synthesis"))
 async def intro_return_to_building(callback: types.CallbackQuery):
-    """Возврат из лаборатории в стройку."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
     
@@ -1190,7 +1192,6 @@ async def intro_return_to_building(callback: types.CallbackQuery):
 # =====================================================================
 
 async def render_combat_window(callback: types.CallbackQuery):
-    """Отрисовывает окно боевой алхимии."""
     user_id = callback.from_user.id
     session = await get_intro_session(user_id)
 
@@ -1240,29 +1241,59 @@ async def render_combat_window(callback: types.CallbackQuery):
     available_items.update(discovered)
     available_items.update([item for item, _, _ in COMBAT_CHAIN[:sub_step] if item.startswith("spirit_")])
 
+    # Пагинация и сетка
+    page = intro_combat_pages.get(user_id, 0)
+    grid_size = player.get("inv_grid", 3)
+    ROWS_PER_PAGE = 10
+    items_per_page = grid_size * ROWS_PER_PAGE
+
     visible_items = [(k, inventory.get(k, 0)) for k in available_items if inventory.get(k, 0) > 0]
     visible_items.sort(key=lambda x: get_el_name(x[0]))
 
     if visible_items:
+        total_pages = max(1, (len(visible_items) + items_per_page - 1) // items_per_page)
+        if page >= total_pages: page = max(0, total_pages - 1)
+
+        start_idx = page * items_per_page
+        page_items = visible_items[start_idx : start_idx + items_per_page]
+
         row = []
-        for code, amount in visible_items:
+        for code, amount in page_items:
             emoji = get_el_emoji(code)
-            btn_text = f"{emoji} {amount}"
+            name = get_el_name(code)
+            btn_text = f"{emoji} {amount}" if grid_size == 4 else f"{emoji} {name} {amount}"
             row.append(types.InlineKeyboardButton(
                 text=btn_text,
                 callback_data=f"intro:combat_add:{code}"
             ))
-            if len(row) == 4:
+            if len(row) == grid_size:
                 builder.row(*row)
                 row = []
         if row:
             builder.row(*row)
 
-    builder.button(text="💡 Подсказка", callback_data="intro:combat_hint")
-    builder.adjust(1)
+        if total_pages > 1:
+            nav_row = []
+            if page > 0:
+                nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"intro:combat_page:{page-1}"))
+            if page < total_pages - 1:
+                nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"intro:combat_page:{page+1}"))
+            if nav_row:
+                builder.row(*nav_row)
+
+    next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
+    builder.row(types.InlineKeyboardButton(text=f"⚙️ Сетка: {grid_size} в ряд", callback_data=f"intro:set_grid:{next_grid}"))
+    builder.row(types.InlineKeyboardButton(text="💡 Подсказка", callback_data="intro:combat_hint"))
 
     await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("intro:combat_page:"), IsInIntroPhase("combat"))
+async def intro_combat_page(callback: types.CallbackQuery):
+    page = int(callback.data.split(":")[2])
+    intro_combat_pages[callback.from_user.id] = page
+    await render_combat_window(callback)
 
 
 @router.callback_query(F.data.startswith("intro:combat_add:"), IsInIntroPhase("combat"))
@@ -1399,7 +1430,6 @@ async def intro_combat_hint(callback: types.CallbackQuery):
 # =====================================================================
 
 async def render_complete_window(callback: types.CallbackQuery):
-    """Финальное окно интро."""
     user_id = callback.from_user.id
 
     await db.alchemy_players.update_one(
@@ -1425,12 +1455,3 @@ async def render_complete_window(callback: types.CallbackQuery):
 
     await safe_edit_text(callback.message, text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer("Добро пожаловать!")
-
-
-# =====================================================================
-# РЕГИСТРАЦИЯ В ALC_BASE.PY
-# =====================================================================
-# В CommandStart(deep_link=True) добавить:
-# elif command.args == "alcintro":
-#     from handlers.alc_intro import run_new_intro
-#     await run_new_intro(message.from_user.id, message.from_user.first_name, message)
