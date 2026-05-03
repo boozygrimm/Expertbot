@@ -22,10 +22,10 @@ STARTER_DISCOVERIES = ["lava", "stone", "steam", "swamp", "life", "algae", "moss
 STARTER_WORLD_REWARD_POOL = ["spirit_f", "spirit_w", "spirit_e", "spirit_a"]
 WORLD_DAILY_SPIRIT_TOKEN = "random_spirit"
 WORLD_LAYER_ORDER = ("foundation", "medium", "energy", "life")
-WORLD_BASE_RESOURCE_ITEMS = {"w", "f", "e", "a", "energy", "stone", "wood"}
+WORLD_BASE_RESOURCE_ITEMS = {"w", "f", "e", "a", "energy", "stone", "tree"}
 STARTER_WORLD_RESOURCE_GRANT = {
     "stone": 2,
-    "wood": 2,
+    "tree": 2,
     "swamp": 1,
     "algae": 1,
     "steam": 1,
@@ -37,12 +37,12 @@ STARTER_WORLD_REWARD_BUNDLE = {
     "pack_m": 1,
     "stone": 4,
     "sand": 4,
-    "wood": 6,
+    "tree": 6,
     "energy": 2,
 }
 STARTER_BIOME_COLLAPSE_BUNDLE = {
     "stone": 3,
-    "wood": 3,
+    "tree": 3,
     "sand": 2,
     "brick": 2,
     "glass": 1,
@@ -54,7 +54,7 @@ STARTER_BIOME_SLOTS = {
         "tutorial_seed": {
             "label": "🫧 Каменное зерно",
             "size": 1,
-            "cost": {"stone": 2, "wood": 2},
+            "cost": {"stone": 2, "tree": 2},
             "affinity": "опора",
             "hint": "учебная опора для первого микробиома",
             "tutorial": True,
@@ -155,7 +155,7 @@ STARTER_BIOME_SLOTS = {
         "moss_bloom": {
             "label": "🌿 Моховое цветение",
             "size": 3,
-            "cost": {"moss": 3, "algae": 2, "life": 1},
+            "cost": {"moss": 3, "swamp": 2, "life": 1},
             "affinity": "опора",
             "hint": "стабилизирует биом и делает его обжитым",
         },
