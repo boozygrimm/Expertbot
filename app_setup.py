@@ -62,6 +62,7 @@ def configure_dispatcher() -> Dispatcher:
 
     # Сначала ставим наш игровой штаб, чтобы он первым проверял команду /start alcbase
     dp.include_router(alc_base.router)
+    dp.include_router(alc_intro.router)
     dp.include_router(alc_achievements.router)
     dp.include_router(alc_heritage.router)
     dp.include_router(alc_quests.router)
