@@ -4,6 +4,11 @@ import random
 import time
 import asyncio
 
+# В CommandStart(deep_link=True) добавить:
+elif command.args == "alcintro":
+    from handlers.alc_intro import run_new_intro
+    await run_new_intro(message.from_user.id, message.from_user.first_name, message)
+
 from aiogram import Router, types, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
