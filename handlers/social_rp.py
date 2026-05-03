@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from functools import lru_cache
 from collections import defaultdict
 from datetime import datetime, timedelta
 from aiogram import Router, types, F
@@ -102,7 +101,6 @@ def get_verb_form(verb: str, gender: str) -> str:
     }
     return fallback_map.get(verb, verb)
 
-@lru_cache(maxsize=100)
 async def get_user_profile(user_id: int, chat_id: int, first_name: str):
     user = await db.profiles.find_one({"user_id": user_id, "chat_id": chat_id})
     if not user:
