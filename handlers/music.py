@@ -24,8 +24,9 @@ def format_duration(seconds: int | None) -> str:
     """Форматирует длительность из секунд в ММ:СС."""
     if not seconds or seconds <= 0:
         return ""
-    mins = seconds // 60
-    secs = seconds % 60
+    total_secs = int(seconds)
+    mins = total_secs // 60
+    secs = total_secs % 60
     return f" ({mins}:{secs:02d})"
 
 def search_track_candidates_sync(query: str) -> list[dict]:
