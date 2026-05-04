@@ -13,7 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ai_logic import normalize_music_query
 
 router = Router()
-download_semaphore = asyncio.Semaphore(1)
+download_semaphore = asyncio.Semaphore(2)
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +24,11 @@ UNDESIRED_TITLE_MARKERS = {
     "reimagined", "rework", "flip", "bootleg", "unofficial",
 }
 
+# Оригинал убран из блэклиста, чтобы юзер мог явно его запрашивать
 ARTIST_HINT_BLACKLIST = {
     "audio", "video", "lyrics", "lyric",
 }
-PREFERRED_AUDIO_EXTS = {"mp3", "m4a", "mp4", "aac", "opus", "ogg", "webm"}
+PREFERRED_AUDIO_EXTS = {"mp3", "m4a", "mp4", "aac", "opus", "ogg", "webm", "wav"}
 music_pick_sessions: dict[str, dict] = {}
 
 
@@ -68,9 +69,8 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
     title = str(entry.get("title", "") or "")
     uploader = str(entry.get("uploader", "") or "")
     artist = str(entry.get("artist", "") or "")
-    channel = str(entry.get("channel", "") or "")
-    creator = str(entry.get("creator", "") or "")
-    haystack = f"{title} {uploader} {artist} {channel} {creator}".lower()
+    haystack = f"{title} {uploader} {artist}".lower()
+    
     query_tokens = _tokenize(normalized_query)
     title_tokens = set(_tokenize(title))
     uploader_tokens = set(_tokenize(uploader))
@@ -91,7 +91,7 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
     if query_tokens and all(token in haystack for token in query_tokens):
         score += 4
 
-    artist_haystack = f"{uploader} {artist} {channel} {creator}".lower()
+    artist_haystack = f"{uploader} {artist}".lower()
     title_haystack = title.lower()
 
     if artist_query_tokens:
@@ -108,10 +108,7 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         elif _contains_all(title_query_tokens, haystack):
             score += 2
 
-    if artist_query_tokens and title_query_tokens:
-        if _contains_all(artist_query_tokens, artist_haystack) and _contains_all(title_query_tokens, title_haystack):
-            score += 10
-
+    # Штраф за ремиксы и каверы, если мы их не искали
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
         score -= 50
 
@@ -119,20 +116,13 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
     if 120 <= duration <= 420:
         score += 1
 
-    title_words = set(_tokenize(title))
-    query_words = set(query_tokens)
-    if query_words and title_words == query_words:
-        score += 5
-
     return score
 
 
 def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
     title_haystack = str(candidate.get("title", "") or "").lower()
-
     if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
         return False
-
     return True
 
 
@@ -156,21 +146,17 @@ def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.
 
 
 def search_track_candidates_sync(query: str) -> list[dict]:
-    # Удален ломающий поиск match_filter. Добавлена экстракция и маскировка клиента.
+    # Окно длительности: 1-20 минут
+    duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1200")
     ydl_opts = {
         "noplaylist": True,
         "quiet": True,
-        "extract_flat": True,  # Ускоряет первичный поиск в десятки раз
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "match_filter": duration_filter,
     }
-    
-    if os.path.exists("cookies.txt"):
-        ydl_opts["cookiefile"] = "cookies.txt"
 
     info = None
-    search_queries = [
-        f"ytmsearch15:{query}",
-    ]
+    # Ищем в SoundCloud. Берем 10 результатов, чтобы было из чего отсеивать каверы
+    search_queries = [f"scsearch10:{query}"]
 
     for search_query in search_queries:
         try:
@@ -179,7 +165,7 @@ def search_track_candidates_sync(query: str) -> list[dict]:
             if info and info.get("entries"):
                 break
         except Exception:
-            logger.debug("Search failed for query=%r, trying next source", search_query)
+            logger.debug("Search failed for query=%r", search_query)
             continue
 
     if not info or "entries" not in info:
@@ -187,40 +173,32 @@ def search_track_candidates_sync(query: str) -> list[dict]:
 
     candidates: list[dict] = []
     seen_urls: set[str] = set()
+    
     for entry in info["entries"]:
         if entry is None:
             continue
         webpage_url = entry.get("webpage_url") or entry.get("url")
-        if not webpage_url or not str(webpage_url).startswith(("http://", "https://")):
-            continue
-        if webpage_url in seen_urls:
+        if not webpage_url or webpage_url in seen_urls:
             continue
         seen_urls.add(webpage_url)
-
-        # Мягкая проверка на длительность. Если длительности нет (None/0), оставляем в списке
-        duration = int(entry.get("duration", 0) or 0)
-        if duration > 0 and not (60 <= duration <= 1200):
-            continue
 
         candidate = {
             "title": entry.get("title", query.title()),
             "performer": entry.get("uploader", "Unknown Artist"),
             "uploader": entry.get("uploader", "Unknown Artist"),
             "artist": entry.get("artist", ""),
-            "channel": entry.get("channel", ""),
-            "creator": entry.get("creator", ""),
             "webpage_url": webpage_url,
-            "duration": duration,
+            "duration": int(entry.get("duration", 0) or 0),
             "score": _score_candidate(entry, query),
         }
         candidates.append(candidate)
 
+    # Сортировка по скорингу (оригиналы всплывут наверх)
     candidates.sort(
         key=lambda item: (
             item["score"],
             not _has_undesired_marker(item["title"]),
             -abs(item["duration"] - 240) if item["duration"] else -9999,
-            len(_tokenize(item["title"])),
         ),
         reverse=True,
     )
@@ -231,37 +209,24 @@ def search_track_candidates_sync(query: str) -> list[dict]:
     return candidates[:5]
 
 
-def download_audio_sync(query: str) -> tuple:
-    candidates = search_track_candidates_sync(query)
-    candidate = candidates[0] if candidates else None
-    if not candidate:
-        return None, "Ничего не найдено", None
-
-    return download_candidate_audio_sync(candidate)
-
-
 def download_candidate_audio_sync(candidate: dict) -> tuple:
     temp_dir = tempfile.gettempdir()
     token = uuid.uuid4().hex
     outtmpl = os.path.join(temp_dir, f"{token}.%(ext)s")
+    
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best",
+        "format": "bestaudio/best",
         "noplaylist": True,
         "quiet": True,
         "outtmpl": outtmpl,
-        # Обход блокировки 'Sign in to confirm you're not a bot'
-        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
-
-    if os.path.exists("cookies.txt"):
-        ydl_opts["cookiefile"] = "cookies.txt"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(candidate["webpage_url"], download=True)
             filepath = Path(ydl.prepare_filename(info))
-    except Exception as e:
-        logger.exception("Audio download error for candidate=%r. Error: %s", candidate, str(e))
+    except Exception:
+        logger.exception("Audio download error for SC candidate=%r", candidate)
         return None, candidate.get("title", "Ничего не найдено"), candidate.get("performer")
 
     if not filepath.exists():
@@ -271,18 +236,7 @@ def download_candidate_audio_sync(candidate: dict) -> tuple:
     if not filepath.exists():
         return None, candidate.get("title", "Ничего не найдено"), candidate.get("performer")
 
-    if filepath.suffix.lower().lstrip(".") not in PREFERRED_AUDIO_EXTS:
-        logger.warning("Unexpected audio extension for %s", filepath)
-
     return str(filepath), candidate.get("title", "Без названия"), candidate.get("performer", "Unknown Artist")
-
-
-def resolve_audio_url_sync(query: str) -> tuple:
-    candidates = search_track_candidates_sync(query)
-    candidate = candidates[0] if candidates else None
-    if not candidate:
-        return None, "Ничего не найдено", None
-    return candidate["webpage_url"], candidate["title"], candidate["performer"]
 
 
 async def _send_downloaded_audio(message: types.Message, candidate: dict, status_msg: types.Message):
@@ -291,7 +245,7 @@ async def _send_downloaded_audio(message: types.Message, candidate: dict, status
 
     if not filepath or not os.path.exists(filepath):
         await status_msg.edit_text(
-            f"❌ Не смог скачать трек **{candidate.get('title', 'без названия')}**. Возможно, загрузка заблокирована YouTube. Попробуй другой вариант.",
+            f"❌ Не смог скачать трек **{candidate.get('title', 'без названия')}**.",
             parse_mode="Markdown",
         )
         return
@@ -303,25 +257,25 @@ async def _send_downloaded_audio(message: types.Message, candidate: dict, status
         try:
             await status_msg.delete()
         except Exception:
-            logger.warning("Failed to delete music status message")
+            pass
     except Exception:
         logger.exception("Audio send error for filepath=%r", filepath)
         await status_msg.edit_text(
-            f"❌ Не смог отправить трек **{title}**. Попробуй другой вариант.",
+            f"❌ Не смог отправить трек **{title}** в Telegram.",
             parse_mode="Markdown",
         )
     finally:
         try:
             os.remove(filepath)
         except OSError:
-            logger.warning("Failed to remove temp audio file %s", filepath)
+            pass
 
 
 async def handle_music_request(message: types.Message, query: str):
     if not query:
         return await message.reply("Укажи песню. Пример: /song rammstein sonne")
 
-    status_msg = await message.reply("🎵 Уточняю запрос и ищу лучший вариант...")
+    status_msg = await message.reply("🎵 Ищу в SoundCloud (отсеиваю каверы)...")
     normalized_query = await normalize_music_query(query)
     display_query = normalized_query or query
 
@@ -330,7 +284,7 @@ async def handle_music_request(message: types.Message, query: str):
 
     if not candidates:
         return await status_msg.edit_text(
-            f"❌ Не нашёл трек по запросу «{display_query}». Попробуй указать исполнителя или точнее название."
+            f"❌ Не нашёл трек по запросу «{display_query}». Попробуй указать точнее."
         )
 
     session_id = uuid.uuid4().hex[:10]
@@ -357,15 +311,15 @@ async def music_pick(callback: types.CallbackQuery):
     _, session_id, index_raw = callback.data.split(":")
     session = music_pick_sessions.get(session_id)
     if not session:
-        return await callback.answer("Список кандидатов устарел. Запроси трек заново.", show_alert=True)
+        return await callback.answer("Список устарел. Запроси трек заново.", show_alert=True)
     if session.get("user_id") and session["user_id"] != callback.from_user.id:
-        return await callback.answer("Это не твой список треков.", show_alert=True)
+        return await callback.answer("Это не твой запрос.", show_alert=True)
 
     try:
         index = int(index_raw)
         candidate = session["candidates"][index]
     except Exception:
-        return await callback.answer("Не удалось выбрать трек.", show_alert=True)
+        return await callback.answer("Ошибка выбора трека.", show_alert=True)
 
     await callback.answer()
     music_pick_sessions.pop(session_id, None)
@@ -375,4 +329,4 @@ async def music_pick(callback: types.CallbackQuery):
 @router.message(Command("song"))
 async def cmd_search_song(message: types.Message, command: CommandObject):
     await handle_music_request(message, command.args or "")
-
+    
