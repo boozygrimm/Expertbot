@@ -43,10 +43,9 @@ UNDESIRED_TITLE_MARKERS = {
     "bootleg",
     "unofficial",
 }
+
+# Убраны "original" и "оригинал", чтобы они не вырезались из запроса
 ARTIST_HINT_BLACKLIST = {
-    "original",
-    "оригинал",
-    "official",
     "audio",
     "video",
     "lyrics",
@@ -137,8 +136,9 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         if _contains_all(artist_query_tokens, artist_haystack) and _contains_all(title_query_tokens, title_haystack):
             score += 10
 
+    # Жесткий штраф: если мы не ищем ремикс/кавер, а он есть в названии - рубим очки
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
-        score -= 15
+        score -= 50
 
     duration = int(entry.get("duration", 0) or 0)
     if 120 <= duration <= 420:
@@ -153,27 +153,10 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
 
 
 def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
-    artist_tokens, title_tokens = _split_artist_title(normalized_query)
-    artist_haystack = " ".join(
-        str(candidate.get(field, "") or "")
-        for field in ("performer", "uploader", "artist", "channel", "creator")
-    ).lower()
     title_haystack = str(candidate.get("title", "") or "").lower()
 
-    if artist_tokens and not _contains_all(artist_tokens, artist_haystack):
-        return False
-    if title_tokens and not _contains_all(title_tokens, title_haystack):
-        return False
+    # Если в поиске нет слова ремикс/кавер, а в треке есть - это точно не оригинал
     if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
-        return False
-
-    title = str(candidate.get("title", "") or "").lower()
-    normalized = normalized_query.lower()
-
-    title_words = set(_tokenize(title))
-    normalized_words = set(_tokenize(normalized))
-
-    if normalized_words and not normalized_words.issubset(title_words):
         return False
 
     return True
@@ -184,7 +167,7 @@ def _candidate_label(candidate: dict, index: int) -> str:
     title = candidate.get("title") or "Без названия"
     short_title = title if len(title) <= 32 else f"{title[:29]}..."
     short_performer = performer if len(performer) <= 18 else f"{performer[:15]}..."
-    return f"{index}. {short_title} — {short_performer}"
+    return f"{index}. {short_title} - {short_performer}"
 
 
 def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.InlineKeyboardMarkup:
@@ -199,7 +182,8 @@ def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.
 
 
 def search_track_candidates_sync(query: str) -> list[dict]:
-    duration_filter = yt_dlp.utils.match_filter_func("duration >? 60 & duration <? 1800")
+    # Фильтр длительности: от 1 минуты до 20 минут
+    duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1200")
     ydl_opts = {
         "noplaylist": True,
         "quiet": True,
@@ -207,8 +191,9 @@ def search_track_candidates_sync(query: str) -> list[dict]:
     }
 
     info = None
+    # Ищем исключительно по YouTube Music для лучших результатов
     search_queries = [
-        f"scsearch15:{query}",
+        f"ytmsearch15:{query}",
     ]
 
     for search_query in search_queries:
@@ -258,6 +243,7 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         ),
         reverse=True,
     )
+    
     probable_originals = [candidate for candidate in candidates if _is_probable_original(candidate, query)]
     if probable_originals:
         return probable_originals[:5]
@@ -368,9 +354,11 @@ async def handle_music_request(message: types.Message, query: str):
         "normalized_query": display_query,
         "candidates": candidates,
     }
-    lines = [f"🎵 Нашёл варианты для **{display_query}**. Выбери нужный:"]
+    
+    lines = [f"🎶 Нашёл варианты для **{display_query}**. Выбери нужный:"]
     for index, candidate in enumerate(candidates, start=1):
-        lines.append(f"{index}. {candidate['title']} — {candidate['performer']}")
+        lines.append(f"{index}. {candidate['title']} - {candidate['performer']}")
+    
     await status_msg.edit_text(
         "\n".join(lines),
         parse_mode="Markdown",
