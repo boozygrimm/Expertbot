@@ -62,6 +62,43 @@ except ImportError:
     HAS_MORPH = False
     logger.warning("pymorphy2 не установлен. Используется упрощённое склонение.")
 
+def is_cyrillic_name(name: str) -> bool:
+    """Проверяет, состоит ли имя только из кириллицы."""
+    return bool(name) and all('а' <= c.lower() <= 'я' or c in 'ё-' for c in name)
+
+def safe_decline_name(name: str, case: str) -> str:
+    """
+    Безопасное склонение имени.
+    Если имя на латинице - возвращает как есть.
+    Если на кириллице - использует pymorphy2.
+    """
+    if not is_cyrillic_name(name):
+        return name
+
+    if HAS_MORPH:
+        try:
+            parsed = morph.parse(name)[0]
+            if 'NOUN' in parsed.tag or 'Name' in parsed.tag:
+                # Падежи: gent, dat, acc, ins, abl
+                case_map = {
+                    'gent': 'gent',  # кого? (обнял НатУ)
+                    'dat': 'dat',    # кому? (обнял НатЕ)
+                    'acc': 'acc',    # кого? (обнял НатУ)
+                    'ins': 'ins',    # кем? (обнял НатОЙ)
+                    'abl': 'abl',    # о ком? (о НатЕ)
+                }
+                if case in case_map:
+                    result = parsed.inflect({case_map[case]})
+                    if result:
+                        declined = result.word
+                        # Защита от странных форм типа "Натка"
+                        if declined.lower() != name.lower() and len(declined) > 2:
+                            return declined
+        except Exception as e:
+            logger.warning(f"Ошибка склонения {name}: {e}")
+
+    return name
+
 def get_verb_form(verb: str, gender: str) -> str:
     """
     Возвращает правильную форму глагола в зависимости от пола.
@@ -126,10 +163,13 @@ def generate_local_fallback(action: str, actor_nick: str, target_nick: str, gend
     # Правильное склонение по полу с использованием pymorphy2
     base_verb = get_verb_form(base_verb, gender)
 
+    # Безопасное склонение имени цели (творительный падеж: обнял Натой)
+    declined_target = safe_decline_name(target_nick, 'ins')
+
     # Добавляем модификатор, если он есть (например: "обнял Нату крепко")
     mod_text = f" {modifier}" if modifier else ""
 
-    return f"✨ {actor_nick} {base_verb} {target_nick}{mod_text}."
+    return f"✨ {actor_nick} {base_verb} {declined_target}{mod_text}."
 
 # - АДМИНСКИЕ ТУМБЛЕРЫ -
 @router.message(Command("социал"))
@@ -296,8 +336,9 @@ async def handle_rp_command(message: types.Message):
         f"Действие: '{action}'. Дополнение: '{modifier}'.\n"
         f"Инициатор: {actor_prof['nickname']} (пол: {actor_prof['gender']}).\n"
         f"Цель: {target_prof['nickname']} (пол: {target_prof['gender']}).\n"
-        f"Напиши ОДНО короткое предложение на русском языке. Инициатор совершает это действие над Целью.\n"
-        f"СТРОГИЕ ПРАВИЛА: правильно склоняй русские имена. Используй правильную форму глагола. БЕЗ кавычек, БЕЗ приветствий, БЕЗ отказов и извинений."
+        f"Напиши ОДНО короткое предложение на русском языке. Инициатор СОВЕРШИЛ это действие над Целью (прошедшее время: обнял, поцеловал, укусил и т.д.).\n"
+        f"СТРОГИЕ ПРАВИЛА: правильно склоняй ТОЛЬКО русские имена (кириллица). Если имя написано латиницей - НЕ склоняй его, оставь как есть. "
+        f"Используй правильную форму глагола. БЕЗ кавычек, БЕЗ приветствий, БЕЗ отказов и извинений."
     )
     
     result = None
