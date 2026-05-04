@@ -178,7 +178,7 @@ def generate_local_fallback(action: str, actor_nick: str, target_nick: str, gend
     # Добавляем модификатор, если он есть (например: "обнял Нату крепко")
     mod_text = f" {modifier}" if modifier else ""
 
-    return f"✨ {actor_nick} {base_verb} {declined_target}{mod_text}."
+    return f"{actor_nick} {base_verb} {declined_target}{mod_text}."
 
 # - АДМИНСКИЕ ТУМБЛЕРЫ -
 @router.message(Command("социал"))
@@ -370,10 +370,12 @@ async def handle_rp_command(message: types.Message):
             
     if result:
         clean_result = result.replace('"', '').replace("'", "").replace("*", "")
+        emoji = RP_EMOJIS.get(action, "✨")
         # Отвечаем на сообщение инициатора (саму команду)
-        await message.reply(f"✨ {clean_result}")
+        await message.reply(f"{emoji} {clean_result}")
     else:
         # Локальный запасной план с учетом модификатора
         fallback_text = generate_local_fallback(action, actor_prof['nickname'], target_prof['nickname'], actor_prof['gender'], modifier)
-        await message.reply(fallback_text)
+        emoji = RP_EMOJIS.get(action, "✨")
+        await message.reply(f"{emoji} {fallback_text}")
         
