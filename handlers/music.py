@@ -17,6 +17,7 @@ download_semaphore = asyncio.Semaphore(2)
 
 logger = logging.getLogger(__name__)
 
+# Оставили маркеры, но штраф за них теперь минимальный
 UNDESIRED_TITLE_MARKERS = {
     "remix", "cover", "live", "slowed", "reverb", "nightcore", "karaoke",
     "edit", "version", "tribute", "instrumental", "sped up", "speed up",
@@ -24,11 +25,9 @@ UNDESIRED_TITLE_MARKERS = {
     "reimagined", "rework", "flip", "bootleg", "unofficial",
 }
 
-# Оригинал убран из блэклиста, чтобы юзер мог явно его запрашивать
 ARTIST_HINT_BLACKLIST = {
     "audio", "video", "lyrics", "lyric",
 }
-PREFERRED_AUDIO_EXTS = {"mp3", "m4a", "mp4", "aac", "opus", "ogg", "webm", "wav"}
 music_pick_sessions: dict[str, dict] = {}
 
 
@@ -78,6 +77,7 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
     artist_query_tokens, title_query_tokens = _split_artist_title(normalized_query)
 
     score = 0
+    # Начисляем баллы за совпадения
     for token in query_tokens:
         if token in title_tokens:
             score += 3
@@ -99,8 +99,6 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
             score += 8
         elif _contains_all(artist_query_tokens, title_haystack):
             score += 1
-        else:
-            score -= 10
 
     if title_query_tokens:
         if _contains_all(title_query_tokens, title_haystack):
@@ -108,22 +106,15 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         elif _contains_all(title_query_tokens, haystack):
             score += 2
 
-    # Штраф за ремиксы и каверы, если мы их не искали
+    # ИСПРАВЛЕНИЕ: Мягкий штраф (-5 вместо -50). Трек опустится ниже чистого оригинала, но не исчезнет.
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
-        score -= 50
+        score -= 5
 
     duration = int(entry.get("duration", 0) or 0)
     if 120 <= duration <= 420:
         score += 1
 
     return score
-
-
-def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
-    title_haystack = str(candidate.get("title", "") or "").lower()
-    if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
-        return False
-    return True
 
 
 def _candidate_label(candidate: dict, index: int) -> str:
@@ -146,8 +137,8 @@ def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.
 
 
 def search_track_candidates_sync(query: str) -> list[dict]:
-    # Окно длительности: 1-20 минут
-    duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1200")
+    # Расширили окно длительности: 1-30 минут
+    duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1800")
     ydl_opts = {
         "noplaylist": True,
         "quiet": True,
@@ -155,18 +146,14 @@ def search_track_candidates_sync(query: str) -> list[dict]:
     }
 
     info = None
-    # Ищем в SoundCloud. Берем 10 результатов, чтобы было из чего отсеивать каверы
-    search_queries = [f"scsearch10:{query}"]
+    # Только SoundCloud. Берем 10 результатов.
+    search_query = f"scsearch10:{query}"
 
-    for search_query in search_queries:
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(search_query, download=False)
-            if info and info.get("entries"):
-                break
-        except Exception:
-            logger.debug("Search failed for query=%r", search_query)
-            continue
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+    except Exception as e:
+        logger.debug("Search failed for query=%r error=%s", search_query, e)
 
     if not info or "entries" not in info:
         return []
@@ -193,19 +180,15 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         }
         candidates.append(candidate)
 
-    # Сортировка по скорингу (оригиналы всплывут наверх)
+    # ИСПРАВЛЕНИЕ: Убрали параноидальный отсев. Простая сортировка по очкам.
     candidates.sort(
         key=lambda item: (
             item["score"],
-            not _has_undesired_marker(item["title"]),
-            -abs(item["duration"] - 240) if item["duration"] else -9999,
+            not _has_undesired_marker(item["title"])
         ),
         reverse=True,
     )
     
-    probable_originals = [candidate for candidate in candidates if _is_probable_original(candidate, query)]
-    if probable_originals:
-        return probable_originals[:5]
     return candidates[:5]
 
 
@@ -275,16 +258,25 @@ async def handle_music_request(message: types.Message, query: str):
     if not query:
         return await message.reply("Укажи песню. Пример: /song rammstein sonne")
 
-    status_msg = await message.reply("🎵 Ищу в SoundCloud (отсеиваю каверы)...")
+    status_msg = await message.reply("🎵 Ищу трек в SoundCloud...")
+    
+    # 1. Пробуем "умный" нормализованный запрос
     normalized_query = await normalize_music_query(query)
     display_query = normalized_query or query
 
     async with download_semaphore:
         candidates = await asyncio.to_thread(search_track_candidates_sync, display_query)
 
+    # 2. ИСПРАВЛЕНИЕ: Если нейронка сломала русский запрос, ищем по сырому
+    if not candidates and display_query != query:
+        logger.info(f"Fallback to raw query: '{query}' instead of '{display_query}'")
+        async with download_semaphore:
+            candidates = await asyncio.to_thread(search_track_candidates_sync, query)
+        display_query = query
+
     if not candidates:
         return await status_msg.edit_text(
-            f"❌ Не нашёл трек по запросу «{display_query}». Попробуй указать точнее."
+            f"❌ Не нашёл трек по запросу «{display_query}». Возможно, его вообще нет на SoundCloud."
         )
 
     session_id = uuid.uuid4().hex[:10]
