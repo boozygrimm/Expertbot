@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 # Сессии для хранения результатов поиска
 music_pick_sessions: dict[str, dict] = {}
 
+def format_duration(seconds: int | None) -> str:
+    """Форматирует длительность из секунд в ММ:СС."""
+    if not seconds or seconds <= 0:
+        return ""
+    mins = seconds // 60
+    secs = seconds % 60
+    return f" ({mins}:{secs:02d})"
+
 def search_track_candidates_sync(query: str) -> list[dict]:
     """Поиск через scsearch, чтобы не ловить 404 на SoundCloud."""
     ydl_opts = {
@@ -29,13 +37,13 @@ def search_track_candidates_sync(query: str) -> list[dict]:
     }
     # Ищем 5 вариантов через внутренний поиск yt-dlp
     search_query = f"scsearch5:{query}"
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
             if not info or "entries" not in info:
                 return []
-            
+
             candidates = []
             for entry in info["entries"]:
                 if not entry: continue
@@ -43,6 +51,7 @@ def search_track_candidates_sync(query: str) -> list[dict]:
                     "title": entry.get("title", "Без названия"),
                     "performer": entry.get("uploader", "Неизвестен"),
                     "url": entry.get("url") or entry.get("webpage_url"),
+                    "duration": entry.get("duration"),  # длительность в секундах
                 })
             return candidates
     except Exception as e:
@@ -55,14 +64,16 @@ def download_audio_raw_sync(url: str) -> str | None:
     file_id = uuid.uuid4().hex
     # Шаблон для скачивания (расширение подставится само)
     outtmpl = os.path.join(temp_dir, f"{file_id}.%(ext)s")
-    
+
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": outtmpl,
         "quiet": True,
         "noplaylist": True,
+        "retries": 3,      # 3 попытки при ошибках сети
+        "timeout": 60,     # 60 секунд таймаут на операцию
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -77,7 +88,7 @@ async def handle_music_request(message: types.Message, query: str):
         return await message.reply("Напиши название песни.")
 
     status_msg = await message.reply("🔎 Ищу...")
-    
+
     # Нормализация через ИИ (как в твоем файле)
     try:
         search_q = await normalize_music_query(query)
@@ -85,7 +96,7 @@ async def handle_music_request(message: types.Message, query: str):
         search_q = query
 
     candidates = await asyncio.to_thread(search_track_candidates_sync, search_q)
-    
+
     if not candidates:
         return await status_msg.edit_text(f"❌ Ничего не нашел по запросу: {search_q}")
 
@@ -95,14 +106,19 @@ async def handle_music_request(message: types.Message, query: str):
         "candidates": candidates
     }
 
+    # Формируем список треков с полной информацией в сообщении
+    lines = [f"🎶 Результаты для: **{search_q}**\nВыбери трек:"]
+    for i, c in enumerate(candidates):
+        duration_str = format_duration(c.get("duration"))
+        lines.append(f"{i + 1}. {c['title']} — {c['performer']}{duration_str}")
+
     builder = InlineKeyboardBuilder()
     for i, c in enumerate(candidates):
-        label = f"{c['title'][:30]} — {c['performer'][:15]}"
-        builder.button(text=label, callback_data=f"snd:{session_id}:{i}")
-    builder.adjust(1)
+        builder.button(text=f"{i + 1}", callback_data=f"snd:{session_id}:{i}")
+    builder.adjust(len(candidates))
 
     await status_msg.edit_text(
-        f"🎶 Результаты для: **{search_q}**\nВыбери трек:",
+        "\n".join(lines),
         parse_mode="Markdown",
         reply_markup=builder.as_markup()
     )
