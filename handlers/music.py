@@ -18,38 +18,14 @@ download_semaphore = asyncio.Semaphore(1)
 logger = logging.getLogger(__name__)
 
 UNDESIRED_TITLE_MARKERS = {
-    "remix",
-    "cover",
-    "live",
-    "slowed",
-    "reverb",
-    "nightcore",
-    "karaoke",
-    "edit",
-    "version",
-    "tribute",
-    "instrumental",
-    "sped up",
-    "speed up",
-    "mashup",
-    "acoustic",
-    "piano",
-    "guitar",
-    "orchestral",
-    "remastered",
-    "reimagined",
-    "rework",
-    "flip",
-    "bootleg",
-    "unofficial",
+    "remix", "cover", "live", "slowed", "reverb", "nightcore", "karaoke",
+    "edit", "version", "tribute", "instrumental", "sped up", "speed up",
+    "mashup", "acoustic", "piano", "guitar", "orchestral", "remastered",
+    "reimagined", "rework", "flip", "bootleg", "unofficial",
 }
 
-# Убраны "original" и "оригинал", чтобы они не вырезались из запроса
 ARTIST_HINT_BLACKLIST = {
-    "audio",
-    "video",
-    "lyrics",
-    "lyric",
+    "audio", "video", "lyrics", "lyric",
 }
 PREFERRED_AUDIO_EXTS = {"mp3", "m4a", "mp4", "aac", "opus", "ogg", "webm"}
 music_pick_sessions: dict[str, dict] = {}
@@ -136,7 +112,6 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         if _contains_all(artist_query_tokens, artist_haystack) and _contains_all(title_query_tokens, title_haystack):
             score += 10
 
-    # Жесткий штраф: если мы не ищем ремикс/кавер, а он есть в названии - рубим очки
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
         score -= 50
 
@@ -155,7 +130,6 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
 def _is_probable_original(candidate: dict, normalized_query: str) -> bool:
     title_haystack = str(candidate.get("title", "") or "").lower()
 
-    # Если в поиске нет слова ремикс/кавер, а в треке есть - это точно не оригинал
     if _has_undesired_marker(title_haystack) and not _has_undesired_marker(normalized_query):
         return False
 
@@ -182,16 +156,18 @@ def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.
 
 
 def search_track_candidates_sync(query: str) -> list[dict]:
-    # Фильтр длительности: от 1 минуты до 20 минут
-    duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1200")
+    # Удален ломающий поиск match_filter. Добавлена экстракция и маскировка клиента.
     ydl_opts = {
         "noplaylist": True,
         "quiet": True,
-        "match_filter": duration_filter,
+        "extract_flat": True,  # Ускоряет первичный поиск в десятки раз
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
+    
+    if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
 
     info = None
-    # Ищем исключительно по YouTube Music для лучших результатов
     search_queries = [
         f"ytmsearch15:{query}",
     ]
@@ -221,6 +197,11 @@ def search_track_candidates_sync(query: str) -> list[dict]:
             continue
         seen_urls.add(webpage_url)
 
+        # Мягкая проверка на длительность. Если длительности нет (None/0), оставляем в списке
+        duration = int(entry.get("duration", 0) or 0)
+        if duration > 0 and not (60 <= duration <= 1200):
+            continue
+
         candidate = {
             "title": entry.get("title", query.title()),
             "performer": entry.get("uploader", "Unknown Artist"),
@@ -229,7 +210,7 @@ def search_track_candidates_sync(query: str) -> list[dict]:
             "channel": entry.get("channel", ""),
             "creator": entry.get("creator", ""),
             "webpage_url": webpage_url,
-            "duration": int(entry.get("duration", 0) or 0),
+            "duration": duration,
             "score": _score_candidate(entry, query),
         }
         candidates.append(candidate)
@@ -268,14 +249,19 @@ def download_candidate_audio_sync(candidate: dict) -> tuple:
         "noplaylist": True,
         "quiet": True,
         "outtmpl": outtmpl,
+        # Обход блокировки 'Sign in to confirm you're not a bot'
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
     }
+
+    if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(candidate["webpage_url"], download=True)
             filepath = Path(ydl.prepare_filename(info))
-    except Exception:
-        logger.exception("Audio download error for candidate=%r", candidate)
+    except Exception as e:
+        logger.exception("Audio download error for candidate=%r. Error: %s", candidate, str(e))
         return None, candidate.get("title", "Ничего не найдено"), candidate.get("performer")
 
     if not filepath.exists():
@@ -305,7 +291,7 @@ async def _send_downloaded_audio(message: types.Message, candidate: dict, status
 
     if not filepath or not os.path.exists(filepath):
         await status_msg.edit_text(
-            f"❌ Не смог скачать трек **{candidate.get('title', 'без названия')}**. Попробуй другой вариант.",
+            f"❌ Не смог скачать трек **{candidate.get('title', 'без названия')}**. Возможно, загрузка заблокирована YouTube. Попробуй другой вариант.",
             parse_mode="Markdown",
         )
         return
@@ -389,3 +375,4 @@ async def music_pick(callback: types.CallbackQuery):
 @router.message(Command("song"))
 async def cmd_search_song(message: types.Message, command: CommandObject):
     await handle_music_request(message, command.args or "")
+
