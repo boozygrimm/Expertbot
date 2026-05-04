@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import uuid
+import urllib.parse
 from pathlib import Path
 
 import yt_dlp
@@ -106,7 +107,7 @@ def _score_candidate(entry: dict, normalized_query: str) -> int:
         elif _contains_all(title_query_tokens, haystack):
             score += 2
 
-    # ИСПРАВЛЕНИЕ: Мягкий штраф (-5 вместо -50). Трек опустится ниже чистого оригинала, но не исчезнет.
+    # Мягкий штраф (-5). Трек опустится ниже чистого оригинала, но не исчезнет.
     if _has_undesired_marker(title) and not _has_undesired_marker(normalized_query):
         score -= 5
 
@@ -139,16 +140,19 @@ def _build_candidate_keyboard(session_id: str, candidates: list[dict]) -> types.
 def search_track_candidates_sync(query: str) -> list[dict]:
     # Расширили окно длительности: 1-30 минут
     duration_filter = yt_dlp.utils.match_filter_func("duration >= 60 & duration <= 1800")
+    
+    # Правильно кодируем запрос (включая кириллицу) для прямого обращения к SoundCloud
+    safe_query = urllib.parse.quote(query)
+    search_query = f"https://soundcloud.com/search/sounds?q={safe_query}"
+
     ydl_opts = {
-        "noplaylist": True,
+        "extract_flat": True,   # Быстро парсим результаты без скачивания видео
+        "playlistend": 10,      # Ограничиваем выдачу топ-10
         "quiet": True,
         "match_filter": duration_filter,
     }
 
     info = None
-    # Только SoundCloud. Берем 10 результатов.
-    search_query = f"scsearch10:{query}"
-
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(search_query, download=False)
@@ -180,7 +184,7 @@ def search_track_candidates_sync(query: str) -> list[dict]:
         }
         candidates.append(candidate)
 
-    # ИСПРАВЛЕНИЕ: Убрали параноидальный отсев. Простая сортировка по очкам.
+    # Сортировка по очкам
     candidates.sort(
         key=lambda item: (
             item["score"],
@@ -267,7 +271,7 @@ async def handle_music_request(message: types.Message, query: str):
     async with download_semaphore:
         candidates = await asyncio.to_thread(search_track_candidates_sync, display_query)
 
-    # 2. ИСПРАВЛЕНИЕ: Если нейронка сломала русский запрос, ищем по сырому
+    # 2. Если нейронка сломала русский запрос, ищем по сырому
     if not candidates and display_query != query:
         logger.info(f"Fallback to raw query: '{query}' instead of '{display_query}'")
         async with download_semaphore:
@@ -321,4 +325,4 @@ async def music_pick(callback: types.CallbackQuery):
 @router.message(Command("song"))
 async def cmd_search_song(message: types.Message, command: CommandObject):
     await handle_music_request(message, command.args or "")
-    
+
