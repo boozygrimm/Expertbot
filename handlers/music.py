@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import os
 import tempfile
@@ -90,7 +91,7 @@ async def handle_music_request(message: types.Message, query: str):
 
     status_msg = await message.reply("🔎 Ищу...")
 
-    # Нормализация через ИИ (как в твоем файле)
+    # Нормализация через ИИ
     try:
         search_q = await normalize_music_query(query)
     except Exception:
@@ -107,11 +108,19 @@ async def handle_music_request(message: types.Message, query: str):
         "candidates": candidates
     }
 
-    # Формируем список треков с полной информацией в сообщении
-    lines = [f"🎶 Результаты для: **{search_q}**\nВыбери трек:"]
+    # Экранируем запрос для безопасности HTML
+    safe_search_q = html.escape(search_q)
+    
+    # Формируем список треков с HTML разметкой
+    lines = [f"🎶 Результаты для: <b>{safe_search_q}</b>\nВыбери трек:"]
     for i, c in enumerate(candidates):
         duration_str = format_duration(c.get("duration"))
-        lines.append(f"{i + 1}. {c['title']} — {c['performer']}{duration_str}")
+        
+        # Экранируем название и исполнителя
+        title = html.escape(c['title'])
+        performer = html.escape(c['performer'])
+        
+        lines.append(f"{i + 1}. {title} — {performer}{duration_str}")
 
     builder = InlineKeyboardBuilder()
     for i, c in enumerate(candidates):
@@ -120,7 +129,7 @@ async def handle_music_request(message: types.Message, query: str):
 
     await status_msg.edit_text(
         "\n".join(lines),
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=builder.as_markup()
     )
 
@@ -161,4 +170,4 @@ async def music_callback(callback: types.CallbackQuery):
 @router.message(Command("song"))
 async def cmd_song(message: types.Message, command: CommandObject):
     await handle_music_request(message, command.args or "")
-        
+    
