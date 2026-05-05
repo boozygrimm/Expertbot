@@ -559,7 +559,7 @@ async def build_recipe_book_content(user_id: int):
     builder = InlineKeyboardBuilder()
 
     if not known_recipes:
-        text = "📖 *КНИГА РЕЦЕПТОВ*\n\nТы пока не открыл ни одного рецепта. Смешивай базовые элементы!"
+        text = "📖 **КНИГА РЕЦЕПТОВ**\n\nТы пока не открыл ни одного рецепта. Смешивай базовые элементы!\n\n💡 Не знаешь рецепт? Спроси эксперта! Пиши **Экс, шпора**."
         builder.button(text="❌ Закрыть книгу", callback_data="lab_book_close")
         return text, builder.as_markup()
 
@@ -572,7 +572,8 @@ async def build_recipe_book_content(user_id: int):
     start_idx = page * RECIPES_PER_PAGE
     page_recipes = known_recipes[start_idx : start_idx + RECIPES_PER_PAGE]
 
-    text = f"📖 *КНИГА РЕЦЕПТОВ* (Страница {page + 1} из {total_pages})\n\n"
+    text = f"📖 **КНИГА РЕЦЕПТОВ** (Страница {page + 1} из {total_pages})\n\n"
+    text += "💡 Не знаешь рецепт? Спроси эксперта! Пиши **Экс, шпора**.\n\n"
     text += "\n".join(page_recipes)
 
     nav_row = []
