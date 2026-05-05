@@ -122,8 +122,8 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
         count = match.group(1) or "50"
         return "GOSSIP", count
 
-    if match := re.match(r"^шпора\s+(.+)$", text_lower):
-        return "SPORA", match.group(1).strip()
+    if match := re.match(r"^шпора(?:\s+(.+))?$", text_lower):
+        return "SPORA", (match.group(1) or "").strip()
 
     if "крути барабан" in text_lower:
         return "POLE", query
