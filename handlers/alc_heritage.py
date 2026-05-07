@@ -296,7 +296,6 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int 
             builder.row(*nav_row)
 
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    builder.adjust(1)
     return builder.as_markup()
 
 
