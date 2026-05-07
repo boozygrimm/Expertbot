@@ -222,22 +222,15 @@ def build_heritage_main_text(player: dict, lore_docs: list[dict], page: int = 0)
     page = max(0, min(page, total_pages - 1))
     start = page * HERITAGE_ITEMS_PER_PAGE
     page_lore_docs = lore_docs[start:start + HERITAGE_ITEMS_PER_PAGE]
-    stand_labels = []
-    for idx, stand_id in enumerate(stands, start=1):
-        if stand_id and stand_id in lore_by_id:
-            stand_labels.append(f"{idx}:{html.escape(lore_by_id[stand_id]['name'])}")
-        else:
-            stand_labels.append(f"{idx}:пусто")
     lines = [
         f"📚 <b>НАСЛЕДИЕ</b> (Ур. {level})",
-        "Стенды: " + " | ".join(stand_labels),
     ]
     if total_pages > 1:
         lines.append(f"Страница: {page + 1}/{total_pages}")
     if multiplier > 1:
         lines.append("Мастер-архив активен: все бонусы на стендах удвоены.")
     lines.append("")
-    lines.append("Витрина:")
+    lines.append("Стенды:")
     for idx, stand_id in enumerate(stands, start=1):
         if stand_id and stand_id in lore_by_id:
             lore_doc = lore_by_id[stand_id]
@@ -262,12 +255,23 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int 
     page = max(0, min(page, total_pages - 1))
     start = page * HERITAGE_ITEMS_PER_PAGE
     page_lore_docs = lore_docs[start:start + HERITAGE_ITEMS_PER_PAGE]
+
+    # Кнопки стендов - максимум 5 в ряд + хелп = 6
     stand_buttons = []
     for idx, stand_id in enumerate(stands):
         if stand_id and stand_id in lore_by_id:
-            stand_buttons.append(types.InlineKeyboardButton(text=f"💎 {idx + 1}", callback_data=f"heritage_stand:{idx}:{page}"))
+            stand_buttons.append(types.InlineKeyboardButton(text=f"🟢 {idx + 1}", callback_data=f"heritage_stand:{idx}:{page}"))
+        else:
+            stand_buttons.append(types.InlineKeyboardButton(text=f"🔴 {idx + 1}", callback_data=f"heritage_empty:{idx}:{page}"))
+
     if stand_buttons:
-        builder.row(*stand_buttons)
+        # Добавляем хелп в конец
+        stand_buttons.append(types.InlineKeyboardButton(text="❓", callback_data="heritage_help"))
+        # Разбиваем на ряды по 6 кнопок
+        for i in range(0, len(stand_buttons), 6):
+            builder.row(*stand_buttons[i:i+6])
+
+    # Кнопки наследий - по 2 в ряд
     row = []
     for index, lore_doc in enumerate(page_lore_docs, start=start):
         owned, total = get_collection_progress(player, lore_doc)
@@ -280,6 +284,8 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int 
             row = []
     if row:
         builder.row(*row)
+
+    # Навигация по страницам
     if total_pages > 1:
         nav_row = []
         if page > 0:
@@ -288,6 +294,7 @@ def build_heritage_main_keyboard(player: dict, lore_docs: list[dict], page: int 
             nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"heritage_page:{page + 1}"))
         if nav_row:
             builder.row(*nav_row)
+
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
     return builder.as_markup()
@@ -397,6 +404,36 @@ def build_stand_detail_keyboard(stand_index: int, lore_id: str, page: int = 0) -
     builder = InlineKeyboardBuilder()
     builder.button(text="📖 Открыть коллекцию", callback_data=f"heritage_view:{lore_id}:{page}")
     builder.button(text="🧹 Снять со стенда", callback_data=f"heritage_remove:{stand_index}:{page}")
+    builder.button(text="🔙 К наследию", callback_data=f"heritage_page:{page}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_help_text() -> str:
+    return (
+        "❓ <b>СПРАВКА ПО НАСЛЕДИЮ</b>\n\n"
+        "<b>Как это работает:</b>\n"
+        "• Собирай обрывки лора из коллекций (3 шт на каждую)\n"
+        "• Полная коллекция даёт пассивный бонус каждый день\n"
+        "• Установи коллекцию на стенд для активации бонуса\n"
+        "• При первой установке получаешь разовый дар\n\n"
+        "<b>Стенды:</b>\n"
+        "• Количество стендов зависит от уровня Архива Наследия\n"
+        "• Ур. 1: 1 стенд, Ур. 2-4: +1 стенд каждый уровень\n"
+        "• Ур. 5: 5 стендов + удвоение всех бонусов\n\n"
+        "<b>Бонусы:</b>\n"
+        "• spirit_f/w/e/a — стихийные духи\n"
+        "• metal/energy — ресурсы\n"
+        "• pack_s/m/l — наборы материалов\n\n"
+        "<b>Разовые дары:</b>\n"
+        "• Предметы, рецепты или бойцы Т3\n"
+        "• Выдаются только один раз при первой установке\n"
+        "• При снятии со стенда дар не возвращается"
+    )
+
+
+def build_help_keyboard(page: int = 0) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
     builder.button(text="🔙 К наследию", callback_data=f"heritage_page:{page}")
     builder.adjust(1)
     return builder.as_markup()
@@ -790,6 +827,24 @@ async def heritage_stand(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_stand_detail_text(player, lore_doc, stand_index),
         reply_markup=build_stand_detail_keyboard(stand_index, lore_doc["_ref"], page),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("heritage_empty:"))
+async def heritage_empty(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    stand_index = int(parts[1])
+    await callback.answer(f"Стенд {stand_index + 1} свободен. Установи коллекцию, чтобы активировать бонус.", show_alert=True)
+
+
+@router.callback_query(F.data == "heritage_help")
+async def heritage_help(callback: types.CallbackQuery):
+    page = 0
+    await callback.message.edit_text(
+        build_help_text(),
+        reply_markup=build_help_keyboard(page),
         parse_mode="HTML",
     )
     await callback.answer()
