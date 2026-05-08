@@ -114,7 +114,7 @@ docs/                 Техническая документация
 - `profiles` — Social RP
 - `alchemy_players`, `alchemy_lore` — алхимия
 
-Подробности по архитектуре и данным: [docs/TECHNICAL_OVERVIEW.md](/C:/bugbi/docs/TECHNICAL_OVERVIEW.md)
+Подробности по архитектуре и данным: [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md)
 
 ## Фоновые задачи
 
@@ -174,6 +174,4 @@ python -m unittest discover -s tests -v
 
 ## Документация
 
-- [Технический обзор](docs/TECHNICAL_OVERVIEW.md)
-- [Алхимия](docs/ALCHEMY.md)
-- [Runbook](docs/RUNBOOK.md)
+- [Полный анализ проекта](PROJECT_ANALYSIS.md)
