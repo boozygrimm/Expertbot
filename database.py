@@ -26,6 +26,9 @@ class Database:
         # НОВАЯ КОЛЛЕКЦИЯ ДЛЯ АЛХИМИИ (Глобальные профили)
         self.alchemy_players = self.db.alchemy_players
         self.alchemy_lore = self.db.alchemy_lore
+
+        # КОЛЛЕКЦИЯ ДЛЯ КЭША ШПОРЫ
+        self.spora_cache = self.db.spora_cache
         
     async def setup(self):
         # Авто-удаление сообщений через 7 дней
@@ -39,5 +42,7 @@ class Database:
         # Индекс для алхимических профилей
         await self.alchemy_players.create_index("user_id", unique=True)
         await self.alchemy_lore.create_index("id", unique=True)
+        # Индекс для кэша шпоры
+        await self.spora_cache.create_index("recipe_key", unique=True)
 
 db = Database()

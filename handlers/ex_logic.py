@@ -36,6 +36,48 @@ CHAT_MUSIC_FALSE_POSITIVES = (
 # Таймауты для шпоры: {user_id: timestamp}
 spora_cooldowns = {}
 
+# Вероятность использования кэша (80%)
+SPORA_CACHE_HIT_RATE = 0.8
+
+
+def normalize_recipe_key(ing1: str, ing2: str, res: str) -> str:
+    """Создает нормализованный ключ рецепта для кэша."""
+    def normalize(s: str) -> str:
+        return " ".join(s.strip().lower().split())
+    return f"{normalize(ing1)}|{normalize(ing2)}|{normalize(res)}"
+
+
+async def get_cached_spora_response(recipe_key: str) -> str | None:
+    """Получает кэшированный ответ для рецепта."""
+    cached = await db.spora_cache.find_one({"recipe_key": recipe_key})
+    if cached:
+        # Обновляем счетчик использования
+        await db.spora_cache.update_one(
+            {"_id": cached["_id"]},
+            {"$inc": {"used_count": 1}}
+        )
+        return cached.get("response")
+    return None
+
+
+async def save_spora_response(recipe_key: str, response: str, persona_id: str = "bender"):
+    """Сохраняет ответ в кэш."""
+    await db.spora_cache.update_one(
+        {"recipe_key": recipe_key},
+        {
+            "$set": {
+                "response": response,
+                "persona_id": persona_id,
+                "updated_at": get_msk_now()
+            },
+            "$setOnInsert": {
+                "created_at": get_msk_now(),
+                "used_count": 0
+            }
+        },
+        upsert=True
+    )
+
 HELP_TEXT = (
     "🤖 **Экс: краткая справка**\n\n"
     "Как обратиться:\n"
@@ -542,6 +584,7 @@ async def handle_ex_request(message: types.Message):
             return await message.reply("🤖 Бендер: Даже я не знаю, как это сделать. Попробуй другое название.")
 
         ing1, ing2, res = match
+        recipe_key = normalize_recipe_key(ing1, ing2, res)
 
         # Получаем личность Бендера
         persona = await db.personas.find_one({"p_id": "bender"})
@@ -550,7 +593,24 @@ async def handle_ex_request(message: types.Message):
             text = f"📖 **Шпора**\n\n{res} = {ing1} + {ing2}"
             return await message.reply(text, parse_mode="Markdown")
 
-        # Генерируем ответ в стиле Бендера
+        # Проверяем кэш с вероятностью 80%
+        use_cache = random.random() < SPORA_CACHE_HIT_RATE
+        cached_response = None
+
+        if use_cache:
+            cached_response = await get_cached_spora_response(recipe_key)
+            if cached_response:
+                spora_cooldowns[user_id] = now
+                try:
+                    await message.reply(
+                        f"{persona['emoji']} **{persona['name']}**: {cached_response}\n\n📖 {res} = {ing1} + {ing2}",
+                        parse_mode="Markdown",
+                    )
+                except Exception:
+                    await message.reply(f"{persona['emoji']} {persona['name']}: {cached_response}\n\n📖 {res} = {ing1} + {ing2}")
+                return
+
+        # Генерируем новый ответ
         loading_data = persona.get("loading", ["Думаю..."])
         loading_text = random.choice(loading_data) if isinstance(loading_data, list) else loading_data
         status_msg = await message.reply(loading_text)
@@ -578,6 +638,9 @@ async def handle_ex_request(message: types.Message):
         spora_cooldowns[user_id] = now
 
         if response:
+            # Сохраняем в кэш
+            await save_spora_response(recipe_key, response, persona.get("p_id", "bender"))
+
             try:
                 await message.reply(
                     f"{persona['emoji']} **{persona['name']}**: {response}\n\n📖 {res} = {ing1} + {ing2}",
