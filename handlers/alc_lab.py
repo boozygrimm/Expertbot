@@ -8,7 +8,10 @@ from config import ADMIN_ID
 from handlers.alc_fighters import create_fighter, get_barracks_capacity
 
 # Импортируем нашу базу рецептов
-from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES, is_battle_unit
+from handlers.alc_recipes import (
+    BATTLE_UNITS, ELEMENTS, RECIPES, is_battle_unit,
+    ELEMENT_COSTS, BASE_ELEMENTS
+)
 
 router = Router()
 
@@ -62,6 +65,27 @@ def split_long_message(lines: list[str], limit: int = 3500) -> list[str]:
     if current:
         messages.append("\n".join(current))
     return messages
+
+
+def format_element_cost(element_id: str) -> str:
+    """Форматирует стоимость элемента для отображения."""
+    cost = ELEMENT_COSTS.get(element_id)
+    if not cost:
+        return ""
+
+    elements = cost["elements"]
+    parts = []
+
+    # Эмодзи для стихий
+    emoji_map = {"a": "💨", "e": "🪨", "f": "🔥", "w": "💧"}
+
+    for elem in BASE_ELEMENTS:
+        if elements[elem] > 0:
+            parts.append(f"{emoji_map[elem]}{elements[elem]}")
+
+    if parts:
+        return f" [{cost['base_cost']}|{' '.join(parts)}]"
+    return ""
 
 
 def build_recipe_reference() -> list[tuple[str, tuple[str, str], str]]:
@@ -126,7 +150,8 @@ async def cmd_recipe_cheatsheet(message: types.Message, command: CommandObject):
             ing1 = ELEMENTS.get(ingredients[0], ingredients[0])
             ing2 = ELEMENTS.get(ingredients[1], ingredients[1])
             res = ELEMENTS.get(result, result)
-            lines.append(f"{idx}. {res} = {ing1} + {ing2}")
+            cost_str = format_element_cost(result)
+            lines.append(f"{idx}. {res}{cost_str} = {ing1} + {ing2}")
 
         for chunk in split_long_message(lines):
             await message.answer(chunk, parse_mode="Markdown")
@@ -140,7 +165,8 @@ async def cmd_recipe_cheatsheet(message: types.Message, command: CommandObject):
     ing1 = ELEMENTS.get(ingredients[0], ingredients[0])
     ing2 = ELEMENTS.get(ingredients[1], ingredients[1])
     res = ELEMENTS.get(result, result)
-    text = f"📖 **Шпора**\n\n{res} = {ing1} + {ing2}"
+    cost_str = format_element_cost(result)
+    text = f"📖 **Шпора**\n\n{res}{cost_str} = {ing1} + {ing2}"
     await message.reply(text, parse_mode="Markdown")
 
 # =====================================================================

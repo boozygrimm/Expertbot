@@ -785,3 +785,107 @@ RECIPES = {
     tuple(sorted(("mech", "spider"))): "walker",
     tuple(sorted(("hero", "mech"))): "juggernaut"
 }
+
+# =====================================================================
+# СИСТЕМА СТОИМОСТИ ЭЛЕМЕНТОВ
+# =====================================================================
+
+# Кэш стоимостей элементов
+ELEMENT_COSTS = {}
+
+# Базовые стихии
+BASE_ELEMENTS = ["a", "e", "f", "w"]
+
+# Элементы без стоимости (исключения)
+NO_COST_ELEMENTS = ["pack_s", "pack_m", "pack_l", "pack_xl"]
+
+
+def calculate_element_cost(element_id: str, cache: dict = None) -> dict | None:
+    """
+    Рекурсивно вычисляет стоимость элемента.
+
+    Возвращает:
+    {
+        "base_cost": int,  # Общая стоимость
+        "elements": {      # Разбивка по стихиям
+            "a": int,
+            "e": int,
+            "f": int,
+            "w": int
+        }
+    }
+    или None для исключённых элементов.
+    """
+    if cache is None:
+        cache = {}
+
+    # Проверяем кэш
+    if element_id in cache:
+        return cache[element_id]
+
+    # Исключённые элементы
+    if element_id in NO_COST_ELEMENTS:
+        cache[element_id] = None
+        return None
+
+    # Базовые стихии
+    if element_id in BASE_ELEMENTS:
+        result = {
+            "base_cost": 1,
+            "elements": {"a": 0, "e": 0, "f": 0, "w": 0}
+        }
+        result["elements"][element_id] = 1
+        cache[element_id] = result
+        return result
+
+    # Ищем рецепт
+    recipe = None
+    for ingredients, result in RECIPES.items():
+        if result == element_id:
+            recipe = ingredients
+            break
+
+    if not recipe:
+        # Элемент без рецепта - исключаем
+        cache[element_id] = None
+        return None
+
+    # Рекурсивно считаем стоимость ингредиентов
+    i1, i2 = recipe
+    cost1 = calculate_element_cost(i1, cache)
+    cost2 = calculate_element_cost(i2, cache)
+
+    # Если хотя бы один ингредиент без стоимости - исключаем
+    if cost1 is None or cost2 is None:
+        cache[element_id] = None
+        return None
+
+    # Суммируем стоимости
+    result = {
+        "base_cost": cost1["base_cost"] + cost2["base_cost"],
+        "elements": {
+            "a": cost1["elements"]["a"] + cost2["elements"]["a"],
+            "e": cost1["elements"]["e"] + cost2["elements"]["e"],
+            "f": cost1["elements"]["f"] + cost2["elements"]["f"],
+            "w": cost1["elements"]["w"] + cost2["elements"]["w"],
+        }
+    }
+    cache[element_id] = result
+    return result
+
+
+def init_element_costs():
+    """Инициализирует кэш стоимостей для всех элементов."""
+    global ELEMENT_COSTS
+    ELEMENT_COSTS = {}
+
+    for element_id in ELEMENTS.keys():
+        if element_id in NO_COST_ELEMENTS:
+            continue
+        cost = calculate_element_cost(element_id)
+        if cost:
+            ELEMENT_COSTS[element_id] = cost
+
+
+# Автоматическая инициализация при импорте
+init_element_costs()
