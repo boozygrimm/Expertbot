@@ -385,19 +385,19 @@ async def build_planned_events(units: list, stats: dict) -> list[dict]:
             else:
                 loot_amount = random.randint(2, 4 + min(3, stats["loot_bonus"]))
 
-            # Бонус от восприятия к редким ресурсам
-            if perception_bonus > 0 and random.random() < 0.1 + (perception_bonus * 0.02):
-                rare_items = ["recipe_scroll", "pack_l", "philosophers_stone"]
-                rare_item = random.choice(rare_items)
-                if rare_item not in event.get("loot", {}):
-                    event["loot"][rare_item] = 1
-
             event = {"type": "loot", "loot": {loot_item: loot_amount}}
             if random.random() < min(0.35, 0.08 * stats["loot_bonus"]):
                 bonus_item = choose_weighted_loot()
                 if bonus_item != loot_item:
                     bonus_amount = 1 if bonus_item in {"recipe_scroll", "pack_s", "pack_m", "pack_l", "philosophers_stone"} else random.randint(1, 3)
                     event["loot"][bonus_item] = bonus_amount
+
+            # Бонус от восприятия к редким ресурсам
+            if perception_bonus > 0 and random.random() < 0.1 + (perception_bonus * 0.02):
+                rare_items = ["recipe_scroll", "pack_l", "philosophers_stone"]
+                rare_item = random.choice(rare_items)
+                if rare_item not in event.get("loot", {}):
+                    event["loot"][rare_item] = 1
         elif roll < 0.78:
             damage = random.randint(6, 16) + random.randint(0, 8)
             # Защита снижает урон
@@ -440,12 +440,15 @@ def get_bag_load(loot: dict) -> int:
 
 def resolve_draft_fighters(player: dict, draft: list[str], *, expedition_mode: bool = False) -> list[dict]:
     fighters = []
+    garrison = set(player.get("fort_garrison", []))
     all_fighters = {fighter["id"]: fighter for fighter in get_player_fighters(player)}
     for fighter_id in draft:
         fighter = all_fighters.get(fighter_id)
         if not fighter or fighter.get("status") != "available":
             continue
         if expedition_mode and int(fighter.get("stamina", 0)) <= 0:
+            continue
+        if fighter_id in garrison:
             continue
         fighters.append(fighter)
     return fighters
@@ -749,6 +752,8 @@ async def expedition_pick(callback: types.CallbackQuery):
             expedition_drafts[user_id] = cleanup_expedition_draft(player, user_id)
             await safe_edit_text(callback.message, render_expeditions_text(player, expedition_drafts[user_id]), build_expeditions_keyboard(player, expedition_drafts[user_id]))
             return await callback.answer("Список бойцов обновлён. Попробуй выбрать заново.", show_alert=True)
+        if fighter.get("status") == "garrison":
+            return await callback.answer("Боец в гарнизоне и не может пойти в экспедицию.", show_alert=True)
         if int(fighter.get("stamina", 0)) <= 0:
             return await callback.answer("Уставший боец в экспедицию не пойдёт.", show_alert=True)
         draft.append(fighter_id)
