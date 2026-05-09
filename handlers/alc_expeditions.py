@@ -36,8 +36,11 @@ logger = logging.getLogger(__name__)
 MAX_LOGS = 7
 VISIBLE_LOGS = 5
 EXPEDITION_TICK = 300
-BASE_EXPEDITION_DURATION = 3600
+# Длительность экспедиции по уровню Гильдии: 2/3/4 часа
+GUILD_EXPEDITION_DURATION = {0: 7200, 1: 7200, 2: 10800, 3: 14400}
 RETURN_MIN_TIME = 300
+# Опыт за экспедицию: 1 XP за 2 экспедиции (0.5)
+EXPEDITION_XP_CHANCE = 0.5
 ROLE_ALIASES = {
     "fire_swordsman": "Огнемеч",
     "water_guard": "Водостраж",
@@ -181,13 +184,41 @@ def build_team_stats(units: list, barracks_level: int) -> dict:
     defense_bonus = sum(1 for unit_id in unit_ids if unit_id in {"earth_shielder", "water_guard", "mech", "juggernaut"})
     loot_bonus = sum(1 for unit_id in unit_ids if unit_id in {"wind_scout", "storm_archer", "saboteur", "engineer", "sniper", "drone", "hover"})
     tier_pressure = sum(get_unit_tier(unit) for unit in units)
+
+    # Суммируем статы бойцов
+    total_speed = 0
+    total_perception = 0
+    total_endurance = 0
+    total_attack = 0
+    total_defense = 0
+    total_support = 0
+
+    for unit in units:
+        if isinstance(unit, dict) and "stats" in unit:
+            stats = unit["stats"]
+            total_speed += stats.get("speed", 0)
+            total_perception += stats.get("perception", 0)
+            total_endurance += stats.get("endurance", 0)
+            total_attack += stats.get("attack", 0)
+            total_defense += stats.get("defense", 0)
+            total_support += stats.get("support", 0)
+
+    # Бонус к грузу от стойкости
+    cargo_bonus = total_endurance // 3
+
     return {
         "total_hp": total_hp,
-        "cargo_capacity": total_cargo,
+        "cargo_capacity": total_cargo + cargo_bonus,
         "has_medic": has_medic,
         "defense_bonus": defense_bonus,
         "loot_bonus": loot_bonus,
         "tier_pressure": tier_pressure,
+        "total_speed": total_speed,
+        "total_perception": total_perception,
+        "total_endurance": total_endurance,
+        "total_attack": total_attack,
+        "total_defense": total_defense,
+        "total_support": total_support,
     }
 
 
@@ -334,7 +365,15 @@ async def generate_expedition_final_report(expedition: dict) -> str:
 async def build_planned_events(units: list, stats: dict) -> list[dict]:
     hp_now = stats["total_hp"]
     planned = []
-    planned_count = random.randint(9, 13)
+
+    # Количество событий зависит от скорости (больше скорость = дальше проходят)
+    base_events = random.randint(9, 13)
+    speed_bonus = stats.get("total_speed", 0) // 5
+    planned_count = base_events + speed_bonus
+
+    # Шанс редких ресурсов зависит от восприятия
+    perception_bonus = stats.get("total_perception", 0) // 10
+
     for _ in range(planned_count):
         roll = random.random()
         if roll < 0.58:
@@ -345,6 +384,14 @@ async def build_planned_events(units: list, stats: dict) -> list[dict]:
                 loot_amount = random.randint(1, 2 + min(2, stats["loot_bonus"] // 2))
             else:
                 loot_amount = random.randint(2, 4 + min(3, stats["loot_bonus"]))
+
+            # Бонус от восприятия к редким ресурсам
+            if perception_bonus > 0 and random.random() < 0.1 + (perception_bonus * 0.02):
+                rare_items = ["recipe_scroll", "pack_l", "philosophers_stone"]
+                rare_item = random.choice(rare_items)
+                if rare_item not in event.get("loot", {}):
+                    event["loot"][rare_item] = 1
+
             event = {"type": "loot", "loot": {loot_item: loot_amount}}
             if random.random() < min(0.35, 0.08 * stats["loot_bonus"]):
                 bonus_item = choose_weighted_loot()
@@ -353,11 +400,16 @@ async def build_planned_events(units: list, stats: dict) -> list[dict]:
                     event["loot"][bonus_item] = bonus_amount
         elif roll < 0.78:
             damage = random.randint(6, 16) + random.randint(0, 8)
-            damage = max(4, damage - stats["defense_bonus"] * 4)
+            # Защита снижает урон
+            defense_reduction = stats.get("total_defense", 0) // 3
+            damage = max(4, damage - defense_reduction)
             event = {"type": "damage", "damage": damage}
             hp_now = max(0, hp_now - damage)
         elif roll < 0.93:
             heal = random.randint(6, 14) + (8 if stats["has_medic"] else 0)
+            # Поддержка увеличивает лечение
+            support_bonus = stats.get("total_support", 0) // 4
+            heal += support_bonus
             event = {"type": "heal", "heal": heal}
             hp_now = min(stats["total_hp"], hp_now + heal)
         else:
@@ -413,10 +465,13 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
     active = player.get("active_expeditions", [])
     slot_limit = get_expedition_slot_limit(barracks_level)
     team_limit = get_expedition_team_limit(guild_level)
+    duration_hours = GUILD_EXPEDITION_DURATION.get(guild_level, 7200) // 3600
     lines = [
         f"🧪 **ЭКСПЕДИЦИИ** [{len(active)}/{slot_limit}]",
         f"Лимит бойцов в отряде: {team_limit}.",
-        "💡 Здесь бойцы качаются безопаснее: получают XP, тратят 1 бодрость и не выходят уставшими.",
+        f"Длительность: {duration_hours} ч. (зависит от Гильдии).",
+        "💡 Опыт: 1 XP с шансом 50% (безопаснее рейдов).",
+        "💡 Статы влияют: скорость → дальность, восприятие → редкие ресурсы, стойкость → груз.",
         "💡 Бодрость возвращается по 1 каждые 6 часов.",
         "",
     ]
@@ -735,6 +790,7 @@ async def expedition_launch(callback: types.CallbackQuery):
         return await callback.answer("Нечего отправлять.", show_alert=True)
 
     barracks_level = player.get("buildings", {}).get("barracks", 0)
+    guild_level = player.get("buildings", {}).get("guild", 0)
     slot_limit = get_expedition_slot_limit(barracks_level)
     if len(player.get("active_expeditions", [])) >= slot_limit:
         return await callback.answer("Все слоты экспедиций уже заняты.", show_alert=True)
@@ -754,7 +810,7 @@ async def expedition_launch(callback: types.CallbackQuery):
         "fighter_ids": [fighter["id"] for fighter in draft_fighters],
         "fighter_snapshots": [build_fighter_snapshot(fighter) for fighter in draft_fighters],
         "started_at": now,
-        "max_end_at": now + BASE_EXPEDITION_DURATION + len(draft) * 900,
+        "max_end_at": now + GUILD_EXPEDITION_DURATION.get(guild_level, 7200) + len(draft) * 900,
         "status": "searching",
         "status_label": "Исследует мир",
         "cargo_capacity": stats["cargo_capacity"],

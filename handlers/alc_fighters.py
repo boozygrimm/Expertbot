@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 
-FIGHTER_SCHEMA_VERSION = 1
+FIGHTER_SCHEMA_VERSION = 2
 FATIGUE_RECOVERY_SECONDS = 6 * 3600
 BARRACKS_CAPACITY = {0: 0, 1: 8, 2: 14, 3: 20, 4: 28, 5: 36}
 FIGHTER_TIER_STAMINA = {1: 3, 2: 5, 3: 7}
@@ -15,6 +15,65 @@ UPGRADE_XP_REQUIREMENTS = {2: 30, 3: 70}
 UPGRADE_COSTS = {
     2: {"energy": 4, "spirits": 2},
     3: {"energy": 8, "spirits": 4},
+}
+HERO_XP_REQUIREMENT = 30
+
+# Множители статов по тирам
+TIER_MULTIPLIERS = {1: 1.0, 2: 2.0, 3: 4.0}
+
+# Профильные бонусы для каждого юнита
+UNIT_PROFILES = {
+    # Тир-1
+    "fire_swordsman": {"attack": 3, "speed": 1},
+    "water_guard": {"defense": 3, "endurance": 1},
+    "earth_shielder": {"defense": 3, "endurance": 1},
+    "wind_scout": {"speed": 3, "perception": 1},
+    "ash_pikeman": {"attack": 2, "speed": 2},
+    "wave_spearman": {"attack": 2, "speed": 2},
+    "stone_axeman": {"attack": 2, "endurance": 2},
+    "storm_archer": {"attack": 2, "perception": 2},
+    # Тир-2
+    "rider_f": {"attack": 4, "speed": 2},
+    "rider_w": {"defense": 3, "speed": 3},
+    "rider_e": {"defense": 4, "endurance": 2},
+    "rider_a": {"speed": 4, "perception": 2},
+    "saboteur": {"attack": 3, "perception": 3},
+    "medic": {"support": 4, "perception": 2},
+    "engineer": {"support": 3, "endurance": 3},
+    "sniper": {"attack": 4, "perception": 2},
+    # Тир-3
+    "mech": {"attack": 5, "defense": 3, "endurance": 2},
+    "flame_tank": {"attack": 5, "defense": 2, "speed": 3},
+    "tesla_tank": {"attack": 4, "speed": 4, "perception": 2},
+    "hover": {"speed": 5, "defense": 3, "perception": 2},
+    "drone": {"speed": 5, "perception": 3, "attack": 2},
+    "artillery": {"attack": 6, "perception": 2, "endurance": 2},
+    "walker": {"attack": 4, "defense": 4, "endurance": 2},
+    "juggernaut": {"attack": 6, "defense": 4, "endurance": 2},
+}
+
+# Группы юнитов по духам для перекрафта
+SPIRIT_UNIT_GROUPS = {
+    "spirit_f": {
+        1: ["fire_swordsman", "ash_pikeman"],
+        2: ["rider_f", "saboteur"],
+        3: ["flame_tank", "juggernaut"],
+    },
+    "spirit_w": {
+        1: ["water_guard", "wave_spearman"],
+        2: ["rider_w", "medic"],
+        3: ["hover"],
+    },
+    "spirit_e": {
+        1: ["earth_shielder", "stone_axeman"],
+        2: ["rider_e", "engineer"],
+        3: ["mech", "artillery", "walker"],
+    },
+    "spirit_a": {
+        1: ["wind_scout", "storm_archer"],
+        2: ["rider_a", "sniper"],
+        3: ["tesla_tank", "drone"],
+    },
 }
 
 
@@ -56,12 +115,106 @@ def get_upgrade_spirit(fighter: dict) -> str:
     return BATTLE_UNITS.get(fighter.get("unit_id", ""), {}).get("fallback_spirit", "spirit_f")
 
 
+def get_unit_profile(unit_id: str) -> dict:
+    return UNIT_PROFILES.get(unit_id, {})
+
+
+def generate_base_stats(tier: int, unit_id: str) -> dict:
+    """
+    Генерирует базовые статы для бойца.
+    База = множитель_тира + рандом ±15% + профильный бонус
+    """
+    import random
+    from handlers.alc_recipes import ELEMENT_COSTS
+
+    multiplier = TIER_MULTIPLIERS.get(tier, 1.0)
+    profile = get_unit_profile(unit_id)
+
+    # Базовые статы (множитель тира)
+    base = {
+        "speed": int(multiplier * 3),
+        "perception": int(multiplier * 3),
+        "endurance": int(multiplier * 3),
+        "attack": int(multiplier * 3),
+        "defense": int(multiplier * 3),
+        "support": int(multiplier * 3),
+    }
+
+    # Добавляем рандом ±15%
+    for stat in base:
+        variance = int(base[stat] * 0.15)
+        if variance > 0:
+            base[stat] += random.randint(-variance, variance)
+        base[stat] = max(1, base[stat])
+
+    # Добавляем профильный бонус
+    for stat, bonus in profile.items():
+        if stat in base:
+            base[stat] += bonus
+
+    return base
+
+
+def get_upgrade_options(fighter: dict) -> list[dict]:
+    """
+    Возвращает варианты перекрафта для бойца.
+    """
+    current_tier = int(fighter.get("tier", 1))
+    if current_tier >= 3:
+        return []
+
+    spirit = get_upgrade_spirit(fighter)
+    next_tier = current_tier + 1
+    group = SPIRIT_UNIT_GROUPS.get(spirit, {}).get(next_tier, [])
+
+    options = []
+    for unit_id in group:
+        options.append({
+            "unit_id": unit_id,
+            "name": ELEMENTS.get(unit_id, unit_id),
+            "profile": get_unit_profile(unit_id),
+        })
+
+    return options
+
+
+def calculate_upgrade_cost(target_unit_id: str, current_unit_id: str) -> dict:
+    """
+    Рассчитывает стоимость перекрафта на основе стихийной стоимости.
+    """
+    from handlers.alc_recipes import ELEMENT_COSTS
+
+    target_cost = ELEMENT_COSTS.get(target_unit_id, {})
+    current_cost = ELEMENT_COSTS.get(current_unit_id, {})
+
+    if not target_cost:
+        return {}
+
+    # Базовая стоимость - стихии из рецепта
+    cost = {}
+    for element, amount in target_cost.get("elements", {}).items():
+        if amount > 0:
+            spirit_id = f"spirit_{element}"
+            cost[spirit_id] = amount
+
+    # Добавляем энергию
+    tier = BATTLE_UNITS.get(target_unit_id, {}).get("tier", 1)
+    cost["energy"] = tier * 2
+
+    return cost
+
+
+def is_hero(fighter: dict) -> bool:
+    """Проверяет, является ли боец героем."""
+    return fighter.get("is_hero", False)
+
+
 def get_name_unlock_xp(fighter: dict) -> int:
-    return 20 if fighter.get("crafted_tier3") else 70
+    return 0 if is_hero(fighter) else (20 if fighter.get("crafted_tier3") else 70)
 
 
 def can_name_fighter(fighter: dict) -> bool:
-    return int(fighter.get("tier", 1)) >= 3 and int(fighter.get("xp", 0)) >= get_name_unlock_xp(fighter)
+    return is_hero(fighter) or (int(fighter.get("tier", 1)) >= 3 and int(fighter.get("xp", 0)) >= get_name_unlock_xp(fighter))
 
 
 def fighter_is_alive(fighter: dict) -> bool:
@@ -89,6 +242,7 @@ def create_fighter(unit_id: str, tier: int | None = None, *, crafted_tier3: bool
     now_ts = int(created_at or time.time())
     base_tier = int(BATTLE_UNITS.get(unit_id, {}).get("tier", 1))
     current_tier = max(base_tier, int(tier or base_tier))
+    stats = generate_base_stats(current_tier, unit_id)
     fighter = {
         "id": uuid.uuid4().hex[:12],
         "unit_id": unit_id,
@@ -104,6 +258,8 @@ def create_fighter(unit_id: str, tier: int | None = None, *, crafted_tier3: bool
         "status": "available",
         "created_at": now_ts,
         "origin": "crafted_tier3" if crafted_tier3 else "recruited",
+        "stats": stats,
+        "is_hero": False,
     }
     return normalize_fighter(fighter, now_ts)
 
@@ -124,6 +280,18 @@ def normalize_fighter(fighter: dict, now_ts: int | None = None) -> dict:
     current["created_at"] = int(current.get("created_at") or now_ts or time.time())
     current["stamina_updated_at"] = int(current.get("stamina_updated_at") or current["created_at"])
     current["stamina"] = max(0, int(current.get("stamina", get_fighter_stamina_cap(current)) or 0))
+    current["is_hero"] = bool(current.get("is_hero", False))
+
+    # Нормализация статов
+    if "stats" not in current or not current["stats"]:
+        current["stats"] = generate_base_stats(current["tier"], current["unit_id"])
+    else:
+        stats = current["stats"]
+        for stat in ["speed", "perception", "endurance", "attack", "defense", "support"]:
+            if stat not in stats or stats[stat] is None:
+                stats[stat] = 1
+            stats[stat] = max(1, int(stats[stat]))
+
     refresh_fighter(current, now_ts)
     return current
 
@@ -207,12 +375,23 @@ def spend_cost(inventory: dict, cost: dict):
 
 
 def grant_mission_progress(fighter: dict, mission_type: str, now_ts: int | None = None):
+    import random
     refresh_fighter(fighter, now_ts)
-    fighter["xp"] = int(fighter.get("xp", 0)) + 1
     if mission_type == "raid":
+        # Рейды дают 2 XP
+        fighter["xp"] = int(fighter.get("xp", 0)) + 2
         fighter["raids"] = int(fighter.get("raids", 0)) + 1
-    else:
+    elif mission_type == "expedition":
+        # Экспедиции дают 1 XP с шансом 50%
+        if random.random() < 0.5:
+            fighter["xp"] = int(fighter.get("xp", 0)) + 1
         fighter["expeditions"] = int(fighter.get("expeditions", 0)) + 1
+    else:
+        fighter["xp"] = int(fighter.get("xp", 0)) + 1
+        if mission_type == "raid":
+            fighter["raids"] = int(fighter.get("raids", 0)) + 1
+        else:
+            fighter["expeditions"] = int(fighter.get("expeditions", 0)) + 1
 
 
 def consume_fighter_stamina(fighter: dict, now_ts: int | None = None):
@@ -260,8 +439,28 @@ def get_available_fighters(player: dict, *, include_zero_stamina: bool = True, n
 def normalize_player_fighters(player: dict, now_ts: int | None = None) -> dict:
     now_ts = int(now_ts or time.time())
     inventory = deepcopy(player.get("inventory", {}))
+    current_schema_version = int(player.get("fighter_schema_version", 0))
+    needs_migration = current_schema_version < FIGHTER_SCHEMA_VERSION
+
     fighters = [normalize_fighter(item, now_ts) for item in player.get("fighters", [])]
     changed = False
+
+    # Миграция для старых версий схемы
+    if needs_migration:
+        migrated_count = 0
+        for fighter in fighters:
+            # Добавляем статы если их нет (версия 1 -> 2)
+            if "stats" not in fighter or not fighter["stats"]:
+                fighter["stats"] = generate_base_stats(fighter.get("tier", 1), fighter.get("unit_id", "fire_swordsman"))
+                changed = True
+                migrated_count += 1
+            # Добавляем флаг героя если его нет
+            if "is_hero" not in fighter:
+                fighter["is_hero"] = False
+                changed = True
+        if migrated_count > 0:
+            # Логируем миграцию (можно добавить в историю игрока)
+            pass
 
     def append_fighter(unit_id: str, *, tier: int | None = None, status: str = "available", crafted_tier3: bool = False) -> str:
         nonlocal changed

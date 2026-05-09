@@ -23,6 +23,10 @@ from handlers.alc_fighters import (
     get_upgrade_cost,
     refresh_fighter,
     spend_cost,
+    get_upgrade_options,
+    calculate_upgrade_cost,
+    is_hero,
+    HERO_XP_REQUIREMENT,
 )
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
 # Важно импортировать функцию отрисовки базы, чтобы кнопка Назад работала красиво
@@ -106,16 +110,13 @@ def get_barracks_unit_list_line(tier: int, unit_ids: list[str]) -> str:
     parts: list[str] = []
     for unit_id in unit_ids:
         unit_name = str(ELEMENTS.get(unit_id, unit_id))
-        if tier == 1:
-            parts.append(f"{unit_name} ({get_recipe_hint(unit_id)})")
-        else:
-            parts.append(unit_name)
+        parts.append(f"{unit_name} ({get_recipe_hint(unit_id)})")
 
     suffix = ""
     if tier == 2:
-        suffix = " Можно поднять из Т1 или искать рецепты самому."
+        suffix = " Платформы (мотоцикл, бомба, инструмент, огнестрел, лекарство) крафтятся в Лаборатории."
     elif tier == 3:
-        suffix = " Обычно это уже дорогой апгрейд из Т1 или самостоятельный поиск рецептов."
+        suffix = " Платформы (робот, машина, лодка, самолёт, герой) требуют развитой экономики."
     return f"• Тир-{tier}: {', '.join(parts)}.{suffix}"
 
 
@@ -125,7 +126,7 @@ def get_building_help_line(building_id: str, level: int) -> str:
         "lab": "Лаборатория - сердце базы. Сначала смешивай простое: стихии -> материалы -> полезные вещи, а Тигель и Реторту оставь на потом.",
         "altar": "Производство и Алтарь нужны, когда хочешь пассивный доход. Это лучше строить после Склада и Лаборатории, когда уже есть что добывать и где хранить.",
         "guild": "Гильдия помогает ходить дальше и чаще. 1 уровень уже открывает нормальный размер отряда, а дальше полезен тем, кто живет экспедициями.",
-        "barracks": "Казармы открывают армию из простых связок. Пример для старта: Огнемеч = Дух Огня + Металл. Ищи похожие рецепты для других стихий.",
+        "barracks": "Казармы открывают армию на основе духов. Т1: дух + материал. Т2: дух + платформа (мотоцикл, бомба, инструмент). Т3: дух + дорогая платформа (робот, машина, герой).",
         "fort": "Форт защищает склад. В ловушку можно положить любой предмет: хоть зомби, хоть велосипед, хоть стекло - главное, чтобы потом было не жалко.",
         "heritage_center": "Наследие мира собирается из обрывков лора. Собранные коллекции ставятся на стенды и питают базу постоянными бонусами.",
     }
@@ -311,19 +312,19 @@ BUILDINGS = {
             },
             2: {
                 "cost": {"brick": 14, "metal": 8, "glass": 4, "energy": 5},
-                "effect_desc": "Доступны рейдеры и спецы: уже нужен более собранный склад и профильные заготовки."
+                "effect_desc": "Доступны рейдеры и спецы: дух + платформа (мотоцикл, бомба, инструмент, огнестрел, лекарство)."
             },
             3: {
                 "cost": {"glass": 14, "metal": 14, "electricity": 6, "car": 2, "robot": 1, "energy": 10},
-                "effect_desc": "Доступна сборка тяжелой техники: Мех, Огнетанк, Теслатанк, Ховер. Это уже роскошь: рабочий дух должен лечь в основу дорогой платформы. Проверяй сочетания робота, машины, лодки, электричества и духов."
+                "effect_desc": "Доступна сборка тяжелой техники: Мех, Огнетанк, Теслатанк, Ховер. Дух + дорогая платформа (робот, машина, лодка)."
             },
             4: {
                 "cost": {"plane": 2, "tractor": 2, "robot": 2, "electricity": 10, "diamond": 1, "energy": 14},
-                "effect_desc": "Доступны продвинутые платформы: Дрон, Арта, Ходун. Тут уже нужны не просто духи, а дорогие военные шасси. Проверяй самолёт, трактор, паука, бомбу, робота и усиление духами."
+                "effect_desc": "Доступны продвинутые платформы: Дрон, Арта, Ходун. Дух + элитная платформа (самолёт, бомба, робот)."
             },
             5: {
                 "cost": {"hero": 1, "diamond": 2, "electricity": 18, "robot": 4, "car": 2, "energy": 22},
-                "effect_desc": "Доступен элитный штурмовой класс: Джаггер. Это предмет роскоши для сильной экономики. Основа все еще идет от рабочих духов, но только через дорогую героическую платформу."
+                "effect_desc": "Доступен элитный штурмовой класс: Джаггер. Дух Огня + Герой - финальная форма боевой мощи."
             }
         }
     },
@@ -498,6 +499,7 @@ def build_fighter_detail_text(player: dict, fighter: dict) -> str:
     tier = int(fighter.get("tier", 1))
     name_unlock = get_name_unlock_xp(fighter)
     risk = int(round((0.80 if fighter.get("stamina", 0) <= 0 else {1: 0.13, 2: 0.09, 3: 0.05}.get(tier, 0.13)) * 100))
+    stats = fighter.get("stats", {})
     lines = [
         f"🪪 **{title}**",
         f"Роль: {ELEMENTS.get(fighter.get('unit_id'), fighter.get('unit_id'))}",
@@ -507,14 +509,29 @@ def build_fighter_detail_text(player: dict, fighter: dict) -> str:
         f"Рейды: {fighter.get('raids', 0)} | Экспедиции: {fighter.get('expeditions', 0)}",
         f"Риск смерти в рейде сейчас: {risk}%",
         "",
+        "📊 **Характеристики:**",
+        f"⚡ Скорость: {stats.get('speed', 0)}",
+        f"👁 Восприятие: {stats.get('perception', 0)}",
+        f"💪 Стойкость: {stats.get('endurance', 0)}",
+        f"⚔️ Атака: {stats.get('attack', 0)}",
+        f"🛡️ Защита: {stats.get('defense', 0)}",
+        f"🤝 Поддержка: {stats.get('support', 0)}",
+        "",
     ]
     if tier < 3:
         next_tier = tier + 1
-        cost = get_upgrade_cost(next_tier, fighter)
-        cost_line = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in cost.items())
-        lines.append(f"Апгрейд до Т{next_tier}: нужен XP {fighter.get('xp', 0)}/{30 if next_tier == 2 else 70} и {cost_line}.")
-    else:
-        lines.append(f"Т3 достигнут. Имя открывается на {name_unlock} XP.")
+        options = get_upgrade_options(fighter)
+        if options:
+            lines.append(f"**Перекрафт до Т{next_tier}:**")
+            for opt in options:
+                lines.append(f"• {opt['name']}: {', '.join(f'{k}+{v}' for k, v in opt['profile'].items())}")
+        lines.append(f"Нужно XP: {fighter.get('xp', 0)}/{30 if next_tier == 2 else 70}")
+    elif tier == 3:
+        if is_hero(fighter):
+            lines.append("🌟 **ГЕРОЙ** - бессмертие активировано!")
+        else:
+            xp_needed = max(0, HERO_XP_REQUIREMENT - int(fighter.get('xp', 0)))
+            lines.append(f"До статуса Героя ещё {xp_needed} XP.")
     if can_name_fighter(fighter):
         lines.append("Имя разблокировано.")
     elif tier >= 3:
@@ -527,7 +544,14 @@ def build_fighter_detail_keyboard(player: dict, fighter: dict) -> types.InlineKe
     tier = int(fighter.get("tier", 1))
     if tier < 3:
         next_tier = tier + 1
-        builder.button(text=f"⬆️ Повысить до Т{next_tier}", callback_data=f"fighter_promote:{fighter['id']}")
+        options = get_upgrade_options(fighter)
+        if options:
+            for opt in options:
+                builder.button(text=f"⬆️ {opt['name']}", callback_data=f"fighter_promote:{fighter['id']}:{opt['unit_id']}")
+        else:
+            builder.button(text=f"⬆️ Повысить до Т{next_tier}", callback_data=f"fighter_promote:{fighter['id']}")
+    elif tier == 3 and not is_hero(fighter):
+        builder.button(text="🌟 Стать Героем", callback_data=f"fighter_become_hero:{fighter['id']}")
     if can_name_fighter(fighter):
         builder.button(text="✍️ Дать имя", callback_data=f"fighter_rename:{fighter['id']}")
     if fighter.get("status") == "available":
@@ -552,7 +576,8 @@ async def fighter_view(callback: types.CallbackQuery):
 async def fighter_promote(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     player = await get_or_create_player(user_id, callback.from_user.first_name)
-    fighter = find_fighter(player, callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    fighter = find_fighter(player, parts[1])
     if not fighter:
         return await callback.answer("Боец потерялся по дороге в штаб.", show_alert=True)
     current_tier = int(fighter.get("tier", 1))
@@ -564,20 +589,30 @@ async def fighter_promote(callback: types.CallbackQuery):
         return await callback.answer("Казармы ещё не готовы к такому тиру.", show_alert=True)
     if int(fighter.get("xp", 0)) < required_xp:
         return await callback.answer(f"Нужно минимум {required_xp} XP.", show_alert=True)
+
+    # Получаем целевой unit_id из callback_data или используем текущий
+    target_unit_id = parts[2] if len(parts) > 2 else fighter.get("unit_id")
+
     inventory = player.get("inventory", {})
-    cost = get_upgrade_cost(target_tier, fighter)
+    cost = calculate_upgrade_cost(target_unit_id, fighter.get("unit_id"))
     if not can_pay_cost(inventory, cost):
         return await callback.answer("Не хватает энергии или профильных духов.", show_alert=True)
     spend_cost(inventory, cost)
+
+    # Перекрафт: меняем unit_id и пересчитываем статы
+    from handlers.alc_fighters import generate_base_stats
+    fighter["unit_id"] = target_unit_id
     fighter["tier"] = target_tier
+    fighter["stats"] = generate_base_stats(target_tier, target_unit_id)
     fighter["stamina"] = get_fighter_stamina_cap(fighter)
     fighter["stamina_updated_at"] = int(time.time())
+
     await db.alchemy_players.update_one(
         {"user_id": user_id},
         {"$set": {"inventory": inventory, "fighters": player.get("fighters", [])}},
     )
     await callback.message.edit_text(build_fighter_detail_text(player, fighter), reply_markup=build_fighter_detail_keyboard(player, fighter), parse_mode="Markdown")
-    await callback.answer(f"Боец переведён в Т{target_tier}.")
+    await callback.answer(f"Боец перекрафчен в {ELEMENTS.get(target_unit_id, target_unit_id)} (Т{target_tier}).")
 
 
 @router.callback_query(F.data.startswith("fighter_rename:"))
@@ -611,6 +646,33 @@ async def fighter_retire(callback: types.CallbackQuery):
     )
     await callback.answer("Боец отправлен в отставку.")
     await render_barracks_menu(callback.message, user_id)
+
+
+@router.callback_query(F.data.startswith("fighter_become_hero:"))
+async def fighter_become_hero(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    fighter = find_fighter(player, callback.data.split(":")[1])
+    if not fighter:
+        return await callback.answer("Боец не найден.", show_alert=True)
+    if int(fighter.get("tier", 1)) < 3:
+        return await callback.answer("Только Т3 бойцы могут стать Героями.", show_alert=True)
+    if is_hero(fighter):
+        return await callback.answer("Этот боец уже Герой.", show_alert=True)
+    if int(fighter.get("xp", 0)) < HERO_XP_REQUIREMENT:
+        return await callback.answer(f"Нужно {HERO_XP_REQUIREMENT} XP для статуса Героя.", show_alert=True)
+
+    fighter["is_hero"] = True
+    # Бонус к статам за статус Героя
+    for stat in fighter.get("stats", {}):
+        fighter["stats"][stat] = int(fighter["stats"][stat] * 1.2)
+
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"fighters": player.get("fighters", [])}},
+    )
+    await callback.message.edit_text(build_fighter_detail_text(player, fighter), reply_markup=build_fighter_detail_keyboard(player, fighter), parse_mode="Markdown")
+    await callback.answer("🌟 Боец стал Героем! Смерть отключена, статы усилены.")
 
 
 class IsNamingFighter(Filter):

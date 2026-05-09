@@ -93,6 +93,30 @@ def get_raid_power(units: list, energy: int) -> int:
     tiers = [int(unit.get("tier", BATTLE_UNITS.get(unit.get("unit_id", ""), {}).get("tier", 1))) if isinstance(unit, dict) else BATTLE_UNITS[unit]["tier"] for unit in units]
     power = sum(tier * 18 + 10 for tier in tiers)
     power += energy * 3
+
+    # Бонусы от статов
+    total_attack = 0
+    total_speed = 0
+    total_perception = 0
+    total_defense = 0
+
+    for unit in units:
+        if isinstance(unit, dict) and "stats" in unit:
+            stats = unit["stats"]
+            total_attack += stats.get("attack", 0)
+            total_speed += stats.get("speed", 0)
+            total_perception += stats.get("perception", 0)
+            total_defense += stats.get("defense", 0)
+
+    # Атака увеличивает силу рейда
+    power += total_attack * 2
+    # Скорость увеличивает шанс успеха
+    power += total_speed
+    # Восприятие увеличивает шанс найти ценный лут
+    power += total_perception
+    # Защита снижает потери
+    power += total_defense
+
     if "sniper" in unit_ids:
         power += 12
     if "saboteur" in unit_ids:
@@ -107,7 +131,19 @@ def get_fort_power(player: dict) -> int:
     base_power = fort_level * 28
     loaded_traps = sum(1 for value in player.get("fort_defense", {}).values() if value)
     captive_bonus = min(18, len(player.get("captives", [])) * 2)
-    return base_power + loaded_traps * 12 + captive_bonus
+
+    # Гарнизон из бойцов
+    garrison_power = 0
+    garrison = player.get("fort_garrison", [])
+    for fighter_id in garrison:
+        fighter = next((f for f in player.get("fighters", []) if f.get("id") == fighter_id), None)
+        if fighter and fighter.get("status") == "garrison":
+            stats = fighter.get("stats", {})
+            tier = fighter.get("tier", 1)
+            # Защита и атака влияют на силу форта
+            garrison_power += (stats.get("defense", 0) + stats.get("attack", 0)) + tier * 10
+
+    return base_power + loaded_traps * 12 + captive_bonus + garrison_power
 
 
 def get_allowed_fort_slots(fort_level: int) -> list[str]:
@@ -216,7 +252,9 @@ def render_raids_menu(player: dict, draft: list[str] | None = None) -> str:
     lines = [
         "☠️ **РЕЙДЕРЫ**",
         f"Лимит бойцов: {team_limit}. Для запуска /грабить нужен готовый отряд и энергия.",
-        "💡 Справка: рейд-отряд всегда 3-5 бойцов. Меньше нельзя, это ударная группа, а не разведка.",
+        "💡 Опыт: 2 XP за рейд (быстрее экспедиций, но с риском).",
+        "💡 Статы влияют: атака → сила, восприятие → добыча, защита → меньше потерь.",
+        "💡 Плен: шанс зависит от разницы в силе атакующих и защиты.",
         "💡 Уставший боец в рейд всё ещё может пойти, но риск потери уже неприятный.",
         "",
     ]
@@ -297,11 +335,25 @@ def render_fort_menu(player: dict, page: int = 0) -> str:
     fort_level = player.get("buildings", {}).get("fort", 0)
     defense = player.get("fort_defense", {})
     captives = player.get("captives", [])
+    garrison = player.get("fort_garrison", [])
     lines = [f"🏰 **ФОРТ** (Ур. {fort_level})"]
     if fort_level <= 0:
         lines.append("Форт ещё не построен.")
         return "\n".join(lines)
     lines.append("💡 Справка: в каждый открытый слот можно положить любой предмет. При срабатывании ловушки предмет сгорает.")
+    lines.append("💡 Гарнизон: бойцы на охране усиливают защиту форта своими статами.")
+
+    # Показываем гарнизон
+    if garrison:
+        lines.append("🛡️ Гарнизон:")
+        for fighter_id in garrison:
+            fighter = next((f for f in player.get("fighters", []) if f.get("id") == fighter_id), None)
+            if fighter:
+                lines.append(f"• {get_role_name(fighter)} (Т{fighter.get('tier', 1)})")
+    else:
+        lines.append("🛡️ Гарнизон пуст.")
+
+    lines.append("")
     lines.append("Ловушки:")
     for slot_id in get_allowed_fort_slots(fort_level):
         item_id = defense.get(slot_id)
@@ -328,6 +380,7 @@ def build_fort_keyboard(player: dict, page: int = 0) -> types.InlineKeyboardMark
     builder = InlineKeyboardBuilder()
     for slot_id in get_allowed_fort_slots(fort_level):
         builder.button(text=f"🧱 Настроить {TRAP_LABELS[slot_id]}", callback_data=f"fort_slot:{slot_id}")
+    builder.button(text="🛡️ Гарнизон", callback_data="fort_garrison_open")
     captives = player.get("captives", [])
     total_pages = max(1, (len(captives) + FORT_CAPTIVES_PER_PAGE - 1) // FORT_CAPTIVES_PER_PAGE)
     if page >= total_pages:
@@ -480,6 +533,17 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
     defender_captives = []
     live_target = False
 
+    # Суммируем статы атакующих для влияния на добычу и плен
+    total_perception = 0
+    total_attack = 0
+    total_speed = 0
+    for unit in units:
+        if isinstance(unit, dict) and "stats" in unit:
+            stats = unit["stats"]
+            total_perception += stats.get("perception", 0)
+            total_attack += stats.get("attack", 0)
+            total_speed += stats.get("speed", 0)
+
     if defender:
         live_target = is_live_player(defender)
         defense_power += get_fort_power(defender)
@@ -500,21 +564,35 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
     scraps = {}
     dead_units = []
 
+    # Разница в силе влияет на шанс плена
+    power_diff = max(0, attack_power - defense_power)
+    captive_chance = 0.20 + (power_diff // 50) * 0.05
+    captive_chance = min(0.60, captive_chance)
+
     if success:
         if defender:
+            # Восприятие увеличивает количество и качество добычи
+            loot_count = 2 + (total_perception // 15)
+            loot_count = min(5, loot_count)
             if live_target:
-                loot = choose_loot_from_inventory(defender_inventory, count=2, max_fraction=0.18, hard_cap=4)
+                loot = choose_loot_from_inventory(defender_inventory, count=loot_count, max_fraction=0.18, hard_cap=4)
             else:
-                loot = choose_loot_from_inventory(defender_inventory, count=3, max_fraction=0.30, hard_cap=7)
+                loot = choose_loot_from_inventory(defender_inventory, count=loot_count, max_fraction=0.30, hard_cap=7)
         else:
-            loot = random.choice(
-                [
-                    {"energy": random.randint(2, 6), "ghost": random.randint(1, 2)},
-                    {"w": 8, "e": 8, "pack_s": 1},
-                    {"f": 6, "a": 6, "recipe_scroll": 1},
-                ]
-            )
-        if defender and not live_target and random.random() < 0.20 and survivors:
+            # PvE добыча улучшается от восприятия
+            base_loot = [
+                {"energy": random.randint(2, 6), "ghost": random.randint(1, 2)},
+                {"w": 8, "e": 8, "pack_s": 1},
+                {"f": 6, "a": 6, "recipe_scroll": 1},
+            ]
+            if total_perception > 10:
+                base_loot.append({"energy": random.randint(3, 8), "recipe_scroll": 1})
+            if total_perception > 20:
+                base_loot.append({"pack_m": 1, "philosophers_stone": 1})
+            loot = random.choice(base_loot)
+
+        # Шанс плена зависит от разницы в силе
+        if defender and not live_target and random.random() < captive_chance and survivors:
             captured_unit = random.choice(survivors)
             loot["ghost"] = loot.get("ghost", 0) + 1 if is_pve else loot.get("ghost", 0)
             if defender:
@@ -523,6 +601,13 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
                 survivors = [fighter for fighter in survivors if fighter.get("id") != captured_unit.get("id")]
     else:
         lost_count = random.randint(1, max(1, len(units) // 2))
+        # Защита снижает потери
+        total_defense = 0
+        for unit in units:
+            if isinstance(unit, dict) and "stats" in unit:
+                total_defense += unit["stats"].get("defense", 0)
+        lost_count = max(1, lost_count - (total_defense // 10))
+
         random.shuffle(survivors)
         lost_units = survivors[:lost_count]
         survivors = survivors[lost_count:]
@@ -771,6 +856,96 @@ async def fort_open(callback: types.CallbackQuery):
         parse_mode="Markdown",
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fort_garrison_open")
+async def fort_garrison_open(callback: types.CallbackQuery):
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    garrison = player.get("fort_garrison", [])
+    lines = ["🛡️ **ГАРНИЗОН**", "Бойцы на охране усиливают защиту форта своими статами."]
+    if garrison:
+        lines.append("")
+        lines.append("Текущий состав:")
+        for fighter_id in garrison:
+            fighter = next((f for f in player.get("fighters", []) if f.get("id") == fighter_id), None)
+            if fighter:
+                stats = fighter.get("stats", {})
+                lines.append(f"• {get_role_name(fighter)} (Т{fighter.get('tier', 1)})")
+                lines.append(f"  Атака: {stats.get('attack', 0)} | Защита: {stats.get('defense', 0)}")
+    else:
+        lines.append("")
+        lines.append("Гарнизон пуст. Выбери бойцов для охраны.")
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить бойца", callback_data="fort_garrison_add")
+    if garrison:
+        builder.button(text="➖ Снять всех", callback_data="fort_garrison_clear")
+    builder.button(text="🔙 В Форт", callback_data="fort_open")
+    builder.adjust(1)
+    await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fort_garrison_add")
+async def fort_garrison_add(callback: types.CallbackQuery):
+    player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
+    garrison = player.get("fort_garrison", [])
+    available_fighters = [f for f in player.get("fighters", []) if f.get("status") == "available" and f.get("id") not in garrison]
+
+    if not available_fighters:
+        return await callback.answer("Нет доступных бойцов для гарнизона.", show_alert=True)
+
+    lines = ["🛡️ **ВЫБЕРИ БОЙЦА ДЛЯ ГАРНИЗОНА**"]
+    builder = InlineKeyboardBuilder()
+    for fighter in available_fighters[:10]:
+        stats = fighter.get("stats", {})
+        text = f"{get_role_name(fighter)} (Т{fighter.get('tier', 1)}) - А:{stats.get('attack', 0)} З:{stats.get('defense', 0)}"
+        builder.button(text=text, callback_data=f"fort_garrison_assign:{fighter['id']}")
+    builder.button(text="🔙 Назад", callback_data="fort_garrison_open")
+    builder.adjust(1)
+    await callback.message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("fort_garrison_assign:"))
+async def fort_garrison_assign(callback: types.CallbackQuery):
+    fighter_id = callback.data.split(":")[1]
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    fighter = find_fighter(player, fighter_id)
+
+    if not fighter or fighter.get("status") != "available":
+        return await callback.answer("Боец недоступен.", show_alert=True)
+
+    garrison = player.get("fort_garrison", [])
+    garrison.append(fighter_id)
+    fighter["status"] = "garrison"
+
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"fort_garrison": garrison, "fighters": player.get("fighters", [])}},
+    )
+    await callback.answer(f"{get_role_name(fighter)} заступил на охрану.")
+    await fort_garrison_open(callback)
+
+
+@router.callback_query(F.data == "fort_garrison_clear")
+async def fort_garrison_clear(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    garrison = player.get("fort_garrison", [])
+
+    for fighter_id in garrison:
+        fighter = find_fighter(player, fighter_id)
+        if fighter:
+            fighter["status"] = "available"
+
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"fort_garrison": [], "fighters": player.get("fighters", [])}},
+    )
+    await callback.answer("Гарнизон распущен.")
+    await fort_garrison_open(callback)
 
 
 @router.callback_query(F.data.startswith("raid_page:"))
