@@ -1,5 +1,6 @@
 import os
 import re
+import asyncio
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
@@ -86,6 +87,12 @@ from handlers.alc_expeditions import (
     get_expedition_slot_limit,
     get_expedition_team_limit,
     trim_logs,
+    choose_weighted_loot,
+    build_planned_events,
+    resolve_draft_fighters,
+    finalize_return,
+    process_single_expedition,
+    LOOT_TABLE,
 )
 from handlers.alc_raids import (
     build_public_raid_line,
@@ -1087,6 +1094,359 @@ class ExpeditionLogicTests(unittest.TestCase):
         self.assertIn("Энергия x1", text)
         self.assertIn("Малый набор x1", text)
         self.assertIn("Камень x2", text)
+
+    def test_choose_weighted_loot_all_items_can_drop(self):
+        """Все предметы из таблицы могут выпасть."""
+        dropped = set()
+        for _ in range(1000):
+            item_id, _ = choose_weighted_loot()
+            dropped.add(item_id)
+        expected = set(item_id for item_id, _ in LOOT_TABLE)
+        self.assertEqual(dropped, expected)
+
+    def test_choose_weighted_loot_amount_ranges_are_valid(self):
+        """Количество предметов в допустимых диапазонах."""
+        for _ in range(100):
+            item_id, amount = choose_weighted_loot()
+            if item_id in {"diamond", "gold", "gem"}:
+                self.assertIn(amount, {1, 2})
+            elif item_id == "philosophers_stone":
+                self.assertIn(amount, {0, 1})
+            elif item_id in {"energy", "life", "ghost", "electricity"}:
+                self.assertIn(amount, {1, 2, 3})
+            elif item_id in {"recipe_scroll", "pack_s", "pack_m", "pack_l"}:
+                self.assertEqual(amount, 1)
+            elif item_id in {"stone", "wood", "sand", "moss", "glass", "brick", "metal"}:
+                self.assertIn(amount, {2, 3, 4, 5})
+            else:
+                self.assertIn(amount, {3, 4, 5, 6})
+
+    def test_choose_weighted_loot_returns_valid_tuple(self):
+        """Функция возвращает кортеж (item_id, amount)."""
+        for _ in range(50):
+            result = choose_weighted_loot()
+            self.assertIsInstance(result, tuple)
+            self.assertEqual(len(result), 2)
+            item_id, amount = result
+            self.assertIsInstance(item_id, str)
+            self.assertIsInstance(amount, int)
+            self.assertGreaterEqual(amount, 0)
+
+    def test_build_planned_events_respects_stats(self):
+        """Количество и типы событий зависят от статов."""
+        units = ["medic", "earth_shielder", "sniper"]
+        stats_low = build_team_stats(units, barracks_level=2)
+        stats_low["total_speed"] = 0
+        stats_low["total_perception"] = 0
+
+        stats_high = build_team_stats(units, barracks_level=2)
+        stats_high["total_speed"] = 20
+        stats_high["total_perception"] = 30
+
+        events_low = []
+        for _ in range(10):
+            events = asyncio.run(build_planned_events(units, stats_low))
+            events_low.append(len(events))
+
+        events_high = []
+        for _ in range(10):
+            events = asyncio.run(build_planned_events(units, stats_high))
+            events_high.append(len(events))
+
+        avg_low = sum(events_low) / len(events_low)
+        avg_high = sum(events_high) / len(events_high)
+        self.assertGreater(avg_high, avg_low)
+
+    def test_build_planned_events_generates_all_types(self):
+        """Генерируются все типы событий."""
+        units = ["medic", "earth_shielder", "sniper"]
+        stats = build_team_stats(units, barracks_level=2)
+
+        event_types = set()
+        for _ in range(50):
+            events = asyncio.run(build_planned_events(units, stats))
+            for event in events:
+                event_types.add(event.get("type"))
+
+        self.assertIn("loot", event_types)
+        self.assertIn("damage", event_types)
+        self.assertIn("heal", event_types)
+        self.assertIn("meeting", event_types)
+
+    def test_build_planned_events_loot_has_valid_structure(self):
+        """События loot имеют правильную структуру."""
+        units = ["medic", "earth_shielder", "sniper"]
+        stats = build_team_stats(units, barracks_level=2)
+
+        for _ in range(20):
+            events = asyncio.run(build_planned_events(units, stats))
+            for event in events:
+                if event.get("type") == "loot":
+                    self.assertIn("loot", event)
+                    self.assertIsInstance(event["loot"], dict)
+                    self.assertGreater(len(event["loot"]), 0)
+                    for item_id, amount in event["loot"].items():
+                        self.assertIsInstance(item_id, str)
+                        self.assertIsInstance(amount, int)
+                        self.assertGreater(amount, 0)
+
+    def test_resolve_draft_fighters_filters_by_status(self):
+        """Фильтрация по статусу бойца."""
+        player = {
+            "fighters": [
+                {"id": "1", "unit_id": "fire_swordsman", "status": "available", "stamina": 3},
+                {"id": "2", "unit_id": "water_guard", "status": "expedition", "stamina": 3},
+                {"id": "3", "unit_id": "earth_shielder", "status": "available", "stamina": 3},
+            ],
+            "fort_garrison": [],
+        }
+        draft = ["1", "2", "3"]
+        result = resolve_draft_fighters(player, draft, expedition_mode=False)
+        self.assertEqual(len(result), 2)
+        self.assertEqual([f["id"] for f in result], ["1", "3"])
+
+    def test_resolve_draft_fighters_filters_by_stamina_in_expedition_mode(self):
+        """Фильтрация по выносливости в режиме экспедиции."""
+        player = {
+            "fighters": [
+                {"id": "1", "unit_id": "fire_swordsman", "status": "available", "stamina": 3},
+                {"id": "2", "unit_id": "water_guard", "status": "available", "stamina": 0},
+                {"id": "3", "unit_id": "earth_shielder", "status": "available", "stamina": 1},
+            ],
+            "fort_garrison": [],
+        }
+        draft = ["1", "2", "3"]
+        result = resolve_draft_fighters(player, draft, expedition_mode=True)
+        self.assertEqual(len(result), 2)
+        self.assertEqual([f["id"] for f in result], ["1", "3"])
+
+    def test_resolve_draft_fighters_filters_by_garrison(self):
+        """Фильтрация по гарнизону."""
+        player = {
+            "fighters": [
+                {"id": "1", "unit_id": "fire_swordsman", "status": "available", "stamina": 3},
+                {"id": "2", "unit_id": "water_guard", "status": "garrison", "stamina": 3},
+                {"id": "3", "unit_id": "earth_shielder", "status": "available", "stamina": 3},
+            ],
+            "fort_garrison": ["2"],
+        }
+        draft = ["1", "2", "3"]
+        result = resolve_draft_fighters(player, draft, expedition_mode=False)
+        self.assertEqual(len(result), 2)
+        self.assertEqual([f["id"] for f in result], ["1", "3"])
+
+    def test_resolve_draft_fighters_ignores_zero_stamina_in_normal_mode(self):
+        """В обычном режиме нулевая выносливость не фильтруется."""
+        player = {
+            "fighters": [
+                {"id": "1", "unit_id": "fire_swordsman", "status": "available", "stamina": 0},
+                {"id": "2", "unit_id": "water_guard", "status": "available", "stamina": 3},
+            ],
+            "fort_garrison": [],
+        }
+        draft = ["1", "2"]
+        result = resolve_draft_fighters(player, draft, expedition_mode=False)
+        self.assertEqual(len(result), 2)
+
+    def test_finalize_return_changes_status_to_returning(self):
+        """finalize_return меняет статус на returning."""
+        expedition = {
+            "status": "searching",
+            "started_at": 1000,
+            "logs": ["log1"],
+        }
+        finalize_return(expedition, "test reason")
+        self.assertEqual(expedition["status"], "returning")
+        self.assertEqual(expedition["status_label"], "Идёт домой")
+        self.assertEqual(expedition["return_reason"], "test reason")
+        self.assertGreater(expedition["return_end_at"], 1000)
+        self.assertEqual(expedition["next_tick_at"], 0)
+
+    def test_finalize_return_adds_log_entry(self):
+        """finalize_return добавляет запись в логи."""
+        expedition = {
+            "status": "searching",
+            "started_at": 1000,
+            "logs": ["log1"],
+        }
+        finalize_return(expedition, "test reason")
+        self.assertEqual(len(expedition["logs"]), 2)
+        self.assertIn("разворачивается домой", expedition["logs"][1])
+
+    def test_finalize_return_does_not_modify_already_returning(self):
+        """finalize_return не меняет уже возвращающуюся экспедицию."""
+        expedition = {
+            "status": "returning",
+            "started_at": 1000,
+            "logs": ["log1"],
+            "return_end_at": 2000,
+        }
+        original_return_end = expedition["return_end_at"]
+        finalize_return(expedition, "test reason")
+        self.assertEqual(expedition["return_end_at"], original_return_end)
+
+    def test_process_single_expedition_handles_loot_event(self):
+        """Обработка события loot."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 100,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "loot", "loot": {"stone": 5}, "text": "Found stone"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["loot"], {"stone": 5})
+        self.assertEqual(expedition["event_index"], 1)
+
+    def test_process_single_expedition_handles_damage_event(self):
+        """Обработка события damage."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 100,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "damage", "damage": 20, "text": "Took damage"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["current_hp"], 80)
+
+    def test_process_single_expedition_handles_heal_event(self):
+        """Обработка события heal."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 50,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "heal", "heal": 20, "text": "Healed"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["current_hp"], 70)
+
+    def test_process_single_expedition_handles_meeting_event_with_recipe(self):
+        """Обработка события meeting с наградой рецептом."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 100,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "meeting", "reward_recipe": True, "visitor": "alchemist", "text": "Met alchemist"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now), \
+             patch("handlers.alc_expeditions.random.choice", return_value="stone"):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertIn("stone", player["discovered"])
+
+    def test_process_single_expedition_finalizes_on_zero_hp(self):
+        """Экспедиция завершается при HP <= 0."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 10,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {"stone": 10},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "damage", "damage": 20, "text": "Took damage"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["status"], "returning")
+        self.assertEqual(expedition["loot"], {})
+
+    def test_process_single_expedition_finalizes_on_full_cargo(self):
+        """Экспедиция завершается при полном грузе."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "searching",
+            "current_hp": 100,
+            "total_hp": 100,
+            "cargo_capacity": 10,
+            "loot": {"stone": 10},
+            "logs": [],
+            "next_tick_at": now - 100,
+            "planned_events": [
+                {"type": "loot", "loot": {"stone": 1}, "text": "Found stone"},
+            ],
+            "event_index": 0,
+            "max_end_at": now + 10000,
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["status"], "returning")
+
+    def test_process_single_expedition_marks_arrived_when_returning(self):
+        """Экспедиция отмечается как прибывшая."""
+        player = {"discovered": []}
+        now = 1000
+        expedition = {
+            "status": "returning",
+            "current_hp": 50,
+            "total_hp": 100,
+            "cargo_capacity": 50,
+            "loot": {"stone": 5},
+            "logs": [],
+            "next_tick_at": 0,
+            "return_end_at": now - 100,
+            "final_report": "",
+        }
+        with patch("handlers.alc_expeditions.time.time", return_value=now):
+            changed = asyncio.run(process_single_expedition(player, expedition))
+        self.assertTrue(changed)
+        self.assertEqual(expedition["status"], "arrived")
+        self.assertEqual(expedition["status_label"], "Отряд вернулся")
+        self.assertIn("добрался до базы", expedition["logs"][-1])
 
 
 class RaidLogicTests(unittest.TestCase):
