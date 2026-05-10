@@ -842,7 +842,7 @@ async def expedition_launch(callback: types.CallbackQuery):
         "current_hp": stats["total_hp"],
         "logs": [
             "Отряд вышел за ворота и уже спорит, кто понесёт котёл.",
-            f"Командование ждёт богатый рейс: груз {stats['cargo_capacity']}, ударная мощь {stats['tier_pressure']}, нюх на добычу {stats['loot_bonus']}.",
+            f"Потенциал отряда: груз {stats['cargo_capacity']}, дальность {9 + stats.get('total_speed', 0) // 5} событий, нюх на редкое {10 + stats.get('total_perception', 0) // 10}%.",
         ],
         "planned_events": await build_planned_events(draft_fighters, stats),
         "event_index": 0,
