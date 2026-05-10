@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(telegram:access)",
+      "Bash(python *)"
+    ]
+  }
+}

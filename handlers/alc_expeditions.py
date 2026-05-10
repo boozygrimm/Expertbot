@@ -114,12 +114,18 @@ FALLBACK_ENEMIES = [
     "архивного упыря на ставке",
 ]
 LOOT_TABLE = [
-    ("w", 7), ("f", 7), ("e", 7), ("a", 7),
+    # Базовые элементы (частые)
+    ("w", 8), ("f", 8), ("e", 8), ("a", 8),
+    # Материалы (средние)
     ("stone", 6), ("wood", 6), ("sand", 5), ("moss", 4),
-    ("glass", 4), ("brick", 4), ("metal", 4), ("energy", 4),
-    ("life", 3), ("ghost", 2), ("electricity", 2),
-    ("recipe_scroll", 2), ("pack_s", 3), ("pack_m", 2), ("pack_l", 1),
+    ("glass", 4), ("brick", 4), ("metal", 4),
+    # Редкие элементы (редкие)
+    ("energy", 5), ("life", 3), ("ghost", 3), ("electricity", 3),
+    # Ценные предметы (очень редкие)
+    ("recipe_scroll", 2), ("pack_s", 2), ("pack_m", 1), ("pack_l", 1),
     ("philosophers_stone", 1),
+    # Редкие награды (очень редкие)
+    ("diamond", 1), ("gold", 1), ("gem", 1),
 ]
 MEETING_SPECIALS = ["alchemist", "wanderer", "hero", "scientist"]
 MEETING_PACKS = ["pack_s", "pack_s", "pack_m", "pack_m", "pack_l"]
@@ -226,7 +232,7 @@ def trim_logs(logs: list[str]) -> list[str]:
     return logs[-MAX_LOGS:]
 
 
-def choose_weighted_loot() -> str:
+def choose_weighted_loot() -> tuple[str, int]:
     entries = [(item_id, weight) for item_id, weight in LOOT_TABLE]
     total = sum(weight for _, weight in entries)
     roll = random.randint(1, total)
@@ -234,8 +240,21 @@ def choose_weighted_loot() -> str:
     for item_id, weight in entries:
         passed += weight
         if roll <= passed:
-            return item_id
-    return "stone"
+            # Рандомное количество для всех предметов
+            if item_id in {"diamond", "gold", "gem"}:
+                amount = random.randint(1, 2)
+            elif item_id == "philosophers_stone":
+                amount = random.randint(0, 1)
+            elif item_id in {"energy", "life", "ghost", "electricity"}:
+                amount = random.randint(1, 3)
+            elif item_id in {"recipe_scroll", "pack_s", "pack_m", "pack_l"}:
+                amount = 1
+            elif item_id in {"stone", "wood", "sand", "moss", "glass", "brick", "metal"}:
+                amount = random.randint(2, 5)
+            else:  # Базовые элементы
+                amount = random.randint(3, 6)
+            return item_id, amount
+    return "stone", random.randint(2, 5)
 
 
 def build_fallback_text(units: list) -> str:
@@ -377,20 +396,19 @@ async def build_planned_events(units: list, stats: dict) -> list[dict]:
     for _ in range(planned_count):
         roll = random.random()
         if roll < 0.58:
-            loot_item = choose_weighted_loot()
-            if loot_item in {"recipe_scroll", "pack_s", "pack_m", "pack_l", "philosophers_stone"}:
-                loot_amount = 1
-            elif loot_item in {"energy", "life", "ghost", "electricity"}:
-                loot_amount = random.randint(1, 2 + min(2, stats["loot_bonus"] // 2))
-            else:
-                loot_amount = random.randint(2, 4 + min(3, stats["loot_bonus"]))
+            loot_item, base_amount = choose_weighted_loot()
+            # Бонус от loot_bonus к количеству
+            loot_amount = base_amount + min(2, stats["loot_bonus"] // 2)
+            if loot_amount <= 0:
+                continue
 
             event = {"type": "loot", "loot": {loot_item: loot_amount}}
             if random.random() < min(0.35, 0.08 * stats["loot_bonus"]):
-                bonus_item = choose_weighted_loot()
+                bonus_item, bonus_base_amount = choose_weighted_loot()
                 if bonus_item != loot_item:
-                    bonus_amount = 1 if bonus_item in {"recipe_scroll", "pack_s", "pack_m", "pack_l", "philosophers_stone"} else random.randint(1, 3)
-                    event["loot"][bonus_item] = bonus_amount
+                    bonus_amount = bonus_base_amount + min(1, stats["loot_bonus"] // 3)
+                    if bonus_amount > 0:
+                        event["loot"][bonus_item] = bonus_amount
 
             # Бонус от восприятия к редким ресурсам
             if perception_bonus > 0 and random.random() < 0.1 + (perception_bonus * 0.02):
@@ -474,7 +492,7 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
         f"Лимит бойцов в отряде: {team_limit}.",
         f"Длительность: {duration_hours} ч. (зависит от Гильдии).",
         "💡 Опыт: 1 XP с шансом 50% (безопаснее рейдов).",
-        "💡 Статы влияют: скорость → дальность, восприятие → редкие ресурсы, стойкость → груз.",
+        "💡 Статы влияют: скорость (5→+1 событие), восприятие (10→редкие ресурсы), стойкость (3→+1 груз).",
         "💡 Бодрость возвращается по 1 каждые 6 часов.",
         "",
     ]

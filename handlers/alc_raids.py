@@ -253,8 +253,9 @@ def render_raids_menu(player: dict, draft: list[str] | None = None) -> str:
         "☠️ **РЕЙДЕРЫ**",
         f"Лимит бойцов: {team_limit}. Для запуска /грабить нужен готовый отряд и энергия.",
         "💡 Опыт: 2 XP за рейд (быстрее экспедиций, но с риском).",
-        "💡 Статы влияют: атака → сила, восприятие → добыча, защита → меньше потерь.",
-        "💡 Плен: шанс зависит от разницы в силе атакующих и защиты.",
+        "💡 Статы влияют: атака (x2 сила), восприятие (15→+1 добыча), защита (10→-1 потеря).",
+        "💡 Вербовка: базовый шанс 30%, +5% за 10 стойкости игрока, +4% за 8 поддержки, -5% за 8 стойкости пленника.",
+        "💡 Выкуп: стоимость зависит от тира и опыта, скидка от поддержки и восприятия.",
         "💡 Уставший боец в рейд всё ещё может пойти, но риск потери уже неприятный.",
         "",
     ]
@@ -519,8 +520,84 @@ def build_captive(fighter, owner_id: int | None = None) -> dict:
             "raids": fighter.get("raids", 0),
             "expeditions": fighter.get("expeditions", 0),
             "crafted_tier3": fighter.get("crafted_tier3", False),
+            "stats": fighter.get("stats", {}).copy(),
         }
-    return {"id": uuid.uuid4().hex[:10], "unit_id": fighter, "tier": BATTLE_UNITS.get(fighter, {}).get("tier", 1), "owner_id": owner_id}
+    return {"id": uuid.uuid4().hex[:10], "unit_id": fighter, "tier": BATTLE_UNITS.get(fighter, {}).get("tier", 1), "owner_id": owner_id, "stats": {}}
+
+
+def calculate_ransom_cost(captive: dict, player_stats: dict) -> dict:
+    """Рассчитывает стоимость выкупа пленного."""
+    tier = captive.get("tier", 1)
+    raids = captive.get("raids", 0)
+    expeditions = captive.get("expeditions", 0)
+
+    # Базовая стоимость на основе тира и опыта
+    base_cost = tier * 10 + raids * 2 + expeditions * 1
+
+    # Бонусы от статов игрока (используем существующие)
+    support = player_stats.get("support", 0)  # Влияет на переговоры
+    perception = player_stats.get("perception", 0)  # Влияет на оценку
+
+    # Скидка от поддержки и восприятия
+    discount = (support // 5) + (perception // 8)
+    discount = min(40, discount)  # Максимум 40% скидки
+
+    final_cost = int(base_cost * (1 - discount / 100))
+
+    # Определяем базовый ресурс для духа на основе unit_id
+    unit_id = captive.get("unit_id", "")
+    spirit_resource = "ghost"  # По умолчанию
+    if unit_id in BATTLE_UNITS:
+        fallback_spirit = BATTLE_UNITS[unit_id].get("fallback_spirit", "ghost")
+        spirit_resource = fallback_spirit
+
+    return {
+        "energy": final_cost // 5,
+        "spirit": final_cost // 3,
+        "spirit_resource": spirit_resource,
+        "discount": discount,
+    }
+
+
+def calculate_recruit_chance(captive: dict, player_stats: dict) -> float:
+    """Рассчитывает шанс вербовки с учетом характеристик."""
+    base_chance = 0.30  # Базовый шанс 30%
+
+    # Бонус от стойкости игрока (endurance) - дольше выдерживают переговоры
+    endurance = player_stats.get("endurance", 0)
+    endurance_bonus = min(0.30, endurance // 10 * 0.05)  # 10 endurance → +5%
+
+    # Бонус от поддержки игрока (support) - лучше убеждают
+    support = player_stats.get("support", 0)
+    support_bonus = min(0.20, support // 8 * 0.04)  # 8 support → +4%
+
+    # Штраф от тира пленного
+    tier_penalty = captive.get("tier", 1) * 0.05
+
+    # Штраф от стойкости пленника - чем выше, тем сложнее вербовать
+    captive_stats = captive.get("stats", {})
+    captive_endurance = captive_stats.get("endurance", 0)
+    endurance_penalty = min(0.40, captive_endurance // 8 * 0.05)  # 8 endurance → -5%
+
+    final_chance = base_chance + endurance_bonus + support_bonus - tier_penalty - endurance_penalty
+    return max(0.10, min(0.80, final_chance))  # 10-80%
+
+
+def calculate_recruit_cost(captive: dict, player_stats: dict) -> dict:
+    """Рассчитывает стоимость вербовки."""
+    tier = captive.get("tier", 1)
+    base_energy = tier * 3  # Базовая стоимость
+
+    # Скидка от поддержки
+    support = player_stats.get("support", 0)
+    discount = min(30, support // 5)  # Максимум 30% скидки
+
+    final_energy = int(base_energy * (1 - discount / 100))
+
+    return {
+        "energy": final_energy,
+        "discount": discount,
+    }
 
 
 async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str, defender_name: str, is_pve: bool) -> dict:
@@ -581,14 +658,21 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
         else:
             # PvE добыча улучшается от восприятия
             base_loot = [
-                {"energy": random.randint(2, 6), "ghost": random.randint(1, 2)},
-                {"w": 8, "e": 8, "pack_s": 1},
-                {"f": 6, "a": 6, "recipe_scroll": 1},
+                {"energy": random.randint(3, 8), "ghost": random.randint(1, 3)},
+                {"w": random.randint(8, 12), "e": random.randint(8, 12), "pack_s": 1},
+                {"f": random.randint(6, 10), "a": random.randint(6, 10), "recipe_scroll": 1},
+                {"stone": random.randint(4, 8), "wood": random.randint(4, 8), "pack_m": 1},
+                {"life": random.randint(1, 3), "electricity": random.randint(1, 3)},
             ]
             if total_perception > 10:
                 base_loot.append({"energy": random.randint(3, 8), "recipe_scroll": 1})
             if total_perception > 20:
-                base_loot.append({"pack_m": 1, "philosophers_stone": 1})
+                base_loot.append({"pack_m": 1, "philosophers_stone": random.randint(0, 1)})
+            # Редкие награды с рандомом
+            if total_perception > 15:
+                base_loot.append({"diamond": random.randint(1, 2), "gold": random.randint(1, 2)})
+            if total_perception > 25:
+                base_loot.append({"gem": random.randint(1, 2), "philosophers_stone": random.randint(0, 1)})
             loot = random.choice(base_loot)
 
         # Шанс плена зависит от разницы в силе
@@ -1118,12 +1202,35 @@ async def captive_view(callback: types.CallbackQuery):
     captive = next((item for item in player.get("captives", []) if item.get("id") == captive_id), None)
     if not captive:
         return await callback.answer("Пленный сбежал раньше вас.", show_alert=True)
+
+    # Считаем статы игрока
+    total_stats = {"endurance": 0, "support": 0, "perception": 0}
+    for fighter in player.get("fighters", []):
+        stats = fighter.get("stats", {})
+        total_stats["endurance"] += stats.get("endurance", 0)
+        total_stats["support"] += stats.get("support", 0)
+        total_stats["perception"] += stats.get("perception", 0)
+
+    recruit_cost = calculate_recruit_cost(captive, total_stats)
+    recruit_chance = calculate_recruit_chance(captive, total_stats)
+    ransom_cost = calculate_ransom_cost(captive, total_stats)
+
     builder = InlineKeyboardBuilder()
-    builder.button(text="⚡ Вербовка", callback_data=f"captive_recruit:{captive_id}")
-    builder.button(text="⚗️ Разобрать", callback_data=f"captive_recycle:{captive_id}")
+    builder.button(text=f"⚡ Вербовка ({recruit_cost['energy']}⚡, {int(recruit_chance*100)}%)", callback_data=f"captive_recruit:{captive_id}")
+    builder.button(text=f"💰 Выкуп ({ransom_cost['energy']}⚡ + {ransom_cost['spirit']}{ELEMENTS.get(ransom_cost['spirit_resource'], '')})", callback_data=f"captive_ransom:{captive_id}")
+    builder.button(text="⚗️ Разбор", callback_data=f"captive_recycle:{captive_id}")
     builder.button(text="🔙 В Форт", callback_data="fort_open")
     builder.adjust(1)
-    text = f"🪤 **ПЛЕННЫЙ**\n{get_role_name(captive.get('unit_id', 'ghost'))}\nТир: {captive.get('tier', 1)}"
+
+    text = (
+        f"🪤 **ПЛЕННЫЙ**\n"
+        f"{get_role_name(captive.get('unit_id', 'ghost'))}\n"
+        f"Тир: {captive.get('tier', 1)} | Рейды: {captive.get('raids', 0)} | Экспедиции: {captive.get('expeditions', 0)}\n"
+        f"Стойкость: {captive.get('stats', {}).get('endurance', 0)}\n\n"
+        f"⚡ Вербовка: {recruit_cost['energy']} энергии, шанс {int(recruit_chance*100)}%\n"
+        f"💰 Выкуп: {ransom_cost['energy']} энергии + {ransom_cost['spirit']} {ELEMENTS.get(ransom_cost['spirit_resource'], '')}\n"
+        f"⚗️ Разбор: {captive.get('tier', 1)} каждого базового элемента"
+    )
     await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
 
@@ -1137,16 +1244,30 @@ async def captive_recruit(callback: types.CallbackQuery):
     captive = next((item for item in captives if item.get("id") == captive_id), None)
     if not captive:
         return await callback.answer("Пленный пропал.", show_alert=True)
+
+    # Считаем статы игрока
+    total_stats = {"endurance": 0, "support": 0}
+    for fighter in player.get("fighters", []):
+        stats = fighter.get("stats", {})
+        total_stats["endurance"] += stats.get("endurance", 0)
+        total_stats["support"] += stats.get("support", 0)
+
+    cost = calculate_recruit_cost(captive, total_stats)
     inventory = player.get("inventory", {})
-    cost = captive.get("tier", 1) * 2
-    if inventory.get("energy", 0) < cost:
-        return await callback.answer("Не хватает энергии на вербовку.", show_alert=True)
-    inventory["energy"] -= cost
-    if inventory.get("energy", 0) <= 0:
+
+    if inventory.get("energy", 0) < cost["energy"]:
+        return await callback.answer(f"Не хватает энергии. Нужно: {cost['energy']}", show_alert=True)
+
+    inventory["energy"] -= cost["energy"]
+    if inventory["energy"] <= 0:
         inventory.pop("energy", None)
+
     captives = [item for item in captives if item.get("id") != captive_id]
     counters = player.get("action_counters", DEFAULT_ACTION_COUNTERS)
-    recruited_success = random.random() < 0.5
+
+    recruit_chance = calculate_recruit_chance(captive, total_stats)
+    recruited_success = random.random() < recruit_chance
+
     if recruited_success:
         fighters = player.get("fighters", [])
         recruited = create_fighter(captive["unit_id"], tier=captive.get("tier", 1), crafted_tier3=captive.get("crafted_tier3", False))
@@ -1155,16 +1276,74 @@ async def captive_recruit(callback: types.CallbackQuery):
         recruited["expeditions"] = captive.get("expeditions", 0)
         fighters.append(recruited)
         counters = increment_action_counter(player, "captives_recruited")
-        text = "Пленный сломался, согласился служить и получил котелок по размеру."
+        text = f"Пленный сломался и согласился служить. Шанс был {int(recruit_chance * 100)}%."
     else:
-        text = "Пленный дождался, пока все моргнут, и сбежал в ближайший туман."
+        text = f"Пленный сбежал в туман. Шанс был {int(recruit_chance * 100)}%."
+
     update_fields = {"inventory": inventory, "captives": captives, "action_counters": counters}
     if recruited_success:
         update_fields["fighters"] = fighters
+
     await db.alchemy_players.update_one(
         {"user_id": user_id},
         {"$set": update_fields},
     )
+    await callback.message.edit_text(text, parse_mode="Markdown")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("captive_ransom:"))
+async def captive_ransom(callback: types.CallbackQuery):
+    captive_id = callback.data.split(":")[1]
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    captives = player.get("captives", [])
+    captive = next((item for item in captives if item.get("id") == captive_id), None)
+    if not captive:
+        return await callback.answer("Пленный пропал.", show_alert=True)
+
+    # Считаем статы игрока (сумма статов всех бойцов)
+    total_stats = {"support": 0, "perception": 0}
+    for fighter in player.get("fighters", []):
+        stats = fighter.get("stats", {})
+        total_stats["support"] += stats.get("support", 0)
+        total_stats["perception"] += stats.get("perception", 0)
+
+    cost = calculate_ransom_cost(captive, total_stats)
+    inventory = player.get("inventory", {})
+
+    if inventory.get("energy", 0) < cost["energy"]:
+        return await callback.answer(f"Не хватает энергии. Нужно: {cost['energy']}", show_alert=True)
+
+    spirit_needed = cost["spirit"]
+    spirit_resource = cost["spirit_resource"]
+    if inventory.get(spirit_resource, 0) < spirit_needed:
+        return await callback.answer(f"Не хватает {ELEMENTS.get(spirit_resource, spirit_resource)}. Нужно: {spirit_needed}", show_alert=True)
+
+    # Списываем ресурсы
+    inventory["energy"] -= cost["energy"]
+    if inventory["energy"] <= 0:
+        inventory.pop("energy", None)
+    inventory[spirit_resource] -= spirit_needed
+    if inventory[spirit_resource] <= 0:
+        inventory.pop(spirit_resource, None)
+
+    # Возвращаем бойца
+    captives = [item for item in captives if item.get("id") != captive_id]
+    fighters = player.get("fighters", [])
+    recruited = create_fighter(captive["unit_id"], tier=captive.get("tier", 1), crafted_tier3=captive.get("crafted_tier3", False))
+    recruited["custom_name"] = captive.get("custom_name", "")[:24]
+    recruited["raids"] = captive.get("raids", 0)
+    recruited["expeditions"] = captive.get("expeditions", 0)
+    fighters.append(recruited)
+
+    counters = increment_action_counter(player, "captives_ransomed")
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {"$set": {"inventory": inventory, "captives": captives, "fighters": fighters, "action_counters": counters}},
+    )
+
+    text = f"Выкуп совершен! {get_role_name(captive)} вернулся в строй."
     await callback.message.edit_text(text, parse_mode="Markdown")
     await callback.answer()
 
