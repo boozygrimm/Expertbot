@@ -181,6 +181,7 @@ def get_upgrade_options(fighter: dict) -> list[dict]:
 def calculate_upgrade_cost(target_unit_id: str, current_unit_id: str) -> dict:
     """
     Рассчитывает стоимость перекрафта на основе разницы в стихийной стоимости.
+    Скидка 50% за то, что боец уже имеет опыт и статы.
     """
     from handlers.alc_recipes import ELEMENT_COSTS
 
@@ -200,7 +201,8 @@ def calculate_upgrade_cost(target_unit_id: str, current_unit_id: str) -> dict:
         diff = target_amount - current_amount
         if diff > 0:
             spirit_id = f"spirit_{element}"
-            cost[spirit_id] = diff
+            # Скидка 50% на перекрафт
+            cost[spirit_id] = max(1, diff // 2)
 
     # Добавляем энергию (меньше, чем при создании с нуля)
     tier = BATTLE_UNITS.get(target_unit_id, {}).get("tier", 1)
@@ -366,6 +368,12 @@ def can_fighter_upgrade(player: dict, fighter: dict) -> bool:
     """
     options = get_upgrade_options(fighter)
     if not options:
+        return False
+
+    # Проверка XP
+    current_tier = int(fighter.get("tier", 1))
+    required_xp = 30 if current_tier == 1 else 70
+    if int(fighter.get("xp", 0)) < required_xp:
         return False
 
     inventory = player.get("inventory", {})
