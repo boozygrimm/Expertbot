@@ -381,6 +381,69 @@ async def generate_expedition_final_report(expedition: dict) -> str:
     return random.choice(options)
 
 
+def build_planned_events_sync(units: list, stats: dict) -> list[dict]:
+    """Синхронная версия для мгновенного создания экспедиции (без AI)."""
+    hp_now = stats["total_hp"]
+    planned = []
+
+    # Количество событий зависит от скорости (больше скорость = дальше проходят)
+    base_events = random.randint(9, 13)
+    speed_bonus = stats.get("total_speed", 0) // 5
+    planned_count = base_events + speed_bonus
+
+    # Шанс редких ресурсов зависит от восприятия
+    perception_bonus = stats.get("total_perception", 0) // 10
+
+    for _ in range(planned_count):
+        roll = random.random()
+        if roll < 0.58:
+            loot_item, base_amount = choose_weighted_loot()
+            # Бонус от loot_bonus к количеству
+            loot_amount = base_amount + min(2, stats["loot_bonus"] // 2)
+            if loot_amount <= 0:
+                continue
+
+            event = {"type": "loot", "loot": {loot_item: loot_amount}}
+            if random.random() < min(0.35, 0.08 * stats["loot_bonus"]):
+                bonus_item, bonus_base_amount = choose_weighted_loot()
+                if bonus_item != loot_item:
+                    bonus_amount = bonus_base_amount + min(1, stats["loot_bonus"] // 3)
+                    if bonus_amount > 0:
+                        event["loot"][bonus_item] = bonus_amount
+
+            # Бонус от восприятия к редким ресурсам
+            if perception_bonus > 0 and random.random() < 0.1 + (perception_bonus * 0.02):
+                rare_items = ["recipe_scroll", "pack_l", "philosophers_stone"]
+                rare_item = random.choice(rare_items)
+                if rare_item not in event.get("loot", {}):
+                    event["loot"][rare_item] = 1
+        elif roll < 0.78:
+            damage = random.randint(6, 16) + random.randint(0, 8)
+            # Защита снижает урон
+            defense_reduction = stats.get("total_defense", 0) // 3
+            damage = max(4, damage - defense_reduction)
+            event = {"type": "damage", "damage": damage}
+            hp_now = max(0, hp_now - damage)
+        elif roll < 0.93:
+            heal = random.randint(6, 14) + (8 if stats["has_medic"] else 0)
+            # Поддержка увеличивает лечение
+            support_bonus = stats.get("total_support", 0) // 4
+            heal += support_bonus
+            event = {"type": "heal", "heal": heal}
+            hp_now = min(stats["total_hp"], hp_now + heal)
+        else:
+            event = {"type": "meeting"}
+            if random.random() < 0.45:
+                event["reward_recipe"] = True
+            else:
+                event["reward_pack"] = random.choice(MEETING_PACKS)
+            event["visitor"] = random.choice(MEETING_SPECIALS)
+        # Используем только fallback тексты для мгновенного создания
+        event["text"] = build_planned_event_text(units, event["type"])
+        planned.append(event)
+    return planned
+
+
 async def build_planned_events(units: list, stats: dict) -> list[dict]:
     hp_now = stats["total_hp"]
     planned = []
@@ -500,20 +563,23 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
         if draft:
             draft_fighters = resolve_draft_fighters(player, draft, expedition_mode=True)
             stats = build_team_stats(draft_fighters, barracks_level)
-            lines.append("Черновик отряда:")
-            lines.append("• " + ", ".join(get_role_name(fighter) for fighter in draft_fighters))
-            lines.append(f"• HP: {stats['total_hp']} | Груз: {stats['cargo_capacity']}")
+            lines.append("📋 **Формируемый отряд:**")
+            for i, fighter in enumerate(draft_fighters, 1):
+                lines.append(f"{i}. {get_role_name(fighter)}")
+            lines.append("")
+            lines.append(f"📊 HP: {stats['total_hp']} | Груз: {stats['cargo_capacity']}")
         else:
-            lines.append("Черновик отряда пуст.")
+            lines.append("📋 **Формируемый отряд:**")
+            lines.append("• Отряд пуст. Выбери бойцов ниже.")
         lines.append("")
 
     if not active:
         lines.append("Активных походов нет.")
     else:
-        for expedition in active:
+        for i, expedition in enumerate(active, 1):
             load_now = get_bag_load(expedition.get("loot", {}))
             lines.append(
-                f"• Экспедиция #{expedition['id'][:4]} | {expedition['status_label']} | "
+                f"• Экспедиция #{i} | {expedition['status_label']} | "
                 f"HP {expedition['current_hp']}/{expedition['total_hp']} | Рюкзак {load_now}/{expedition['cargo_capacity']}"
             )
     return "\n".join(lines)
@@ -573,9 +639,9 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
     controls.button(text="🧹 Очистить", callback_data="expedition_clear")
     controls.button(text="🔄 Обновить", callback_data="expeditions_open")
 
-    for expedition in active:
+    for i, expedition in enumerate(active, 1):
         controls.button(
-            text=f"📻 Экспедиция {expedition['id'][:4]}",
+            text=f"📻 Экспедиция #{i}",
             callback_data=f"expedition_view:{expedition['id']}",
         )
 
@@ -585,13 +651,13 @@ def build_expeditions_keyboard(player: dict, draft: list[str]) -> types.InlineKe
     return builder.as_markup()
 
 
-def render_expedition_detail(expedition: dict) -> str:
+def render_expedition_detail(expedition: dict, index: int) -> str:
     load_now = get_bag_load(expedition.get("loot", {}))
     fighters = ", ".join(get_role_name(item) for item in expedition.get("fighter_snapshots", expedition.get("fighters", [])))
     logs = expedition.get("logs", [])[-VISIBLE_LOGS:]
     status_text = expedition.get("status_label", expedition.get("status", "Неизвестно"))
     lines = [
-        f"📻 **ЭКСПЕДИЦИЯ #{expedition['id'][:4]}**",
+        f"📻 **ЭКСПЕДИЦИЯ #{index}**",
         f"Бойцы: {fighters}",
         "",
         "Перехват:",
@@ -844,7 +910,7 @@ async def expedition_launch(callback: types.CallbackQuery):
             "Отряд вышел за ворота и уже спорит, кто понесёт котёл.",
             f"Потенциал отряда: груз {stats['cargo_capacity']}, дальность {9 + stats.get('total_speed', 0) // 5} событий, нюх на редкое {10 + stats.get('total_perception', 0) // 10}%.",
         ],
-        "planned_events": await build_planned_events(draft_fighters, stats),
+        "planned_events": build_planned_events_sync(draft_fighters, stats),
         "event_index": 0,
         "next_tick_at": now + EXPEDITION_TICK,
         "return_end_at": 0,
@@ -879,10 +945,14 @@ def find_expedition(player: dict, expedition_id: str) -> dict | None:
 @router.callback_query(F.data.startswith("expedition_view:"))
 async def expedition_view(callback: types.CallbackQuery):
     player = await get_or_create_player(callback.from_user.id, callback.from_user.first_name)
-    expedition = find_expedition(player, callback.data.split(":")[1])
+    expedition_id = callback.data.split(":")[1]
+    expedition = find_expedition(player, expedition_id)
     if not expedition:
         return await callback.answer("Экспедиция уже закрыта.", show_alert=True)
-    await safe_edit_text(callback.message, render_expedition_detail(expedition), build_expedition_detail_keyboard(expedition))
+    # Находим индекс экспедиции
+    active = player.get("active_expeditions", [])
+    index = next((i + 1 for i, exp in enumerate(active) if exp.get("id") == expedition_id), 1)
+    await safe_edit_text(callback.message, render_expedition_detail(expedition, index), build_expedition_detail_keyboard(expedition))
     await callback.answer()
 
 
@@ -970,18 +1040,19 @@ async def notify_arrived_expeditions():
     cursor = db.alchemy_players.find({"active_expeditions.status": "arrived"})
     async for player in cursor:
         last_notified = False
-        for expedition in player.get("active_expeditions", []):
+        active = player.get("active_expeditions", [])
+        for i, expedition in enumerate(active):
             if expedition.get("status") == "arrived" and not expedition.get("arrival_notified"):
                 expedition["arrival_notified"] = True
                 last_notified = True
                 try:
-                    await bot.send_message(player["user_id"], f"📻 Экспедиция #{expedition['id'][:4]} вернулась. Открой /base и встреть отряд.")
+                    await bot.send_message(player["user_id"], f"📻 Экспедиция #{i + 1} вернулась. Открой /base и встреть отряд.")
                 except Exception as e:
                     logger.debug("Failed to notify arrived expedition for user %s: %s", player["user_id"], e)
         if last_notified:
             await db.alchemy_players.update_one(
                 {"user_id": player["user_id"]},
-                {"$set": {"active_expeditions": player.get("active_expeditions", [])}},
+                {"$set": {"active_expeditions": active}},
             )
 
 

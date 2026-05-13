@@ -355,6 +355,22 @@ def build_fighter_label(fighter: dict) -> str:
     return f"{title} | Т{fighter['tier']} | XP {fighter['xp']} | Бодрость {fighter['stamina']}/{get_fighter_stamina_cap(fighter)}"
 
 
+def can_fighter_upgrade(player: dict, fighter: dict) -> bool:
+    """
+    Проверяет, доступен ли апгрейд для бойца.
+    """
+    options = get_upgrade_options(fighter)
+    if not options:
+        return False
+
+    inventory = player.get("inventory", {})
+    for opt in options:
+        cost = calculate_upgrade_cost(opt['unit_id'], fighter.get('unit_id'))
+        if cost and can_pay_cost(inventory, cost):
+            return True
+    return False
+
+
 def get_upgrade_cost(target_tier: int, fighter: dict) -> dict:
     base_cost = deepcopy(UPGRADE_COSTS.get(target_tier, {}))
     if not base_cost:
@@ -419,8 +435,11 @@ def hall_of_fame_entry(fighter: dict, reason: str, now_ts: int | None = None) ->
 def get_available_fighters(player: dict, *, include_zero_stamina: bool = True, now_ts: int | None = None) -> list[dict]:
     now_ts = int(now_ts or time.time())
     fighters = []
+    garrison = set(player.get("fort_garrison", []))
     for fighter in get_player_fighters(player, now_ts):
         if fighter.get("status") != "available":
+            continue
+        if fighter.get("id") in garrison:
             continue
         if not include_zero_stamina and int(fighter.get("stamina", 0)) <= 0:
             continue
@@ -532,7 +551,7 @@ def normalize_player_fighters(player: dict, now_ts: int | None = None) -> dict:
             fighter["status"] = "expedition"
         elif fighter.get("id") in squad.get("fighter_ids", []):
             fighter["status"] = "raid"
-        elif fighter.get("status") not in {"captive"}:
+        elif fighter.get("status") not in {"captive", "garrison"}:
             fighter["status"] = "available"
 
     player["inventory"] = inventory

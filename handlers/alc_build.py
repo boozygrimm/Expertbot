@@ -461,12 +461,15 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         else:
             marker = "🪖"
         base_name = get_fighter_title(fighter)
+        # Добавляем стрелку вверх, если доступен апгрейд
+        from handlers.alc_fighters import can_fighter_upgrade
+        upgrade_arrow = "⬆️" if can_fighter_upgrade(player, fighter) else ""
         if grid_size == 4:
-            btn_text = shorten_button_text(base_name, 10)
+            btn_text = f"{upgrade_arrow}{shorten_button_text(base_name, 10)}"
         elif grid_size == 3:
-            btn_text = f"{marker} {shorten_button_text(base_name, 8)}"
+            btn_text = f"{marker} {upgrade_arrow}{shorten_button_text(base_name, 8)}"
         else:
-            btn_text = f"{marker} {shorten_button_text(base_name, 14)}"
+            btn_text = f"{marker} {upgrade_arrow}{shorten_button_text(base_name, 14)}"
         row.append(types.InlineKeyboardButton(text=btn_text, callback_data=f"fighter_view:{fighter['id']}"))
         if len(row) == grid_size:
             builder.row(*row)
@@ -500,6 +503,7 @@ def build_fighter_detail_text(player: dict, fighter: dict) -> str:
     name_unlock = get_name_unlock_xp(fighter)
     risk = int(round((0.80 if fighter.get("stamina", 0) <= 0 else {1: 0.13, 2: 0.09, 3: 0.05}.get(tier, 0.13)) * 100))
     stats = fighter.get("stats", {})
+    inventory = player.get("inventory", {})
     lines = [
         f"🪪 **{title}**",
         f"Роль: {ELEMENTS.get(fighter.get('unit_id'), fighter.get('unit_id'))}",
@@ -524,7 +528,15 @@ def build_fighter_detail_text(player: dict, fighter: dict) -> str:
         if options:
             lines.append(f"**Перекрафт до Т{next_tier}:**")
             for opt in options:
+                cost = calculate_upgrade_cost(opt['unit_id'], fighter.get('unit_id'))
+                cost_lines = []
+                for item_id, amount in cost.items():
+                    have = int(inventory.get(item_id, 0) or 0)
+                    marker = "✅" if have >= amount else "❌"
+                    cost_lines.append(f"{marker} {ELEMENTS.get(item_id, item_id)}: {have}/{amount}")
                 lines.append(f"• {opt['name']}: {', '.join(f'{k}+{v}' for k, v in opt['profile'].items())}")
+                if cost_lines:
+                    lines.append(f"  Стоимость: {' | '.join(cost_lines)}")
         lines.append(f"Нужно XP: {fighter.get('xp', 0)}/{30 if next_tier == 2 else 70}")
     elif tier == 3:
         if is_hero(fighter):
