@@ -180,7 +180,7 @@ def get_upgrade_options(fighter: dict) -> list[dict]:
 
 def calculate_upgrade_cost(target_unit_id: str, current_unit_id: str) -> dict:
     """
-    Рассчитывает стоимость перекрафта на основе стихийной стоимости.
+    Рассчитывает стоимость перекрафта на основе разницы в стихийной стоимости.
     """
     from handlers.alc_recipes import ELEMENT_COSTS
 
@@ -190,16 +190,21 @@ def calculate_upgrade_cost(target_unit_id: str, current_unit_id: str) -> dict:
     if not target_cost:
         return {}
 
-    # Базовая стоимость - стихии из рецепта
+    # Разница в стихиях между целевым и текущим юнитом
     cost = {}
-    for element, amount in target_cost.get("elements", {}).items():
-        if amount > 0:
-            spirit_id = f"spirit_{element}"
-            cost[spirit_id] = amount
+    target_elements = target_cost.get("elements", {})
+    current_elements = current_cost.get("elements", {})
 
-    # Добавляем энергию
+    for element, target_amount in target_elements.items():
+        current_amount = current_elements.get(element, 0)
+        diff = target_amount - current_amount
+        if diff > 0:
+            spirit_id = f"spirit_{element}"
+            cost[spirit_id] = diff
+
+    # Добавляем энергию (меньше, чем при создании с нуля)
     tier = BATTLE_UNITS.get(target_unit_id, {}).get("tier", 1)
-    cost["energy"] = tier * 2
+    cost["energy"] = tier
 
     return cost
 
