@@ -408,7 +408,6 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     grid_size = int(player.get("inv_grid", 3) or 3)
     if grid_size not in {2, 3, 4}:
         grid_size = 3
-    available_units = get_available_barracks_units(barracks_level)
     capacity = get_barracks_capacity(barracks_level)
     roster_fighters = [fighter for fighter in fighters if fighter.get("status") != "dead"]
     active_count = len(roster_fighters)
@@ -494,7 +493,10 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     tabs.button(text="🔙 В Штаб", callback_data="alc:base_return")
     tabs.adjust(2, 2, 2, 2)
     builder.attach(tabs)
-    await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    try:
+        await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except TelegramBadRequest:
+        pass
 
 
 def get_unit_recipe(unit_id: str) -> tuple[str, str] | None:
