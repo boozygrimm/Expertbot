@@ -485,14 +485,12 @@ async def render_barracks_menu(message: types.Message, user_id: int):
     tabs = InlineKeyboardBuilder()
     tabs.button(text=f"⚙️ Сетка: {grid_size} → {next_grid}", callback_data=f"barracks_set_grid:{next_grid}")
     tabs.button(text="🏅 Зал славы", callback_data="barracks_hof")
-    tabs.button(text="🪖 Плац", callback_data="barracks_tab:plaza")
     tabs.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
     tabs.button(text="☠️ Рейды", callback_data="raids_open")
     tabs.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     tabs.button(text="❔ ?", callback_data="barracks_tab:help")
     tabs.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    tabs.adjust(2, 2, 2, 2)
-    builder.attach(tabs)
+    tabs.adjust(2, 2, 2)
     try:
         await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
     except TelegramBadRequest:
@@ -577,13 +575,11 @@ async def render_mercenaries_tab(message_or_query, user_id: int):
     # Вкладки навигации
     tabs = InlineKeyboardBuilder()
     tabs.button(text="🪖 Плац", callback_data="barracks_tab:plaza")
-    tabs.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
     tabs.button(text="☠️ Рейды", callback_data="raids_open")
     tabs.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     tabs.button(text="❔ ?", callback_data="barracks_tab:help")
     tabs.button(text="🔙 В Штаб", callback_data="alc:base_return")
     tabs.adjust(2, 2, 2)
-    builder.attach(tabs)
 
     text = "\n".join(lines)
     if isinstance(message_or_query, types.Message):
@@ -964,9 +960,39 @@ async def build_nope(callback: types.CallbackQuery):
     await callback.answer("Нужно больше ресурсов!", show_alert=True)
 
 
+async def render_barracks_overview(message: types.Message, user_id: int):
+    player = await db.alchemy_players.find_one({"user_id": user_id})
+    if not player:
+        return await message.edit_text("⚠️ Профиль не найден.", parse_mode="Markdown")
+
+    barracks_level = player.get("buildings", {}).get("barracks", 0)
+    fighters = player.get("fighters", [])
+    total = len([f for f in fighters if f.get("status") != "dead"])
+    capacity = get_barracks_capacity(barracks_level)
+
+    lines = [f"🎖 **КАЗАРМЫ** (Ур. {barracks_level})"]
+    lines.append(f"Личный состав: {total}/{capacity}")
+    lines.append("Выбери секцию:")
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🪖 Плац", callback_data="barracks_tab:plaza")
+    builder.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
+    builder.button(text="☠️ Рейды", callback_data="raids_open")
+    builder.button(text="🧪 Экспедиции", callback_data="expeditions_open")
+    builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
+    builder.button(text="❔ ?", callback_data="barracks_tab:help")
+    builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+    builder.adjust(2, 2, 2, 1)
+
+    try:
+        await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except TelegramBadRequest:
+        pass
+
+
 @router.callback_query(F.data == "barracks_open")
 async def barracks_open(callback: types.CallbackQuery):
-    await render_barracks_menu(callback.message, callback.from_user.id)
+    await render_barracks_overview(callback.message, callback.from_user.id)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("build_upg:"))
