@@ -5,11 +5,9 @@ from aiogram.filters import Command, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from config import ADMIN_ID
-from handlers.alc_fighters import create_fighter, get_barracks_capacity
-
 # Импортируем нашу базу рецептов
 from handlers.alc_recipes import (
-    BATTLE_UNITS, ELEMENTS, RECIPES, is_battle_unit,
+    ELEMENTS, RECIPES, is_battle_unit,
     ELEMENT_COSTS, BASE_ELEMENTS
 )
 
@@ -113,15 +111,9 @@ def get_barracks_lock_text(result: str, player: dict) -> str | None:
     if not is_battle_unit(result):
         return None
 
-    required_level = BATTLE_UNITS[result]["barracks_level"]
-    barracks_level = player.get("buildings", {}).get("barracks", 0)
-    if barracks_level >= required_level:
-        return None
+    return "🎖 Рецепты юнитов перенесены в Казармы -> Наёмники."
 
-    return (
-        f"🎖 Для создания {ELEMENTS.get(result, result)} нужны Казармы {required_level} ур. "
-        f"Здание открывает доступ, но рецепт все равно придется найти в Лаборатории."
-    )
+
 
 
 def get_barracks_capacity_error(result: str, player: dict, amount: int = 1) -> str | None:
@@ -421,43 +413,31 @@ async def lab_mix_items(callback: types.CallbackQuery):
         await callback.answer("💨 Пшик... Пошла вонь. Попробуй другую комбинацию.", show_alert=True)
         return await render_lab_window(callback, uid)
 
-    barracks_lock = get_barracks_lock_text(result, player)
-    if barracks_lock:
+    # Блокировка: рецепты юнитов теперь крафтятся в Казармах -> Наёмники
+    if get_barracks_lock_text(result, player):
         active_mixes.pop(uid, None)
-        await callback.answer(barracks_lock, show_alert=True)
+        await callback.answer("🎖 Рецепты юнитов перенесены в Казармы -> Наёмники.", show_alert=True)
         return await render_lab_window(callback, uid)
-    barracks_cap = get_barracks_capacity_error(result, player)
-    if barracks_cap:
-        active_mixes.pop(uid, None)
-        await callback.answer(barracks_cap, show_alert=True)
-        return await render_lab_window(callback, uid)
-        
-    # Успешный крафт
+
+    # Успешный крафт предмета
     inv[i1] -= 1
     inv[i2] -= 1
     active_mixes.pop(uid, None)
-    update_fields = {"inventory": inv}
-    if is_battle_unit(result):
-        fighters = player.get("fighters", [])
-        fighters.append(create_fighter(result, crafted_tier3=BATTLE_UNITS[result]["tier"] >= 3))
-        update_fields["fighters"] = fighters
-    else:
-        inv[result] = inv.get(result, 0) + 1
-    
+    inv[result] = inv.get(result, 0) + 1
+
     disc = player.get("discovered", [])
     if result not in disc:
         disc.append(result)
-    update_fields["discovered"] = disc
-        
-    # Обновляем инвентарь и сохраняем последний рецепт для кнопки "Повтор"
-    update_fields["last_craft"] = [i1, i2]
+
+    update_fields = {
+        "inventory": inv,
+        "discovered": disc,
+        "last_craft": [i1, i2],
+    }
     await db.alchemy_players.update_one({"user_id": uid}, {"$set": update_fields})
-    
+
     res_name = ELEMENTS.get(result, result)
-    if is_battle_unit(result):
-        await callback.answer(f"🎉 Успех! В Казармы прибыл новый боец: {res_name}", show_alert=True)
-    else:
-        await callback.answer(f"🎉 Успех! Получено: {res_name}", show_alert=True)
+    await callback.answer(f"🎉 Успех! Получено: {res_name}", show_alert=True)
     await render_lab_window(callback, uid)
 
 
@@ -505,43 +485,33 @@ async def lab_repeat_craft(callback: types.CallbackQuery):
         await callback.answer("💨 Пшик... Этот рецепт не работает. Ресурсы целы.", show_alert=True)
         return await render_lab_window(callback, uid)
 
-    barracks_lock = get_barracks_lock_text(result, player)
-    if barracks_lock:
-        await callback.answer(barracks_lock, show_alert=True)
-        return await render_lab_window(callback, uid)
-    barracks_cap = get_barracks_capacity_error(result, player, iters)
-    if barracks_cap:
-        await callback.answer(barracks_cap, show_alert=True)
+    # Блокировка: рецепты юнитов теперь крафтятся в Казармах -> Наёмники
+    if get_barracks_lock_text(result, player):
+        await callback.answer("🎖 Рецепты юнитов перенесены в Казармы -> Наёмники.", show_alert=True)
         return await render_lab_window(callback, uid)
 
     # Проверка лимитов склада (для новых предметов)
     from handlers.alc_core import STORAGE_CAPACITY, get_used_slots
     storage_lvl = player.get("buildings", {}).get("storage", 0)
     max_slots = STORAGE_CAPACITY.get(storage_lvl, 20)
-    
+
     if result not in inv and get_used_slots(inv) >= max_slots:
         return await callback.answer("Склад полон! Нет места для нового элемента.", show_alert=True)
 
-    # Выполняем массовый крафт (БЕЗ циклов, математически)
+    # Выполняем массовый крафт предмета (БЕЗ циклов, математически)
     if i1 == i2:
         inv[i1] -= iters * 2
     else:
         inv[i1] -= iters
         inv[i2] -= iters
-        
+
+    inv[result] = inv.get(result, 0) + iters
+
     disc = player.get("discovered", [])
     if result not in disc:
         disc.append(result)
 
     update_fields = {"inventory": inv, "discovered": disc}
-    if is_battle_unit(result):
-        fighters = player.get("fighters", [])
-        for _ in range(iters):
-            fighters.append(create_fighter(result, crafted_tier3=BATTLE_UNITS[result]["tier"] >= 3))
-        update_fields["fighters"] = fighters
-    else:
-        inv[result] = inv.get(result, 0) + iters
-
     await db.alchemy_players.update_one({"user_id": uid}, {"$set": update_fields})
 
     res_name = ELEMENTS.get(result, result)
