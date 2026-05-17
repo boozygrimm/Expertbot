@@ -618,7 +618,6 @@ def build_universe_intro_text(player: dict) -> str:
 
     blueprint = build_world_blueprint(player, draft, focus_id=universe_focus_modes.get(player.get("user_id"), None))
     lines = ["🌍 **МОДУЛЬ ВСЕЛЕННАЯ**", ""]
-    support_cost = get_world_support_cost(player)
 
     if worlds:
         lines.extend([
@@ -627,7 +626,6 @@ def build_universe_intro_text(player: dict) -> str:
             f"Свободно: **{max(0, get_world_capacity_left(player))}**",
             f"Нагрузка: **{get_world_strain(player)}/{get_world_stability_limit(player)}**",
             f"Укрепление: **{get_world_support_level(player)}**",
-            f"Следующее укрепление: **+2 к лимиту нагрузки** за {format_cost_label(support_cost)}",
         ])
         if is_world_overloaded(player):
             lines.extend(["", f"⚠️ Перегруз мира: **{abs(get_world_strain_left(player))}**"])
@@ -742,8 +740,9 @@ def build_universe_biomes_keyboard(player: dict, page: int = 0) -> types.InlineK
         action_rows += 1
     if worlds:
         support_cost = get_world_support_cost(player)
-        cost_label = ", ".join(f"{get_element_name(item_id)} x{amount}" for item_id, amount in support_cost.items())
-        builder.button(text=f"🛠 Укрепить мир | {cost_label}", callback_data="universe_fortify")
+        inventory = player.get("inventory", {})
+        fortify_emoji = "🔓" if can_pay_cost(inventory, support_cost) else "🔒"
+        builder.button(text=f"🛠 {fortify_emoji} Укрепить мир", callback_data="universe_fortify")
         action_rows += 1
     if can_reset_legacy_worlds(player):
         builder.button(text="🔮 Кристалл Сброса", callback_data="universe_reset_legacy")
