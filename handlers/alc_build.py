@@ -475,20 +475,20 @@ async def render_barracks_menu(message: types.Message, user_id: int):
         builder.row(*row)
     if total_pages > 1:
         nav_row = []
-        if current_page > 0:
-            nav_row.append(types.InlineKeyboardButton(text="⬅️ Назад", callback_data=f"barracks_page:{current_page - 1}"))
         if current_page < total_pages - 1:
             nav_row.append(types.InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"barracks_page:{current_page + 1}"))
         if nav_row:
             builder.row(*nav_row)
+
+    # Navigation buttons: Back, Grid Settings, Help
+    nav = InlineKeyboardBuilder()
+    nav.button(text="🔙 Назад", callback_data="barracks_open")
+    # Cycle grid size: 2→3→4→2
     next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
-    tabs = InlineKeyboardBuilder()
-    tabs.button(text="🏅 Зал славы", callback_data="barracks_hof")
-    tabs.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
-    tabs.button(text="☠️ Рейды", callback_data="raids_open")
-    tabs.button(text="🧪 Экспедиции", callback_data="expeditions_open")
-    tabs.adjust(2, 2)
-    builder.attach(tabs)
+    nav.button(text=f"🔧 Сетка: {grid_size}x", callback_data=f"barracks_set_grid:{next_grid}")
+    nav.button(text="❔ ?", callback_data="barracks_tab:help")
+    nav.adjust(3)
+    builder.attach(nav)
     try:
         await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
     except TelegramBadRequest:
