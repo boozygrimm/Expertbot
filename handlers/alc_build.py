@@ -504,7 +504,118 @@ def get_unit_recipe(unit_id: str) -> tuple[str, str] | None:
     return None
 
 
-async def render_mercenaries_tab(message_or_query, user_id: int):
+async def render_mercenaries_overview(message_or_query, user_id: int):
+    player = await db.alchemy_players.find_one({"user_id": user_id})
+    if not player:
+        text = "⚠️ Профиль алхимика не найден."
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+        builder.adjust(1)
+        if isinstance(message_or_query, types.Message):
+            await message_or_query.answer(text, reply_markup=builder.as_markup())
+        else:
+            await message_or_query.message.edit_text(text, reply_markup=builder.as_markup())
+        return
+
+    barracks_level = player.get("buildings", {}).get("barracks", 0)
+    available_units = get_available_barracks_units(barracks_level)
+
+    lines = [f"⚔️ **НАЙМ** (Ур. казарм: {barracks_level})"]
+    lines.append("")
+    lines.append("Выбери тир юнита для создания:")
+    lines.append("")
+
+    builder = InlineKeyboardBuilder()
+
+    tier_emojis = {1: "🔥", 2: "⚡", 3: "⚙️"}
+    tier_names = {1: "Базовые (дух + материал)", 2: "Платформы (дух + платформа)", 3: "Тяжелые (дух + дорогая платформа)"}
+
+    for tier in [1, 2, 3]:
+        if tier in available_units and (tier != 1 or any(u in {"fire_swordsman", "water_guard", "earth_shielder", "wind_scout"} for u in available_units[tier])):
+            builder.button(
+                text=f"{tier_emojis.get(tier, '⚔️')} Тир-{tier}: {tier_names.get(tier, '')}",
+                callback_data=f"merc_tier:{tier}"
+            )
+        else:
+            builder.button(
+                text=f"🔒 Тир-{tier} (закрыто)",
+                callback_data="dummy_btn"
+            )
+    builder.adjust(1)
+
+    nav = InlineKeyboardBuilder()
+    nav.button(text="🔙 К Казармам", callback_data="barracks_open")
+    builder.attach(nav)
+
+    text = "\n".join(lines)
+    if isinstance(message_or_query, types.Message):
+        await message_or_query.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    else:
+        try:
+            await message_or_query.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        except TelegramBadRequest:
+            pass
+        await message_or_query.answer()
+
+
+async def render_mercenaries_tier(message_or_query, user_id: int, tier: int):
+    player = await db.alchemy_players.find_one({"user_id": user_id})
+    if not player:
+        text = "⚠️ Профиль алхимика не найден."
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
+        builder.adjust(1)
+        if isinstance(message_or_query, types.Message):
+            await message_or_query.answer(text, reply_markup=builder.as_markup())
+        else:
+            await message_or_query.message.edit_text(text, reply_markup=builder.as_markup())
+        return
+
+    barracks_level = player.get("buildings", {}).get("barracks", 0)
+    available_units = get_available_barracks_units(barracks_level)
+    unit_ids = list(available_units.get(tier, []))
+    if tier == 1:
+        base_t1 = {"fire_swordsman", "water_guard", "earth_shielder", "wind_scout"}
+        unit_ids = [u for u in unit_ids if u in base_t1]
+
+    lines = [f"{'🔥' if tier == 1 else '⚡' if tier == 2 else '⚙️'} **НАЙМ: Тир-{tier}**"]
+    lines.append(f"Юнитов доступно: {len(unit_ids)}")
+    lines.append("")
+    lines.append("Кнопки — нанять бойца:")
+
+    builder = InlineKeyboardBuilder()
+
+    row = []
+    for unit_id in unit_ids:
+        name = str(ELEMENTS.get(unit_id, unit_id))
+        short_name = name.split(" ", 1)[1] if " " in name else name
+        row.append(types.InlineKeyboardButton(text=short_name, callback_data=f"merc_craft:{unit_id}"))
+        if len(row) == 2:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+
+    lines.append("")
+
+    nav = InlineKeyboardBuilder()
+    nav.button(text="❔ ?", callback_data=f"merc_tier_recipes:{tier}")
+    nav.button(text="🔙 К Найму", callback_data="barracks_tab:mercenaries")
+    nav.adjust(2)
+    builder.attach(nav)
+
+    text = "\n".join(lines)
+    if isinstance(message_or_query, types.Message):
+        await message_or_query.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    else:
+        try:
+            await message_or_query.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        except TelegramBadRequest:
+            pass
+        await message_or_query.answer()
+
+
+async def render_merc_tier_recipes(message_or_query, user_id: int, tier: int):
     player = await db.alchemy_players.find_one({"user_id": user_id})
     if not player:
         text = "⚠️ Профиль алхимика не найден."
@@ -520,66 +631,31 @@ async def render_mercenaries_tab(message_or_query, user_id: int):
     barracks_level = player.get("buildings", {}).get("barracks", 0)
     inventory = player.get("inventory", {})
     available_units = get_available_barracks_units(barracks_level)
+    unit_ids = list(available_units.get(tier, []))
+    if tier == 1:
+        base_t1 = {"fire_swordsman", "water_guard", "earth_shielder", "wind_scout"}
+        unit_ids = [u for u in unit_ids if u in base_t1]
 
-    lines = [f"⚔️ **НАЁМНИКИ** (Ур. казарм: {barracks_level})"]
+    lines = [f"❔ **Тир-{tier} — Рецепты**"]
     lines.append("")
-    lines.append("Крафт бойцов напрямую. Рецепты открыты по умолчанию.")
-    lines.append("")
+
+    for unit_id in unit_ids:
+        recipe = get_unit_recipe(unit_id)
+        if recipe:
+            i1, i2 = recipe
+            name = ELEMENTS.get(unit_id, unit_id)
+            have_i1 = inventory.get(i1, 0)
+            have_i2 = inventory.get(i2, 0)
+            enough = have_i1 >= 1 and have_i2 >= 1
+            marker = "✅" if enough else "❌"
+            lines.append(f"{marker} {name}: {ELEMENTS.get(i1, i1)} + {ELEMENTS.get(i2, i2)}")
+        else:
+            lines.append(f"❓ {ELEMENTS.get(unit_id, unit_id)}")
 
     builder = InlineKeyboardBuilder()
-
-    for tier in sorted(available_units.keys()):
-        unit_ids = available_units[tier]
-
-        # Фильтр Т1: только базовые 4 юнита
-        if tier == 1:
-            base_t1 = {"fire_swordsman", "water_guard", "earth_shielder", "wind_scout"}
-            unit_ids = [u for u in unit_ids if u in base_t1]
-            if not unit_ids:
-                continue
-
-        unit_ids = sorted(unit_ids, key=lambda uid: BATTLE_UNITS[uid].get("fallback_spirit", ""))
-        lines.append(f"**Тир-{tier}:**")
-
-        for unit_id in unit_ids:
-            recipe = get_unit_recipe(unit_id)
-            if recipe:
-                i1, i2 = recipe
-                name = ELEMENTS.get(unit_id, unit_id)
-                have_i1 = inventory.get(i1, 0)
-                have_i2 = inventory.get(i2, 0)
-                enough = have_i1 >= 1 and have_i2 >= 1
-                marker = "✅" if enough else "❌"
-                lines.append(f"{marker} {name}: {ELEMENTS.get(i1, i1)} + {ELEMENTS.get(i2, i2)}")
-            else:
-                lines.append(f"❓ {ELEMENTS.get(unit_id, unit_id)}")
-
-        lines.append("")
-
-        # Добавляем кнопки по 2 в ряд
-        row = []
-        for unit_id in unit_ids:
-            name = str(ELEMENTS.get(unit_id, unit_id))
-            short_name = name.split(" ", 1)[1] if " " in name else name
-            row.append(types.InlineKeyboardButton(text=short_name, callback_data=f"merc_craft:{unit_id}"))
-            if len(row) == 2:
-                builder.row(*row)
-                row = []
-        if row:
-            builder.row(*row)
-
-    if not available_units:
-        lines.append("Нет доступных юнитов для крафта.")
-        lines.append("Повысь уровень казарм, чтобы разблокировать больше.")
-
-    # Вкладки навигации
-    tabs = InlineKeyboardBuilder()
-    tabs.button(text="🪖 Плац", callback_data="barracks_tab:plaza")
-    tabs.button(text="☠️ Рейды", callback_data="raids_open")
-    tabs.button(text="🧪 Экспедиции", callback_data="expeditions_open")
-    tabs.button(text="❔ ?", callback_data="barracks_tab:help")
-    tabs.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    tabs.adjust(2, 2, 2)
+    nav = InlineKeyboardBuilder()
+    nav.button(text="🔙 К Найму", callback_data="barracks_tab:mercenaries")
+    builder.attach(nav)
 
     text = "\n".join(lines)
     if isinstance(message_or_query, types.Message):
@@ -876,7 +952,7 @@ async def barracks_tab_plaza(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "barracks_tab:mercenaries")
 async def barracks_tab_mercenaries(callback: types.CallbackQuery):
-    await render_mercenaries_tab(callback, callback.from_user.id)
+    await render_mercenaries_overview(callback, callback.from_user.id)
     await callback.answer()
 
 
@@ -885,13 +961,13 @@ async def barracks_tab_help(callback: types.CallbackQuery):
     text = (
         "🎖 **Помощь по Казармам**\n\n"
         "🪖 **Плац** — управление вашими бойцами: просмотр, апгрейд, отставка.\n"
-        "⚔️ **Наёмники** — крафт новых юнитов напрямую из рецептов.\n"
+        "⚔️ **Найм** — крафт новых юнитов напрямую из рецептов.\n"
         "☠️ **Рейды** — отправка отряда на рейд.\n"
         "🧪 **Экспедиции** — отправка бойцов в поход.\n\n"
-        "Юниты крафтятся напрямую в Наёмниках, рецепты открыты по умолчанию."
+        "Юниты крафтятся напрямую в Найме, рецепты открыты по умолчанию."
     )
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 Назад", callback_data="barracks_open")
+    builder.button(text="🔙 К Казармам", callback_data="barracks_open")
     builder.adjust(1)
     try:
         await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
@@ -947,7 +1023,23 @@ async def merc_craft(callback: types.CallbackQuery):
     )
 
     await callback.answer(f"🎉 В Казармы прибыл новый боец: {ELEMENTS.get(unit_id, unit_id)}", show_alert=True)
-    await render_mercenaries_tab(callback, user_id)
+    # Получаем tier из BATTLE_UNITS для редиректа после крафта
+    unit_tier = BATTLE_UNITS.get(unit_id, {}).get("tier", 1)
+    await render_mercenaries_tier(callback, user_id, unit_tier)
+
+
+@router.callback_query(F.data.startswith("merc_tier:"))
+async def merc_tier(callback: types.CallbackQuery):
+    tier = int(callback.data.split(":")[1])
+    await render_mercenaries_tier(callback, callback.from_user.id, tier)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("merc_tier_recipes:"))
+async def merc_tier_recipes(callback: types.CallbackQuery):
+    tier = int(callback.data.split(":")[1])
+    await render_merc_tier_recipes(callback, callback.from_user.id, tier)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "build_open")
@@ -976,7 +1068,7 @@ async def render_barracks_overview(message: types.Message, user_id: int):
 
     builder = InlineKeyboardBuilder()
     builder.button(text="🪖 Плац", callback_data="barracks_tab:plaza")
-    builder.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
+    builder.button(text="⚔️ Найм", callback_data="barracks_tab:mercenaries")
     builder.button(text="☠️ Рейды", callback_data="raids_open")
     builder.button(text="🧪 Экспедиции", callback_data="expeditions_open")
     builder.button(text="🏅 Зал славы", callback_data="barracks_hof")
