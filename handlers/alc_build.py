@@ -483,14 +483,12 @@ async def render_barracks_menu(message: types.Message, user_id: int):
             builder.row(*nav_row)
     next_grid = 3 if grid_size == 2 else 4 if grid_size == 3 else 2
     tabs = InlineKeyboardBuilder()
-    tabs.button(text=f"⚙️ Сетка: {grid_size} → {next_grid}", callback_data=f"barracks_set_grid:{next_grid}")
     tabs.button(text="🏅 Зал славы", callback_data="barracks_hof")
     tabs.button(text="⚔️ Наёмники", callback_data="barracks_tab:mercenaries")
     tabs.button(text="☠️ Рейды", callback_data="raids_open")
     tabs.button(text="🧪 Экспедиции", callback_data="expeditions_open")
-    tabs.button(text="❔ ?", callback_data="barracks_tab:help")
-    tabs.button(text="🔙 В Штаб", callback_data="alc:base_return")
-    tabs.adjust(2, 2, 2)
+    tabs.adjust(2, 2)
+    builder.attach(tabs)
     try:
         await message.edit_text("\n".join(lines), reply_markup=builder.as_markup(), parse_mode="Markdown")
     except TelegramBadRequest:
