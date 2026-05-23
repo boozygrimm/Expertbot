@@ -138,7 +138,7 @@ def _roll_loot_amount(loot_spec) -> dict:
     """{'item': (min, max)} -> {'item': rolled_amount}"""
     result = {}
     for item_id, value in loot_spec.items():
-        if isinstance(value, tuple):
+        if isinstance(value, (tuple, list)) and len(value) == 2:
             result[item_id] = random.randint(value[0], value[1])
         else:
             result[item_id] = value
@@ -948,9 +948,17 @@ async def process_single_expedition(player: dict, expedition: dict) -> bool:
             expedition["status_label"] = "Ждёт приказа"
             expedition["interactive_timeout_at"] = now + INTERACTIVE_CHOICE_TIMEOUT
             state = event.copy()
-            # Мы не хотим хранить вложенные dict в монге — serialise safe/risk loot specs
-            state["safe_loot"] = dict(state.get("safe_loot", {}))
-            state["risk_loot"] = dict(state.get("risk_loot", {}))
+            # Нормализуем safe/risk loot specs: tuple -> [min, max] для MongoDB
+            def _loot_spec(spec: dict) -> dict:
+                out = {}
+                for k, v in spec.items():
+                    if isinstance(v, tuple):
+                        out[k] = [v[0], v[1]]
+                    else:
+                        out[k] = v
+                return out
+            state["safe_loot"] = _loot_spec(state.get("safe_loot", {}))
+            state["risk_loot"] = _loot_spec(state.get("risk_loot", {}))
             expedition["interactive_state"] = state
             expedition["next_tick_at"] = 0
             msg_id = await _send_interactive_message(player, expedition, event)

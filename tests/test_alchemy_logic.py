@@ -1487,6 +1487,17 @@ class InteractiveExpeditionTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(rolled["stone"], 5)
         self.assertEqual(rolled["recipe_scroll"], 1)
 
+    def test_roll_loot_amount_handles_mongodb_lists(self):
+        """_roll_loot_amount корректно работает с list'ами из MongoDB."""
+        # MongoDB сериализует tuple -> list
+        loot_spec = {"stone": [2, 5], "recipe_scroll": 1, "energy": [1, 3]}
+        rolled = _roll_loot_amount(loot_spec)
+        self.assertIsInstance(rolled["stone"], int)
+        self.assertIsInstance(rolled["energy"], int)
+        self.assertEqual(rolled["recipe_scroll"], 1)
+        self.assertGreaterEqual(rolled["stone"], 2)
+        self.assertLessEqual(rolled["stone"], 5)
+
     async def test_awaiting_choice_timeout_auto_pass(self):
         """При таймауте без ответа экспедиция продолжает безопасный путь."""
         import time
