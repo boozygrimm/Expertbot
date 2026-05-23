@@ -41,6 +41,108 @@ GUILD_EXPEDITION_DURATION = {0: 7200, 1: 7200, 2: 10800, 3: 14400}
 RETURN_MIN_TIME = 300
 # Опыт за экспедицию: 1 XP за 2 экспедиции (0.5)
 EXPEDITION_XP_CHANCE = 0.5
+# Время на интерактивный выбор (в секундах)
+INTERACTIVE_CHOICE_TIMEOUT = 900  # 15 минут
+
+# --- Каталог интерактивных локаций ---
+INTERACTIVE_LOCATIONS = [
+    {
+        "id": "shattered_alchemy_altar",
+        "title": "Разбитый алхимический алтарь",
+        "safe_text": "Отряд увидел разбитый алтарь и вытащил оставшиеся регенты. Дальше спокойнее.",
+        "risk_text": "Внутри бродит нестабильный филос-камень. Рискнуть?",
+        "safe_loot": {"f": (2, 4), "e": (2, 4), "w": (2, 4), "a": (2, 4)},
+        "risk_loot": {"energy": (2, 4), "glass": (3, 6), "recipe_scroll": 1, "philosophers_stone": (0, 1)},
+        "difficulty": 15,
+        "damage_range": (10, 25),
+    },
+    {
+        "id": "collapsed_tunnel",
+        "title": "Заваленный тоннель",
+        "safe_text": "Нашли проход, но он завален. Снаружи немного серы и песка — пригодится.",
+        "risk_text": "Есть узкий лаз в завал. Может быть руды, может быть обвал.",
+        "safe_loot": {"sulphur": (2, 4), "sand": (2, 4), "stone": (2, 4)},
+        "risk_loot": {"metal": (2, 5), "coal": (3, 5), "diamond": (0, 1)},
+        "difficulty": 10,
+        "damage_range": (8, 20),
+    },
+    {
+        "id": "fuming_crucible",
+        "title": "Парящий тигель",
+        "safe_text": "Паровой тигель ещё дымит. Кое-кто унёс вытянутый огонь.",
+        "risk_text": "Пар внутри подозрительно горяч. Может быть что-то ещё кипит.",
+        "safe_loot": {"steam": (2, 3), "f": (2, 4)},
+        "risk_loot": {"energy": (2, 4), "glass": (3, 6), "recipe_scroll": 1},
+        "difficulty": 20,
+        "damage_range": (12, 30),
+    },
+    {
+        "id": "forgotten_reagent_vault",
+        "title": "Забытый склад реагентов",
+        "safe_text": "Умышленно оставленные реагенты, так и снаружи растут грибы.",
+        "risk_text": "Склад герметичен. За дверью могут быть настоящие сокровища и мутанты.",
+        "safe_loot": {"moss": (3, 6), "swamp": (1, 2), "life": (1, 2)},
+        "risk_loot": {"poison": (2, 4), "acid": (2, 3), "recipe_scroll": (0, 1), "medicine": (0, 1)},
+        "difficulty": 12,
+        "damage_range": (8, 18),
+    },
+    {
+        "id": "broken_distillation_tower",
+        "title": "Сломанная колонна дистилляции",
+        "safe_text": "Около колонны уцелело стекло и немного чистой воды.",
+        "risk_text": "Внутри колонны что-то тяжелое и агрессивное. Или былагочное.",
+        "safe_loot": {"glass": (2, 4), "w": (2, 4)},
+        "risk_loot": {"energy": (2, 4), "alcohol": (2, 3), "recipe_scroll": 1, "gold": (0, 1)},
+        "difficulty": 14,
+        "damage_range": (10, 22),
+    },
+    {
+        "id": "overgrown_fermenter",
+        "title": "Заросший бродильный аппарат",
+        "safe_text": "На корпусе растут ягоды и мох. Можно собрать.",
+        "risk_text": "Кто-то изнутри стучит по толстым стенкам. Или что-то.",
+        "safe_loot": {"moss": (3, 6), "berry": (2, 4), "wood": (3, 5)},
+        "risk_loot": {"yeast": (2, 4), "alcohol": (2, 3), "recipe_scroll": (0, 1), "life": (1, 2)},
+        "difficulty": 10,
+        "damage_range": (5, 15),
+    },
+    {
+        "id": "cracked_reactor",
+        "title": "Треснувший распределитель",
+        "safe_text": "Здесь висит пробка и немного искр. Забрали магниты.",
+        "risk_text": "Распределитель трещит и гудит. Внутри — оголённые провода и что-то ещё активное.",
+        "safe_loot": {"metal": (2, 4), "electricity": (1, 2)},
+        "risk_loot": {"energy": (3, 6), "electricity": (2, 3), "recipe_scroll": (0, 1), "gem": (0, 1)},
+        "difficulty": 22,
+        "damage_range": (15, 35),
+    },
+]
+
+# --- Роль подсказки для интерактивных событий ---
+INTERACTIVE_ROLE_TIPS = {
+    "medic": "Медик может стабилизировать, если кто-то пострадает.",
+    "engineer": "Инженер видит ловушки, которые другие пропускают.",
+    "saboteur": "Сапёр узнаёт, где замuroвывание пройдёт безопаснее.",
+    "sniper": "Снайпер заранее обнаружит угрозу.",
+    "wind_scout": "Ветрослед может проскользнуть, пока никто не заметил.",
+    "storm_archer": "Бурелук чувствует перемену давления — угрозы перед вами.",
+    "water_guard": "Водостраж уверенно щитит спину в тесных пространствах.",
+    "earth_shielder": "Щитоносец крепко будет стоять перед лицом опасности.",
+    "mech": "Мех чувствует механизированную схватку.",
+    "flame_tank": "Огнетанк заряжает систему ближе к движущейся угрозе.",
+    "juggernaut": "Джаггер не сдвинется, пока сам не позволит.",
+    "med": "Боец с поддержкой способен зализать раны в бою.",  # wildcard: has support stat high?
+}
+
+def _roll_loot_amount(loot_spec) -> dict:
+    """{'item': (min, max)} -> {'item': rolled_amount}"""
+    result = {}
+    for item_id, value in loot_spec.items():
+        if isinstance(value, tuple):
+            result[item_id] = random.randint(value[0], value[1])
+        else:
+            result[item_id] = value
+    return result
 ROLE_ALIASES = {
     "fire_swordsman": "Огнемеч",
     "water_guard": "Водостраж",
@@ -381,12 +483,39 @@ async def generate_expedition_final_report(expedition: dict) -> str:
     return random.choice(options)
 
 
+def insert_interactive_events(planned: list, stats: dict, units: list) -> list:
+    """Добавляет интерактивные события в план экспедиции.
+    Количество зависит от скорости и восприятия (1–2 события)."""
+    speed = stats.get("total_speed", 0)
+    perception = stats.get("total_perception", 0)
+    # Базовый шанс появления + бонус от скорости и восприятия
+    chance = 0.10 + min((speed + perception) / 100, 0.30)
+    if random.random() > chance:
+        return planned
+
+    count = random.randint(1, 2)  # From speed/perception
+    for _ in range(count):
+        location = random.choice(INTERACTIVE_LOCATIONS)
+        event = {
+            "type": "interactive",
+            "location_id": location["id"],
+            "text": location["risk_text"],  # Краткий текст-затычка о приближении к опасному месту
+            "safe_text": location["safe_text"],
+            "safe_loot": location["safe_loot"],
+            "risk_loot": location["risk_loot"],
+            "difficulty": location["difficulty"],
+            "damage_range": location["damage_range"],
+        }
+        planned.append(event)
+    return planned
+
+
 def build_planned_events_sync(units: list, stats: dict) -> list[dict]:
     """Синхронная версия для мгновенного создания экспедиции (без AI)."""
     hp_now = stats["total_hp"]
     planned = []
 
-    # Количество событий зависит от скорости (больше скорость = дальше проходят)
+    # Количество событий зависит от скорости (больше скорость = дальше проходёт)
     base_events = random.randint(9, 13)
     speed_bonus = stats.get("total_speed", 0) // 5
     planned_count = base_events + speed_bonus
@@ -441,7 +570,7 @@ def build_planned_events_sync(units: list, stats: dict) -> list[dict]:
         # Используем только fallback тексты для мгновенного создания
         event["text"] = build_planned_event_text(units, event["type"])
         planned.append(event)
-    return planned
+    return insert_interactive_events(planned, stats, units)
 
 
 async def build_planned_events(units: list, stats: dict) -> list[dict]:
@@ -505,7 +634,7 @@ async def build_planned_events(units: list, stats: dict) -> list[dict]:
         else:
             event["text"] = build_planned_event_text(units, event["type"])
         planned.append(event)
-    return planned
+    return insert_interactive_events(planned, stats, units)
 
 
 def add_loot_to_bag(expedition: dict, new_loot: dict):
@@ -578,8 +707,14 @@ def render_expeditions_text(player: dict, draft: list[str] | None = None) -> str
     else:
         for i, expedition in enumerate(active, 1):
             load_now = get_bag_load(expedition.get("loot", {}))
+            status = expedition.get("status", "searching")
+            time_left = ""
+            if status == "awaiting_choice":
+                left = max(0, expedition.get("interactive_timeout_at", 0) - int(time.time()))
+                time_left = f" (⏳{left // 60}м{left % 60}с)"
             lines.append(
-                f"• Экспедиция #{i} | {expedition['status_label']} | "
+                f"• Экспедиция #{i} | {expedition['status_label']} "
+                f"{time_left}| "
                 f"HP {expedition['current_hp']}/{expedition['total_hp']} | Рюкзак {load_now}/{expedition['cargo_capacity']}"
             )
     return "\n".join(lines)
@@ -656,6 +791,9 @@ def render_expedition_detail(expedition: dict, index: int) -> str:
     fighters = ", ".join(get_role_name(item) for item in expedition.get("fighter_snapshots", expedition.get("fighters", [])))
     logs = expedition.get("logs", [])[-VISIBLE_LOGS:]
     status_text = expedition.get("status_label", expedition.get("status", "Неизвестно"))
+    if expedition.get("status") == "awaiting_choice":
+        left = max(0, expedition.get("interactive_timeout_at", 0) - int(time.time()))
+        status_text += f" (⏳{left // 60}м{left % 60}с по истечении — отряд обходит)"
     lines = [
         f"📻 **ЭКСПЕДИЦИЯ #{index}**",
         f"Бойцы: {fighters}",
@@ -685,6 +823,8 @@ def build_expedition_detail_keyboard(expedition: dict) -> types.InlineKeyboardMa
     builder = InlineKeyboardBuilder()
     if expedition.get("status") == "searching":
         builder.button(text="↩️ Отступление", callback_data=f"expedition_retreat:{expedition['id']}")
+    elif expedition.get("status") == "awaiting_choice":
+        builder.button(text="⏳ Отряд ждёт решения…", callback_data=f"expedition_view:{expedition['id']}")
     if expedition.get("status") == "arrived":
         builder.button(text="🏁 Встретить отряд", callback_data=f"expedition_claim:{expedition['id']}")
     builder.button(text="🔙 К экспедициям", callback_data="expeditions_open")
@@ -698,6 +838,68 @@ def build_expedition_claim_keyboard() -> types.InlineKeyboardMarkup:
     builder.button(text="🔙 В Штаб", callback_data="alc:base_return")
     builder.adjust(1)
     return builder.as_markup()
+
+LOCA_BY_ID = {loc["id"]: loc for loc in INTERACTIVE_LOCATIONS}
+
+
+def build_interactive_choice_keyboard(expedition_id: str) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚪 Идём внутрь (риск)", callback_data=f"exp_int_choice:{expedition_id}:enter")
+    builder.button(text="🍄 Собираем и уходим (безопасно)", callback_data=f"exp_int_choice:{expedition_id}:pass")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_fighter_select_keyboard(expedition_id: str, fighters: list[dict]) -> types.InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for snap in fighters:
+        name = snap.get("name", snap.get("unit_id", "Боец"))
+        builder.button(text=f"🪖 {name}", callback_data=f"exp_int_fighter:{expedition_id}:{snap.get('id', '')}")
+    builder.button(text="🛡 Все вместе", callback_data=f"exp_int_fighter:{expedition_id}:all")
+    builder.button(text="↩️ Назад", callback_data=f"exp_int_back:{expedition_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+async def _send_interactive_message(player: dict, expedition: dict, event: dict) -> int | None:
+    """Отправляет сообщение с выбором действия.
+
+    Возвращает message_id или None в случае ошибки.
+    """
+    location = LOCA_BY_ID.get(event.get("location_id"), {})
+    title = location.get("title", "Что-то странное")
+    text = (
+        f"🚨 **{title}**\n\n"
+        f"{event.get('text', 'Отряд заметил что-то интересное.')}\n\n"
+        "❓ Что предпринять? (15 минут на ответ)"
+    )
+    try:
+        msg = await bot.send_message(
+            player["user_id"],
+            text,
+            reply_markup=build_interactive_choice_keyboard(expedition["id"]),
+            parse_mode="Markdown",
+        )
+        return msg.message_id
+    except Exception as exc:
+        logger.error("Failed to send interactive event message: %s", exc)
+        return None
+
+
+async def _resolve_interactive_safe(expedition: dict, interactive_state: dict) -> None:
+    """Авто-решение по истечении тайм-аута: отряд проходит мимо."""
+    safe_loot_spec = interactive_state.get("safe_loot", {})
+    if safe_loot_spec:
+        loot = _roll_loot_amount(safe_loot_spec)
+        add_loot_to_bag(expedition, loot)
+        loot_text = ", ".join(f"{ELEMENTS.get(k, k)} x{v}" for k, v in loot.items())
+        expedition["logs"] = trim_logs(expedition.get("logs", []) + [f"Отряд не стал рисковать. Собрали {loot_text}."])
+    else:
+        expedition["logs"] = trim_logs(expedition.get("logs", []) + ["Отряд осторожно обошёл место.", "Ничего примечательного.", "Просто уставшие люди и багги — не время для приключений."])
+    expedition["status"] = "searching"
+    expedition["next_tick_at"] = int(time.time()) + EXPEDITION_TICK
+    for key in ("interactive_timeout_at", "interactive_state", "interactive_message_id"):
+        expedition.pop(key, None)
 
 
 async def discover_random_recipe(player: dict) -> str | None:
@@ -740,7 +942,23 @@ async def process_single_expedition(player: dict, expedition: dict) -> bool:
         changed = True
 
         event_type = event.get("type")
-        if event_type == "loot":
+        if event_type == "interactive":
+            # Поставить экспедицию на паузу, отправить сообщение игроку
+            expedition["status"] = "awaiting_choice"
+            expedition["status_label"] = "Ждёт приказа"
+            expedition["interactive_timeout_at"] = now + INTERACTIVE_CHOICE_TIMEOUT
+            state = event.copy()
+            # Мы не хотим хранить вложенные dict в монге — serialise safe/risk loot specs
+            state["safe_loot"] = dict(state.get("safe_loot", {}))
+            state["risk_loot"] = dict(state.get("risk_loot", {}))
+            expedition["interactive_state"] = state
+            expedition["next_tick_at"] = 0
+            msg_id = await _send_interactive_message(player, expedition, event)
+            if msg_id:
+                expedition["interactive_message_id"] = msg_id
+            log_entry = f"Наткнулись на интерактивную локацию: {LOCA_BY_ID.get(event.get('location_id'), {}).get('title', 'что-то непонятное')}. Ждём приказ."
+            expedition["logs"] = trim_logs(expedition.get("logs", []) + [log_entry])
+        elif event_type == "loot":
             add_loot_to_bag(expedition, event.get("loot", {}))
             loot_text = ", ".join(f"{ELEMENTS.get(item_id, item_id)} x{amount}" for item_id, amount in event.get("loot", {}).items())
             expedition["logs"] = trim_logs(expedition["logs"] + [f"Добыча: {loot_text}."])
@@ -771,6 +989,12 @@ async def process_single_expedition(player: dict, expedition: dict) -> bool:
             finalize_return(expedition, "здоровье упало ниже безопасного порога")
         elif load_now >= expedition.get("cargo_capacity", 0):
             finalize_return(expedition, "рюкзаки трещат по швам")
+
+    # Ответ истёк — авто-уход по безопасному пути
+    if expedition.get("status") == "awaiting_choice" and expedition.get("interactive_timeout_at", 0) <= now:
+        state = expedition.pop("interactive_state", {})
+        await _resolve_interactive_safe(expedition, state)
+        changed = True
 
     if expedition.get("status") == "returning" and expedition.get("return_end_at", 0) <= now:
         expedition["status"] = "arrived"
@@ -1034,6 +1258,264 @@ async def expedition_claim(callback: types.CallbackQuery):
         )
     await callback.message.edit_text(text, reply_markup=build_expedition_claim_keyboard(), parse_mode="Markdown")
     await callback.answer("Отряд вернулся в строй.")
+
+
+def _calculate_team_combat_power(player: dict, expedition: dict, chosen_id: str | None = None) -> tuple[int, list[str], list[dict]]:
+    """Возвращает (power, list of unit_ids, list of deadly_fighters if any)."""
+    from handlers.alc_fighters import find_fighter
+
+    snapshots = expedition.get("fighter_snapshots", [])
+    unit_ids = [snap.get("unit_id", "") for snap in snapshots]
+    power = 0
+    dead_list = []
+
+    for snap in snapshots:
+        fid = snap.get("id")
+        fighter = find_fighter(player, fid)
+        if not fighter:
+            continue
+        stats = fighter.get("stats", {})
+        power += stats.get("attack", 0) * 2 + stats.get("defense", 0) + stats.get("speed", 0) + stats.get("perception", 0) + stats.get("support", 0)
+
+    # Роль бонусы
+    for uid in unit_ids:
+        if uid == "medic":
+            power += 5
+        elif uid == "engineer":
+            power += 5
+        elif uid == "saboteur":
+            power += 8
+        elif uid == "sniper":
+            power += 5
+        elif uid in {"mech", "juggernaut", "flame_tank", "walker"}:
+            power += 3
+
+    # Если выбран конкретный боец — значительный бонус к его стилю
+    if chosen_id:
+        fighter = find_fighter(player, chosen_id)
+        if fighter:
+            stats = fighter.get("stats", {})
+            role_power = stats.get("attack", 0) * 2 + stats.get("defense", 0) + stats.get("support", 0)
+            # Если боец скоростной — бонус к избежанию урона
+            if stats.get("speed", 0) > 8:
+                role_power += stats.get("speed", 0)
+            power += role_power
+
+    return power, unit_ids, dead_list
+
+
+async def _resolve_interactive_combat(expedition: dict, player: dict, state: dict, chosen_id: str | None = None) -> tuple[bool, str, list]:
+    """Возвращает (win, log_text, dead_fighters_list)."""
+    from handlers.alc_fighters import find_fighter, get_fighter_risk, hall_of_fame_entry
+
+    difficulty = state.get("difficulty", 15)
+    damage_range = state.get("damage_range", (5, 15))
+    team_power, unit_ids, _dead = _calculate_team_combat_power(player, expedition, chosen_id)
+    enemy_power = difficulty * 2 + random.randint(5, 25)
+
+    # Mediс и Engineer снижают урон
+    has_medic = "medic" in unit_ids
+    has_engineer = "engineer" in unit_ids
+    tank_count = sum(1 for u in unit_ids if u in {"water_guard", "earth_shielder", "mech", "juggernaut"})
+
+    attack_roll = random.randint(0, 25)
+    defense_roll = random.randint(0, 20)
+    win = (team_power + attack_roll) >= (enemy_power + defense_roll)
+
+    # Урон
+    if win:
+        base_damage = random.randint(5, 12)
+    else:
+        base_damage = random.randint(*damage_range)
+
+    # Медик и инжинер уменьшают урон
+    if has_medic:
+        base_damage = max(1, int(base_damage * 0.85))
+    if has_engineer:
+        base_damage = max(1, int(base_damage * 0.80))
+    if tank_count > 0:
+        base_damage = max(1, int(base_damage * (1 - 0.10 * min(tank_count, 2))))
+
+    # Применяем урон к экспедиции
+    expedition["current_hp"] = max(0, expedition.get("current_hp", 0) - base_damage)
+
+    log_lines = []
+    dead_list = []
+    if win:
+        log_lines.append(f"Отряд вступил в бой и победил. Потеряли {base_damage} HP.")
+    else:
+        log_lines.append(f"Отряд оступил. Потеряли {base_damage} HP.")
+
+    # Смерть бойцов
+    fighter_ids = expedition.get("fighter_ids", [])
+    if win:
+        death_chance = 0.01  # 1%
+    else:
+        death_chance = 0.03 + random.random() * 0.02  # 3-5%
+        if tank_count > 0:
+            death_chance = max(0.01, death_chance - 0.02 * min(tank_count, 2))
+
+    for fid in fighter_ids:
+        fighter = find_fighter(player, fid)
+        if not fighter:
+            continue
+        roll = random.random()
+        if roll < death_chance:
+            fighter["status"] = "dead"
+            dead_list.append(fighter)
+            player["hall_of_fame"] = player.get("hall_of_fame", []) + [hall_of_fame_entry(fighter, f"Погиб в экспедиции: {state.get('location_id', 'неизвестно')}")]
+            log_lines.append(f"💀 {get_role_name(fighter)} не выжил.")
+
+    # Если медик — лечим чуть-чуть (если никто не умер)
+    if has_medic and not dead_list:
+        heal = random.randint(3, 8)
+        expedition["current_hp"] = min(expedition["total_hp"], expedition.get("current_hp", 0) + heal)
+        log_lines.append(f"🩺 Медик залатал раны. +{heal} HP.")
+
+    return win, " ".join(log_lines), dead_list
+
+
+async def _resolve_interactive_choice(expedition: dict, state: dict, win: bool, player: dict, chosen_id: str | None = None) -> str:
+    safe_loot_spec = state.get("safe_loot", {})
+    risk_loot_spec = state.get("risk_loot", {})
+    logs = []
+
+    if win:
+        if safe_loot_spec:
+            rolled = _roll_loot_amount(safe_loot_spec)
+            add_loot_to_bag(expedition, rolled)
+            text = ", ".join(f"{ELEMENTS.get(k, k)} x{v}" for k, v in rolled.items())
+            logs.append(f"Собрали барыш: {text}.")
+
+    expedition["status"] = "searching"
+    expedition["next_tick_at"] = int(time.time()) + EXPEDITION_TICK
+    for key in ("interactive_timeout_at", "interactive_state", "interactive_message_id"):
+        expedition.pop(key, None)
+    return " ".join(logs)
+
+
+@router.callback_query(F.data.startswith("exp_int_choice:"))
+async def exp_int_choice(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        return await callback.answer("Неверный формат.", show_alert=True)
+    expedition_id = parts[1]
+    choice = parts[2]
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    expedition = find_expedition(player, expedition_id)
+    if not expedition or expedition.get("status") != "awaiting_choice":
+        return await callback.answer("Событие уже неактивно.", show_alert=True)
+
+    state = expedition.get("interactive_state", {})
+    location = LOCA_BY_ID.get(state.get("location_id"), {})
+
+    if choice == "pass":
+        # Безопасный путь
+        await _resolve_interactive_safe(expedition, state)
+        await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {"active_expeditions": player["active_expeditions"]}})
+        await callback.message.edit_text(f"🍄 Отряд осторожно обошёл локацию.\n\n{expedition['logs'][-1]}")
+        return await callback.answer("Отряд прошёл мимо.")
+
+    elif choice == "enter":
+        # Выбор бойца или всего отряда
+        snapshots = expedition.get("fighter_snapshots", [])
+        await callback.message.edit_text(
+            f"⚔️ Рискнуть со всем отрядом или выбрать разведчика?\n\n_{location.get('risk_text', 'Что-то непонятное...')}_",
+            reply_markup=build_fighter_select_keyboard(expedition_id, snapshots),
+            parse_mode="Markdown",
+        )
+        return await callback.answer("Кого отправляем первым?")
+    else:
+        return await callback.answer("Неизвестный выбор.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("exp_int_fighter:"))
+async def exp_int_fighter(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        return await callback.answer("Неверный формат.", show_alert=True)
+    expedition_id = parts[1]
+    fighter_id = parts[2]
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    expedition = find_expedition(player, expedition_id)
+    if not expedition or expedition.get("status") != "awaiting_choice":
+        return await callback.answer("Событие уже неактивно.", show_alert=True)
+
+    state = expedition.get("interactive_state", {})
+
+    # Сначала боёвка
+    win, log_text, dead_list = await _resolve_interactive_combat(expedition, player, state, chosen_id=(fighter_id if fighter_id != "all" else None))
+
+    # Добыча
+    loot_text = ""
+    if win:
+        risk_loot_spec = state.get("risk_loot", {})
+        if risk_loot_spec:
+            rolled = _roll_loot_amount(risk_loot_spec)
+            add_loot_to_bag(expedition, rolled)
+            loot_text = ", ".join(f"{ELEMENTS.get(k, k)} x{v}" for k, v in rolled.items())
+    else:
+        # При поражении получаем только safe loot
+        safe_loot_spec = state.get("safe_loot", {})
+        if safe_loot_spec:
+            rolled = _roll_loot_amount(safe_loot_spec)
+            add_loot_to_bag(expedition, rolled)
+            loot_text = ", ".join(f"{ELEMENTS.get(k, k)} x{v}" for k, v in rolled.items())
+
+    expedition["status"] = "searching"
+    expedition["status_label"] = "Исследует мир"
+    for key in ("interactive_timeout_at", "interactive_state", "interactive_message_id"):
+        expedition.pop(key, None)
+    expedition["next_tick_at"] = int(time.time()) + EXPEDITION_TICK
+
+    # Обновляем лог
+    full_text = f"{log_text} Добыча: {loot_text}." if loot_text else log_text
+    expedition["logs"] = trim_logs(expedition.get("logs", []) + [full_text])
+
+    # Те же проверки выхода, что и в process_single_expedition
+    load_now = get_bag_load(expedition.get("loot", {}))
+    if expedition.get("current_hp", 0) <= 0:
+        expedition["loot"] = {}
+        expedition["current_hp"] = 1
+        finalize_return(expedition, "отряд едва выжил и бросил лут")
+    elif expedition.get("current_hp", 0) <= max(1, int(expedition["total_hp"] * 0.10)):
+        finalize_return(expedition, "здоровье упало ниже безопасного порога")
+    elif load_now >= expedition.get("cargo_capacity", 0):
+        finalize_return(expedition, "рюкзаки трещат по швам")
+
+    await db.alchemy_players.update_one(
+        {"user_id": user_id},
+        {
+            "$set": {
+                "active_expeditions": player["active_expeditions"],
+                "fighters": player.get("fighters", []),
+                "hall_of_fame": player.get("hall_of_fame", []),
+            }
+        },
+    )
+
+    await callback.message.edit_text(f"{'✅ Победа!' if win else '❌ Скатертью дорога.'}\n\n{full_text}")
+    return await callback.answer("Готово.")
+
+
+@router.callback_query(F.data.startswith("exp_int_back:"))
+async def exp_int_back(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 2:
+        return await callback.answer("Неверный формат.", show_alert=True)
+    expedition_id = parts[1]
+    user_id = callback.from_user.id
+    player = await get_or_create_player(user_id, callback.from_user.first_name)
+    expedition = find_expedition(player, expedition_id)
+    if not expedition or expedition.get("status") != "awaiting_choice":
+        return await callback.answer("Событие уже неактивно.", show_alert=True)
+    state = expedition.get("interactive_state", {})
+    location = LOCA_BY_ID.get(state.get("location_id"), {})
+    text = f"🚨 **{location.get('title', 'Что-то странное')}**\n\n{state.get('risk_text', 'Отряд заметил что-то интересное.')}\n\n❓ Что предпринять?"
+    await callback.message.edit_text(text, reply_markup=build_interactive_choice_keyboard(expedition_id), parse_mode="Markdown")
+    return await callback.answer("Возврат к выбору.")
 
 
 async def notify_arrived_expeditions():
