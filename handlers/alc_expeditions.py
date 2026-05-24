@@ -1314,7 +1314,7 @@ def _calculate_team_combat_power(player: dict, expedition: dict, chosen_id: str 
 
 async def _resolve_interactive_combat(expedition: dict, player: dict, state: dict, chosen_id: str | None = None) -> tuple[bool, str, list]:
     """Возвращает (win, log_text, dead_fighters_list)."""
-    from handlers.alc_fighters import find_fighter, get_fighter_risk, hall_of_fame_entry
+    from handlers.alc_fighters import find_fighter, get_fighter_risk, hall_of_fame_entry, is_hero
 
     difficulty = state.get("difficulty", 15)
     damage_range = state.get("damage_range", (5, 15))
@@ -1369,10 +1369,15 @@ async def _resolve_interactive_combat(expedition: dict, player: dict, state: dic
             continue
         roll = random.random()
         if roll < death_chance:
-            fighter["status"] = "dead"
-            dead_list.append(fighter)
-            player["hall_of_fame"] = player.get("hall_of_fame", []) + [hall_of_fame_entry(fighter, f"Погиб в экспедиции: {state.get('location_id', 'неизвестно')}")]
-            log_lines.append(f"💀 {get_role_name(fighter)} не выжил.")
+            if is_hero(fighter):
+                fighter["stamina"] = 0
+                fighter["stamina_updated_at"] = int(time.time())
+                log_lines.append(f"🩹 {get_role_name(fighter)} получил тяжёлую рану, но выжил. Бодрость сброшена до 0.")
+            else:
+                fighter["status"] = "dead"
+                dead_list.append(fighter)
+                player["hall_of_fame"] = player.get("hall_of_fame", []) + [hall_of_fame_entry(fighter, f"Погиб в экспедиции: {state.get('location_id', 'неизвестно')}")]
+                log_lines.append(f"💀 {get_role_name(fighter)} не выжил.")
 
     # Если медик — лечим чуть-чуть (если никто не умер)
     if has_medic and not dead_list:

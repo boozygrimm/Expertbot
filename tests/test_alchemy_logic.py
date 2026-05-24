@@ -1564,6 +1564,53 @@ class InteractiveExpeditionTests(unittest.IsolatedAsyncioTestCase):
                 # Просто проверяем что функция не падает
                 await exp_int_choice(callback)
 
+    async def test_hero_survives_combat_instead_of_dying(self):
+        """Герой не умирает в интерактивной боевке — бодрость сбрасывается до 0."""
+        from unittest.mock import patch
+        from handlers.alc_expeditions import _resolve_interactive_combat
+        player = {
+            " fighters": [],
+            "hall_of_fame": [],
+            "fighters": [
+                {"id": "f1", "unit_id": "fire_swordsman", "is_hero": True, "stamina": 5, "stats": {
+                    "attack": 10, "defense": 5, "speed": 5, "perception": 5, "support": 5
+                }, "status": "expedition"},
+                {"id": "f2", "unit_id": "water_guard", "is_hero": False, "stamina": 3, "stats": {
+                    "attack": 5, "defense": 10, "speed": 3, "perception": 3, "support": 8
+                }, "status": "expedition"},
+            ],
+        }
+        expedition = {
+            "current_hp": 100,
+            "total_hp": 100,
+            "fighter_ids": ["f1", "f2"],
+            "fighter_snapshots": [
+                {"id": "f1", "unit_id": "fire_swordsman"},
+                {"id": "f2", "unit_id": "water_guard"},
+            ],
+        }
+        state = {
+            "location_id": "shattered_alchemy_altar",
+            "difficulty": 10,
+            "damage_range": (5, 15),
+        }
+        # Зафиксируем поражение + максимальную смертельность
+        with patch("handlers.alc_expeditions.random.randint", return_value=0), \
+             patch("handlers.alc_expeditions.random.random", return_value=0.0):
+            win, log_text, dead = await _resolve_interactive_combat(expedition, player, state)
+        # Герой должен выжить
+        hero = next((f for f in player["fighters"] if f["id"] == "f1"), None)
+        self.assertIsNotNone(hero)
+        self.assertNotEqual(hero["status"], "dead")
+        self.assertEqual(hero["stamina"], 0)
+        # Не-герой должен погибнуть
+        non_hero = next((f for f in player["fighters"] if f["id"] == "f2"), None)
+        self.assertIsNotNone(non_hero)
+        self.assertEqual(non_hero["status"], "dead")
+        self.assertGreater(len(dead), 0)
+        # Лог должен упоминать травму героя
+        self.assertIn("рану", log_text.lower())
+
     async def test_team_combat_power_calculation(self):
         """Боёвка считает power правильно."""
         from handlers.alc_expeditions import _calculate_team_combat_power
