@@ -251,3 +251,4 @@ python -m unittest discover -s tests -v
 ## Документация
 
 - [Полный анализ проекта](PROJECT_ANALYSIS.md)
+- [План видеокружков Бендера (согласован, реализация не начата)](VIDEO_NOTES_PLAN.md)
