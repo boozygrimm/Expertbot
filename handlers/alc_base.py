@@ -53,13 +53,17 @@ from handlers.alc_core import (
     send_expedition_menu,
 )
 from handlers.alc_fighters import can_pay_cost, spend_cost
-from handlers.alc_tasks import (
+from handlers.alc_notifications import (
     MORNING_REPORT_MUTE_FIELD,
+    RAID_REPORT_MUTE_FIELD,
+    RAID_REPORT_TOGGLE_CALLBACK,
     REPORT_MUTE_CALLBACK,
     REPORT_TOGGLE_CALLBACK,
+    build_raid_report_toggle_button,
     build_report_close_markup,
     build_report_toggle_button,
     is_morning_report_muted,
+    is_raid_report_muted,
 )
 
 logger = logging.getLogger(__name__)
@@ -1091,6 +1095,8 @@ def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
         types.InlineKeyboardButton(text="📜 Квесты", callback_data="quests_open"),
         # Утренний отчёт: кнопка показывает текущее состояние и переключает рассылку.
         build_report_toggle_button(player),
+        # Отчёты о нападениях на форт — тот же паттерн переключателя.
+        build_raid_report_toggle_button(player),
     ]
     if buildings.get("barracks", 0) > 0:
         service_rows.append(types.InlineKeyboardButton(text="🎖 Казармы", callback_data="barracks_open"))
@@ -1845,27 +1851,56 @@ async def mute_morning_reports(callback: types.CallbackQuery):
     )
 
 
-@router.callback_query(F.data == REPORT_TOGGLE_CALLBACK)
-async def toggle_morning_reports(callback: types.CallbackQuery):
-    """Переключатель утренних отчётов в главном меню базы."""
+async def _toggle_mute_setting(
+    callback: types.CallbackQuery,
+    field: str,
+    is_muted,
+    muted_answer: str,
+    enabled_answer: str,
+) -> bool | None:
+    """Общий переключатель настройки уведомлений в главном меню базы.
+
+    Возвращает новое значение флага или None, если профиля игрока нет и менять
+    нечего.
+    """
     user_id = callback.from_user.id
     player = await db.alchemy_players.find_one({"user_id": user_id})
     if not player:
         await callback.answer("Сначала сходи в поход!", show_alert=True)
-        return
+        return None
 
-    muted = not is_morning_report_muted(player)
-    await db.alchemy_players.update_one(
-        {"user_id": user_id}, {"$set": {MORNING_REPORT_MUTE_FIELD: muted}}
-    )
+    muted = not is_muted(player)
+    await db.alchemy_players.update_one({"user_id": user_id}, {"$set": {field: muted}})
 
+    # Меню перерисовываем, чтобы подпись кнопки сразу показала новое состояние.
     text, markup = await get_base_content(user_id)
     await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="Markdown")
+    await callback.answer(muted_answer if muted else enabled_answer)
+    return muted
 
-    if muted:
-        await callback.answer("🔕 Утренние отчёты отключены.")
-    else:
-        await callback.answer("📊 Утренние отчёты включены: будут приходить в 3:10 по МСК.")
+
+@router.callback_query(F.data == REPORT_TOGGLE_CALLBACK)
+async def toggle_morning_reports(callback: types.CallbackQuery):
+    """Переключатель утренних отчётов в главном меню базы."""
+    await _toggle_mute_setting(
+        callback,
+        MORNING_REPORT_MUTE_FIELD,
+        is_morning_report_muted,
+        "🔕 Утренние отчёты отключены.",
+        "📊 Утренние отчёты включены: будут приходить в 3:10 по МСК.",
+    )
+
+
+@router.callback_query(F.data == RAID_REPORT_TOGGLE_CALLBACK)
+async def toggle_raid_reports(callback: types.CallbackQuery):
+    """Переключатель отчётов о нападениях на форт в главном меню базы."""
+    await _toggle_mute_setting(
+        callback,
+        RAID_REPORT_MUTE_FIELD,
+        is_raid_report_muted,
+        "🔕 Отчёты о нападениях отключены. Итоги твоих рейдов будут приходить как раньше.",
+        "⚔️ Отчёты о нападениях включены.",
+    )
 
 
 @router.callback_query(F.data == "alc:base_pohod")
