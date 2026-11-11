@@ -15,6 +15,13 @@ from ai_image_prompt import (
 from ai_music_query import normalize_music_query as _normalize_music_query
 from ai_summaries import collect_chunk_summaries, split_text_into_chunks
 from config import GEMINI_KEYS, GEMINI_GAME_KEY, GROQ_KEYS, get_msk_now
+from models import (
+    GEMINI_CHAT_MODEL,
+    GROQ_IMAGE_PROMPT_MODEL,
+    OPENROUTER_SUMMARY_MODEL,
+    OPENROUTER_TEXT_MODEL,
+    OPENROUTER_VISION_MODEL,
+)
 from ai_providers import (
     OPENROUTER_KEYS,
     fire_gemini_key,
@@ -45,7 +52,7 @@ def get_today_str():
     return get_msk_now().strftime("%d.%m.%Y")
 
 
-async def make_rest_request(prompt, api_key, media_data=None, model="gemini-3-flash-preview", quiet: bool = False):
+async def make_rest_request(prompt, api_key, media_data=None, model=GEMINI_CHAT_MODEL, quiet: bool = False):
     return await _make_rest_request(
         prompt,
         api_key,
@@ -56,15 +63,20 @@ async def make_rest_request(prompt, api_key, media_data=None, model="gemini-3-fl
     )
 
 
-async def try_groq(prompt, use_fast_model=False):
-    return await _try_groq(prompt, SYSTEM_GUARD, use_fast_model=use_fast_model)
+async def try_groq(prompt, use_fast_model=False, **kwargs):
+    """Обёртка над ai_providers.try_groq, подставляющая системный guard-промпт.
+
+    `**kwargs` пробрасывает необязательные параметры провайдера (например
+    `max_tokens`), не ломая прежнюю сигнатуру для существующих вызовов.
+    """
+    return await _try_groq(prompt, SYSTEM_GUARD, use_fast_model=use_fast_model, **kwargs)
 
 
-async def try_openrouter(prompt, model="google/gemma-3-27b-it:free", max_tokens=2048):
+async def try_openrouter(prompt, model=OPENROUTER_TEXT_MODEL, max_tokens=2048):
     return await _try_openrouter(prompt, SYSTEM_GUARD, model=model, max_tokens=max_tokens)
 
 
-async def try_openrouter_vision(prompt, image_data, model="qwen/qwen3-vl-30b-thinking:free"):
+async def try_openrouter_vision(prompt, image_data, model=OPENROUTER_VISION_MODEL):
     return await _try_openrouter_vision(prompt, image_data, model=model)
 
 
@@ -78,7 +90,7 @@ async def summarize_chunk_via_fallback(prompt: str) -> str:
             await asyncio.sleep(random.uniform(2.0, 3.5))
 
     if not res:
-        res, status = await try_openrouter(prompt, model="qwen/qwen-2.5-72b-instruct:free")
+        res, status = await try_openrouter(prompt, model=OPENROUTER_SUMMARY_MODEL)
         if status != 200:
             res = ""
     return res
@@ -101,7 +113,7 @@ async def generate_with_retry(prompt, media_data=None, is_game=False, use_fast_m
         if status == 200 and groq_res:
             return groq_res
 
-        or_res, status = await try_openrouter(prompt, model="google/gemma-3-27b-it:free", max_tokens=256)
+        or_res, status = await try_openrouter(prompt, model=OPENROUTER_TEXT_MODEL, max_tokens=256)
         if status == 200 and or_res:
             return or_res
 
@@ -193,7 +205,7 @@ async def get_expert_report(history_text, persona_id):
                     if status == 200 and res: return res
                     await asyncio.sleep(random.uniform(2.0, 4.0)) 
             
-            or_res, status = await try_openrouter(final_prompt, model="qwen/qwen-2.5-72b-instruct:free", max_tokens=4000)
+            or_res, status = await try_openrouter(final_prompt, model=OPENROUTER_SUMMARY_MODEL, max_tokens=4000)
             if status == 200 and or_res: return or_res
             
             return "Эксперт не смог переварить логи, попробуй позже."
@@ -227,7 +239,7 @@ async def get_expert_report(history_text, persona_id):
                 if status == 200 and res: return res
                 await asyncio.sleep(random.uniform(2.0, 4.0))
                 
-        or_res, status = await try_openrouter(final_prompt, model="qwen/qwen-2.5-72b-instruct:free", max_tokens=4000)
+        or_res, status = await try_openrouter(final_prompt, model=OPENROUTER_SUMMARY_MODEL, max_tokens=4000)
         if status == 200 and or_res: return or_res
             
         return "Технические шоколадки у эксперта."
@@ -310,13 +322,13 @@ async def get_daily_summary(chat_id: int):
             if status == 200 and res: return res
             await asyncio.sleep(random.uniform(2.0, 4.0))
             
-    or_res, status = await try_openrouter(final_prompt, model="qwen/qwen-2.5-72b-instruct:free", max_tokens=4000)
+    or_res, status = await try_openrouter(final_prompt, model=OPENROUTER_SUMMARY_MODEL, max_tokens=4000)
     if status == 200 and or_res: return or_res
         
     return "Не удалось сгенерировать финальный отчет."
 
-async def make_groq_request(prompt: str, key: str, system_prompt: str, model: str = "llama-3.1-8b-instant"):
-    return await _make_groq_request(prompt, key, system_prompt, model=model)
+async def make_groq_request(prompt: str, key: str, system_prompt: str, model: str = GROQ_IMAGE_PROMPT_MODEL, max_tokens: int = 1024):
+    return await _make_groq_request(prompt, key, system_prompt, model=model, max_tokens=max_tokens)
 
 async def generate_fast_image_prompt(user_query: str):
     return await _generate_fast_image_prompt(user_query)

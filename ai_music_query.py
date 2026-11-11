@@ -1,5 +1,7 @@
 from typing import Awaitable, Callable
 
+from models import OPENROUTER_TEXT_MODEL
+
 
 def cleanup_music_query(user_query: str) -> str:
     cleaned = " ".join((user_query or "").strip().split())
@@ -56,7 +58,7 @@ async def normalize_music_query(
     prompt = build_normalize_music_prompt(cleaned)
     res, status = await try_openrouter_fn(
         prompt,
-        model="google/gemma-3-27b-it:free",
+        model=OPENROUTER_TEXT_MODEL,
         max_tokens=128,
     )
     if status == 200 and res:

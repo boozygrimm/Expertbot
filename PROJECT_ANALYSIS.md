@@ -192,6 +192,21 @@ except (TelegramBadRequest, ValueError) as e:
 - **Последнее обновление:** 2026-05-10
 - **Статус:** Активная разработка
 
+## Последние изменения (инфраструктура AI, ноябрь 2026)
+
+- Добавлен `models.py` — единый реестр идентификаторов моделей Groq / Gemini / OpenRouter
+  с переопределением через env (`GROQ_FAST_MODELS`, `GROQ_STRONG_MODELS`,
+  `GROQ_TRANSCRIBE_MODELS`, `GEMINI_CHAT_MODEL`, `OPENROUTER_*`).
+- Устаревшие модели Groq (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`,
+  `qwen/qwen3-32b`, `meta-llama/llama-4-scout-17b-16e-instruct`) заменены на актуальные
+  для free/developer-тарифов: `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.8-27b`,
+  для аудио — `whisper-large-v3` с фолбэком на `whisper-large-v3-turbo`.
+- `try_groq` и `transcribe_audio_groq` теперь продолжают на следующую модель при
+  `400/404` (модель недоступна) и `401/403` (мёртвый ключ) вместо молчаливого падения;
+  ошибки провайдеров логируются с телом ответа.
+- Учтены параметры reasoning-моделей: `max_completion_tokens` вместо deprecated
+  `max_tokens`, `temperature=1` для gpt-oss, `reasoning_format=hidden` + `reasoning_effort`.
+
 ## Последние изменения (v0.9.3.1)
 
 - Добавлены тесты для критической логики экспедиций: 17 новых тестов
