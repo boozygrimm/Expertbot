@@ -6,6 +6,7 @@ import logging
 from copy import deepcopy
 
 from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -30,6 +31,13 @@ from handlers.alc_fighters import (
     hall_of_fame_entry,
 )
 from handlers.alc_expeditions import get_expedition_team_limit, get_role_name
+from handlers.alc_notifications import (
+    RAID_REPORT_MUTE_CALLBACK,
+    RAID_REPORT_MUTE_FIELD,
+    build_raid_report_close_markup,
+    build_raid_report_markup,
+    should_send_raid_defense_report,
+)
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.pole_chudes import delete_after_delay
 
@@ -735,9 +743,20 @@ async def resolve_raid(attacker: dict, defender: dict | None, attacker_name: str
     }
 
 
-async def send_dm_report(user_id: int, text: str):
+async def send_dm_report(user_id: int, text: str, reply_markup: types.InlineKeyboardMarkup | None = None):
+    """Личный отчёт о рейде. Клавиатура по умолчанию — только «Закрыть».
+
+    Отчёты о нападении на чужой форт передают клавиатуру с кнопкой отключения
+    рассылки (`build_raid_report_markup`): их игрок не запрашивал, в отличие от
+    итогов собственного рейда.
+    """
     try:
-        await bot.send_message(user_id, text, parse_mode="Markdown", reply_markup=build_close_markup())
+        await bot.send_message(
+            user_id,
+            text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup or build_close_markup(),
+        )
     except Exception as e:
         logger.debug("Failed to send raid DM report to user %s: %s", user_id, e)
 
@@ -784,16 +803,45 @@ async def process_random_fort_events():
                 {"user_id": defender["user_id"]},
                 {"$set": {"fort_defense": defense, "action_counters": counters}},
             )
-        await send_dm_report(
-            defender["user_id"],
-            f"🛡 **НАЛЁТ НА ФОРТ**\n{report['dm_log']}\n\nИтог: {'Прорвались' if report['success'] else 'Форт отбился'}.",
-        )
+        # Флаг игрока гейтит только уведомление: потери добычи, пленные,
+        # сработавшая ловушка и счётчики выше уже записаны в БД.
+        if should_send_raid_defense_report(defender):
+            await send_dm_report(
+                defender["user_id"],
+                f"🛡 **НАЛЁТ НА ФОРТ**\n{report['dm_log']}\n\nИтог: {'Прорвались' if report['success'] else 'Форт отбился'}.",
+                reply_markup=build_raid_report_markup(),
+            )
 
 
 @router.callback_query(F.data == "close_pm_report")
 async def close_pm_report(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.answer()
+
+
+@router.callback_query(F.data == RAID_REPORT_MUTE_CALLBACK)
+async def mute_raid_reports(callback: types.CallbackQuery):
+    """Отключение отчётов о нападениях на форт прямо из сообщения отчёта."""
+    user_id = callback.from_user.id
+    await db.alchemy_players.update_one(
+        {"user_id": user_id}, {"$set": {RAID_REPORT_MUTE_FIELD: True}}
+    )
+
+    # Убираем кнопку отключения из этого отчёта, оставляя только «Закрыть»,
+    # чтобы её нельзя было нажать повторно.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=build_raid_report_close_markup())
+    except TelegramBadRequest as exc:
+        logger.info(
+            "Не удалось обновить клавиатуру отчёта о нападении user_id=%s: %s", user_id, exc
+        )
+
+    await callback.answer(
+        "🔕 Отчёты о нападениях отключены.\n"
+        "Итоги твоих рейдов будут приходить как раньше.\n"
+        "Включить снова: меню базы → «🔕 Нападения: выкл».",
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data == "raids_open")
@@ -1520,7 +1568,9 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
     )
     await send_dm_report(attacker["user_id"], attacker_dm)
 
-    if defender:
+    # Отчёт защитнику — фоновое уведомление о чужом действии, поэтому игрок может
+    # его отключить. Потери и пленные при этом уже записаны выше.
+    if defender and should_send_raid_defense_report(defender):
         defender_dm = (
             f"🛡 **АТАКА НА ФОРТ**\n{report['dm_log']}\n\n"
             f"Итог: {'Нападавший прорвался' if report['success'] else 'Форт устоял'}\n"
@@ -1529,4 +1579,6 @@ async def execute_raid(message: types.Message, attacker: dict, defender: dict | 
         if recovered_line:
             defender_dm += f"Контратакой возвращено: {recovered_line}\n"
         defender_dm += f"Пленные в подвале: {', '.join(get_role_name(unit_id) for unit_id in report['captives_taken']) or 'нет'}"
-        await send_dm_report(defender["user_id"], defender_dm)
+        await send_dm_report(
+            defender["user_id"], defender_dm, reply_markup=build_raid_report_markup()
+        )

@@ -45,6 +45,7 @@ from handlers.alc_base import (
     universe_reset_draft,
     mute_morning_reports,
     toggle_morning_reports,
+    toggle_raid_reports,
 )
 from handlers.alc_core import (
     STARTER_BIOME_COLLAPSE_BUNDLE,
@@ -73,16 +74,27 @@ from handlers.alc_fighters import (
     spend_cost,
 )
 from handlers.alc_tasks import (
-    MORNING_REPORT_MUTE_FIELD,
+    build_daily_report_text,
     process_barracks_upkeep,
+    should_send_morning_report,
+)
+from handlers.alc_notifications import (
+    MORNING_REPORT_MUTE_FIELD,
+    RAID_REPORT_CLOSE_CALLBACK,
+    RAID_REPORT_MUTE_CALLBACK,
+    RAID_REPORT_MUTE_FIELD,
+    RAID_REPORT_TOGGLE_CALLBACK,
     REPORT_MUTE_CALLBACK,
     REPORT_TOGGLE_CALLBACK,
-    build_daily_report_text,
+    build_raid_report_close_markup,
+    build_raid_report_markup,
+    build_raid_report_toggle_button,
     build_report_close_markup,
     build_report_markup,
     build_report_toggle_button,
     is_morning_report_muted,
-    should_send_morning_report,
+    is_raid_report_muted,
+    should_send_raid_defense_report,
 )
 from handlers.alc_heritage import HERITAGE_ITEMS_PER_PAGE, build_heritage_main_keyboard, build_heritage_main_text, build_lore_editor_home_keyboard, encode_lore_ref, get_heritage_button_label, namespace_fragment_ids, normalize_lore_doc, with_bammm
 from handlers.alc_build import (
@@ -120,6 +132,9 @@ from handlers.alc_raids import (
     get_fort_power,
     get_raid_power,
     get_recent_raid_ts,
+    mute_raid_reports,
+    process_random_fort_events,
+    send_dm_report,
 )
 from handlers.alc_quests import (
     TIER_CACHE,
@@ -375,16 +390,33 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
             await safe_edit_text(message, "text")
 
 
+def make_fake_players_db(player: dict | None):
+    """Фейк `db.alchemy_players`: find_one отдаёт профиль, update_one — AsyncMock."""
+    fake_db = type("FakeDB", (), {})()
+    fake_db.alchemy_players = type("FakeCollection", (), {})()
+    fake_db.alchemy_players.find_one = AsyncMock(return_value=player)
+    fake_db.alchemy_players.update_one = AsyncMock()
+    return fake_db
+
+
+class FakePlayersCursor:
+    """Курсор motor-стиля: функции алхимии обходят его через `async for`."""
+
+    def __init__(self, docs):
+        self._docs = docs
+
+    def __aiter__(self):
+        async def _gen():
+            for doc in self._docs:
+                yield doc
+
+        return _gen()
+
+
 class MorningReportCallbackTests(unittest.IsolatedAsyncioTestCase):
     """Кнопки отключения/включения утренних отчётов."""
 
-    @staticmethod
-    def _fake_db(player: dict | None):
-        fake_db = type("FakeDB", (), {})()
-        fake_db.alchemy_players = type("FakeCollection", (), {})()
-        fake_db.alchemy_players.find_one = AsyncMock(return_value=player)
-        fake_db.alchemy_players.update_one = AsyncMock()
-        return fake_db
+    _fake_db = staticmethod(make_fake_players_db)
 
     async def test_mute_callback_sets_flag_and_simplifies_keyboard(self):
         callback = AsyncMock()
@@ -480,17 +512,6 @@ class MorningReportCallbackTests(unittest.IsolatedAsyncioTestCase):
             "fighters": [{"id": "f2", "unit_id": "fire_swordsman", "status": "ok", "xp": 5}],
         }
 
-        class FakePlayersCursor:
-            def __init__(self, docs):
-                self._docs = docs
-
-            def __aiter__(self):
-                async def _gen():
-                    for doc in self._docs:
-                        yield doc
-
-                return _gen()
-
         fake_db = self._fake_db(None)
         fake_db.alchemy_players.find = lambda *_a, **_k: FakePlayersCursor([muted, enabled])
         bot = AsyncMock()
@@ -508,6 +529,180 @@ class MorningReportCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [b.callback_data for row in sent_markup.inline_keyboard for b in row],
             [REPORT_MUTE_CALLBACK, "alc:base_close"],
+        )
+
+
+class RaidReportCallbackTests(unittest.IsolatedAsyncioTestCase):
+    """Кнопки отключения/включения отчётов о нападениях на форт."""
+
+    async def test_mute_raid_callback_sets_flag_and_simplifies_keyboard(self):
+        callback = AsyncMock()
+        callback.data = RAID_REPORT_MUTE_CALLBACK
+        callback.from_user.id = 501
+        fake_db = make_fake_players_db({"user_id": 501, "buildings": {"fort": 1}})
+
+        with patch("handlers.alc_raids.db", fake_db):
+            await mute_raid_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 501}, {"$set": {RAID_REPORT_MUTE_FIELD: True}}
+        )
+        # Из отчёта убирается кнопка отключения, «Закрыть» остаётся.
+        markup = callback.message.edit_reply_markup.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [[(b.text, b.callback_data) for b in row] for row in markup.inline_keyboard],
+            [[("❌ Закрыть", RAID_REPORT_CLOSE_CALLBACK)]],
+        )
+        callback.answer.assert_awaited_once()
+        answer_text = callback.answer.await_args.args[0]
+        self.assertTrue(callback.answer.await_args.kwargs.get("show_alert"))
+        # Честно предупреждаем, что итоги собственных рейдов никуда не деваются.
+        self.assertIn("Итоги твоих рейдов", answer_text)
+        self.assertIn("Нападения: выкл", answer_text)
+
+    async def test_mute_raid_callback_survives_keyboard_edit_error(self):
+        from aiogram.exceptions import TelegramBadRequest
+
+        callback = AsyncMock()
+        callback.data = RAID_REPORT_MUTE_CALLBACK
+        callback.from_user.id = 502
+        callback.message.edit_reply_markup.side_effect = TelegramBadRequest(
+            method=AsyncMock(), message="Bad Request: message is not modified"
+        )
+
+        with patch("handlers.alc_raids.db", make_fake_players_db({"user_id": 502})):
+            await mute_raid_reports(callback)
+
+        # Флаг записан, игрок получил подтверждение, несмотря на ошибку Telegram.
+        callback.answer.assert_awaited_once()
+
+    async def test_toggle_raid_callback_turns_reports_off_then_on(self):
+        callback = AsyncMock()
+        callback.data = RAID_REPORT_TOGGLE_CALLBACK
+        callback.from_user.id = 503
+        fake_db = make_fake_players_db({"user_id": 503, "buildings": {}})
+
+        with patch("handlers.alc_base.db", fake_db), \
+             patch("handlers.alc_base.get_base_content", new=AsyncMock(return_value=("база", None))):
+            await toggle_raid_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 503}, {"$set": {RAID_REPORT_MUTE_FIELD: True}}
+        )
+        self.assertIn("Отчёты о нападениях отключены", callback.answer.await_args.args[0])
+
+        # Повторное нажатие возвращает рассылку.
+        callback.answer.reset_mock()
+        fake_db.alchemy_players.update_one.reset_mock()
+        fake_db.alchemy_players.find_one = AsyncMock(
+            return_value={"user_id": 503, "buildings": {}, RAID_REPORT_MUTE_FIELD: True}
+        )
+        with patch("handlers.alc_base.db", fake_db), \
+             patch("handlers.alc_base.get_base_content", new=AsyncMock(return_value=("база", None))):
+            await toggle_raid_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 503}, {"$set": {RAID_REPORT_MUTE_FIELD: False}}
+        )
+        self.assertIn("включены", callback.answer.await_args.args[0])
+
+    async def test_toggle_raid_callback_leaves_morning_reports_alone(self):
+        """Переключатель нападений не трогает флаг утренних отчётов."""
+        callback = AsyncMock()
+        callback.data = RAID_REPORT_TOGGLE_CALLBACK
+        callback.from_user.id = 504
+        fake_db = make_fake_players_db(
+            {"user_id": 504, "buildings": {}, MORNING_REPORT_MUTE_FIELD: True}
+        )
+
+        with patch("handlers.alc_base.db", fake_db), \
+             patch("handlers.alc_base.get_base_content", new=AsyncMock(return_value=("база", None))):
+            await toggle_raid_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 504}, {"$set": {RAID_REPORT_MUTE_FIELD: True}}
+        )
+
+    async def test_toggle_raid_callback_requires_player_profile(self):
+        callback = AsyncMock()
+        callback.data = RAID_REPORT_TOGGLE_CALLBACK
+        callback.from_user.id = 505
+        fake_db = make_fake_players_db(None)
+
+        with patch("handlers.alc_base.db", fake_db):
+            await toggle_raid_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_not_awaited()
+        callback.message.edit_text.assert_not_awaited()
+        callback.answer.assert_awaited_once()
+
+    async def test_send_dm_report_defaults_to_plain_close_markup(self):
+        """Итоги собственного рейда приходят без кнопки отключения рассылки."""
+        bot = AsyncMock()
+
+        with patch("handlers.alc_raids.bot", bot):
+            await send_dm_report(601, "☠️ ОТЧЁТ О РЕЙДЕ")
+
+        markup = bot.send_message.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [[(b.text, b.callback_data) for b in row] for row in markup.inline_keyboard],
+            [[("❌ Закрыть", RAID_REPORT_CLOSE_CALLBACK)]],
+        )
+
+    async def test_send_dm_report_accepts_explicit_markup(self):
+        bot = AsyncMock()
+        markup = build_raid_report_markup()
+
+        with patch("handlers.alc_raids.bot", bot):
+            await send_dm_report(602, "🛡 АТАКА НА ФОРТ", reply_markup=markup)
+
+        self.assertIs(bot.send_message.await_args.kwargs["reply_markup"], markup)
+
+    async def test_send_dm_report_swallows_send_error(self):
+        bot = AsyncMock()
+        bot.send_message.side_effect = RuntimeError("Forbidden: bot was blocked by the user")
+
+        with patch("handlers.alc_raids.bot", bot):
+            await send_dm_report(603, "текст")  # не должно raising-ом ломать рейд
+
+    async def test_random_fort_event_skips_muted_player_but_keeps_economy(self):
+        """Случайный налёт: muted-игроку сообщение не уходит, но потери списаны."""
+        muted = {
+            "user_id": 701,
+            "buildings": {"fort": 1},
+            "inventory": {"energy": 10, "stone": 6},
+            RAID_REPORT_MUTE_FIELD: True,
+        }
+        enabled = {"user_id": 702, "buildings": {"fort": 1}, "inventory": {"energy": 10, "stone": 6}}
+
+        fake_db = make_fake_players_db(None)
+        fake_db.alchemy_players.find = lambda *_a, **_k: FakePlayersCursor([muted, enabled])
+        report = {
+            "trap_triggered": False,
+            "trap_slot": None,
+            "success": True,
+            "captives_taken": [],
+            "defender_captives": [],
+            "dm_log": "лог налёта",
+        }
+        fake_send = AsyncMock()
+
+        with patch("handlers.alc_raids.db", fake_db), \
+             patch("handlers.alc_raids.resolve_raid", new=AsyncMock(return_value=report)), \
+             patch("handlers.alc_raids.send_dm_report", new=fake_send), \
+             patch("handlers.alc_raids.random.random", return_value=0.0):
+            await process_random_fort_events()
+
+        # Уведомление ушло только игроку с включёнными отчётами.
+        recipients = [call.args[0] for call in fake_send.await_args_list]
+        self.assertEqual(recipients, [702])
+        # Экономика (списанная добыча, счётчики) записана обоим.
+        updated = [call.args[0]["user_id"] for call in fake_db.alchemy_players.update_one.await_args_list]
+        self.assertEqual(updated, [701, 702])
+        sent_markup = fake_send.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [b.callback_data for row in sent_markup.inline_keyboard for b in row],
+            [RAID_REPORT_MUTE_CALLBACK, RAID_REPORT_CLOSE_CALLBACK],
         )
 
 
@@ -977,6 +1172,34 @@ class BaseStatusTests(unittest.TestCase):
         self.assertIn("🔕 Отчёты: выкл", button_texts)
         self.assertNotIn("📊 Отчёты: вкл", button_texts)
 
+    def test_build_base_keyboard_has_raid_report_toggle(self):
+        """Рядом с утренними отчётами в меню базы есть переключатель нападений."""
+        markup = build_base_keyboard({"last_mine": 0, "buildings": {}})
+        toggles = {
+            button.callback_data: button.text
+            for row in markup.inline_keyboard
+            for button in row
+            if button.callback_data in (REPORT_TOGGLE_CALLBACK, RAID_REPORT_TOGGLE_CALLBACK)
+        }
+        self.assertEqual(
+            toggles,
+            {REPORT_TOGGLE_CALLBACK: "📊 Отчёты: вкл", RAID_REPORT_TOGGLE_CALLBACK: "⚔️ Нападения: вкл"},
+        )
+
+    def test_build_base_keyboard_report_toggles_are_independent(self):
+        """Категории уведомлений переключаются независимо друг от друга."""
+        markup = build_base_keyboard(
+            {"last_mine": 0, "buildings": {}, RAID_REPORT_MUTE_FIELD: True}
+        )
+        toggles = {
+            button.callback_data: button.text
+            for row in markup.inline_keyboard
+            for button in row
+            if button.callback_data in (REPORT_TOGGLE_CALLBACK, RAID_REPORT_TOGGLE_CALLBACK)
+        }
+        self.assertEqual(toggles[REPORT_TOGGLE_CALLBACK], "📊 Отчёты: вкл")
+        self.assertEqual(toggles[RAID_REPORT_TOGGLE_CALLBACK], "🔕 Нападения: выкл")
+
 
 class ReportTextTests(unittest.TestCase):
     def test_build_daily_report_text_handles_full_and_empty_reports(self):
@@ -1053,6 +1276,63 @@ class ReportTextTests(unittest.TestCase):
         # Рассылка включена, но за сутки ничего не произошло — тишина.
         self.assertFalse(should_send_morning_report({}, [], {}, {}))
         self.assertFalse(should_send_morning_report({}, None, None, None))
+
+
+class RaidReportNotificationTests(unittest.TestCase):
+    """Отчёты о нападениях на форт: клавиатуры, флаг, кнопка меню."""
+
+    def test_build_raid_report_markup_offers_mute_button(self):
+        """В отчёт о нападении добавлена кнопка отключения + «Закрыть»."""
+        markup = build_raid_report_markup()
+        rows = [[(b.text, b.callback_data) for b in row] for row in markup.inline_keyboard]
+        self.assertEqual(
+            rows,
+            [[("🔕 Не присылать отчёты о нападениях", RAID_REPORT_MUTE_CALLBACK)], [("❌ Закрыть", RAID_REPORT_CLOSE_CALLBACK)]],
+        )
+
+    def test_build_raid_report_markup_hides_mute_button_when_already_muted(self):
+        """Если отчёты уже отключены, остаётся только «Закрыть»."""
+        self.assertEqual(
+            [[(b.text, b.callback_data) for b in row] for row in build_raid_report_markup(True).inline_keyboard],
+            [[("❌ Закрыть", RAID_REPORT_CLOSE_CALLBACK)]],
+        )
+        # Отдельная «закрыть»-клавиатура (для отчёта о собственном рейде) — та же.
+        self.assertEqual(
+            [[b.callback_data for b in row] for row in build_raid_report_close_markup().inline_keyboard],
+            [[RAID_REPORT_CLOSE_CALLBACK]],
+        )
+
+    def test_raid_report_mute_flag_defaults_to_off(self):
+        """Отсутствие поля = отчёты о нападениях включены (миграция не нужна)."""
+        self.assertFalse(is_raid_report_muted(None))
+        self.assertFalse(is_raid_report_muted({}))
+        self.assertFalse(is_raid_report_muted({RAID_REPORT_MUTE_FIELD: False}))
+        self.assertTrue(is_raid_report_muted({RAID_REPORT_MUTE_FIELD: True}))
+
+    def test_should_send_raid_defense_report_follows_flag(self):
+        self.assertTrue(should_send_raid_defense_report(None))
+        self.assertTrue(should_send_raid_defense_report({}))
+        self.assertFalse(should_send_raid_defense_report({RAID_REPORT_MUTE_FIELD: True}))
+
+    def test_build_raid_report_toggle_button_shows_current_state(self):
+        enabled = build_raid_report_toggle_button({})
+        self.assertEqual(enabled.text, "⚔️ Нападения: вкл")
+        self.assertEqual(enabled.callback_data, RAID_REPORT_TOGGLE_CALLBACK)
+
+        muted = build_raid_report_toggle_button({RAID_REPORT_MUTE_FIELD: True})
+        self.assertEqual(muted.text, "🔕 Нападения: выкл")
+        self.assertEqual(muted.callback_data, RAID_REPORT_TOGGLE_CALLBACK)
+
+    def test_notification_flags_are_independent_fields(self):
+        """Утренний отчёт и нападения — разные поля, глушатся независимо."""
+        self.assertNotEqual(MORNING_REPORT_MUTE_FIELD, RAID_REPORT_MUTE_FIELD)
+        morning_only = {MORNING_REPORT_MUTE_FIELD: True}
+        self.assertTrue(is_morning_report_muted(morning_only))
+        self.assertFalse(is_raid_report_muted(morning_only))
+
+        raids_only = {RAID_REPORT_MUTE_FIELD: True}
+        self.assertFalse(is_morning_report_muted(raids_only))
+        self.assertTrue(is_raid_report_muted(raids_only))
 
 
 class FighterLogicTests(unittest.TestCase):

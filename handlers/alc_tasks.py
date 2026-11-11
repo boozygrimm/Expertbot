@@ -1,14 +1,16 @@
 import time
 import random
 import logging
-from aiogram import types
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot_instance import bot
 from database import db
 from handlers.alc_core import STORAGE_CAPACITY, WORLD_DAILY_SPIRIT_TOKEN, STARTER_WORLD_REWARD_POOL, get_stamina_ready_at, get_used_slots, get_world_daily_income, get_world_effects
 from handlers.alc_fighters import get_fighter_upkeep, get_player_fighters
 from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS
 from handlers.alc_heritage import get_active_legacy_bonus_map
+# Клавиатуры отчётов, тексты кнопок и флаги уведомлений вынесены в
+# handlers/alc_notifications.py: их используют сразу три контура — меню базы,
+# утренний отчёт и отчёты о нападениях на форт.
+from handlers.alc_notifications import build_report_markup, is_morning_report_muted
 from config import get_msk_now
 
 logger = logging.getLogger(__name__)
@@ -59,52 +61,6 @@ def build_daily_report_text(supply_report: dict | None, heritage_report: dict | 
     if world_skipped_lines:
         lines.extend(f"• Не влезло на склад: {entry}" for entry in world_skipped_lines)
     return "\n".join(lines)
-
-
-def build_report_close_markup() -> types.InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.button(text="❌ Закрыть", callback_data="alc:base_close")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-# Поле игрока, которым он отключает утренний отчёт. Отсутствие поля = отчёты
-# включены, поэтому старым игрокам миграция не нужна.
-MORNING_REPORT_MUTE_FIELD = "morning_report_muted"
-REPORT_MUTE_CALLBACK = "alc:report_mute"
-REPORT_TOGGLE_CALLBACK = "alc:report_toggle"
-
-
-def is_morning_report_muted(player: dict | None) -> bool:
-    """Отключены ли у игрока утренние отчёты."""
-    return bool((player or {}).get(MORNING_REPORT_MUTE_FIELD, False))
-
-
-def build_report_markup(muted: bool = False) -> types.InlineKeyboardMarkup:
-    """Клавиатура утреннего отчёта: кнопка отключения рассылки + «Закрыть».
-
-    Если отчёты уже отключены, кнопка отключения не показывается — иначе игрок
-    может нажать её повторно и получить лишний алерт.
-    """
-    if muted:
-        return build_report_close_markup()
-
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔕 Не присылать отчёты", callback_data=REPORT_MUTE_CALLBACK)
-    builder.button(text="❌ Закрыть", callback_data="alc:base_close")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
-def build_report_toggle_button(player: dict | None) -> types.InlineKeyboardButton:
-    """Кнопка главного меню базы: показывает состояние и переключает рассылку."""
-    if is_morning_report_muted(player):
-        return types.InlineKeyboardButton(
-            text="🔕 Отчёты: выкл", callback_data=REPORT_TOGGLE_CALLBACK
-        )
-    return types.InlineKeyboardButton(
-        text="📊 Отчёты: вкл", callback_data=REPORT_TOGGLE_CALLBACK
-    )
 
 
 def should_send_morning_report(
