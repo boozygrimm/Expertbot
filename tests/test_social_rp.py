@@ -5,6 +5,8 @@
 - Валидация ников (безопасность)
 - Rate limiting (защита от спама)
 - Склонение глаголов (корректность работы)
+- Склонение ников по падежам (safe_decline_name)
+- Локальное RP-сообщение целиком (generate_local_fallback)
 """
 
 import pytest
@@ -34,6 +36,10 @@ from handlers.social_rp import (
     is_on_cooldown,
     set_cooldown,
     get_verb_form,
+    generate_local_fallback,
+    safe_decline_name,
+    CASE_GRAMMEMES,
+    HAS_MORPH,
     rp_rate_limit,
     RP_COOLDOWN
 )
@@ -187,8 +193,8 @@ class TestVerbForm:
         result = get_verb_form("обнял", "МУЖСКОЙ")
         assert result == "обнял"
 
-    def test_female_gender_with_pymorphy2(self):
-        """Женский род с pymorphy2."""
+    def test_female_gender_with_morph_analyzer(self):
+        """Женский род с морфологическим анализатором."""
         import handlers.social_rp as sr
 
         # Создаём mock для morph, если его нет
@@ -197,7 +203,7 @@ class TestVerbForm:
 
         with patch('handlers.social_rp.HAS_MORPH', True):
             with patch('handlers.social_rp.morph') as mock_morph:
-                # Настраиваем mock для pymorphy2
+                # Настраиваем mock для морфологического анализатора
                 mock_parse = MagicMock()
                 mock_parse.tag = 'VERB'
                 mock_inflect = MagicMock()
@@ -209,7 +215,7 @@ class TestVerbForm:
                 assert result == "обняла"
 
     def test_female_gender_fallback(self):
-        """Женский род - fallback без pymorphy2."""
+        """Женский род - fallback без морфологии."""
         with patch('handlers.social_rp.HAS_MORPH', False):
             result = get_verb_form("обнял", "женский")
             assert result == "обняла"
@@ -246,8 +252,8 @@ class TestVerbForm:
             result = get_verb_form("неизвестный_глагол", "женский")
             assert result == "неизвестный_глагол"
 
-    def test_pymorphy2_error_fallback(self):
-        """Ошибка pymorphy2 - используется fallback."""
+    def test_morph_error_fallback(self):
+        """Ошибка морфологии - используется fallback."""
         import handlers.social_rp as sr
 
         # Создаём mock для morph, если его нет
@@ -260,6 +266,77 @@ class TestVerbForm:
 
                 result = get_verb_form("обнял", "женский")
                 assert result == "обняла"  # Fallback значение
+
+
+needs_morph = pytest.mark.skipif(not HAS_MORPH, reason="морфологический анализатор недоступен")
+
+
+class TestDeclineName:
+    """Тесты склонения ников (safe_decline_name)."""
+
+    def test_latin_name_returns_unchanged(self):
+        """Латиница не склоняется."""
+        assert safe_decline_name("John", "ins") == "John"
+
+    def test_unknown_case_returns_unchanged(self):
+        """Неизвестный падеж - возвращаем ник как есть."""
+        assert safe_decline_name("Иван", "zzz") == "Иван"
+
+    def test_without_morph_returns_unchanged(self):
+        """Без морфологии склонение отключено, ник не меняется."""
+        with patch('handlers.social_rp.HAS_MORPH', False):
+            assert safe_decline_name("Иван", "ins") == "Иван"
+
+    @needs_morph
+    def test_instrumental_case_for_rp_message(self):
+        """RP-сообщение использует творительный падеж: обнял Натой."""
+        assert safe_decline_name("Ната", "ins") == "Натой"
+        assert safe_decline_name("Иван", "ins") == "Иваном"
+
+    @needs_morph
+    def test_all_cases_are_declined(self):
+        """Все падежи из карты реально склоняются."""
+        expected = {
+            "gent": "Наты",
+            "dat": "Нате",
+            "acc": "Нату",
+            "ins": "Натой",
+            "abl": "Нате",
+        }
+        for case, form in expected.items():
+            assert safe_decline_name("Ната", case) == form, f"падеж {case}"
+
+    @needs_morph
+    def test_uppercase_nick_keeps_register(self):
+        """pymorphy отдаёт форму в lowercase - регистр ника должен сохраняться."""
+        assert safe_decline_name("ИВАН", "ins") == "ИВАНОМ"
+
+    @needs_morph
+    def test_case_grammemes_are_known_to_morph(self):
+        """Регрессия: раньше в карте стояли несуществующие грамеммы ('ins', 'dat',
+        'acc', 'abl'), pymorphy бросал ValueError, и склонение молча не работало."""
+        import handlers.social_rp as sr
+
+        for grammeme in sorted(set(CASE_GRAMMEMES.values())):
+            parsed = sr.morph.parse("Иван")[0]
+            assert parsed.inflect({grammeme}) is not None, f"граммама {grammeme} не работает"
+
+
+class TestLocalRpMessage:
+    """Сквозные тесты локального RP-сообщения."""
+
+    @needs_morph
+    def test_target_nick_is_declined(self):
+        """Цель должна стоять в творительном падеже: обнял Натой, обняла Иваном."""
+        assert generate_local_fallback("обнять", "Вася", "Ната", "мужской", "") == "Вася обнял Натой."
+        assert generate_local_fallback("обнять", "Маша", "Иван", "женский", "крепко") == "Маша обняла Иваном крепко."
+
+    def test_latin_nicks_are_left_as_is(self):
+        """Латинские ники не склоняются, но глагол по полу меняется."""
+        assert generate_local_fallback("обнять", "Masha", "John", "женский", "") == "Masha обняла John."
+
+    def test_modifier_is_appended(self):
+        assert generate_local_fallback("чмок", "Вася", "John", "мужской", "нежно") == "Вася чмокнул John нежно."
 
 
 if __name__ == "__main__":

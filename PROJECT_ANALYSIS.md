@@ -207,6 +207,26 @@ except (TelegramBadRequest, ValueError) as e:
 - Учтены параметры reasoning-моделей: `max_completion_tokens` вместо deprecated
   `max_tokens`, `temperature=1` для gpt-oss, `reasoning_format=hidden` + `reasoning_effort`.
 
+## Последние изменения (зависимости и Social RP, ноябрь 2026)
+
+- `pymorphy2` → `pymorphy3` в `requirements.txt`. Причина: pymorphy2 0.9.1 на
+  Python 3.11+ падает с `AttributeError` (внутри удалённый `inspect.getargspec`),
+  а `except` в `handlers/social_rp.py` ловил только `ImportError` — модуль не
+  импортировался, и бот не стартовал в собственном Docker-образе (`python:3.12-slim`).
+  Теперь импорт пробует `pymorphy3`, затем `pymorphy2`, и любое исключение ведёт
+  к запланированному fallback на упрощённое склонение.
+- Починено склонение ников: `safe_decline_name` передавал в pymorphy грамеммы
+  `ins`/`dat`/`acc`/`abl`, которых не существует (нативные имена — `ablt`/`datv`/
+  `accs`/`loct`), pymorphy бросал `ValueError`, и единственный вызов
+  (`generate_local_fallback`, творительный падеж) молча возвращал ник без склонения.
+  Добавлена карта `CASE_GRAMMEMES` (принимает и старые сокращения, и нативные имена)
+  и сохранение регистра ника, так как pymorphy отдаёт форму в lowercase.
+- Тестовый контур: `tests/test_social_rp.py` больше не подменяет `sys.modules`
+  на `MagicMock` (это ломало соседние тесты при запуске всего набора), добавлены
+  тесты склонения ников и сквозные тесты RP-сообщения.
+- Итог: `unittest discover -s tests` — 126 OK, `pytest tests` — 162 passed
+  (до правок: 7 failures / 2 errors и падение collection у pytest).
+
 ## Последние изменения (v0.9.3.1)
 
 - Добавлены тесты для критической логики экспедиций: 17 новых тестов
