@@ -34,6 +34,7 @@ from handlers.alc_base import (
     build_production_status,
     build_storage_status,
     build_universe_keyboard,
+    build_universe_biomes_text,
     build_universe_layer_keyboard,
     build_universe_layer_text,
     build_universe_intro_text,
@@ -256,7 +257,11 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
             }
             for i in range(15)
         ]
-        docs = [old_report, *recent_messages]
+        # Реальный курсор приходит из Mongo с .sort("createdAt", -1), то есть
+        # новые сообщения идут первыми; get_daily_summary прерывает обход на
+        # первом же сообщении старше суточного окна. Фейк должен повторять
+        # этот порядок, иначе обрыв случается на первом документе.
+        docs = [*reversed(recent_messages), old_report]
         fake_db = type("FakeDB", (), {"messages": FakeMessages(docs)})()
 
         async def fake_collect(chunks, *_args, **_kwargs):
@@ -600,18 +605,22 @@ class BaseStatusTests(unittest.TestCase):
         )
         self.assertIn("Камень тянет в опору", text)
 
-    def test_build_universe_intro_text_shows_fortify_cost(self):
-        text = build_universe_intro_text(
-            {
-                "user_id": 1,
-                "tutorial_step": 3,
-                "inventory": {"active_base": 1},
-                "world_support_level": 0,
-                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
-            }
-        )
-        self.assertIn("Следующее укрепление", text)
-        self.assertIn("Камень", text)
+    def test_build_universe_biomes_text_shows_fortify_cost(self):
+        # Строка "Следующее укрепление" живёт на экране биомов, а не в интро
+        # вселенной: интро показывает только текущий уровень укрепления.
+        player = {
+            "user_id": 1,
+            "tutorial_step": 3,
+            "inventory": {"active_base": 1},
+            "world_support_level": 0,
+            "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+        }
+        biomes_text = build_universe_biomes_text(player)
+        self.assertIn("Следующее укрепление", biomes_text)
+        self.assertIn("Камень", biomes_text)
+
+        intro_text = build_universe_intro_text(player)
+        self.assertIn("Укрепление: **0**", intro_text)
 
     def test_build_universe_layer_keyboard_shows_step_and_grid_controls(self):
         markup = build_universe_layer_keyboard(

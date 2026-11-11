@@ -13,19 +13,20 @@ from unittest.mock import patch, MagicMock
 import sys
 import os
 
-# Мокаем все зависимости ДО любого импорта
-sys.modules['aiogram'] = MagicMock()
-sys.modules['aiogram.types'] = MagicMock()
-sys.modules['aiogram.filters'] = MagicMock()
-sys.modules['aiogram.exceptions'] = MagicMock()
-sys.modules['database'] = MagicMock()
-sys.modules['ai_logic'] = MagicMock()
-sys.modules['config'] = MagicMock()
-sys.modules['handlers.admin_cron'] = MagicMock()
-sys.modules['handlers.admin_panel'] = MagicMock()
-
 # Добавляем корневую директорию в путь для импорта
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Минимальное окружение для импорта реальных модулей (БД и сеть не используются).
+os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
+os.environ.setdefault("TELEGRAM_TOKEN", "123456:TESTTOKEN")
+
+# ВАЖНО: раньше здесь подменялись sys.modules['ai_logic'], sys.modules['config']
+# и другие на MagicMock. При запуске всего набора (unittest discover / pytest)
+# это ломало соседние тесты: unittest.mock.patch("ai_logic._try_groq") патчил
+# заглушку, а проверяемая обёртка жила в настоящем модуле, поэтому утверждения
+# падали с "Awaited 0 times". Импортируем реальные модули — все зависимости
+# объявлены в requirements.txt, а сами тесты мокают только атрибуты
+# handlers.social_rp.
 
 # Теперь можно безопасно импортировать тестируемые функции
 from handlers.social_rp import (

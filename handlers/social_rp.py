@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -62,14 +63,24 @@ def validate_nickname(nick: str) -> tuple[bool, str]:
         return False, "Ник не может содержать переносы строк."
     return True, ""
 
-# Инициализация морфологического анализатора с fallback
-try:
-    import pymorphy2
-    morph = pymorphy2.MorphAnalyzer()
-    HAS_MORPH = True
-except ImportError:
-    HAS_MORPH = False
-    logger.warning("pymorphy2 не установлен. Используется упрощённое склонение.")
+# Инициализация морфологического анализатора с fallback.
+# pymorphy2 0.9.1 на Python 3.11+ падает не с ImportError, а с AttributeError
+# (внутри него вызывается удалённый inspect.getargspec), поэтому ловим любое
+# исключение: иначе модуль не импортируется и бот не стартует.
+# pymorphy3 — поддерживаемый форк с тем же API, пробуем сначала его.
+morph = None
+HAS_MORPH = False
+for _morph_module in ("pymorphy3", "pymorphy2"):
+    try:
+        morph = importlib.import_module(_morph_module).MorphAnalyzer()
+        HAS_MORPH = True
+        break
+    except Exception as exc:
+        morph = None
+        logger.warning("%s недоступен (%s). Пробуем упрощённое склонение.", _morph_module, exc)
+
+if not HAS_MORPH:
+    logger.warning("Морфология отключена. Используется упрощённое склонение.")
 
 def is_cyrillic_name(name: str) -> bool:
     """Проверяет, состоит ли имя только из кириллицы."""
