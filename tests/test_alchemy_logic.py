@@ -43,6 +43,8 @@ from handlers.alc_base import (
     get_headquarters_icon,
     universe_clear_layer,
     universe_reset_draft,
+    mute_morning_reports,
+    toggle_morning_reports,
 )
 from handlers.alc_core import (
     STARTER_BIOME_COLLAPSE_BUNDLE,
@@ -70,7 +72,18 @@ from handlers.alc_fighters import (
     refresh_fighter,
     spend_cost,
 )
-from handlers.alc_tasks import build_daily_report_text, build_report_close_markup
+from handlers.alc_tasks import (
+    MORNING_REPORT_MUTE_FIELD,
+    process_barracks_upkeep,
+    REPORT_MUTE_CALLBACK,
+    REPORT_TOGGLE_CALLBACK,
+    build_daily_report_text,
+    build_report_close_markup,
+    build_report_markup,
+    build_report_toggle_button,
+    is_morning_report_muted,
+    should_send_morning_report,
+)
 from handlers.alc_heritage import HERITAGE_ITEMS_PER_PAGE, build_heritage_main_keyboard, build_heritage_main_text, build_lore_editor_home_keyboard, encode_lore_ref, get_heritage_button_label, namespace_fragment_ids, normalize_lore_doc, with_bammm
 from handlers.alc_build import (
     build_building_detail_text,
@@ -360,6 +373,142 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(TelegramBadRequest):
             await safe_edit_text(message, "text")
+
+
+class MorningReportCallbackTests(unittest.IsolatedAsyncioTestCase):
+    """Кнопки отключения/включения утренних отчётов."""
+
+    @staticmethod
+    def _fake_db(player: dict | None):
+        fake_db = type("FakeDB", (), {})()
+        fake_db.alchemy_players = type("FakeCollection", (), {})()
+        fake_db.alchemy_players.find_one = AsyncMock(return_value=player)
+        fake_db.alchemy_players.update_one = AsyncMock()
+        return fake_db
+
+    async def test_mute_callback_sets_flag_and_simplifies_keyboard(self):
+        callback = AsyncMock()
+        callback.data = REPORT_MUTE_CALLBACK
+        callback.from_user.id = 303
+        fake_db = self._fake_db({"user_id": 303})
+
+        with patch("handlers.alc_base.db", fake_db):
+            await mute_morning_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 303}, {"$set": {MORNING_REPORT_MUTE_FIELD: True}}
+        )
+        # Из сообщения отчёта кнопка отключения убирается, «Закрыть» остаётся.
+        markup = callback.message.edit_reply_markup.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [[b.text for b in row] for row in markup.inline_keyboard],
+            [["❌ Закрыть"]],
+        )
+        callback.answer.assert_awaited_once()
+        self.assertTrue(callback.answer.await_args.kwargs.get("show_alert"))
+
+    async def test_mute_callback_survives_keyboard_edit_error(self):
+        from aiogram.exceptions import TelegramBadRequest
+
+        callback = AsyncMock()
+        callback.data = REPORT_MUTE_CALLBACK
+        callback.from_user.id = 304
+        callback.message.edit_reply_markup.side_effect = TelegramBadRequest(
+            method=AsyncMock(), message="Bad Request: message is not modified"
+        )
+
+        with patch("handlers.alc_base.db", self._fake_db({"user_id": 304})):
+            await mute_morning_reports(callback)
+
+        # Флаг всё равно записан, игрок получил подтверждение.
+        callback.answer.assert_awaited_once()
+
+    async def test_toggle_callback_turns_reports_off_then_on(self):
+        callback = AsyncMock()
+        callback.data = REPORT_TOGGLE_CALLBACK
+        callback.from_user.id = 305
+        fake_db = self._fake_db({"user_id": 305, "buildings": {}})
+
+        with patch("handlers.alc_base.db", fake_db), \
+             patch("handlers.alc_base.get_base_content", new=AsyncMock(return_value=("база", None))):
+            await toggle_morning_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 305}, {"$set": {MORNING_REPORT_MUTE_FIELD: True}}
+        )
+        self.assertIn("отключены", callback.answer.await_args.args[0])
+
+        # Повторное нажатие — из выключенного состояния возвращает рассылку.
+        callback.answer.reset_mock()
+        fake_db.alchemy_players.update_one.reset_mock()
+        fake_db.alchemy_players.find_one = AsyncMock(
+            return_value={"user_id": 305, "buildings": {}, MORNING_REPORT_MUTE_FIELD: True}
+        )
+        with patch("handlers.alc_base.db", fake_db), \
+             patch("handlers.alc_base.get_base_content", new=AsyncMock(return_value=("база", None))):
+            await toggle_morning_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_awaited_once_with(
+            {"user_id": 305}, {"$set": {MORNING_REPORT_MUTE_FIELD: False}}
+        )
+        self.assertIn("включены", callback.answer.await_args.args[0])
+
+    async def test_toggle_callback_requires_player_profile(self):
+        callback = AsyncMock()
+        callback.data = REPORT_TOGGLE_CALLBACK
+        callback.from_user.id = 306
+        fake_db = self._fake_db(None)
+
+        with patch("handlers.alc_base.db", fake_db):
+            await toggle_morning_reports(callback)
+
+        fake_db.alchemy_players.update_one.assert_not_awaited()
+        callback.message.edit_text.assert_not_awaited()
+        callback.answer.assert_awaited_once()
+
+    async def test_scheduler_skips_message_for_muted_player_but_keeps_economy(self):
+        """Утренний отчёт не уходит игроку, отключившему рассылку, но экономика работает."""
+        muted = {
+            "user_id": 404,
+            "inventory": {"energy": 10},
+            "fighters": [{"id": "f1", "unit_id": "fire_swordsman", "status": "ok", "xp": 5}],
+            MORNING_REPORT_MUTE_FIELD: True,
+        }
+        enabled = {
+            "user_id": 405,
+            "inventory": {"energy": 10},
+            "fighters": [{"id": "f2", "unit_id": "fire_swordsman", "status": "ok", "xp": 5}],
+        }
+
+        class FakePlayersCursor:
+            def __init__(self, docs):
+                self._docs = docs
+
+            def __aiter__(self):
+                async def _gen():
+                    for doc in self._docs:
+                        yield doc
+
+                return _gen()
+
+        fake_db = self._fake_db(None)
+        fake_db.alchemy_players.find = lambda *_a, **_k: FakePlayersCursor([muted, enabled])
+        bot = AsyncMock()
+
+        with patch("handlers.alc_tasks.db", fake_db), patch("handlers.alc_tasks.bot", bot):
+            await process_barracks_upkeep()
+
+        # Сообщение ушло только игроку с включённой рассылкой.
+        recipients = [call.args[0] for call in bot.send_message.await_args_list]
+        self.assertEqual(recipients, [405])
+        # Обоим игрокам записана экономика (списание энергии, отчёт, дата дрена).
+        updated = [call.args[0]["user_id"] for call in fake_db.alchemy_players.update_one.await_args_list]
+        self.assertEqual(updated, [404, 405])
+        sent_markup = bot.send_message.await_args.kwargs["reply_markup"]
+        self.assertEqual(
+            [b.callback_data for row in sent_markup.inline_keyboard for b in row],
+            [REPORT_MUTE_CALLBACK, "alc:base_close"],
+        )
 
 
 class AlchemyCoreTests(unittest.TestCase):
@@ -807,6 +956,27 @@ class BaseStatusTests(unittest.TestCase):
         self.assertIn("🧭", button_texts)
         self.assertIn("🏰 Форт", button_texts)
 
+    def test_build_base_keyboard_has_morning_report_toggle(self):
+        """Кнопка рассылки утренних отчётов есть в главном меню базы."""
+        markup = build_base_keyboard({"last_mine": 0, "buildings": {}})
+        toggles = [
+            button
+            for row in markup.inline_keyboard
+            for button in row
+            if button.callback_data == REPORT_TOGGLE_CALLBACK
+        ]
+        self.assertEqual(len(toggles), 1)
+        # По умолчанию рассылка включена.
+        self.assertEqual(toggles[0].text, "📊 Отчёты: вкл")
+
+    def test_build_base_keyboard_reflects_muted_reports(self):
+        markup = build_base_keyboard(
+            {"last_mine": 0, "buildings": {}, MORNING_REPORT_MUTE_FIELD: True}
+        )
+        button_texts = [button.text for row in markup.inline_keyboard for button in row]
+        self.assertIn("🔕 Отчёты: выкл", button_texts)
+        self.assertNotIn("📊 Отчёты: вкл", button_texts)
+
 
 class ReportTextTests(unittest.TestCase):
     def test_build_daily_report_text_handles_full_and_empty_reports(self):
@@ -840,6 +1010,49 @@ class ReportTextTests(unittest.TestCase):
         self.assertEqual(len(markup.inline_keyboard), 1)
         self.assertEqual(markup.inline_keyboard[0][0].text, "❌ Закрыть")
         self.assertEqual(markup.inline_keyboard[0][0].callback_data, "alc:base_close")
+
+    def test_build_report_markup_offers_mute_button(self):
+        """В сам отчёт добавлена кнопка отключения рассылки + «Закрыть»."""
+        markup = build_report_markup()
+        rows = [[(button.text, button.callback_data) for button in row] for row in markup.inline_keyboard]
+        self.assertEqual(rows, [[("🔕 Не присылать отчёты", REPORT_MUTE_CALLBACK)], [("❌ Закрыть", "alc:base_close")]])
+
+    def test_build_report_markup_hides_mute_button_when_already_muted(self):
+        """Если отчёты уже отключены, в отчёте остаётся только «Закрыть»."""
+        self.assertEqual(
+            [[(b.text, b.callback_data) for b in row] for row in build_report_markup(True).inline_keyboard],
+            [[("❌ Закрыть", "alc:base_close")]],
+        )
+
+    def test_morning_report_mute_flag_defaults_to_off(self):
+        """Отсутствие поля = рассылка включена (миграция старым игрокам не нужна)."""
+        self.assertFalse(is_morning_report_muted(None))
+        self.assertFalse(is_morning_report_muted({}))
+        self.assertFalse(is_morning_report_muted({MORNING_REPORT_MUTE_FIELD: False}))
+        self.assertTrue(is_morning_report_muted({MORNING_REPORT_MUTE_FIELD: True}))
+
+    def test_build_report_toggle_button_shows_current_state(self):
+        enabled = build_report_toggle_button({})
+        self.assertEqual(enabled.text, "📊 Отчёты: вкл")
+        self.assertEqual(enabled.callback_data, REPORT_TOGGLE_CALLBACK)
+
+        muted = build_report_toggle_button({MORNING_REPORT_MUTE_FIELD: True})
+        self.assertEqual(muted.text, "🔕 Отчёты: выкл")
+        self.assertEqual(muted.callback_data, REPORT_TOGGLE_CALLBACK)
+
+    def test_should_send_morning_report(self):
+        events = {"granted_lines": ["Камень x2"]}
+        # Игрок отключил рассылку — сообщение не шлём, даже если за сутки что-то было.
+        self.assertFalse(should_send_morning_report({MORNING_REPORT_MUTE_FIELD: True}, [{"id": 1}], events))
+        self.assertFalse(should_send_morning_report({MORNING_REPORT_MUTE_FIELD: True}, [{"id": 1}], events, events))
+        # Рассылка включена: шлём при бойцах или при начислениях.
+        self.assertTrue(should_send_morning_report({}, [{"id": 1}], {}))
+        self.assertTrue(should_send_morning_report({}, [], events))
+        self.assertTrue(should_send_morning_report({}, [], {}, events))
+        self.assertTrue(should_send_morning_report(None, [{"id": 1}]))
+        # Рассылка включена, но за сутки ничего не произошло — тишина.
+        self.assertFalse(should_send_morning_report({}, [], {}, {}))
+        self.assertFalse(should_send_morning_report({}, None, None, None))
 
 
 class FighterLogicTests(unittest.TestCase):

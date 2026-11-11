@@ -1,5 +1,6 @@
 import asyncio
 import html
+import logging
 import random
 import time
 import asyncio
@@ -52,6 +53,16 @@ from handlers.alc_core import (
     send_expedition_menu,
 )
 from handlers.alc_fighters import can_pay_cost, spend_cost
+from handlers.alc_tasks import (
+    MORNING_REPORT_MUTE_FIELD,
+    REPORT_MUTE_CALLBACK,
+    REPORT_TOGGLE_CALLBACK,
+    build_report_close_markup,
+    build_report_toggle_button,
+    is_morning_report_muted,
+)
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 universe_focus_modes: dict[int, str | None] = {}
@@ -1078,6 +1089,8 @@ def build_base_keyboard(player: dict) -> types.InlineKeyboardMarkup:
     service_rows: list[types.InlineKeyboardButton] = [
         types.InlineKeyboardButton(text="🏗 Стройка", callback_data="build_open"),
         types.InlineKeyboardButton(text="📜 Квесты", callback_data="quests_open"),
+        # Утренний отчёт: кнопка показывает текущее состояние и переключает рассылку.
+        build_report_toggle_button(player),
     ]
     if buildings.get("barracks", 0) > 0:
         service_rows.append(types.InlineKeyboardButton(text="🎖 Казармы", callback_data="barracks_open"))
@@ -1809,6 +1822,50 @@ async def ret_base(callback: types.CallbackQuery):
 async def close_base_window(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.answer()
+
+
+@router.callback_query(F.data == REPORT_MUTE_CALLBACK)
+async def mute_morning_reports(callback: types.CallbackQuery):
+    """Отключение утренних отчётов прямо из сообщения отчёта."""
+    user_id = callback.from_user.id
+    await db.alchemy_players.update_one(
+        {"user_id": user_id}, {"$set": {MORNING_REPORT_MUTE_FIELD: True}}
+    )
+
+    # Убираем кнопку отключения из этого отчёта, оставляя только «Закрыть».
+    try:
+        await callback.message.edit_reply_markup(reply_markup=build_report_close_markup())
+    except TelegramBadRequest as exc:
+        logger.info("Не удалось обновить клавиатуру отчёта user_id=%s: %s", user_id, exc)
+
+    await callback.answer(
+        "🔕 Утренние отчёты отключены.\n"
+        "Включить снова: меню базы → «🔕 Отчёты: выкл».",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data == REPORT_TOGGLE_CALLBACK)
+async def toggle_morning_reports(callback: types.CallbackQuery):
+    """Переключатель утренних отчётов в главном меню базы."""
+    user_id = callback.from_user.id
+    player = await db.alchemy_players.find_one({"user_id": user_id})
+    if not player:
+        await callback.answer("Сначала сходи в поход!", show_alert=True)
+        return
+
+    muted = not is_morning_report_muted(player)
+    await db.alchemy_players.update_one(
+        {"user_id": user_id}, {"$set": {MORNING_REPORT_MUTE_FIELD: muted}}
+    )
+
+    text, markup = await get_base_content(user_id)
+    await safe_edit_text(callback.message, text, reply_markup=markup, parse_mode="Markdown")
+
+    if muted:
+        await callback.answer("🔕 Утренние отчёты отключены.")
+    else:
+        await callback.answer("📊 Утренние отчёты включены: будут приходить в 3:10 по МСК.")
 
 
 @router.callback_query(F.data == "alc:base_pohod")

@@ -67,6 +67,70 @@ def build_report_close_markup() -> types.InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
+
+# Поле игрока, которым он отключает утренний отчёт. Отсутствие поля = отчёты
+# включены, поэтому старым игрокам миграция не нужна.
+MORNING_REPORT_MUTE_FIELD = "morning_report_muted"
+REPORT_MUTE_CALLBACK = "alc:report_mute"
+REPORT_TOGGLE_CALLBACK = "alc:report_toggle"
+
+
+def is_morning_report_muted(player: dict | None) -> bool:
+    """Отключены ли у игрока утренние отчёты."""
+    return bool((player or {}).get(MORNING_REPORT_MUTE_FIELD, False))
+
+
+def build_report_markup(muted: bool = False) -> types.InlineKeyboardMarkup:
+    """Клавиатура утреннего отчёта: кнопка отключения рассылки + «Закрыть».
+
+    Если отчёты уже отключены, кнопка отключения не показывается — иначе игрок
+    может нажать её повторно и получить лишний алерт.
+    """
+    if muted:
+        return build_report_close_markup()
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔕 Не присылать отчёты", callback_data=REPORT_MUTE_CALLBACK)
+    builder.button(text="❌ Закрыть", callback_data="alc:base_close")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_report_toggle_button(player: dict | None) -> types.InlineKeyboardButton:
+    """Кнопка главного меню базы: показывает состояние и переключает рассылку."""
+    if is_morning_report_muted(player):
+        return types.InlineKeyboardButton(
+            text="🔕 Отчёты: выкл", callback_data=REPORT_TOGGLE_CALLBACK
+        )
+    return types.InlineKeyboardButton(
+        text="📊 Отчёты: вкл", callback_data=REPORT_TOGGLE_CALLBACK
+    )
+
+
+def should_send_morning_report(
+    player: dict | None,
+    fighters: list | None = None,
+    heritage_report: dict | None = None,
+    world_report: dict | None = None,
+) -> bool:
+    """Слать ли утренний отчёт: игрок не отключил рассылку и за сутки что-то было.
+
+    Экономика (списание энергии, начисления) при отключённой рассылке продолжает
+    работать — гейтится только отправка сообщения.
+    """
+    if is_morning_report_muted(player):
+        return False
+
+    heritage_report = heritage_report or {}
+    world_report = world_report or {}
+    return bool(
+        fighters
+        or heritage_report.get("granted_lines")
+        or heritage_report.get("skipped_lines")
+        or world_report.get("granted_lines")
+        or world_report.get("skipped_lines")
+    )
+
 async def check_alchemy_stamina():
     now = int(time.time())
     cursor = db.alchemy_players.find({"last_mine": {"$gt": 0}, "stamina_notified": {"$ne": True}})
@@ -272,12 +336,14 @@ async def process_barracks_upkeep():
             },
         )
 
-        if fighters or heritage_report.get("granted_lines") or heritage_report.get("skipped_lines") or world_report.get("granted_lines") or world_report.get("skipped_lines"):
+        # Отключение рассылки гейтит только отправку: списание энергии и
+        # начисления выше уже записаны в БД и работают в любом случае.
+        if should_send_morning_report(player, fighters, heritage_report, world_report):
             try:
                 await bot.send_message(
                     user_id,
                     build_daily_report_text(report, heritage_report, world_report),
-                    reply_markup=build_report_close_markup(),
+                    reply_markup=build_report_markup(is_morning_report_muted(player)),
                     parse_mode="HTML",
                 )
             except Exception:
