@@ -38,8 +38,14 @@ from handlers.social_rp import (
     get_verb_form,
     generate_local_fallback,
     safe_decline_name,
+    ACTION_CASES,
+    ACTION_VERBS,
     CASE_GRAMMEMES,
+    DEFAULT_ACTION_CASE,
+    FEMININE_VERB_FORMS,
     HAS_MORPH,
+    UNKNOWN_ACTION_CASE,
+    UNKNOWN_ACTION_VERB,
     rp_rate_limit,
     RP_COOLDOWN
 )
@@ -194,7 +200,7 @@ class TestVerbForm:
         assert result == "обнял"
 
     def test_female_gender_with_morph_analyzer(self):
-        """Женский род с морфологическим анализатором."""
+        """Женский род через морфологию (глагол вне явной карты)."""
         import handlers.social_rp as sr
 
         # Создаём mock для morph, если его нет
@@ -205,14 +211,41 @@ class TestVerbForm:
             with patch('handlers.social_rp.morph') as mock_morph:
                 # Настраиваем mock для морфологического анализатора
                 mock_parse = MagicMock()
-                mock_parse.tag = 'VERB'
+                mock_parse.tag = 'VERB,perf,tran masc,sing,past,indc'
                 mock_inflect = MagicMock()
-                mock_inflect.word = "обняла"
+                mock_inflect.word = "приобняла"
                 mock_parse.inflect.return_value = mock_inflect
                 mock_morph.parse.return_value = [mock_parse]
 
-                result = get_verb_form("обнял", "женский")
-                assert result == "обняла"
+                result = get_verb_form("приобнял", "женский")
+                assert result == "приобняла"
+
+    def test_curated_form_wins_over_morph(self):
+        """Для известных действий явная карта важнее морфологии: pymorphy на
+        строках вроде "сделал кусь" выдаёт мусор ("сделал клась")."""
+        with patch('handlers.social_rp.HAS_MORPH', True):
+            with patch('handlers.social_rp.morph') as mock_morph:
+                mock_morph.parse.side_effect = AssertionError("морфологию трогать нельзя")
+                assert get_verb_form("сделал кусь", "женский") == "сделала кусь"
+                assert get_verb_form("дал пять", "женский") == "дала пять"
+
+    def test_morph_garbage_is_rejected(self):
+        """Форма не на -а отбрасывается: женское прошедшее иначе не заканчивается."""
+        import handlers.social_rp as sr
+
+        if not hasattr(sr, 'morph'):
+            sr.morph = MagicMock()
+
+        with patch('handlers.social_rp.HAS_MORPH', True):
+            with patch('handlers.social_rp.morph') as mock_morph:
+                mock_parse = MagicMock()
+                mock_parse.tag = 'VERB,perf,tran masc,sing,past,indc'
+                mock_inflect = MagicMock()
+                mock_inflect.word = "сделал клась"
+                mock_parse.inflect.return_value = mock_inflect
+                mock_morph.parse.return_value = [mock_parse]
+
+                assert get_verb_form("приобнял", "женский") == "приобнял"
 
     def test_female_gender_fallback(self):
         """Женский род - fallback без морфологии."""
@@ -221,30 +254,25 @@ class TestVerbForm:
             assert result == "обняла"
 
     def test_female_gender_fallback_all_verbs(self):
-        """Проверка всех глаголов в fallback."""
+        """Проверка всех глаголов без морфологии (только явная карта)."""
         with patch('handlers.social_rp.HAS_MORPH', False):
-            test_cases = [
-                ("обнял", "обняла"),
-                ("поцеловал", "поцеловала"),
-                ("укусил", "укусила"),
-                ("погладил", "погладила"),
-                ("пнул", "пнула"),
-                ("ударил", "ударила"),
-                ("похлопал", "похлопала"),
-                ("сделал кусь", "сделала кусь"),
-                ("чмокнул", "чмокнула"),
-                ("засосал", "засосала"),
-                ("шлёпнул", "шлёпнула"),
-                ("связал", "связала"),
-                ("разделил", "разделила"),
-                ("наказал", "наказала"),
-                ("выпорол", "выпорола"),
-                ("шмальнул", "шмальнула"),
-            ]
-
-            for male_form, expected_female in test_cases:
+            for male_form, expected_female in FEMININE_VERB_FORMS.items():
                 result = get_verb_form(male_form, "женский")
                 assert result == expected_female, f"Failed for {male_form}"
+
+    def test_every_action_verb_has_feminine_form(self):
+        """Регрессия: у каждого RP-действия должна быть женская форма, иначе
+        получится "Маша дал пять Ивану"."""
+        required = set(ACTION_VERBS.values()) | {UNKNOWN_ACTION_VERB}
+        missing = required - set(FEMININE_VERB_FORMS)
+        assert not missing, f"нет женской формы для: {sorted(missing)}"
+
+    def test_action_cases_are_valid_grammemes(self):
+        """Падежи действий должны существовать в карте граммем."""
+        for action, case in ACTION_CASES.items():
+            assert case in CASE_GRAMMEMES, f"{action}: неизвестный падеж {case}"
+        assert DEFAULT_ACTION_CASE in CASE_GRAMMEMES
+        assert UNKNOWN_ACTION_CASE in CASE_GRAMMEMES
 
     def test_unknown_verb_fallback(self):
         """Неизвестный глагол - возвращает исходную форму."""
@@ -253,7 +281,7 @@ class TestVerbForm:
             assert result == "неизвестный_глагол"
 
     def test_morph_error_fallback(self):
-        """Ошибка морфологии - используется fallback."""
+        """Ошибка морфологии не роняет генерацию - глагол остаётся как есть."""
         import handlers.social_rp as sr
 
         # Создаём mock для morph, если его нет
@@ -264,8 +292,9 @@ class TestVerbForm:
             with patch('handlers.social_rp.morph') as mock_morph:
                 mock_morph.parse.side_effect = Exception("Test error")
 
-                result = get_verb_form("обнял", "женский")
-                assert result == "обняла"  # Fallback значение
+                assert get_verb_form("приобнял", "женский") == "приобнял"
+                # известные действия от морфологии не зависят
+                assert get_verb_form("обнял", "женский") == "обняла"
 
 
 needs_morph = pytest.mark.skipif(not HAS_MORPH, reason="морфологический анализатор недоступен")
@@ -288,8 +317,8 @@ class TestDeclineName:
             assert safe_decline_name("Иван", "ins") == "Иван"
 
     @needs_morph
-    def test_instrumental_case_for_rp_message(self):
-        """RP-сообщение использует творительный падеж: обнял Натой."""
+    def test_instrumental_case(self):
+        """Творительный падеж (нужен только для фразы "сделал что-то с")."""
         assert safe_decline_name("Ната", "ins") == "Натой"
         assert safe_decline_name("Иван", "ins") == "Иваном"
 
@@ -327,9 +356,36 @@ class TestLocalRpMessage:
 
     @needs_morph
     def test_target_nick_is_declined(self):
-        """Цель должна стоять в творительном падеже: обнял Натой, обняла Иваном."""
-        assert generate_local_fallback("обнять", "Вася", "Ната", "мужской", "") == "Вася обнял Натой."
-        assert generate_local_fallback("обнять", "Маша", "Иван", "женский", "крепко") == "Маша обняла Иваном крепко."
+        """Переходные действия требуют винительного: обнял Нату, обняла Ивана."""
+        assert generate_local_fallback("обнять", "Вася", "Ната", "мужской", "") == "Вася обнял Нату."
+        assert generate_local_fallback("обнять", "Маша", "Иван", "женский", "крепко") == "Маша обняла Ивана крепко."
+
+    @needs_morph
+    def test_dative_actions(self):
+        """"пожать руку" и "дать пять" требуют дательного падежа."""
+        assert generate_local_fallback("пожать руку", "Вася", "Иван", "мужской", "") == "Вася пожал руку Ивану."
+        assert generate_local_fallback("дать пять", "Маша", "Иван", "женский", "") == "Маша дала пять Ивану."
+
+    @needs_morph
+    def test_unknown_action_uses_instrumental(self):
+        """Fallback-фраза содержит предлог "с", поэтому творительный падеж."""
+        assert generate_local_fallback("танцевать", "Вася", "Иван", "мужской", "") == "Вася сделал что-то с Иваном."
+        assert generate_local_fallback("танцевать", "Маша", "Иван", "женский", "") == "Маша сделала что-то с Иваном."
+
+    @needs_morph
+    def test_all_actions_read_grammatically(self):
+        """Ни одно действие не должно давать творительный после переходного глагола."""
+        bad_endings = ("ой", "ем", "ом", "ёй", "ем")
+        for action in ACTION_VERBS:
+            text = generate_local_fallback(action, "Маша", "Иван", "женский", "")
+            target_word = text.rstrip(".").split()[-1]
+            assert not target_word.endswith(bad_endings), f"{action}: {text}"
+
+    def test_rp_message_without_morphology(self):
+        """Без морфологии сообщение остаётся грамотным: род по карте, ник без склонения."""
+        with patch('handlers.social_rp.HAS_MORPH', False):
+            assert generate_local_fallback("обнять", "Маша", "Иван", "женский", "") == "Маша обняла Иван."
+            assert generate_local_fallback("дать пять", "Маша", "Иван", "женский", "") == "Маша дала пять Иван."
 
     def test_latin_nicks_are_left_as_is(self):
         """Латинские ники не склоняются, но глагол по полу меняется."""
