@@ -362,9 +362,17 @@ class TestLocalRpMessage:
 
     @needs_morph
     def test_dative_actions(self):
-        """"пожать руку" и "дать пять" требуют дательного падежа."""
+        """"пожать руку", "дать пять" и мемное "кусь" требуют дательного падежа."""
         assert generate_local_fallback("пожать руку", "Вася", "Иван", "мужской", "") == "Вася пожал руку Ивану."
         assert generate_local_fallback("дать пять", "Маша", "Иван", "женский", "") == "Маша дала пять Ивану."
+        assert generate_local_fallback("кусь", "Маша", "Ната", "женский", "") == "Маша сделала кусь Нате."
+        assert generate_local_fallback("кусь", "Вася", "Иван", "мужской", "") == "Вася сделал кусь Ивану."
+
+    def test_dative_actions_are_declared(self):
+        """Дательные действия заданы явно, а не выводятся из глагола."""
+        assert ACTION_CASES["кусь"] == "datv"
+        assert ACTION_CASES["дать пять"] == "datv"
+        assert ACTION_CASES["пожать руку"] == "datv"
 
     @needs_morph
     def test_unknown_action_uses_instrumental(self):
