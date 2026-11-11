@@ -8,6 +8,14 @@ import time
 import aiohttp
 
 from config import GEMINI_KEYS, GROQ_KEYS
+from models import (
+    GEMINI_CHAT_MODEL,
+    GROQ_FAST_MODELS,
+    GROQ_STRONG_MODELS,
+    OPENROUTER_TEXT_MODEL,
+    OPENROUTER_VISION_MODEL,
+    is_reasoning_model,
+)
 
 OPENROUTER_KEYS = [k.strip() for k in os.getenv("OPENROUTER_KEYS", "").split(",") if k.strip()]
 
@@ -77,7 +85,7 @@ async def make_rest_request(
     api_key,
     system_prompt,
     media_data=None,
-    model="gemini-3-flash-preview",
+    model=GEMINI_CHAT_MODEL,
     quiet: bool = False,
 ):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
@@ -124,48 +132,93 @@ async def make_rest_request(
         return None, 500
 
 
-async def try_groq(prompt, system_prompt, use_fast_model=False):
+def build_groq_payload(model, system_prompt, prompt, max_tokens=4096, fast=False):
+    """Собирает payload chat/completions под конкретную модель Groq.
+
+    Нюансы актуального парка моделей (ноябрь 2026):
+
+    * `max_tokens` у Groq объявлен deprecated — используем `max_completion_tokens`.
+    * gpt-oss принимает только temperature=1, любое другое значение отдаёт 400.
+    * Reasoning-модели (gpt-oss, qwen3.x) по умолчанию отдают цепочку рассуждений:
+      глушим её через `reasoning_format=hidden` и подбираем `reasoning_effort`,
+      иначе "мысли" съедают лимит токенов и ответ приезжает оборванным.
+    """
+    lowered = model.lower()
+    is_gpt_oss = "gpt-oss" in lowered
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 1 if (fast or is_gpt_oss) else 0.6,
+        "max_completion_tokens": max_tokens,
+    }
+
+    if is_reasoning_model(model):
+        payload["reasoning_format"] = "hidden"
+        if is_gpt_oss:
+            # Reasoning-токены тарифицируются как output и входят в лимит TPM,
+            # поэтому в быстром контуре держим минимальный effort.
+            payload["reasoning_effort"] = "low" if fast else "medium"
+        else:
+            # qwen3.8-27b: "none" полностью отключает режим размышлений.
+            payload["reasoning_effort"] = "none" if fast else "low"
+    return payload
+
+
+async def try_groq(prompt, system_prompt, use_fast_model=False, max_tokens=4096):
     if not GROQ_KEYS:
         return None, 404
 
-    models = (
-        ["openai/gpt-oss-20b", "meta-llama/llama-4-scout-17b-16e-instruct"]
-        if use_fast_model
-        else ["llama-3.3-70b-versatile", "qwen/qwen3-32b"]
-    )
-    for model in models:
+    model_chain = list(GROQ_FAST_MODELS if use_fast_model else GROQ_STRONG_MODELS)
+    # Быстрый контур — лёгкая модель и короткий ответ, основной — 120B с reasoning,
+    # ему нужно больше времени на генерацию.
+    request_timeout = 20 if use_fast_model else 45
+    last_status = 500
+    for model in model_chain:
         for _ in range(len(GROQ_KEYS)):
             api_key = fire_groq_key()
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.6,
-                "max_tokens": 4096,
-            }
+            payload = build_groq_payload(
+                model, system_prompt, prompt, max_tokens=max_tokens, fast=use_fast_model
+            )
 
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(url, headers=headers, json=payload, timeout=20) as response:
+                    async with session.post(
+                        url, headers=headers, json=payload, timeout=request_timeout
+                    ) as response:
                         if response.status == 200:
                             result = await response.json()
-                            return result["choices"][0]["message"]["content"], 200
+                            content = result["choices"][0]["message"]["content"]
+                            return (content.strip() if content else None), 200
+
+                        last_status = response.status
+                        err_text = await response.text()
+
+                        # 400/404 — модель недоступна на этом тарифе или снята с публикации,
+                        # 401/403 — мёртвый ключ. Дальше долбить эту пару смысла нет.
+                        if response.status in (400, 401, 403, 404):
+                            logger.error("Groq отказал (%s) для модели %s: %s", response.status, model, err_text[:300])
+                            break
+
+                        logger.warning("Groq error %s для модели %s: %s", response.status, model, err_text[:300])
                         if response.status == 429:
                             await asyncio.sleep(random.uniform(2.0, 3.5))
                             continue
                         if response.status >= 500:
-                            return None, response.status
-            except Exception:
+                            break
+            except Exception as exc:
+                logger.warning("Groq network error (%s): %s", model, exc)
                 await asyncio.sleep(random.uniform(2.0, 3.5))
                 continue
-    return None, 500
+    return None, last_status
 
 
-async def try_openrouter(prompt, system_prompt, model="google/gemma-3-27b-it:free", max_tokens=2048):
+async def try_openrouter(prompt, system_prompt, model=OPENROUTER_TEXT_MODEL, max_tokens=2048):
     if not OPENROUTER_KEYS:
         return None, 404
 
@@ -204,7 +257,7 @@ async def try_openrouter(prompt, system_prompt, model="google/gemma-3-27b-it:fre
     return None, 500
 
 
-async def try_openrouter_vision(prompt, image_data, model="qwen/qwen3-vl-30b-thinking:free"):
+async def try_openrouter_vision(prompt, image_data, model=OPENROUTER_VISION_MODEL):
     if not OPENROUTER_KEYS:
         return None, 404
 

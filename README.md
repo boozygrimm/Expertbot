@@ -33,6 +33,14 @@ Telegram-бот на `aiogram` с несколькими режимами раб
 
 Для музыкального модуля в Docker уже ставятся `nodejs` и `ffmpeg`.
 
+Морфологию для Social RP (склонение ников и глаголов по полу) обеспечивает
+`pymorphy3` — поддерживаемый форк `pymorphy2` с тем же API; словари
+`pymorphy3-dicts-ru` ставятся вместе с ним. Менять на `pymorphy2` не нужно:
+версия 0.9.1 не работает на Python 3.11+ (внутри вызывается удалённый
+`inspect.getargspec`), из-за чего модуль `handlers/social_rp.py` не импортируется
+и бот не стартует. Если морфология недоступна, Social RP автоматически
+переключается на упрощённое склонение — это не ошибка, а запланированный fallback.
+
 ### 2. Переменные окружения
 
 Скопируйте `.env.example` в `.env` и заполните значения:
@@ -52,6 +60,60 @@ PORT=7860
 
 - `GEMINI_API_KEYS` вместо `GEMINI_KEYS`
 - `GROQ_API_KEY` вместо `GROQ_KEYS`
+
+### Модели AI-провайдеров
+
+Все идентификаторы моделей вынесены в [models.py](models.py) — это единая точка,
+которую нужно править при очередной ротации моделей у провайдеров.
+
+| Назначение | Переменная | Значение по умолчанию |
+| --- | --- | --- |
+| Быстрые запросы Groq (игры, нормализация, промпты для картинок) | `GROQ_FAST_MODELS` | `openai/gpt-oss-20b` |
+| Основные запросы Groq (диалоги, отчёты, экспедиции) | `GROQ_STRONG_MODELS` | `openai/gpt-oss-120b`, `qwen/qwen3.8-27b` |
+| Служебный запрос для генерации картинок | `GROQ_IMAGE_PROMPT_MODEL` | `openai/gpt-oss-20b` |
+| Расшифровка голосовых | `GROQ_TRANSCRIBE_MODELS` | `whisper-large-v3`, `whisper-large-v3-turbo` |
+| Gemini (основной провайдер) | `GEMINI_CHAT_MODEL` | `gemini-3-flash-preview` |
+| OpenRouter: текст | `OPENROUTER_TEXT_MODEL` | `google/gemma-3-27b-it:free` |
+| OpenRouter: зрение | `OPENROUTER_VISION_MODEL` | `qwen/qwen3-vl-30b-thinking:free` |
+| OpenRouter: сводки чата | `OPENROUTER_SUMMARY_MODEL` | `qwen/qwen-2.5-72b-instruct:free` |
+
+Списки моделей задаются через запятую: порядок элементов = порядок фолбэка.
+Если модель отвечает `400/404` (снята с публикации или недоступна на тарифе)
+или ключ отвечает `401/403`, запрос автоматически уходит на следующую модель,
+а не падает.
+
+Особенности текущей линейки Groq:
+
+- `openai/gpt-oss-120b` и `openai/gpt-oss-20b` — production-модели, стабильная замена
+  снятым Llama;
+- `qwen/qwen3.8-27b` — **preview**-модель: Groq может снять её с коротким уведомлением,
+  поэтому она стоит в цепочке второй, после production-модели, и используется только
+  как запасной вариант;
+- базовые лимиты Groq для этих моделей — 30 RPM / 1 000 RPD / 8K TPM / 200K TPD
+  (в доках таблица описывает базовые лимиты Developer-плана, точные значения своей
+  организации видны в `console.groq.com/settings/limits`);
+- reasoning-токены у `gpt-oss` тарифицируются как output и входят в TPM, поэтому
+  в быстром контуре используется `reasoning_effort=low`, а не `medium`.
+
+#### Миграция с устаревших моделей Groq (ноябрь 2026)
+
+Groq вывел из free/developer-тарифов прежний парк моделей, запросы к этим ID
+возвращают ошибку ([депрекации Groq](https://console.groq.com/docs/deprecations)):
+
+| Было в коде | Отключено | Рекомендация Groq | В проекте заменено на |
+| --- | --- | --- | --- |
+| `llama-3.1-8b-instant` | 16.08.2026 | `openai/gpt-oss-20b` | `openai/gpt-oss-20b` (быстрый контур) |
+| `llama-3.3-70b-versatile` | 16.08.2026 | `openai/gpt-oss-120b` | `openai/gpt-oss-120b` (основной контур) |
+| `qwen/qwen3-32b` | 17.07.2026 | `openai/gpt-oss-120b` | `qwen/qwen3.8-27b` (запасной в основном контуре) |
+| `meta-llama/llama-4-scout-17b-16e-instruct` | 17.07.2026 | `openai/gpt-oss-120b` | `openai/gpt-oss-20b` (модель сидела в быстром контуре, там нужна скорость) |
+
+Попутно учтены особенности новых моделей:
+
+- вместо deprecated `max_tokens` отправляется `max_completion_tokens`;
+- для `gpt-oss` передаётся `temperature=1` — другие значения модель отвергает;
+- reasoning-модели (`gpt-oss`, `qwen3.x`) запрашиваются с `reasoning_format=hidden`
+  и `reasoning_effort` (`low`/`medium` у gpt-oss, `none`/`low` у qwen), чтобы
+  цепочка рассуждений не съедала лимит токенов и не обрезала ответ.
 
 ### 3. Локальный запуск
 
@@ -85,6 +147,7 @@ main.py               Точка входа и orchestration запуска
 app_setup.py          Сборка dispatcher, scheduler и healthcheck-сервера
 bot_commands.py       Команды Telegram по scope и их порядок
 config.py             Чтение env и время по МСК
+models.py             Реестр идентификаторов моделей всех AI-провайдеров
 database.py           MongoDB client и коллекции
 bot_instance.py       Singleton Bot
 ai_logic.py           LLM/vision/audio utility layer и fallback-логика

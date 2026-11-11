@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -62,47 +63,76 @@ def validate_nickname(nick: str) -> tuple[bool, str]:
         return False, "Ник не может содержать переносы строк."
     return True, ""
 
-# Инициализация морфологического анализатора с fallback
-try:
-    import pymorphy2
-    morph = pymorphy2.MorphAnalyzer()
-    HAS_MORPH = True
-except ImportError:
-    HAS_MORPH = False
-    logger.warning("pymorphy2 не установлен. Используется упрощённое склонение.")
+# Инициализация морфологического анализатора с fallback.
+# pymorphy2 0.9.1 на Python 3.11+ падает не с ImportError, а с AttributeError
+# (внутри него вызывается удалённый inspect.getargspec), поэтому ловим любое
+# исключение: иначе модуль не импортируется и бот не стартует.
+# pymorphy3 — поддерживаемый форк с тем же API, пробуем сначала его.
+morph = None
+HAS_MORPH = False
+for _morph_module in ("pymorphy3", "pymorphy2"):
+    try:
+        morph = importlib.import_module(_morph_module).MorphAnalyzer()
+        HAS_MORPH = True
+        break
+    except Exception as exc:
+        morph = None
+        logger.warning("%s недоступен (%s). Пробуем упрощённое склонение.", _morph_module, exc)
+
+if not HAS_MORPH:
+    logger.warning("Морфология отключена. Используется упрощённое склонение.")
 
 def is_cyrillic_name(name: str) -> bool:
     """Проверяет, состоит ли имя только из кириллицы."""
     return bool(name) and all('а' <= c.lower() <= 'я' or c in 'ё-' for c in name)
 
+# pymorphy оперирует собственными именами граммем: nomn, gent, datv, accs, ablt, loct.
+# Вызывающие исторически передавали латинские сокращения (ins, dat, acc, abl), поэтому
+# принимаем и их, и нативные имена. Раньше здесь стояли ключи вида 'ins': 'ins' —
+# pymorphy на незнакомой граммеме бросает ValueError, из-за чего склонение не работало
+# ни в одном падеже, кроме родительного.
+CASE_GRAMMEMES = {
+    'nomn': 'nomn', 'nom': 'nomn',   # кто? (НатА)
+    'gent': 'gent', 'gen': 'gent',   # кого? (нет НатЫ)
+    'datv': 'datv', 'dat': 'datv',   # кому? (НатЕ)
+    'accs': 'accs', 'acc': 'accs',   # кого? (обнял НатУ)
+    'ablt': 'ablt', 'ins': 'ablt',   # кем? (обнял НатОЙ)
+    'loct': 'loct', 'abl': 'loct', 'prep': 'loct',  # о ком? (о НатЕ)
+}
+
+
+def _restore_case(name: str, declined: str) -> str:
+    """Возвращает склонённой форме регистр исходного ника (pymorphy отдаёт lowercase)."""
+    if name.isupper():
+        return declined.upper()
+    if name[:1].isupper():
+        return declined[:1].upper() + declined[1:]
+    return declined
+
+
 def safe_decline_name(name: str, case: str) -> str:
     """
     Безопасное склонение имени.
     Если имя на латинице - возвращает как есть.
-    Если на кириллице - использует pymorphy2.
+    Если на кириллице - использует pymorphy3 (или pymorphy2, если стоит он).
     """
     if not is_cyrillic_name(name):
+        return name
+
+    grammeme = CASE_GRAMMEMES.get((case or '').lower())
+    if not grammeme:
         return name
 
     if HAS_MORPH:
         try:
             parsed = morph.parse(name)[0]
             if 'NOUN' in parsed.tag or 'Name' in parsed.tag:
-                # Падежи: gent, dat, acc, ins, abl
-                case_map = {
-                    'gent': 'gent',  # кого? (обнял НатУ)
-                    'dat': 'dat',    # кому? (обнял НатЕ)
-                    'acc': 'acc',    # кого? (обнял НатУ)
-                    'ins': 'ins',    # кем? (обнял НатОЙ)
-                    'abl': 'abl',    # о ком? (о НатЕ)
-                }
-                if case in case_map:
-                    result = parsed.inflect({case_map[case]})
-                    if result:
-                        declined = result.word
-                        # Защита от странных форм типа "Натка"
-                        if declined.lower() != name.lower() and len(declined) > 2:
-                            return declined
+                result = parsed.inflect({grammeme})
+                if result:
+                    declined = _restore_case(name, result.word)
+                    # Защита от странных форм типа "Натка"
+                    if declined.lower() != name.lower() and len(declined) > 2:
+                        return declined
         except Exception as e:
             logger.warning(f"Ошибка склонения {name}: {e}")
 
@@ -111,7 +141,7 @@ def safe_decline_name(name: str, case: str) -> str:
 def get_verb_form(verb: str, gender: str) -> str:
     """
     Возвращает правильную форму глагола в зависимости от пола.
-    Использует pymorphy2 если доступен, иначе упрощённую логику.
+    Использует pymorphy3/pymorphy2 если доступен, иначе упрощённую логику.
     """
     if gender.lower() != "женский":
         return verb
@@ -124,7 +154,7 @@ def get_verb_form(verb: str, gender: str) -> str:
                 if result:
                     return result.word
         except Exception as e:
-            logger.warning(f"Ошибка pymorphy2: {e}")
+            logger.warning(f"Ошибка морфологии при спряжении {verb}: {e}")
 
     # Fallback: простая логика для базовых глаголов
     fallback_map = {
@@ -169,7 +199,7 @@ def generate_local_fallback(action: str, actor_nick: str, target_nick: str, gend
 
     base_verb = verbs.get(action, "сделал что-то с")
 
-    # Правильное склонение по полу с использованием pymorphy2
+    # Правильное склонение по полу с использованием морфологии
     base_verb = get_verb_form(base_verb, gender)
 
     # Безопасное склонение имени цели (творительный падеж: обнял Натой)

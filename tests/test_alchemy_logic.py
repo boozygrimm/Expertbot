@@ -9,6 +9,8 @@ os.environ.setdefault("MONGO_URI", "mongodb://localhost:27017")
 os.environ.setdefault("TELEGRAM_TOKEN", "123456:TESTTOKEN")
 
 import ai_logic
+import ai_providers
+import models
 from ai_music_query import cleanup_music_query
 from ai_summaries import collect_chunk_summaries, split_text_into_chunks
 from app_setup import create_scheduler, handle_healthcheck, set_commands
@@ -32,6 +34,7 @@ from handlers.alc_base import (
     build_production_status,
     build_storage_status,
     build_universe_keyboard,
+    build_universe_biomes_text,
     build_universe_layer_keyboard,
     build_universe_layer_text,
     build_universe_intro_text,
@@ -254,7 +257,11 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
             }
             for i in range(15)
         ]
-        docs = [old_report, *recent_messages]
+        # Реальный курсор приходит из Mongo с .sort("createdAt", -1), то есть
+        # новые сообщения идут первыми; get_daily_summary прерывает обход на
+        # первом же сообщении старше суточного окна. Фейк должен повторять
+        # этот порядок, иначе обрыв случается на первом документе.
+        docs = [*reversed(recent_messages), old_report]
         fake_db = type("FakeDB", (), {"messages": FakeMessages(docs)})()
 
         async def fake_collect(chunks, *_args, **_kwargs):
@@ -598,18 +605,22 @@ class BaseStatusTests(unittest.TestCase):
         )
         self.assertIn("Камень тянет в опору", text)
 
-    def test_build_universe_intro_text_shows_fortify_cost(self):
-        text = build_universe_intro_text(
-            {
-                "user_id": 1,
-                "tutorial_step": 3,
-                "inventory": {"active_base": 1},
-                "world_support_level": 0,
-                "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
-            }
-        )
-        self.assertIn("Следующее укрепление", text)
-        self.assertIn("Камень", text)
+    def test_build_universe_biomes_text_shows_fortify_cost(self):
+        # Строка "Следующее укрепление" живёт на экране биомов, а не в интро
+        # вселенной: интро показывает только текущий уровень укрепления.
+        player = {
+            "user_id": 1,
+            "tutorial_step": 3,
+            "inventory": {"active_base": 1},
+            "world_support_level": 0,
+            "worlds": [{"name": "Карман", "capacity": 4, "description": "ok", "humor": "держится"}],
+        }
+        biomes_text = build_universe_biomes_text(player)
+        self.assertIn("Следующее укрепление", biomes_text)
+        self.assertIn("Камень", biomes_text)
+
+        intro_text = build_universe_intro_text(player)
+        self.assertIn("Укрепление: **0**", intro_text)
 
     def test_build_universe_layer_keyboard_shows_step_and_grid_controls(self):
         markup = build_universe_layer_keyboard(
@@ -1699,6 +1710,136 @@ class QuestLogicTests(unittest.TestCase):
         pool = build_quest_pool(items, 2)
         self.assertEqual(len(pool), 2)
         self.assertEqual(len(set(pool)), 2)
+
+
+class AiModelsTests(unittest.IsolatedAsyncioTestCase):
+    """Проверка реестра моделей: устаревшие id Groq не должны остаться в коде."""
+
+    RETIRED_GROQ_MODELS = {
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "moonshotai/kimi-k2-instruct-0905",
+        "qwen/qwen3.6-27b",
+        "groq/compound",
+        "groq/compound-mini",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it",
+    }
+
+    def all_configured_models(self):
+        return [
+            *models.GROQ_FAST_MODELS,
+            *models.GROQ_STRONG_MODELS,
+            models.GROQ_IMAGE_PROMPT_MODEL,
+            *models.GROQ_TRANSCRIBE_MODELS,
+            models.GEMINI_CHAT_MODEL,
+            models.OPENROUTER_TEXT_MODEL,
+            models.OPENROUTER_VISION_MODEL,
+            models.OPENROUTER_SUMMARY_MODEL,
+        ]
+
+    def test_no_retired_groq_models_configured(self):
+        for model_id in self.all_configured_models():
+            self.assertNotIn(model_id, self.RETIRED_GROQ_MODELS)
+
+    def test_groq_model_lists_are_non_empty(self):
+        self.assertTrue(models.GROQ_FAST_MODELS)
+        self.assertTrue(models.GROQ_STRONG_MODELS)
+        self.assertTrue(models.GROQ_TRANSCRIBE_MODELS)
+
+    def test_env_override_replaces_model_lists(self):
+        with patch.dict(os.environ, {"GROQ_STRONG_MODELS": "openai/gpt-oss-120b, qwen/qwen3.8-27b"}):
+            self.assertEqual(
+                models.model_env_list("GROQ_STRONG_MODELS", ["fallback"]),
+                ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"],
+            )
+        with patch.dict(os.environ, {"GROQ_STRONG_MODELS": "  "}):
+            self.assertEqual(models.model_env_list("GROQ_STRONG_MODELS", ["fallback"]), ["fallback"])
+
+    def test_is_reasoning_model_detects_current_families(self):
+        self.assertTrue(models.is_reasoning_model("openai/gpt-oss-20b"))
+        self.assertTrue(models.is_reasoning_model("qwen/qwen3.8-27b"))
+        self.assertFalse(models.is_reasoning_model("whisper-large-v3"))
+
+    def test_build_groq_payload_for_gpt_oss(self):
+        payload = ai_providers.build_groq_payload("openai/gpt-oss-120b", "sys", "user")
+        # gpt-oss принимает только temperature=1 и max_completion_tokens
+        self.assertEqual(payload["temperature"], 1)
+        self.assertEqual(payload["max_completion_tokens"], 4096)
+        self.assertNotIn("max_tokens", payload)
+        self.assertEqual(payload["reasoning_format"], "hidden")
+        self.assertEqual(payload["reasoning_effort"], "medium")
+        self.assertEqual(payload["messages"][0], {"role": "system", "content": "sys"})
+
+    def test_build_groq_payload_fast_mode_lowers_reasoning_effort(self):
+        payload = ai_providers.build_groq_payload("openai/gpt-oss-20b", "sys", "user", fast=True)
+        self.assertEqual(payload["reasoning_effort"], "low")
+
+        qwen_payload = ai_providers.build_groq_payload("qwen/qwen3.8-27b", "sys", "user", fast=True)
+        self.assertEqual(qwen_payload["reasoning_effort"], "none")
+
+    async def test_try_groq_falls_back_to_next_model_on_404(self):
+        calls = []
+
+        class FakeResponse:
+            def __init__(self, status, body):
+                self.status = status
+                self._body = body
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_exc):
+                return False
+
+            async def text(self):
+                return self._body
+
+            async def json(self):
+                return self._body
+
+        class FakeSession:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_exc):
+                return False
+
+            def post(self, _url, headers=None, json=None, timeout=None):
+                calls.append(json["model"])
+                if json["model"] == "openai/gpt-oss-120b":
+                    return FakeResponse(404, '{"error": "model not found"}')
+                return FakeResponse(
+                    200, {"choices": [{"message": {"content": "  ответ  "}}]}
+                )
+
+        with patch("ai_providers.GROQ_KEYS", ["key-1"]), \
+             patch("ai_providers.aiohttp.ClientSession", FakeSession), \
+             patch("ai_providers.GROQ_STRONG_MODELS", ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]):
+            result, status = await ai_providers.try_groq("ping", "sys")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(result, "ответ")
+        self.assertEqual(calls, ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"])
+
+    async def test_try_groq_returns_404_without_keys(self):
+        with patch("ai_providers.GROQ_KEYS", []):
+            self.assertEqual(await ai_providers.try_groq("ping", "sys"), (None, 404))
+
+    async def test_ai_logic_try_groq_wrapper_passes_provider_kwargs(self):
+        with patch("ai_logic._try_groq", new=AsyncMock(return_value=("ok", 200))) as mock_try_groq:
+            await ai_logic.try_groq("ping", use_fast_model=True, max_tokens=512)
+
+        mock_try_groq.assert_awaited_once_with(
+            "ping", ai_logic.SYSTEM_GUARD, use_fast_model=True, max_tokens=512
+        )
+
 
 
 if __name__ == "__main__":
