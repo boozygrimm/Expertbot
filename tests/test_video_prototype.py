@@ -137,6 +137,23 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(calls[1][calls[1].index('--audio') + 1],
                          calls[0][calls[0].index('--output') + 1])
 
+    @patch('video_prototype.pipeline.subprocess.run')
+    def test_stress_is_opt_in_and_preserves_reference_text(self, subprocess_run):
+        reference = self.folder / 'reference.wav'
+        reference.write_bytes(b'reference')
+        calls = []
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            Path(command[command.index('--output') + 1]).write_bytes(b'generated')
+        subprocess_run.side_effect = fake_run
+        args = pipeline.parse_args(['--text', 'Укуси, Бендер!', '--reference', str(reference),
+            '--reference-text', 'точная запись', '--frames-dir', str(self.frames),
+            '--output-dir', str(self.output), '--no-send', '--stress-marks', '--seed', '42'])
+        pipeline.run(args)
+        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укуси́, Бе́ндер!')
+        self.assertEqual(calls[0][calls[0].index('--reference-text') + 1], 'точная запись')
+        self.assertEqual(calls[0][calls[0].index('--seed') + 1], '42')
+
     def test_must_choose_channel_or_local_only(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.args()
