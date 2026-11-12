@@ -1,5 +1,5 @@
 import unittest
-from video_prototype.stress import apply_stress_marks
+from video_prototype.stress import apply_stress_marks, apply_ukusi_stress
 
 
 class StressTests(unittest.TestCase):
@@ -9,6 +9,12 @@ class StressTests(unittest.TestCase):
         self.assertEqual(apply_stress_marks('УКУСИ БЕНДЕРА, ЛУНА ПАРКИ!'),
                          'УКУСИ́ БЕ́НДЕРА, ЛУ́НА ПАРКИ!')
         self.assertEqual(apply_stress_marks('Укусите Укуси укуси'), 'Укуси́те Укуси́ укуси́')
+
+    def test_ukusi_only_does_not_touch_other_words(self):
+        self.assertEqual(apply_ukusi_stress('Укуси Бендера у Луна-парка и укусите меня.'),
+                         'Укуси́ Бендера у Луна-парка и укуси́те меня.')
+        self.assertEqual(apply_ukusi_stress('Укуси́ меня!'), 'Укуси́ меня!')
+        self.assertEqual(apply_ukusi_stress('Укусить и укусил'), 'Укусить и укусил')
 
     def test_avoid_unrelated_words_and_already_stressed(self):
         text = 'На Луне, Луна и парк; укусить, укусил, лунатик, бендеровский.'
