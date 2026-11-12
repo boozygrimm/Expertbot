@@ -119,7 +119,7 @@ class WorkerRunnerTests(unittest.TestCase):
             self.assertEqual(result, 'hello')
             args = popen.call_args.args[0]
             self.assertIn('--channel-id', args)
-            self.assertIn('--ukusi-stress', args)
+            self.assertNotIn('--ukusi-stress', args)
             self.assertNotIn('--stress-marks', args)
             self.assertNotIn('--chat-id', args)
             self.assertNotIn('bot-secret', args)

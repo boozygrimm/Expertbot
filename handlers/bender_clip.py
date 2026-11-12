@@ -1,8 +1,8 @@
 """Explicit, opt-in video replies routed through the experimental worker."""
 import asyncio
-from itertools import cycle
 import logging
 import os
+import random
 import re
 
 from aiogram import F, Router, types
@@ -26,17 +26,37 @@ STATUS_MESSAGES = (
     '📹 Настраиваю камеру. Мой блестящий зад должен попасть в кадр!',
     '🎙 Прочищаю динамик. Без автографов, я занят!',
     '💰 Считаю гонорар за съёмку. Вам выставить счёт?',
-    '🤖 Почти готово. Даже шедевру нужно время!',
+    '🤖 Даже шедевру нужно время. Особенно такому великолепному!',
+    '🎞 Ищу свой лучший ракурс. Трудный выбор: все хороши!',
+    '🔧 Подкручиваю обаяние. Осторожно, может искрить!',
+    '✨ Навожу блеск. Камера должна ослепнуть от зависти!',
+    '🎭 Репетирую гениальную реплику. Не мешайте таланту!',
+    '🪙 Проверяю, оплатили ли вы выступление. Пока сомневаюсь!',
+    '🎬 Прогоняю дубль. Даже мои ошибки достойны награды!',
+    '📡 Заряжаю сарказм. Держитесь подальше от антенны!',
+    '🛠 Смазываю шарниры. Звезда должна двигаться красиво!',
+    '🍿 Выгоняю зрителей со съёмочной площадки. Сеанс позже!',
+    '💡 Ставлю свет. Пусть все увидят моё металлическое великолепие!',
+    '🎥 Убираю лишнее из кадра. Люди, это я про вас!',
+    '🏆 Готовлю речь для вручения награды самому себе!',
 )
 STATUS_INTERVAL_SECONDS = 15
 
 
-async def rotate_status(status, *, interval=STATUS_INTERVAL_SECONDS, sleep=asyncio.sleep):
+def choose_status(previous=None):
+    """Pick randomly, avoiding an immediate repeat when possible."""
+    choices = [text for text in STATUS_MESSAGES if text != previous]
+    return random.choice(choices or STATUS_MESSAGES)
+
+
+async def rotate_status(status, *, previous=None, interval=STATUS_INTERVAL_SECONDS, sleep=asyncio.sleep):
     """Edit the one status message until the caller cancels the task."""
-    for text in cycle(STATUS_MESSAGES[1:] + STATUS_MESSAGES[:1]):
+    while True:
         await sleep(interval)
+        text = choose_status(previous)
         try:
             await status.edit_text(text)
+            previous = text
         except Exception as exc:
             # A failed edit must not interrupt generation or leave orphan tasks.
             logger.debug('Не удалось обновить статус кружка: %s', type(exc).__name__)
@@ -106,8 +126,9 @@ async def video_reply(message: types.Message):
         status_task = None
         answer = ''
         try:
-            status = await message.reply(STATUS_MESSAGES[0])
-            status_task = asyncio.create_task(rotate_status(status))
+            first_status = choose_status()
+            status = await message.reply(first_status)
+            status_task = asyncio.create_task(rotate_status(status, previous=first_status))
             persona = await db.personas.find_one({'p_id': 'bender'})
             if not persona:
                 await reply_text_safely(message, 'Не нашёл настройки Бендера.')

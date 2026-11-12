@@ -114,16 +114,33 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
             calls += 1
             if calls == 3:
                 raise asyncio.CancelledError()
-        with self.assertRaises(asyncio.CancelledError):
-            await bender_clip.rotate_status(self.status, interval=1, sleep=fake_sleep)
+        with patch.object(bender_clip.random, 'choice', side_effect=lambda choices: choices[0]):
+            with self.assertRaises(asyncio.CancelledError):
+                await bender_clip.rotate_status(self.status, previous=bender_clip.STATUS_MESSAGES[0],
+                                                interval=1, sleep=fake_sleep)
         self.assertEqual(self.status.edit_text.await_count, 2)
         self.assertEqual(self.status.edit_text.await_args_list[0].args[0], bender_clip.STATUS_MESSAGES[1])
-        self.assertEqual(self.status.edit_text.await_args_list[1].args[0], bender_clip.STATUS_MESSAGES[2])
+        self.assertEqual(self.status.edit_text.await_args_list[1].args[0], bender_clip.STATUS_MESSAGES[1])
+
+    async def test_status_choice_avoids_repeat(self):
+        previous = bender_clip.STATUS_MESSAGES[0]
+        with patch.object(bender_clip.random, 'choice', side_effect=lambda choices: choices[0]) as choice:
+            self.assertNotEqual(bender_clip.choose_status(previous), previous)
+            self.assertNotIn(previous, choice.call_args.args[0])
+        self.assertGreaterEqual(len(bender_clip.STATUS_MESSAGES), 12)
+
+    async def test_first_status_is_random_and_shared_with_rotator(self):
+        selected = bender_clip.STATUS_MESSAGES[-1]
+        with patch.object(bender_clip, 'choose_status', return_value=selected), \
+             patch.object(bender_clip, 'rotate_status', new=AsyncMock()) as rotation:
+            await bender_clip.video_reply(self.message)
+        self.assertEqual(self.message.reply.await_args_list[0].args[0], selected)
+        rotation.assert_awaited_once_with(self.status, previous=selected)
 
     async def test_status_task_is_cancelled_before_deletion(self):
         running = asyncio.Event()
         stopped = asyncio.Event()
-        async def rotation(status):
+        async def rotation(status, **kwargs):
             running.set()
             try:
                 await asyncio.Event().wait()
@@ -143,7 +160,7 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_status_task_failure_does_not_prevent_cleanup(self):
         task_finished = asyncio.Event()
-        async def broken_rotation(status):
+        async def broken_rotation(status, **kwargs):
             task_finished.set()
             raise RuntimeError('edit worker failed')
         async def render(text):

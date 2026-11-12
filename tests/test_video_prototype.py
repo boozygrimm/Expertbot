@@ -115,7 +115,8 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(next(self.output.glob('clip-*/video.mp4')).exists())
 
     @patch('video_prototype.pipeline.subprocess.run')
-    def test_text_runs_qwen_then_renderer(self, subprocess_run):
+    @patch.dict('os.environ', {'BOT_TOKEN': 'test-token', 'VIDEO_WORKER_KEY': 'worker-secret'})
+    def test_text_runs_xvibe_then_renderer(self, subprocess_run):
         reference = self.folder / 'reference.wav'
         reference.write_bytes(b'reference')
         calls = []
@@ -125,52 +126,27 @@ class PipelineTests(unittest.TestCase):
             environments.append(kwargs.get('env'))
             Path(command[command.index('--output') + 1]).write_bytes(b'generated')
         subprocess_run.side_effect = fake_run
-        args = pipeline.parse_args(['--text', 'Проверка', '--reference', str(reference),
-            '--frames-dir', str(self.frames), '--output-dir', str(self.output), '--no-send'])
+        args = pipeline.parse_args(['--text', 'Укуси, Бендер, в Луна-парке!',
+            '--reference', str(reference), '--frames-dir', str(self.frames),
+            '--output-dir', str(self.output), '--no-send', '--seed', '42'])
         pipeline.run(args)
         self.assertEqual(len(calls), 2)
-        self.assertTrue(calls[0][1].endswith('speech.py'))
-        self.assertTrue(calls[1][1].endswith('render.py'))
-        self.assertIn('Проверка', calls[0])
-        self.assertEqual(calls[0][calls[0].index('--max-new-tokens') + 1], '768')
+        self.assertTrue(calls[0][0].endswith('/xvibe-tts'))
+        self.assertEqual(calls[0][1], 'generate')
+        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укус+и, Б+ендер, в Луна-парке!')
+        self.assertEqual(calls[0][calls[0].index('--voice') + 1], str(reference))
+        self.assertEqual(calls[0][calls[0].index('--seed') + 1], '42')
         self.assertNotIn('BOT_TOKEN', environments[0])
+        self.assertNotIn('VIDEO_WORKER_KEY', environments[0])
+        self.assertEqual(environments[0]['HF_HOME'], '/data/xvibe-test/hf')
+        self.assertTrue(calls[1][1].endswith('render.py'))
         self.assertEqual(calls[1][calls[1].index('--audio') + 1],
                          calls[0][calls[0].index('--output') + 1])
 
-    @patch('video_prototype.pipeline.subprocess.run')
-    def test_stress_is_opt_in_and_preserves_reference_text(self, subprocess_run):
-        reference = self.folder / 'reference.wav'
-        reference.write_bytes(b'reference')
-        calls = []
-        def fake_run(command, **kwargs):
-            calls.append(command)
-            Path(command[command.index('--output') + 1]).write_bytes(b'generated')
-        subprocess_run.side_effect = fake_run
-        args = pipeline.parse_args(['--text', 'Укуси, Бендер!', '--reference', str(reference),
-            '--reference-text', 'точная запись', '--frames-dir', str(self.frames),
-            '--output-dir', str(self.output), '--no-send', '--stress-marks', '--seed', '42'])
-        pipeline.run(args)
-        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укуси́, Бе́ндер!')
-        self.assertEqual(calls[0][calls[0].index('--reference-text') + 1], 'точная запись')
-        self.assertEqual(calls[0][calls[0].index('--seed') + 1], '42')
-
-    @patch('video_prototype.pipeline.subprocess.run')
-    def test_ukusi_flag_only_marks_ukusi(self, subprocess_run):
-        reference = self.folder / 'reference.wav'
-        reference.write_bytes(b'reference')
-        calls = []
-        def fake_run(command, **kwargs):
-            calls.append(command)
-            Path(command[command.index('--output') + 1]).write_bytes(b'generated')
-        subprocess_run.side_effect = fake_run
-        args = pipeline.parse_args(['--text', 'Укуси, Бендер, в Луна-парке!',
-            '--reference', str(reference), '--reference-text', 'эталон',
-            '--frames-dir', str(self.frames), '--output-dir', str(self.output),
-            '--no-send', '--ukusi-stress'])
-        pipeline.run(args)
-        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укуси́, Бендер, в Луна-парке!')
-        self.assertEqual(calls[0][calls[0].index('--reference-text') + 1], 'эталон')
-        self.assertNotIn('--seed', calls[0])
+    def test_default_voice_is_independent_of_qwen_files(self):
+        args = pipeline.parse_args(['--text', 'Привет', '--no-send'])
+        self.assertEqual(str(args.reference), '/data/video-prototype/voices/bender.wav')
+        self.assertNotIn('qwen', args.xvibe_cli.lower())
 
     def test_must_choose_channel_or_local_only(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
