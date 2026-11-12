@@ -119,8 +119,10 @@ class PipelineTests(unittest.TestCase):
         reference = self.folder / 'reference.wav'
         reference.write_bytes(b'reference')
         calls = []
+        environments = []
         def fake_run(command, **kwargs):
             calls.append(command)
+            environments.append(kwargs.get('env'))
             Path(command[command.index('--output') + 1]).write_bytes(b'generated')
         subprocess_run.side_effect = fake_run
         args = pipeline.parse_args(['--text', 'Проверка', '--reference', str(reference),
@@ -130,6 +132,8 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(calls[0][1].endswith('speech.py'))
         self.assertTrue(calls[1][1].endswith('render.py'))
         self.assertIn('Проверка', calls[0])
+        self.assertEqual(calls[0][calls[0].index('--max-new-tokens') + 1], '768')
+        self.assertNotIn('BOT_TOKEN', environments[0])
         self.assertEqual(calls[1][calls[1].index('--audio') + 1],
                          calls[0][calls[0].index('--output') + 1])
 
