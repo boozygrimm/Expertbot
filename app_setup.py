@@ -11,7 +11,7 @@ from bot_instance import bot
 from config import ADMIN_ID, MSK, get_msk_now
 from handlers import (
     reports, pole_chudes, ex_logic, music, web_search,
-    admin_cron, admin_panel, viselitsa, game_stats, anachronism, image_gen, auth, social_rp, alc_core, alc_base, alc_lab, alc_build, alc_crucible, alc_production, alc_quests, alc_achievements, alc_expeditions, alc_raids, alc_heritage, alc_intro
+    admin_cron, admin_panel, bender_clip, viselitsa, game_stats, anachronism, image_gen, auth, social_rp, alc_core, alc_base, alc_lab, alc_build, alc_crucible, alc_production, alc_quests, alc_achievements, alc_expeditions, alc_raids, alc_heritage, alc_intro
 )
 from handlers import voice_rec
 from handlers.alc_expeditions import notify_arrived_expeditions, process_expeditions_tick
@@ -86,6 +86,9 @@ def configure_dispatcher() -> Dispatcher:
     dp.include_router(voice_rec.router)
     dp.include_router(social_rp.router)
     dp.include_router(alc_core.router)
+
+    # Явный запрос кружка должен перехватываться до общего обработчика Экса.
+    dp.include_router(bender_clip.router)
 
     # всегда последний
     dp.include_router(ex_logic.router)

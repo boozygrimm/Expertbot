@@ -10,6 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID, get_msk_now
+from bender_triggers import parse_video_request
 from database import db
 
 router = Router()
@@ -28,6 +29,12 @@ FEATURES = OrderedDict({
         "icon": "🧠",
         "default": True,
         "hint": "Ответы Экса и ответы по reply на бота."
+    },
+    "video_notes": {
+        "label": "Кружки Бендера",
+        "icon": "🎬",
+        "default": False,
+        "hint": "Ответы видеокружком по /bender или Экс, кружок."
     },
     "images": {
         "label": "Картинки",
@@ -381,6 +388,9 @@ def detect_message_feature(message: types.Message):
         return None
 
     lower_text = text.lower()
+
+    if parse_video_request(text) is not None:
+        return "video_notes"
 
     if lower_text.startswith(("/panel", "/панель")):
         return None
