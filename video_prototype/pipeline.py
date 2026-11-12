@@ -11,6 +11,11 @@ import tempfile
 import urllib.error
 import urllib.request
 
+if __package__:
+    from .stress import apply_stress_marks, apply_ukusi_stress
+else:
+    from stress import apply_stress_marks, apply_ukusi_stress
+
 HERE = Path(__file__).resolve().parent
 DEFAULT_REFERENCE_TEXT = 'Ладно, я построю свой парк, с блэкджеком и шлюхами. И зачем мне... парк?'
 
@@ -66,6 +71,10 @@ def parse_args(argv=None):
     parser.add_argument('--render-python', default='/data/video-prototype/.venv/bin/python')
     parser.add_argument('--hf-home', default='/data/qwen-prototype/hf')
     parser.add_argument('--tts-max-new-tokens', type=int, default=768, help='Предел токенов Qwen')
+    stress = parser.add_mutually_exclusive_group()
+    stress.add_argument('--stress-marks', action='store_true', help='Экспериментально отметить все слова для TTS')
+    stress.add_argument('--ukusi-stress', action='store_true', help='Отметить только укуси/укусите')
+    parser.add_argument('--seed', type=int, help='Фиксировать случайность TTS для сравнения проб')
     args = parser.parse_args(argv)
     if args.tts_max_new_tokens < 1:
         parser.error('--tts-max-new-tokens должен быть положительным')
@@ -102,11 +111,20 @@ def run(args):
         env.pop('BOT_TOKEN', None)
         env['HF_HOME'] = args.hf_home
         print(f'Папка результата: {work}', flush=True)
-        subprocess.run([
-            args.qwen_python, str(HERE / 'speech.py'), '--text', args.text,
+        if args.stress_marks:
+            tts_text = apply_stress_marks(args.text)
+        elif args.ukusi_stress:
+            tts_text = apply_ukusi_stress(args.text)
+        else:
+            tts_text = args.text
+        command = [
+            args.qwen_python, str(HERE / 'speech.py'), '--text', tts_text,
             '--reference', str(args.reference), '--reference-text', args.reference_text,
             '--output', str(audio), '--max-new-tokens', str(args.tts_max_new_tokens),
-        ], env=env, check=True)
+        ]
+        if args.seed is not None:
+            command.extend(['--seed', str(args.seed)])
+        subprocess.run(command, env=env, check=True)
 
     video = work / 'video.mp4'
     subprocess.run([

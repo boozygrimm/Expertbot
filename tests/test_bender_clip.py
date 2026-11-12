@@ -53,7 +53,7 @@ class TriggerTests(unittest.TestCase):
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         bender_clip._render_lock = asyncio.Lock()
-        self.status = SimpleNamespace(delete=AsyncMock())
+        self.status = SimpleNamespace(delete=AsyncMock(), edit_text=AsyncMock())
         self.message = SimpleNamespace(
             chat=SimpleNamespace(id=-1001, type='supergroup'),
             text='Экс, кружок мнение',
@@ -105,6 +105,55 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.message.chat.type = 'private'
         await bender_clip.video_reply(self.message)
         self.client.render.assert_not_awaited()
+
+    async def test_rotates_one_message_and_survives_edit_error(self):
+        self.status.edit_text.side_effect = [RuntimeError('temporary'), None]
+        calls = 0
+        async def fake_sleep(interval):
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                raise asyncio.CancelledError()
+        with self.assertRaises(asyncio.CancelledError):
+            await bender_clip.rotate_status(self.status, interval=1, sleep=fake_sleep)
+        self.assertEqual(self.status.edit_text.await_count, 2)
+        self.assertEqual(self.status.edit_text.await_args_list[0].args[0], bender_clip.STATUS_MESSAGES[1])
+        self.assertEqual(self.status.edit_text.await_args_list[1].args[0], bender_clip.STATUS_MESSAGES[2])
+
+    async def test_status_task_is_cancelled_before_deletion(self):
+        running = asyncio.Event()
+        stopped = asyncio.Event()
+        async def rotation(status):
+            running.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped.set()
+        async def render(text):
+            await running.wait()
+            return 'file-id'
+        self.client.render.side_effect = render
+        async def delete():
+            self.assertTrue(stopped.is_set())
+        self.status.delete.side_effect = delete
+        with patch.object(bender_clip, 'rotate_status', side_effect=rotation):
+            await bender_clip.video_reply(self.message)
+        self.assertTrue(stopped.is_set())
+        self.status.delete.assert_awaited_once()
+
+    async def test_status_task_failure_does_not_prevent_cleanup(self):
+        task_finished = asyncio.Event()
+        async def broken_rotation(status):
+            task_finished.set()
+            raise RuntimeError('edit worker failed')
+        async def render(text):
+            await task_finished.wait()
+            return 'file-id'
+        self.client.render.side_effect = render
+        with patch.object(bender_clip, 'rotate_status', side_effect=broken_rotation):
+            await bender_clip.video_reply(self.message)
+        self.status.delete.assert_awaited_once()
+        self.message.reply_video_note.assert_awaited_once_with(video_note='file-id')
 
     async def test_worker_failure_falls_back_to_text(self):
         self.client.render.side_effect = WorkerFailed('internal')

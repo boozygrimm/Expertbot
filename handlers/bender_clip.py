@@ -1,5 +1,6 @@
 """Explicit, opt-in video replies routed through the experimental worker."""
 import asyncio
+from itertools import cycle
 import logging
 import os
 import re
@@ -18,6 +19,28 @@ logger = logging.getLogger(__name__)
 # A process-local guard avoids generating multiple LLM answers while the worker
 # handles a single job. The worker also enforces its own single-job limit.
 _render_lock = asyncio.Lock()
+
+STATUS_MESSAGES = (
+    '🎬 Снимаю видос. Не отвлекайте звезду, кожаные мешки!',
+    '🧽 Полирую пузо для крупного плана. Это искусство!',
+    '📹 Настраиваю камеру. Мой блестящий зад должен попасть в кадр!',
+    '🎙 Прочищаю динамик. Без автографов, я занят!',
+    '💰 Считаю гонорар за съёмку. Вам выставить счёт?',
+    '🤖 Почти готово. Даже шедевру нужно время!',
+)
+STATUS_INTERVAL_SECONDS = 15
+
+
+async def rotate_status(status, *, interval=STATUS_INTERVAL_SECONDS, sleep=asyncio.sleep):
+    """Edit the one status message until the caller cancels the task."""
+    for text in cycle(STATUS_MESSAGES[1:] + STATUS_MESSAGES[:1]):
+        await sleep(interval)
+        try:
+            await status.edit_text(text)
+        except Exception as exc:
+            # A failed edit must not interrupt generation or leave orphan tasks.
+            logger.debug('Не удалось обновить статус кружка: %s', type(exc).__name__)
+
 
 
 def spoken_text(value):
@@ -80,9 +103,11 @@ async def video_reply(message: types.Message):
 
     async with _render_lock:
         status = None
+        status_task = None
         answer = ''
         try:
-            status = await message.reply('🎬 Готовлю кружок, это может занять пару минут…')
+            status = await message.reply(STATUS_MESSAGES[0])
+            status_task = asyncio.create_task(rotate_status(status))
             persona = await db.personas.find_one({'p_id': 'bender'})
             if not persona:
                 await reply_text_safely(message, 'Не нашёл настройки Бендера.')
@@ -116,6 +141,14 @@ async def video_reply(message: types.Message):
             fallback = f'Не смог отправить кружок. Вот текст ответа:\n{answer}' if answer else 'Не смог подготовить кружок. Попробуй позже.'
             await reply_text_safely(message, fallback)
         finally:
+            if status_task is not None:
+                status_task.cancel()
+                try:
+                    await status_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    logger.debug('Задача статуса завершилась с ошибкой: %s', type(exc).__name__)
             if status is not None:
                 try:
                     await status.delete()

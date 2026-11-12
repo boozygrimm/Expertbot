@@ -112,7 +112,7 @@ def runner(output_dir, channel_id, token, timeout):
         environment['BOT_TOKEN'] = token
         command = [
             sys.executable, '-u', str(HERE / 'pipeline.py'), '--text', text,
-            '--channel-id', str(channel_id), '--output-dir', str(job_dir),
+            '--channel-id', str(channel_id), '--output-dir', str(job_dir), '--ukusi-stress',
         ]
         with (job_dir / 'worker.log').open('a', encoding='utf-8') as log:
             process = subprocess.Popen(command, env=environment, stdout=log,
