@@ -12,12 +12,11 @@ import urllib.error
 import urllib.request
 
 if __package__:
-    from .stress import apply_stress_marks, apply_ukusi_stress
+    from .stress import apply_xvibe_stress
 else:
-    from stress import apply_stress_marks, apply_ukusi_stress
+    from stress import apply_xvibe_stress
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_REFERENCE_TEXT = 'Ладно, я построю свой парк, с блэкджеком и шлюхами. И зачем мне... парк?'
 
 
 def telegram_call(token, method, fields, file_path=None):
@@ -65,19 +64,12 @@ def parse_args(argv=None):
     parser.add_argument('--no-send', action='store_true', help='Только создать локальное видео')
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
-    parser.add_argument('--reference', type=Path, default=Path('/data/qwen-prototype/reference.wav'))
-    parser.add_argument('--reference-text', default=DEFAULT_REFERENCE_TEXT)
-    parser.add_argument('--qwen-python', default='/data/qwen-prototype/.venv/bin/python')
+    parser.add_argument('--reference', type=Path, default=Path('/data/video-prototype/voices/bender.wav'))
+    parser.add_argument('--xvibe-cli', default='/data/xvibe-test/.venv/bin/xvibe-tts')
     parser.add_argument('--render-python', default='/data/video-prototype/.venv/bin/python')
-    parser.add_argument('--hf-home', default='/data/qwen-prototype/hf')
-    parser.add_argument('--tts-max-new-tokens', type=int, default=768, help='Предел токенов Qwen')
-    stress = parser.add_mutually_exclusive_group()
-    stress.add_argument('--stress-marks', action='store_true', help='Экспериментально отметить все слова для TTS')
-    stress.add_argument('--ukusi-stress', action='store_true', help='Отметить только укуси/укусите')
+    parser.add_argument('--hf-home', default='/data/xvibe-test/hf')
     parser.add_argument('--seed', type=int, help='Фиксировать случайность TTS для сравнения проб')
     args = parser.parse_args(argv)
-    if args.tts_max_new_tokens < 1:
-        parser.error('--tts-max-new-tokens должен быть положительным')
     if args.text is not None and (not args.text.strip() or len(args.text) > 240):
         parser.error('Текст должен содержать от 1 до 240 символов')
     if not args.no_send and args.channel_id is None:
@@ -109,18 +101,12 @@ def run(args):
         audio = work / 'speech.wav'
         env = os.environ.copy()
         env.pop('BOT_TOKEN', None)
+        env.pop('VIDEO_WORKER_KEY', None)
         env['HF_HOME'] = args.hf_home
         print(f'Папка результата: {work}', flush=True)
-        if args.stress_marks:
-            tts_text = apply_stress_marks(args.text)
-        elif args.ukusi_stress:
-            tts_text = apply_ukusi_stress(args.text)
-        else:
-            tts_text = args.text
         command = [
-            args.qwen_python, str(HERE / 'speech.py'), '--text', tts_text,
-            '--reference', str(args.reference), '--reference-text', args.reference_text,
-            '--output', str(audio), '--max-new-tokens', str(args.tts_max_new_tokens),
+            args.xvibe_cli, 'generate', '--text', apply_xvibe_stress(args.text),
+            '--voice', str(args.reference), '--output', str(audio),
         ]
         if args.seed is not None:
             command.extend(['--seed', str(args.seed)])
