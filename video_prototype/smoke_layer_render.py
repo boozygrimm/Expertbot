@@ -8,23 +8,28 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 
 if __package__:
     from .render import FPS, SIZE, audio_levels, blink_at, make_frames, mouth_states
-    from .smoke_render import EMBER_MASK, SMOKE_MASK
+    from .smoke_render import EMBER_MASK
 else:
     from render import FPS, SIZE, audio_levels, blink_at, make_frames, mouth_states
-    from smoke_render import EMBER_MASK, SMOKE_MASK
+    from smoke_render import EMBER_MASK
 
 
 def patch_mask():
+    # Local replacement only; protect the head, chain, and cigar ember.
     mask = Image.new('L', (512, 512))
     draw = ImageDraw.Draw(mask)
-    draw.line([(351, 57), (360, 85), (375, 103), (390, 120), (400, 143),
-               (404, 167), (399, 188), (405, 207), (400, 233), (405, 250)],
-              fill=255, width=33, joint='curve')
-    mask = mask.filter(ImageFilter.GaussianBlur(7))
+    draw.line([(349, 57), (360, 85), (375, 103), (390, 120), (400, 143),
+               (404, 167), (399, 188), (405, 207), (400, 233), (405, 255),
+               (398, 278), (392, 295), (397, 316), (405, 337)],
+              fill=255, width=38, joint='curve')
+    mask = mask.filter(ImageFilter.GaussianBlur(5))
     protect = Image.new('L', (512, 512))
-    ImageDraw.Draw(protect).polygon([(0, 0), (345, 0), (345, 80), (360, 95),
-         (370, 110), (376, 130), (380, 160), (383, 195), (392, 243),
-         (395, 257), (512, 257), (512, 512), (0, 512)], fill=255)
+    draw = ImageDraw.Draw(protect)
+    draw.polygon([(0, 0), (343, 0), (345, 80), (360, 95), (370, 110),
+                  (376, 130), (380, 160), (383, 195), (392, 243),
+                  (383, 266), (360, 282), (0, 282)], fill=255)
+    draw.polygon([(398, 338), (416, 333), (424, 346), (412, 356),
+                  (397, 348)], fill=255)
     return ImageChops.subtract(mask, protect.filter(ImageFilter.GaussianBlur(1))).resize(
         (SIZE, SIZE), Image.Resampling.LANCZOS)
 
@@ -41,11 +46,11 @@ def prepare_frames(frames, plate_path):
     for key, pixels in frames.items():
         original = Image.frombytes('RGB', (SIZE, SIZE), pixels)
         base = Image.composite(plate, original, PATCH_MASK)
-        # Only the smoke against the dark background is extracted; the lower
-        # part over the shoulder stays static to avoid lifting metal pixels.
-        highlights = original.convert('L').point(lambda v: max(0, min(210, int((v - 36) * 3))))
-        highlights = ImageChops.multiply(highlights, PATCH_MASK)
-        highlights = ImageChops.multiply(highlights, SMOKE_MASK)
+        # Estimate smoke opacity from the difference between the approved
+        # original and the smoke-free plate, confined to the smoke corridor.
+        difference = ImageChops.subtract(original.convert('L'), plate.convert('L'))
+        highlights = difference.point(lambda v: max(0, min(160, (v - 5) * 3)))
+        highlights = ImageChops.multiply(highlights, PATCH_MASK).filter(ImageFilter.GaussianBlur(.5))
         prepared[key] = base, highlights
     return prepared
 

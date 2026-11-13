@@ -27,7 +27,8 @@ class SmokeLayerTests(unittest.TestCase):
         self.assertIsNotNone(mask.getbbox())
         self.assertNotEqual(smoke.frame_with_layers((base, mask), 0),
                             smoke.frame_with_layers((base, mask), 1))
-        self.assertEqual(smoke.PATCH_MASK.getpixel((350, 300)), 0)
+        self.assertEqual(smoke.PATCH_MASK.getpixel((200, 300)), 0)
+        self.assertGreater(smoke.PATCH_MASK.getpixel((370, 300)), 0)
 
     def test_reject_nonsquare_plate(self):
         Image.new('RGB', (100, 200)).save(self.path)
