@@ -16,7 +16,9 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             self.post_count += 1
             self.assertEqual(request.headers.get('Authorization'), 'Bearer test-secret')
             if self.mode == 'busy':
-                return web.json_response({'error': 'busy'}, status=409)
+                return web.json_response({'error': 'Воркер занят'}, status=409)
+            if self.mode == 'conflict':
+                return web.json_response({'error': 'request_id уже использован для другого текста'}, status=409)
             if self.mode == 'redirect':
                 return web.Response(status=302, headers={'Location': '/other'})
             self.job = await request.json()
@@ -27,6 +29,8 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         async def get(request):
             self.poll_count += 1
             job_id = request.match_info['job_id']
+            if self.mode == 'missing':
+                return web.json_response({'error': 'not_found'}, status=404)
             if self.mode == 'failed':
                 return web.json_response({'request_id': job_id, 'status': 'failed'})
             if self.mode == 'slow' or self.poll_count == 1 and self.mode == 'ok':
@@ -60,6 +64,22 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.mode = 'failed'
         with self.assertRaises(WorkerFailed):
             await self.client.render('Привет')
+
+    async def test_conflict_is_not_safe_busy(self):
+        self.mode = 'conflict'
+        with self.assertRaises(WorkerUnavailable):
+            await self.client.render('Привет')
+        self.assertEqual(self.post_count, 1)
+
+    async def test_resume_only_reads_existing_uuid(self):
+        self.mode = 'ok'
+        job_id = str(uuid.uuid4())
+        self.assertEqual(await self.client.resume(job_id), 'cached-id')
+        self.assertEqual(self.post_count, 0)
+        self.mode = 'missing'
+        with self.assertRaises(WorkerUnavailable):
+            await self.client.resume(job_id)
+        self.assertEqual(self.post_count, 0)
 
     async def test_post_disconnect_does_not_repeat_job(self):
         self.mode = 'ambiguous'

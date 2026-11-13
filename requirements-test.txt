@@ -1,0 +1,2 @@
+# Optional MongoDB simulator for persistent video queue tests.
+mongomock-motor>=0.0.36
