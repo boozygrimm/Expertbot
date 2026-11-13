@@ -4,47 +4,63 @@ import math
 from pathlib import Path
 import subprocess
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 if __package__:
     from .render import FPS, SIZE, audio_levels, blink_at, make_frames, mouth_states
 else:
     from render import FPS, SIZE, audio_levels, blink_at, make_frames, mouth_states
 
-# The approved original is 2048px square; cigar tip is near (1632, 1370).
-TIP = (SIZE * 1632 / 2048, SIZE * 1370 / 2048)
+# Mask the smoke already present in the approved 2048px illustration. The
+# source is a flat picture, so a narrow band of background also deforms.
+def make_smoke_mask():
+    size = 512
+    mask = Image.new('L', (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.line([(349, 57), (360, 85), (375, 103), (390, 120), (400, 143),
+               (404, 167), (399, 188), (405, 207), (400, 233), (405, 255),
+               (398, 278), (392, 295), (397, 316), (405, 337)],
+              fill=235, width=20, joint='curve')
+    mask = mask.filter(ImageFilter.GaussianBlur(4))
+    # Keep the gold chain fixed even though smoke passes in front of it.
+    ImageDraw.Draw(mask).polygon([(380, 244), (408, 239), (414, 259),
+                                  (392, 277), (379, 269)], fill=0)
+    mask = mask.filter(ImageFilter.GaussianBlur(2))
+    return mask.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
 
 
-def effects(time_seconds):
-    """Small drifting smoke wisps and a flickering ember; deterministic per time."""
-    layer = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer, 'RGBA')
-    x0, y0 = TIP
-    # A few translucent puffs rise from the tip and drift along the existing
-    # smoke in the picture. They fade in/out so the loop has no hard jump.
-    # Decorative only: the robot is not performing an actual inhalation.
-    for strand in range(5):
-        phase = (time_seconds * .34 + strand / 5) % 1.0
-        rise = phase * 72
-        x = x0 - 2 - rise * .16 + (2.5 + phase * 4) * math.sin(phase * 8 + strand * 1.7)
-        y = y0 - 4 - rise
-        rx = 3 + phase * 5
-        ry = 5 + phase * 7
-        alpha = round(125 * math.sin(math.pi * phase) ** 1.3)
-        draw.ellipse((x - rx, y - ry, x + rx, y + ry), fill=(198, 209, 223, alpha))
-    layer = layer.filter(ImageFilter.GaussianBlur(3))
-    glow = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow, 'RGBA')
-    intensity = .5 + .5 * math.sin(time_seconds * 3.1 + .5 * math.sin(time_seconds * 6.3))
-    gd.ellipse((x0 - 5, y0 - 5, x0 + 5, y0 + 5), fill=(255, 90, 4, round(45 + 95 * intensity)))
-    glow = glow.filter(ImageFilter.GaussianBlur(2))
-    layer = Image.alpha_composite(layer, glow)
-    return layer
+def make_ember_mask():
+    mask = Image.new('L', (SIZE, SIZE), 0)
+    x, y = SIZE * 1632 / 2048, SIZE * 1370 / 2048
+    ImageDraw.Draw(mask).ellipse((x - 5, y - 5, x + 5, y + 5), fill=255)
+    return mask.filter(ImageFilter.GaussianBlur(1.5))
+
+
+SMOKE_MASK = make_smoke_mask()
+EMBER_MASK = make_ember_mask()
 
 
 def frame_with_effects(frame, time_seconds):
-    image = Image.frombytes('RGB', (SIZE, SIZE), frame).convert('RGBA')
-    return Image.alpha_composite(image, effects(time_seconds)).convert('RGB').tobytes()
+    """Distort the existing smoke and brighten the existing ember, not a new arm."""
+    original = Image.frombytes('RGB', (SIZE, SIZE), frame)
+    mesh = []
+    for top in range(0, SIZE, 8):
+        bottom = min(top + 8, SIZE)
+        def offset(y):
+            phase = time_seconds * 1.7 - y * .045
+            return 7 * math.sin(phase), 2 * math.sin(phase * .7)
+        dx1, dy1 = offset(top)
+        dx2, dy2 = offset(bottom)
+        # PIL's quad order is upper-left, lower-left, lower-right, upper-right.
+        mesh.append(((0, top, SIZE, bottom),
+                     (dx1, top + dy1, dx2, bottom + dy2,
+                      SIZE + dx2, bottom + dy2, SIZE + dx1, top + dy1)))
+    warped = original.transform((SIZE, SIZE), Image.Transform.MESH, mesh,
+                                resample=Image.Resampling.BICUBIC)
+    result = Image.composite(warped, original, SMOKE_MASK)
+    flicker = .5 + .5 * math.sin(time_seconds * 3.1 + .5 * math.sin(time_seconds * 6.3))
+    bright = ImageEnhance.Brightness(result).enhance(1.0 + .7 * flicker)
+    return Image.composite(bright, result, EMBER_MASK).tobytes()
 
 
 def render(audio, closed, opened, blink, output):
