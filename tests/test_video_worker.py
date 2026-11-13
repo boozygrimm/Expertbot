@@ -128,5 +128,152 @@ class WorkerRunnerTests(unittest.TestCase):
             self.assertNotIn('VIDEO_WORKER_KEY', env)
 
 
+class WorkerCleanupTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / 'jobs'
+        self.root.mkdir()
+        self.now = time.time()
+        self.store = worker.JobStore(lambda request_id, text: 'file-id', cleanup_dir=self.root)
+
+    def job(self, age, *, name=None, with_log=True):
+        path = self.root / (name or str(uuid.uuid4()))
+        path.mkdir()
+        if with_log:
+            log = path / 'worker.log'
+            log.write_text('log', encoding='utf-8')
+            os.utime(log, (self.now - age, self.now - age))
+        os.utime(path, (self.now - age, self.now - age))
+        return path
+
+    def test_removes_only_old_real_job_directories(self):
+        old = self.job(worker.RETENTION_SECONDS + 10)
+        recent = self.job(worker.RETENTION_SECONDS - 10)
+        missing_log = self.job(worker.RETENTION_SECONDS + 10, with_log=False)
+        other = self.job(worker.RETENTION_SECONDS + 10, name='recordings')
+        outside = Path(self.temp.name) / 'outside'
+        outside.mkdir()
+        (outside / 'worker.log').write_text('keep')
+        link = self.root / str(uuid.uuid4())
+        link.symlink_to(outside, target_is_directory=True)
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 1)
+        self.assertFalse(old.exists())
+        for path in (recent, missing_log, other, outside, link):
+            self.assertTrue(path.exists())
+
+    def test_new_log_protects_old_directory(self):
+        old = self.job(worker.RETENTION_SECONDS + 10)
+        os.utime(old / 'worker.log', (self.now, self.now))
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 0)
+        self.assertTrue(old.exists())
+
+    def test_active_job_is_not_removed_even_if_old(self):
+        active = self.job(worker.RETENTION_SECONDS + 10)
+        self.store.active = active.name
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 0)
+        self.assertTrue(active.exists())
+        self.store.active = None
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 1)
+        self.assertFalse(active.exists())
+
+    def test_never_follows_symlinked_log(self):
+        path = self.job(worker.RETENTION_SECONDS + 10, with_log=False)
+        target = Path(self.temp.name) / 'outside.log'
+        target.write_text('keep')
+        (path / 'worker.log').symlink_to(target)
+        os.utime(path, (self.now - worker.RETENTION_SECONDS - 10,) * 2)
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 0)
+        self.assertTrue(target.exists())
+        self.assertTrue(path.exists())
+
+    def test_deletion_and_job_submission_are_serialized(self):
+        old = self.job(worker.RETENTION_SECONDS + 10)
+        started, release, submitted = threading.Event(), threading.Event(), threading.Event()
+        original = worker.shutil.rmtree
+        def slow_remove(path):
+            started.set()
+            if not release.wait(3):
+                raise RuntimeError('test timeout')
+            original(path)
+        with patch('video_prototype.worker.shutil.rmtree', side_effect=slow_remove):
+            cleanup = threading.Thread(target=lambda: self.store.cleanup_old_jobs(now=self.now))
+            cleanup.start()
+            try:
+                self.assertTrue(started.wait(2))
+                submit = threading.Thread(target=lambda: (self.store.submit(old.name, 'text'), submitted.set()))
+                submit.start()
+                self.assertFalse(submitted.wait(.1))
+            finally:
+                release.set()
+                cleanup.join(3)
+            submit.join(3)
+        self.assertFalse(cleanup.is_alive())
+        self.assertFalse(submit.is_alive())
+        self.assertTrue(submitted.is_set())
+
+    def test_cleanup_errors_do_not_break_remaining_jobs(self):
+        bad = self.job(worker.RETENTION_SECONDS + 10)
+        good = self.job(worker.RETENTION_SECONDS + 10)
+        original = worker.shutil.rmtree
+        def failing_remove(path):
+            if path == bad:
+                raise PermissionError('secret contents')
+            return original(path)
+        with patch('video_prototype.worker.shutil.rmtree', side_effect=failing_remove):
+            self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 1)
+        self.assertTrue(bad.exists())
+        self.assertFalse(good.exists())
+
+    def test_missing_root_is_ok(self):
+        self.store.cleanup_dir = self.root / 'missing'
+        self.assertEqual(self.store.cleanup_old_jobs(now=self.now), 0)
+
+    def test_scheduler_runs_once_and_is_throttled(self):
+        completed = threading.Event()
+        with patch.object(self.store, 'cleanup_old_jobs', side_effect=lambda: completed.set()) as clean:
+            self.store.schedule_cleanup()
+            self.assertTrue(completed.wait(2))
+            self.store.schedule_cleanup()
+            self.assertEqual(clean.call_count, 1)
+
+    def test_failed_job_also_triggers_cleanup(self):
+        old = self.job(worker.RETENTION_SECONDS + 10)
+        deleted = threading.Event()
+        def fail(request_id, text):
+            raise RuntimeError('expected failure')
+        self.store.run_job = fail
+        original = self.store.cleanup_old_jobs
+        def cleanup():
+            result = original(now=self.now)
+            deleted.set()
+            return result
+        with patch.object(self.store, 'cleanup_old_jobs', side_effect=cleanup):
+            self.store.submit(str(uuid.uuid4()), 'text')
+            self.assertTrue(deleted.wait(3))
+        self.assertFalse(old.exists())
+
+    def test_background_scan_failure_resets_schedule(self):
+        self.store.next_cleanup = 123
+        self.store.cleanup_running = True
+        with patch.object(self.store, 'cleanup_old_jobs', side_effect=PermissionError('hidden')):
+            self.store._cleanup_background()
+        self.assertFalse(self.store.cleanup_running)
+        self.assertEqual(self.store.next_cleanup, 0)
+
+    def test_job_completion_triggers_cleanup(self):
+        old = self.job(worker.RETENTION_SECONDS + 10)
+        deleted = threading.Event()
+        original = self.store.cleanup_old_jobs
+        def cleanup():
+            result = original(now=self.now)
+            deleted.set()
+            return result
+        with patch.object(self.store, 'cleanup_old_jobs', side_effect=cleanup):
+            self.store.submit(str(uuid.uuid4()), 'text')
+            self.assertTrue(deleted.wait(3))
+        self.assertFalse(old.exists())
+
+
 if __name__ == '__main__':
     unittest.main()
