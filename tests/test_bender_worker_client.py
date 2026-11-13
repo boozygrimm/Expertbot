@@ -81,7 +81,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.client.render('  ')
         with self.assertRaises(ValueError):
-            await self.client.render('x' * 241)
+            await self.client.render('x' * 481)
         with self.assertRaises(ValueError):
             await self.client.render('текст', request_id='not-uuid')
         self.assertEqual(self.post_count, 0)

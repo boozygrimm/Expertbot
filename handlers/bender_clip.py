@@ -67,9 +67,9 @@ def spoken_text(value):
     """Keep text within the worker limit without cutting in the middle of a word."""
     text = re.sub(r'\s+', ' ', value or '').strip()
     text = re.sub(r'[*_`#]', '', text).strip()
-    if len(text) <= 240:
+    if len(text) <= 480:
         return text
-    prefix = text[:239]
+    prefix = text[:479]
     last_sentence = max(prefix.rfind('. '), prefix.rfind('! '), prefix.rfind('? '))
     if last_sentence >= 60:
         return prefix[:last_sentence + 1].strip()
@@ -137,8 +137,8 @@ async def video_reply(message: types.Message):
                 f"РОЛЬ: {persona.get('prompt', 'Саркастичный робот Бендер.')}\n"
                 f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {context or '(нет)'}\n"
                 f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {query or 'Прокомментируй сообщение.'}\n"
-                'Ответь на русском от лица персонажа, не более 200 символов, '
-                'одной законченной мыслью. Только текст для произнесения, без разметки и эмодзи.'
+                'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
+                'с законченными предложениями. Только текст для произнесения, без разметки и эмодзи.'
             )
             generated = await asyncio.wait_for(generate_with_retry(prompt), timeout=45)
             answer = spoken_text(generated)

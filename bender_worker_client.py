@@ -50,8 +50,8 @@ class BenderWorkerClient:
         self.poll_interval = poll_interval
 
     async def render(self, text, *, request_id=None):
-        if not isinstance(text, str) or not text.strip() or len(text) > 240:
-            raise ValueError('Текст должен содержать от 1 до 240 символов')
+        if not isinstance(text, str) or not text.strip() or len(text) > 480:
+            raise ValueError('Текст должен содержать от 1 до 480 символов')
         request_id = request_id or str(uuid.uuid4())
         if str(uuid.UUID(request_id)) != request_id:
             raise ValueError('Некорректный request_id')

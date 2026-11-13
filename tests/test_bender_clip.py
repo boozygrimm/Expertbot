@@ -44,8 +44,8 @@ class TriggerTests(unittest.TestCase):
         self.assertEqual(method.video_note, 'test-file-id')
 
     def test_spoken_text_cap(self):
-        result = bender_clip.spoken_text('**Здравствуй!** ' * 35)
-        self.assertLessEqual(len(result), 240)
+        result = bender_clip.spoken_text('**Здравствуй!** ' * 70)
+        self.assertLessEqual(len(result), 480)
         self.assertNotIn('*', result)
         self.assertTrue(result.endswith(('!', '…')))
 
