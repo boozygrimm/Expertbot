@@ -37,6 +37,31 @@ def patch_mask():
 PATCH_MASK = patch_mask()
 
 
+def destination_mask():
+    mask = PATCH_MASK.filter(ImageFilter.MaxFilter(31))
+    protect = Image.new('L', (512, 512))
+    draw = ImageDraw.Draw(protect)
+    draw.polygon([(0, 0), (343, 0), (345, 80), (360, 95), (370, 110),
+                  (376, 130), (380, 160), (383, 195), (392, 243),
+                  (383, 266), (360, 282), (0, 282)], fill=255)
+    draw.polygon([(398, 338), (416, 333), (424, 346), (412, 356),
+                  (397, 348)], fill=255)
+    protect = protect.filter(ImageFilter.GaussianBlur(1)).resize((SIZE, SIZE), Image.Resampling.LANCZOS)
+    mask = ImageChops.subtract(mask, protect)
+    # Dissolve smoke near the top and keep it inside the circular frame.
+    circle = Image.new('L', (SIZE, SIZE))
+    inset = SIZE * 39 / 512
+    ImageDraw.Draw(circle).ellipse((inset, inset, SIZE - inset, SIZE - inset), fill=255)
+    circle = circle.filter(ImageFilter.GaussianBlur(2))
+    fade = Image.new('L', (1, SIZE))
+    fade.putdata([max(0, min(255, round((y - SIZE * 48 / 512) * 255 /
+                                        (SIZE * 25 / 512)))) for y in range(SIZE)])
+    return ImageChops.multiply(ImageChops.multiply(mask, circle), fade.resize((SIZE, SIZE)))
+
+
+SMOKE_DESTINATION = destination_mask()
+
+
 def prepare_frames(frames, plate_path):
     with Image.open(plate_path) as source:
         if source.width != source.height:
@@ -55,22 +80,40 @@ def prepare_frames(frames, plate_path):
     return prepared
 
 
+def rising_smoke(highlights, time_seconds):
+    """Advect overlapping smoke copies upward, crossfading at each reset.
+
+    The source image is static, so two copies are staggered to keep the
+    vertical movement continuous. A small stationary wisp at the cigar joins
+    the rising layers to the ember.
+    """
+    travel = SIZE * 55 / 512
+    period = 3.0
+    combined = Image.new('L', (SIZE, SIZE))
+    for phase_offset in (0.0, 0.5):
+        phase = (time_seconds / period + phase_offset) % 1.0
+        weight = math.sin(math.pi * phase) ** 2
+        upward = travel * phase
+        # PIL maps output coordinates back to input: positive y means the
+        # pixels travel up on screen. Gentle horizontal sway is secondary.
+        sideways = 1.5 * math.sin(2 * math.pi * phase)
+        shifted = highlights.transform((SIZE, SIZE), Image.Transform.AFFINE,
+                                       (1, 0, sideways, 0, 1, upward),
+                                       resample=Image.Resampling.BICUBIC)
+        combined = ImageChops.add(combined, shifted.point(lambda v: round(v * weight)))
+
+    # Keep the lower end attached to the cigar while successive plumes rise.
+    foot = Image.new('L', (1, SIZE))
+    foot.putdata([max(0, min(255, round((y - SIZE * 300 / 512) * 255 /
+                                        (SIZE * 25 / 512)))) for y in range(SIZE)])
+    combined = ImageChops.lighter(combined, ImageChops.multiply(highlights, foot.resize((SIZE, SIZE))))
+    # Keep the moving pixels away from the character, text and outer circle.
+    return ImageChops.multiply(combined, SMOKE_DESTINATION)
+
+
 def frame_with_layers(layers, time_seconds):
     base, highlights = layers
-    mesh = []
-    for top in range(0, SIZE, 8):
-        bottom = min(top + 8, SIZE)
-        def offset(y):
-            phase = time_seconds * 1.5 - y * .045
-            return 7 * math.sin(phase), 2 * math.sin(phase * .7)
-        x1, y1 = offset(top)
-        x2, y2 = offset(bottom)
-        mesh.append(((0, top, SIZE, bottom),
-                     (x1, top + y1, x2, bottom + y2,
-                      SIZE + x2, bottom + y2, SIZE + x1, top + y1)))
-    moved = highlights.transform((SIZE, SIZE), Image.Transform.MESH, mesh,
-                                 resample=Image.Resampling.BICUBIC)
-    moved = ImageChops.multiply(moved, PATCH_MASK)
+    moved = rising_smoke(highlights, time_seconds)
     smoke = Image.new('RGB', (SIZE, SIZE), (190, 185, 207))
     result = Image.composite(smoke, base, moved)
     flicker = .5 + .5 * math.sin(time_seconds * 3.1 + .5 * math.sin(time_seconds * 6.3))

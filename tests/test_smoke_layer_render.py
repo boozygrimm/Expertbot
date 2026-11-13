@@ -30,6 +30,18 @@ class SmokeLayerTests(unittest.TestCase):
         self.assertEqual(smoke.PATCH_MASK.getpixel((200, 300)), 0)
         self.assertGreater(smoke.PATCH_MASK.getpixel((370, 300)), 0)
 
+    def test_plume_moves_up_and_loops_without_reset_jump(self):
+        smoke_spot = Image.new('L', (480, 480))
+        ImageDraw.Draw(smoke_spot).ellipse((275, 180, 285, 190), fill=200)
+        with patch.object(smoke, 'SMOKE_DESTINATION', Image.new('L', (480, 480), 255)):
+            first = smoke.rising_smoke(smoke_spot, 0.1)
+            later = smoke.rising_smoke(smoke_spot, 0.3)
+            self.assertLess(later.getbbox()[1], first.getbbox()[1])
+            end = smoke.rising_smoke(smoke_spot, 2.9999)
+            start = smoke.rising_smoke(smoke_spot, 3.0)
+            self.assertLess(ImageChops.difference(end, start).getextrema()[1], 5)
+            self.assertEqual(start.tobytes(), smoke.rising_smoke(smoke_spot, 0).tobytes())
+
     def test_reject_nonsquare_plate(self):
         Image.new('RGB', (100, 200)).save(self.path)
         with self.assertRaises(ValueError):
