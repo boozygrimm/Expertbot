@@ -76,6 +76,14 @@ class LivlivProbeTests(unittest.TestCase):
                 self.assertEqual(actual.getpixel((310, 180)), (0, 0, 255))
                 self.assertEqual(actual.getpixel((10, 10)), (255, 0, 0))
 
+    def test_head_pose_is_small_and_periodic_with_a_nod(self):
+        roll, nod, yaw = livliv_demo.head_pose(2.4)
+        self.assertLess(nod, -3.9)
+        self.assertLessEqual(abs(roll), 1.6)
+        self.assertLessEqual(abs(yaw), 2.0)
+        self.assertEqual(livliv_demo.head_pose(0)[1], 0)
+        self.assertAlmostEqual(livliv_demo.head_pose(9.4)[1], nod)
+
     def test_archive_verified_and_dist_extracted(self):
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode='w:gz') as archive:

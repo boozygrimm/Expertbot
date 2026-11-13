@@ -147,13 +147,24 @@ window.setup = async () => {
   await player.load('/model/');
   return player.model.name;
 };
-window.pose = (angleZ, angleY, mouth, blink) => {
+window.pose = (angleZ, angleY, mouth, blink, angleX = 0) => {
   player.params.angleZ = angleZ;
   player.params.angleY = angleY;
+  player.params.angleX = angleX;
   player.params.mouthOpen = mouth;
   player.setExpression(blink ? 'x_blink' : null);
 };
 </script>'''
+
+
+
+def head_pose(seconds):
+    """Subtle idle sway and an occasional short nod, not semantic gestures."""
+    roll = 1.6 * math.sin(seconds * .75)
+    yaw = 2.0 * math.sin(seconds * .4)
+    phase = (seconds - 1.8) % 7.0
+    nod = 0.0 if phase >= 1.2 else -4.0 * math.sin(math.pi * phase / 1.2)
+    return roll, nod, yaw
 
 
 def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium', background_path=None):
@@ -214,8 +225,9 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium', backgro
                         for i, is_open in enumerate(states):
                             t = i / 24
                             blink = (1.3 <= t <= 1.5) or (4.0 <= t <= 4.2)
-                            page.evaluate('([z, y, m, b]) => window.pose(z, y, m, b)',
-                                          [3 * math.sin(t * 1.1), .7 * math.sin(t * .8), int(is_open), blink])
+                            roll, nod, yaw = head_pose(t)
+                            page.evaluate('([z, y, m, b, x]) => window.pose(z, y, m, b, x)',
+                                          [roll, nod, int(is_open), blink, yaw])
                             page.wait_for_timeout(35)
                             screenshot = page.screenshot()
                             with Image.open(io.BytesIO(screenshot)) as image:
