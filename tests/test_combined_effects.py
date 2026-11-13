@@ -4,6 +4,7 @@ from PIL import Image, ImageChops
 from video_prototype.render import SIZE, FPS
 from video_prototype import beholder_render as beast, hedgehog_render as hedge
 from video_prototype import flask_render as flask, pyramid_render as pyramid, pai_mei_render as pai
+from video_prototype import coin_render as coin
 from video_prototype import combined_effects_render as combined
 
 
@@ -20,6 +21,7 @@ class CombinedEffectsTests(unittest.TestCase):
             'pyramid': lambda t: pyramid.frame_with_pyramid(frame, t),
             'hedgehog': lambda t: hedge.frame_with_hedgehog(frame, t, hedgehog),
             'pai_mei': lambda t: pai.frame_with_cameo(frame, t, portrait),
+            'coin_trial': lambda t: coin.frame_with_coin(frame, t),
         }
         # Compare changed pixels on each frame; any touch is a conflict.
         for i in range(7*FPS):
