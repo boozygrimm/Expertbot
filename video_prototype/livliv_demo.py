@@ -87,9 +87,13 @@ def build_model(root, frames_dir, background_path=None):
         background = fill_hidden_background(closed, head_mask)
     else:
         with Image.open(background_path) as image:
-            if image.size != (SIZE, SIZE):
-                raise ValueError('Фоновая картинка должна быть 512×512')
-            background = image.convert('RGB')
+            if image.width != image.height or image.width < SIZE:
+                raise ValueError('Нужен квадратный фон не меньше 512×512')
+            plate = image.convert('RGB').resize((SIZE, SIZE), Image.Resampling.LANCZOS)
+        # Keep the approved original outside the hidden head, even if the
+        # generated background differs elsewhere in the picture.
+        fill_mask = head_mask.filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(2))
+        background = Image.composite(plate, closed, fill_mask)
     background.save(textures / 'background.png')
 
     def save_patch(image, mask, name):
@@ -236,7 +240,7 @@ def main():
     parser.add_argument('--chat-id', type=int, required=True)
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
-    parser.add_argument('--background', type=Path, help='Подготовленный фон 512×512')
+    parser.add_argument('--background', type=Path, help='Квадратный подготовленный фон не меньше 512×512')
     args = parser.parse_args()
     if not args.text.strip() or len(args.text) > 480:
         parser.error('Текст должен содержать от 1 до 480 символов')

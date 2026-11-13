@@ -70,10 +70,11 @@ class LivlivProbeTests(unittest.TestCase):
             for name in ('closed', 'open', 'blink'):
                 Image.new('RGB', (2048, 2048), 'red').save(frames / (name + '.png'))
             plate = root / 'plate.png'
-            Image.new('RGB', (512, 512), 'blue').save(plate)
+            Image.new('RGB', (1024, 1024), 'blue').save(plate)
             livliv_demo.build_model(root, frames, background_path=plate)
             with Image.open(root / 'model/textures/background.png') as actual:
                 self.assertEqual(actual.getpixel((310, 180)), (0, 0, 255))
+                self.assertEqual(actual.getpixel((10, 10)), (255, 0, 0))
 
     def test_archive_verified_and_dist_extracted(self):
         output = io.BytesIO()
