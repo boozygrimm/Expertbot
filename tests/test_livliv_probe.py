@@ -76,13 +76,18 @@ class LivlivProbeTests(unittest.TestCase):
                 self.assertEqual(actual.getpixel((310, 180)), (0, 0, 255))
                 self.assertEqual(actual.getpixel((10, 10)), (255, 0, 0))
 
-    def test_head_pose_is_small_and_periodic_with_a_nod(self):
-        roll, nod, yaw = livliv_demo.head_pose(2.4)
-        self.assertLess(nod, -3.9)
+    def test_nods_follow_separated_audio_peaks_and_ignore_silence(self):
+        levels = [0] * (24 * 10)
+        for i in (48, 144):
+            levels[i - 2:i + 3] = [1, 2, 5, 2, 1]
+        times = livliv_demo.pick_nod_times(levels)
+        self.assertEqual(times, [2, 6])
+        self.assertEqual(livliv_demo.pick_nod_times([0] * 240), [])
+        roll, nod, yaw = livliv_demo.head_pose(2, times)
+        self.assertEqual(nod, -4.0)
         self.assertLessEqual(abs(roll), 1.6)
         self.assertLessEqual(abs(yaw), 2.0)
-        self.assertEqual(livliv_demo.head_pose(0)[1], 0)
-        self.assertAlmostEqual(livliv_demo.head_pose(9.4)[1], nod)
+        self.assertEqual(livliv_demo.head_pose(4, times)[1], 0)
 
     def test_archive_verified_and_dist_extracted(self):
         output = io.BytesIO()

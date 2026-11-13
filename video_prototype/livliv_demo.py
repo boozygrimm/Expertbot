@@ -158,12 +158,37 @@ window.pose = (angleZ, angleY, mouth, blink, angleX = 0) => {
 
 
 
-def head_pose(seconds):
-    """Subtle idle sway and an occasional short nod, not semantic gestures."""
+def pick_nod_times(levels, fps=24):
+    """Choose a few well-separated peaks in speech energy, not meaning."""
+    if len(levels) < int(1.5 * fps) or max(levels, default=0) <= 0:
+        return []
+    smooth = [sum(levels[max(0, i - 2):min(len(levels), i + 3)]) /
+              len(levels[max(0, i - 2):min(len(levels), i + 3)])
+              for i in range(len(levels))]
+    peak = max(smooth)
+    margin = int(.6 * fps)
+    candidates = [i for i in range(margin, len(levels) - margin)
+                  if smooth[i] >= peak * .5 and smooth[i] > smooth[i - 1]
+                  and smooth[i] >= smooth[i + 1]]
+    chosen = []
+    limit = max(1, math.ceil(len(levels) / fps / 6))
+    for i in sorted(candidates, key=lambda index: smooth[index], reverse=True):
+        if all(abs(i - other) >= 4 * fps for other in chosen):
+            chosen.append(i)
+            if len(chosen) >= limit:
+                break
+    return sorted(i / fps for i in chosen)
+
+
+def head_pose(seconds, nod_times=()):
+    """Small idle movement and nods centred on selected audio peaks."""
     roll = 1.6 * math.sin(seconds * .75)
     yaw = 2.0 * math.sin(seconds * .4)
-    phase = (seconds - 1.8) % 7.0
-    nod = 0.0 if phase >= 1.2 else -4.0 * math.sin(math.pi * phase / 1.2)
+    nod = 0.0
+    for center in nod_times:
+        phase = (seconds - center) / .5
+        if abs(phase) <= 1:
+            nod -= 2.0 * (1 + math.cos(math.pi * phase))
     return roll, nod, yaw
 
 
@@ -172,6 +197,8 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium', backgro
 
     levels = audio_levels(audio)
     states = list(mouth_states(levels))
+    nod_times = pick_nod_times(levels)
+    print('Кивки по громкости:', ', '.join(f'{t:.1f} с' for t in nod_times) or 'нет', flush=True)
     start = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='livliv-demo-') as temp:
         root = Path(temp)
@@ -225,7 +252,7 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium', backgro
                         for i, is_open in enumerate(states):
                             t = i / 24
                             blink = (1.3 <= t <= 1.5) or (4.0 <= t <= 4.2)
-                            roll, nod, yaw = head_pose(t)
+                            roll, nod, yaw = head_pose(t, nod_times)
                             page.evaluate('([z, y, m, b, x]) => window.pose(z, y, m, b, x)',
                                           [roll, nod, int(is_open), blink, yaw])
                             page.wait_for_timeout(35)
