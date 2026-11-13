@@ -39,7 +39,7 @@ def eye_backdrop(base):
     return result
 
 
-def prepare_eye_frames(closed, steps=11):
+def prepare_eye_frames(closed, steps=11, targets=None):
     if SIZE != 480:
         raise ValueError('Этот эксперимент размечен под 480×480')
     with Image.open(closed) as image:
@@ -49,7 +49,8 @@ def prepare_eye_frames(closed, steps=11):
     for i in range(steps):
         fraction = i / (steps-1)
         frame = clean.convert('RGBA')
-        for _, center, target, polygon in PUPILS:
+        for pupil_index, (_, center, default_target, polygon) in enumerate(PUPILS):
+            target = targets[pupil_index] if targets is not None else default_target
             cx = center[0] + (target[0]-center[0]) * fraction
             cy = center[1] + (target[1]-center[1]) * fraction
             iris = Image.new('RGBA', (SIZE, SIZE))
