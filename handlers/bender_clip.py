@@ -82,9 +82,20 @@ def reply_context(message):
     return ((source.text or source.caption or '').strip()[:4000] if source else '')
 
 
+def reply_options(message):
+    """Keep the original chat/topic, even if the triggering message is deleted."""
+    return {
+        'chat_id': message.chat.id,
+        'message_thread_id': getattr(message, 'message_thread_id', None),
+        'reply_parameters': types.ReplyParameters(
+            message_id=message.message_id, allow_sending_without_reply=True,
+        ),
+    }
+
+
 async def reply_text_safely(message, text):
     try:
-        await message.reply(text)
+        await message.bot.send_message(text=text, **reply_options(message))
     except Exception:
         logger.warning('Не удалось отправить текстовый ответ: chat_id=%s', message.chat.id)
 
@@ -127,7 +138,7 @@ async def video_reply(message: types.Message):
         answer = ''
         try:
             first_status = choose_status()
-            status = await message.reply(first_status)
+            status = await message.bot.send_message(text=first_status, **reply_options(message))
             status_task = asyncio.create_task(rotate_status(status, previous=first_status))
             persona = await db.personas.find_one({'p_id': 'bender'})
             if not persona:
@@ -146,9 +157,8 @@ async def video_reply(message: types.Message):
                 await reply_text_safely(message, 'Не смог придумать ответ. Попробуй позже.')
                 return
             file_id = await client.render(answer)
-            # reply_video_note uses the triggering message's chat and message ID,
-            # preserving the normal reply relationship, including group topics.
-            await message.reply_video_note(video_note=file_id)
+            # Telegram sends without a reply if the command was deleted.
+            await message.bot.send_video_note(video_note=file_id, **reply_options(message))
         except WorkerBusy:
             await reply_text_safely(message, 'Воркер сейчас занят. Попробуй чуть позже.')
         except WorkerTimeout:
