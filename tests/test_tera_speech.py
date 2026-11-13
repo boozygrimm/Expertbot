@@ -10,6 +10,18 @@ class TeraTextTests(unittest.TestCase):
         self.assertEqual(apply_overrides(source), expected)
         self.assertEqual(apply_overrides(expected), expected)
 
+    def test_luna_park_stress_and_word_boundaries(self):
+        source = '<ru>лун+а-п+арк, ЛУН+А-П+АРКА, л+уна‑п+арке, лун+а, лун+а-парк+ета.</ru>'
+        expected = '<ru>л+уна-п+арк, Л+УНА-П+АРКА, л+уна‑п+арке, лун+а, лун+а-парк+ета.</ru>'
+        self.assertEqual(apply_overrides(source), expected)
+        self.assertEqual(apply_overrides(expected), expected)
+
+    def test_default_chunk_limit(self):
+        text = 'Первое предложение. ' * 20
+        parts = split_text(text)
+        self.assertTrue(all(len(part) <= 200 for part in parts))
+        self.assertEqual(' '.join(parts), ' '.join(text.split()))
+
     def test_not_substrings_or_different_forms(self):
         text = 'бендеровский укуси́ укусить мешкина отполировали'
         self.assertEqual(apply_overrides(text), text)
@@ -41,6 +53,15 @@ class TeraTextTests(unittest.TestCase):
         self.assertEqual(split_text('Текст <en>тест</en>'), ['Текст enтест/en'])
 
 class TeraSynthesisTests(unittest.TestCase):
+    def test_cli_default_seed_matches_synthesis(self):
+        from unittest.mock import patch
+        from video_prototype import tera_speech
+
+        with patch('sys.argv', ['tera_speech.py', '--text', 'Тест', '--output', 'out.wav']), \
+             patch.object(tera_speech, 'synthesize') as synthesize:
+            tera_speech.main()
+        synthesize.assert_called_once_with('Тест', 'out.wav', seed=42)
+
     def test_synthesis_uses_auto_stress_before_overrides_and_inserts_pause(self):
         import sys
         from types import SimpleNamespace
@@ -69,7 +90,8 @@ class TeraSynthesisTests(unittest.TestCase):
         self.assertEqual(first[1], '<ru>Я Б+ендер.</ru>')
         self.assertEqual(second[1], '<ru>друг+ое</ru>')
         self.assertEqual(first[2]['voice'], 'ru_m1')
-        self.assertEqual(first[2]['duration_scale'], 1.2)
+        self.assertEqual(first[2]['duration_scale'], 1.1)
+        self.assertEqual(first[2]['seed'], 42)
         self.assertEqual(len(model.audio), 4410 * 2 + 11025)
         self.assertEqual(model.path, '/tmp/out.wav')
 

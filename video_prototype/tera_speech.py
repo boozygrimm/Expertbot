@@ -4,7 +4,7 @@ import re
 
 MODEL_ID = 'TeraSpace/TeraTTSv2'
 MODEL_REVISION = '4c3bf2eb99c148cb657af10bd3bf717befb714c8'
-MAX_CHUNK = 300
+MAX_CHUNK = 200
 
 
 def split_text(text, limit=MAX_CHUNK):
@@ -52,6 +52,8 @@ def apply_overrides(text):
     """Override tested words after RUAccent, leaving other markers intact."""
     # Each +? accepts RUAccent's prior marker before any letter.
     rules = (
+        # Stress the first part only for the compound, not the moon itself.
+        (r'\+?л\+?у\+?н\+?а(?=\s*[-‑–—]\s*\+?п\+?а\+?р\+?к(?:\+?а|\+?у|\+?е|\+?о\+?м|\+?и|\+?о\+?в|\+?а\+?м|\+?а\+?м\+?и|\+?а\+?х)?(?![\w+\u0301]))', 1),
         (r'\+?б\+?е\+?н\+?д\+?е\+?р(?:\+?а|\+?у|\+?о\+?м|\+?е)?', 1),
         (r'\+?у\+?к\+?у\+?с\+?и(?:\+?т\+?е)?', 4),
         (r'\+?м\+?е\+?ш\+?к\+?и', 4),
@@ -65,7 +67,7 @@ def apply_overrides(text):
     return text
 
 
-def synthesize(text, output, *, voice='ru_m1', duration_scale=1.2, seed=1234):
+def synthesize(text, output, *, voice='ru_m1', duration_scale=1.1, seed=42):
     import numpy as np
     from transformers import AutoModel
 
@@ -94,7 +96,7 @@ def main():
     parser = argparse.ArgumentParser(description='Синтез TeraTTS для видеокружка')
     parser.add_argument('--text', required=True)
     parser.add_argument('--output', required=True)
-    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
     synthesize(args.text, args.output, seed=args.seed)
 
