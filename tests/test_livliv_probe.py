@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from video_prototype import livliv_probe
+from video_prototype import livliv_demo, livliv_probe
 
 
 class LivlivProbeTests(unittest.TestCase):
@@ -24,6 +24,29 @@ class LivlivProbeTests(unittest.TestCase):
             self.assertEqual(manifest['layers'][0]['group'], 'head')
             with Image.open(root / 'model' / manifest['layers'][0]['texture']) as result:
                 self.assertEqual(result.size, (512, 512))
+
+    def test_layered_model_is_built_from_three_inputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            frames = root / 'frames'
+            frames.mkdir()
+            for name, color in [('closed', 'red'), ('open', 'green'), ('blink', 'blue')]:
+                Image.new('RGB', (2048, 2048), color).save(frames / (name + '.png'))
+            livliv_demo.build_model(root, frames)
+            model_dir = root / 'model'
+            model = json.loads((model_dir / 'model.json').read_text())
+            self.assertEqual([layer['group'] for layer in model['layers']], ['body', 'head', 'head', 'head'])
+            mouth = model['layers'][2]
+            self.assertEqual(mouth['role'], 'mouth')
+            self.assertEqual(len(mouth['frames']), len(mouth['visemes']))
+            for layer in model['layers']:
+                for path in [layer['texture'], *layer.get('frames', [])]:
+                    with Image.open(model_dir / path) as image:
+                        self.assertEqual(image.size, (512, 512))
+            with Image.open(model_dir / 'textures/mouth_open.png') as image:
+                self.assertEqual(image.getpixel((310, 225))[:3], (0, 128, 0))
+            with Image.open(model_dir / 'textures/eyes_closed.png') as image:
+                self.assertEqual(image.getpixel((310, 180))[:3], (0, 0, 255))
 
     def test_archive_verified_and_dist_extracted(self):
         output = io.BytesIO()
