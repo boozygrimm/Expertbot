@@ -68,7 +68,7 @@ def fill_hidden_background(image, head_mask):
     return Image.composite(softened, image, mask.filter(ImageFilter.GaussianBlur(.5)))
 
 
-def build_model(root, frames_dir):
+def build_model(root, frames_dir, background_path=None):
     textures = root / 'model' / 'textures'
     textures.mkdir(parents=True)
     images = []
@@ -81,9 +81,15 @@ def build_model(root, frames_dir):
     head_mask = Image.new('L', (SIZE, SIZE), 0)
     ImageDraw.Draw(head_mask).polygon(HEAD_OUTLINE, fill=255)
     head_mask = head_mask.filter(ImageFilter.GaussianBlur(.6))
-    # Reconstruct only the hidden area from its surroundings. Unlike a blur of
-    # the original head, the fill cannot leave a duplicate head behind it.
-    background = fill_hidden_background(closed, head_mask)
+    # A separately prepared background plate may replace the rough automatic
+    # fill; neither the original assets nor the plate are modified.
+    if background_path is None:
+        background = fill_hidden_background(closed, head_mask)
+    else:
+        with Image.open(background_path) as image:
+            if image.size != (SIZE, SIZE):
+                raise ValueError('Фоновая картинка должна быть 512×512')
+            background = image.convert('RGB')
     background.save(textures / 'background.png')
 
     def save_patch(image, mask, name):
@@ -146,7 +152,7 @@ window.pose = (angleZ, angleY, mouth, blink) => {
 </script>'''
 
 
-def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium'):
+def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium', background_path=None):
     from playwright.sync_api import sync_playwright
 
     levels = audio_levels(audio)
@@ -154,7 +160,7 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium'):
     start = time.monotonic()
     with tempfile.TemporaryDirectory(prefix='livliv-demo-') as temp:
         root = Path(temp)
-        build_model(root, frames_dir)
+        build_model(root, frames_dir, background_path=background_path)
         with urllib.request.urlopen(PLAYER_URL, timeout=60) as response:
             archive = response.read(4 * 1024 * 1024 + 1)
         if len(archive) > 4 * 1024 * 1024:
@@ -230,6 +236,7 @@ def main():
     parser.add_argument('--chat-id', type=int, required=True)
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
+    parser.add_argument('--background', type=Path, help='Подготовленный фон 512×512')
     args = parser.parse_args()
     if not args.text.strip() or len(args.text) > 480:
         parser.error('Текст должен содержать от 1 до 480 символов')
@@ -246,7 +253,7 @@ def main():
     subprocess.run(['/data/teratts-test/.venv/bin/python',
                     '/data/video-prototype/code-speech-128a140/video_prototype/tera_speech.py',
                     '--text', args.text, '--output', str(work / 'speech.wav')], env=env, check=True)
-    render_demo(work / 'speech.wav', args.frames_dir, work / 'video.mp4')
+    render_demo(work / 'speech.wav', args.frames_dir, work / 'video.mp4', background_path=args.background)
     # One direct send only; uncertain Telegram failures must not be retried blindly.
     telegram_call(token, 'sendVideoNote', {'chat_id': args.chat_id}, work / 'video.mp4')
     print('Кружок отправлен в тестовый чат', flush=True)
