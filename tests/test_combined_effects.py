@@ -4,7 +4,7 @@ from PIL import Image, ImageChops
 from video_prototype.render import SIZE, FPS
 from video_prototype import beholder_render as beast, hedgehog_render as hedge
 from video_prototype import flask_render as flask, pyramid_render as pyramid, pai_mei_render as pai
-from video_prototype import coin_render as coin
+from video_prototype import coin_drop_render as coin
 from video_prototype import combined_effects_render as combined
 
 

@@ -77,7 +77,7 @@ def describe_states(name, states):
     print(f'{name}: рот открыт {percent:.0f}% кадров; самый долгий непрерывный открытый участок {longest:.1f} с', flush=True)
 
 
-def render(audio, closed, opened, blink, plate, output):
+def render(audio, closed, opened, blink, plate, output, frame_effect=None):
     levels = quick_levels(audio)
     states = trial_states(levels)
     describe_states('Обычный вариант', list(mouth_states(audio_levels(audio))))
@@ -92,7 +92,11 @@ def render(audio, closed, opened, blink, plate, output):
     process = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     try:
         for i, state in enumerate(states):
-            process.stdin.write(frame_with_layers(layers[state, blink_at(i)], i / FPS))
+            seconds = i / FPS
+            frame = frame_with_layers(layers[state, blink_at(i)], seconds)
+            if frame_effect is not None:
+                frame = frame_effect(frame, seconds)
+            process.stdin.write(frame)
     finally:
         process.stdin.close()
         status = process.wait()
