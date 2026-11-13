@@ -46,140 +46,183 @@ class TriggerTests(unittest.TestCase):
         self.assertTrue(result.endswith(('!', '…')))
 
 
+class FakeQueue:
+    def __init__(self):
+        self.items = []
+        self.result = 'accepted'
+
+    async def enqueue(self, item):
+        if self.result == 'accepted':
+            self.items.append(item.copy())
+        return self.result
+
+    async def update(self, item_id, **fields):
+        assert self.items[0]['id'] == item_id
+        self.items[0].update(fields)
+
+    async def remove(self, item_id):
+        assert self.items[0]['id'] == item_id
+        self.items.pop(0)
+
+
 class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        bender_clip._render_lock = asyncio.Lock()
-        self.status = SimpleNamespace(delete=AsyncMock(), edit_text=AsyncMock())
+        self.status = SimpleNamespace(message_id=55, delete=AsyncMock())
+        self.bot = SimpleNamespace(send_message=AsyncMock(return_value=self.status),
+                                   edit_message_text=AsyncMock(), delete_message=AsyncMock(),
+                                   send_video_note=AsyncMock())
         self.message = SimpleNamespace(
             chat=SimpleNamespace(id=-1001, type='supergroup'),
-            message_id=42, message_thread_id=7,
-            bot=SimpleNamespace(send_message=AsyncMock(return_value=self.status), send_video_note=AsyncMock()),
+            message_id=42, message_thread_id=7, bot=self.bot,
             text='Экс, кружок мнение',
             reply_to_message=SimpleNamespace(text='Исходное сообщение другого человека', caption=None),
         )
-        self.flags = patch.object(bender_clip, 'get_chat_feature_flags', new=AsyncMock(return_value={'video_notes': True}))
-        self.flags.start()
-        self.addCleanup(self.flags.stop)
-        self.env = patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example', 'BENDER_WORKER_KEY': 'secret'})
-        self.env.start()
-        self.addCleanup(self.env.stop)
-        self.persona = patch.object(bender_clip.db.personas, 'find_one', new=AsyncMock(return_value={'p_id': 'bender', 'prompt': 'робот'}))
-        self.persona.start()
-        self.addCleanup(self.persona.stop)
-        self.generate = patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(return_value='Вот моё мнение.'))
-        self.generate.start()
-        self.addCleanup(self.generate.stop)
+        self.queue = FakeQueue()
+        patches = [
+            patch.object(bender_clip, 'video_queue', self.queue),
+            patch.object(bender_clip, 'get_chat_feature_flags', new=AsyncMock(return_value={'video_notes': True})),
+            patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example', 'BENDER_WORKER_KEY': 'secret'}),
+            patch.object(bender_clip.db.personas, 'find_one', new=AsyncMock(return_value={'p_id': 'bender', 'prompt': 'робот'})),
+            patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(return_value='Вот моё мнение.')),
+        ]
+        self.generate = patches[-1].new
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
         self.client = MagicMock()
         self.client.render = AsyncMock(return_value='file-id')
+        self.client.resume = AsyncMock(return_value='file-id')
         self.factory = patch.object(bender_clip, 'BenderWorkerClient', return_value=self.client)
         self.factory.start()
         self.addCleanup(self.factory.stop)
 
-    async def test_answers_request_and_includes_reply_context(self):
+    async def submit(self):
         await bender_clip.video_reply(self.message)
-        self.assertIn('Исходное сообщение другого человека', self.generate.new.call_args.args[0])
-        self.client.render.assert_awaited_once_with('Вот моё мнение.')
-        self.message.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **bender_clip.reply_options(self.message))
+        self.assertEqual(len(self.queue.items), 1)
+        return self.queue.items[0].copy()
+
+    async def test_queues_then_processes_context_and_topic(self):
+        item = await self.submit()
+        self.generate.assert_not_awaited()
+        self.assertEqual(item['context'], 'Исходное сообщение другого человека')
+        self.assertEqual(item['stage'], 'queued')
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertIn(item['context'], self.generate.await_args.args[0])
+        self.client.render.assert_awaited_once_with('Вот моё мнение.', request_id=item['request_id'])
+        opts = bender_clip.stored_reply_options(item)
+        self.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **opts)
+        self.assertTrue(opts['reply_parameters'].allow_sending_without_reply)
+        self.assertEqual(opts['message_thread_id'], 7)
+        self.assertEqual(self.queue.items, [])
+
+    async def test_distinct_chats_are_queued(self):
+        await self.submit()
+        self.message.chat.id = -1002
+        self.message.message_id = 43
+        await bender_clip.video_reply(self.message)
+        self.assertEqual([x['chat_id'] for x in self.queue.items], [-1001, -1002])
+        self.assertNotEqual(self.queue.items[0]['request_id'], self.queue.items[1]['request_id'])
+
+    async def test_full_queue_gives_fun_message(self):
+        self.queue.result = 'full'
+        await bender_clip.video_reply(self.message)
+        self.assertFalse(self.queue.items)
         self.status.delete.assert_awaited_once()
-        self.assertEqual(self.flags.new.call_args.args[0], -1001)
+        self.assertIn(self.bot.send_message.await_args.kwargs['text'], bender_clip.FULL_MESSAGES)
 
-    async def test_separate_group_uses_its_message(self):
-        another = SimpleNamespace(chat=SimpleNamespace(id=-1002, type='group'), text='/bender вопрос',
-                                  message_id=43, message_thread_id=None, reply_to_message=None,
-                                  bot=SimpleNamespace(send_message=AsyncMock(return_value=self.status), send_video_note=AsyncMock()))
-        await bender_clip.video_reply(self.message)
-        await bender_clip.video_reply(another)
-        self.message.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **bender_clip.reply_options(self.message))
-        another.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **bender_clip.reply_options(another))
-        self.assertEqual([x.args[0] for x in self.flags.new.call_args_list], [-1001, -1002])
-
-    async def test_feature_off_and_private_do_nothing(self):
-        self.flags.new.return_value = {'video_notes': False}
-        await bender_clip.video_reply(self.message)
-        self.message.bot.send_message.assert_not_awaited()
-        self.client.render.assert_not_awaited()
+    async def test_feature_off_and_private(self):
+        with patch.object(bender_clip, 'get_chat_feature_flags', new=AsyncMock(return_value={'video_notes': False})):
+            await bender_clip.video_reply(self.message)
         self.message.chat.type = 'private'
         await bender_clip.video_reply(self.message)
-        self.client.render.assert_not_awaited()
+        self.assertFalse(self.queue.items)
 
-    async def test_rotates_one_message_and_survives_edit_error(self):
-        self.status.edit_text.side_effect = [RuntimeError('temporary'), None]
-        calls = 0
-        async def fake_sleep(interval):
-            nonlocal calls
-            calls += 1
-            if calls == 3:
+    async def test_confirmed_busy_keeps_item_and_answer(self):
+        from bender_worker_client import WorkerBusy
+        item = await self.submit()
+        self.client.render.side_effect = WorkerBusy()
+        self.assertTrue(await bender_clip.process_queued_video(self.queue, self.bot, item))
+        saved = self.queue.items[0]
+        self.assertEqual(saved['stage'], 'ready')
+        self.assertEqual(saved['answer'], 'Вот моё мнение.')
+        self.assertEqual(saved['request_id'], item['request_id'])
+        self.bot.send_video_note.assert_not_awaited()
+        self.assertTrue(any(call.kwargs['text'] in bender_clip.BUSY_MESSAGES for call in self.bot.edit_message_text.await_args_list))
+
+    async def test_busy_retries_same_uuid_without_regenerating(self):
+        from bender_worker_client import WorkerBusy
+        item = await self.submit()
+        self.client.render.side_effect = [WorkerBusy(), 'file-id']
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.queue.items[0]['retry_after'] = 0
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.assertEqual(self.generate.await_count, 1)
+        self.assertEqual(self.client.render.await_count, 2)
+        self.assertTrue(all(call.kwargs['request_id'] == item['request_id']
+                            for call in self.client.render.await_args_list))
+        self.bot.send_video_note.assert_awaited_once()
+
+    async def test_send_error_is_not_retried(self):
+        item = await self.submit()
+        self.bot.send_video_note.side_effect = OSError('network failure')
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertEqual(self.bot.send_video_note.await_count, 1)
+        self.assertFalse(self.queue.items)
+        self.assertIn('возможно, он уже пришёл', self.bot.send_message.await_args.kwargs['text'])
+
+    async def test_recovery_polls_existing_job_without_resubmission(self):
+        item = await self.submit()
+        self.queue.items[0].update(stage='submitting', answer='Сохранённый ответ')
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.client.render.assert_not_awaited()
+        self.client.resume.assert_awaited_once_with(item['request_id'])
+        self.bot.send_video_note.assert_awaited_once()
+        self.generate.assert_not_awaited()
+
+    async def test_uncertain_send_is_not_repeated_after_restart(self):
+        await self.submit()
+        self.queue.items[0].update(stage='sending', answer='Ответ', file_id='file-id')
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.bot.send_video_note.assert_not_awaited()
+        self.assertIn('возможно, он уже пришёл', self.bot.send_message.await_args.kwargs['text'])
+        self.assertFalse(self.queue.items)
+
+    async def test_failed_worker_falls_back_to_text(self):
+        item = await self.submit()
+        self.client.render.side_effect = WorkerFailed('internal')
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.bot.send_video_note.assert_not_awaited()
+        self.assertIn('Вот моё мнение.', self.bot.send_message.await_args.kwargs['text'])
+        self.assertFalse(self.queue.items)
+
+    async def test_unknown_worker_result_never_resubmits(self):
+        from bender_worker_client import WorkerUnavailable
+        item = await self.submit()
+        self.queue.items[0].update(stage='submitting', answer='Ответ')
+        self.client.resume.side_effect = WorkerUnavailable('unknown')
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.client.render.assert_not_awaited()
+        self.assertIn('не знаю, готов ли кружок', self.bot.send_message.await_args.kwargs['text'])
+        self.assertFalse(self.queue.items)
+
+    async def test_rotation_survives_telegram_edit_failure(self):
+        item = await self.submit()
+        self.bot.edit_message_text.reset_mock()
+        self.bot.edit_message_text.side_effect = [OSError('network'), None]
+        sleeps = 0
+        async def fake_sleep(_):
+            nonlocal sleeps
+            sleeps += 1
+            if sleeps == 3:
                 raise asyncio.CancelledError()
-        with patch.object(bender_clip.random, 'choice', side_effect=lambda choices: choices[0]):
+        with patch.object(bender_clip.asyncio, 'sleep', side_effect=fake_sleep):
             with self.assertRaises(asyncio.CancelledError):
-                await bender_clip.rotate_status(self.status, previous=bender_clip.STATUS_MESSAGES[0],
-                                                interval=1, sleep=fake_sleep)
-        self.assertEqual(self.status.edit_text.await_count, 2)
-        self.assertEqual(self.status.edit_text.await_args_list[0].args[0], bender_clip.STATUS_MESSAGES[1])
-        self.assertEqual(self.status.edit_text.await_args_list[1].args[0], bender_clip.STATUS_MESSAGES[1])
+                await bender_clip._queue_rotation(self.bot, item, bender_clip.STATUS_MESSAGES[0])
+        self.assertEqual(self.bot.edit_message_text.await_count, 2)
 
     async def test_status_choice_avoids_repeat(self):
         previous = bender_clip.STATUS_MESSAGES[0]
-        with patch.object(bender_clip.random, 'choice', side_effect=lambda choices: choices[0]) as choice:
+        with patch.object(bender_clip.random, 'choice', side_effect=lambda choices: choices[0]):
             self.assertNotEqual(bender_clip.choose_status(previous), previous)
-            self.assertNotIn(previous, choice.call_args.args[0])
         self.assertGreaterEqual(len(bender_clip.STATUS_MESSAGES), 12)
-
-    async def test_first_status_is_random_and_shared_with_rotator(self):
-        selected = bender_clip.STATUS_MESSAGES[-1]
-        with patch.object(bender_clip, 'choose_status', return_value=selected), \
-             patch.object(bender_clip, 'rotate_status', new=AsyncMock()) as rotation:
-            await bender_clip.video_reply(self.message)
-        self.assertEqual(self.message.bot.send_message.await_args_list[0].kwargs['text'], selected)
-        rotation.assert_awaited_once_with(self.status, previous=selected)
-
-    async def test_status_task_is_cancelled_before_deletion(self):
-        running = asyncio.Event()
-        stopped = asyncio.Event()
-        async def rotation(status, **kwargs):
-            running.set()
-            try:
-                await asyncio.Event().wait()
-            finally:
-                stopped.set()
-        async def render(text):
-            await running.wait()
-            return 'file-id'
-        self.client.render.side_effect = render
-        async def delete():
-            self.assertTrue(stopped.is_set())
-        self.status.delete.side_effect = delete
-        with patch.object(bender_clip, 'rotate_status', side_effect=rotation):
-            await bender_clip.video_reply(self.message)
-        self.assertTrue(stopped.is_set())
-        self.status.delete.assert_awaited_once()
-
-    async def test_status_task_failure_does_not_prevent_cleanup(self):
-        task_finished = asyncio.Event()
-        async def broken_rotation(status, **kwargs):
-            task_finished.set()
-            raise RuntimeError('edit worker failed')
-        async def render(text):
-            await task_finished.wait()
-            return 'file-id'
-        self.client.render.side_effect = render
-        with patch.object(bender_clip, 'rotate_status', side_effect=broken_rotation):
-            await bender_clip.video_reply(self.message)
-        self.status.delete.assert_awaited_once()
-        self.message.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **bender_clip.reply_options(self.message))
-
-    async def test_worker_failure_falls_back_to_text(self):
-        self.client.render.side_effect = WorkerFailed('internal')
-        await bender_clip.video_reply(self.message)
-        self.message.bot.send_video_note.assert_not_awaited()
-        self.assertIn('Вот моё мнение.', self.message.bot.send_message.await_args_list[-1].kwargs['text'])
-        self.status.delete.assert_awaited_once()
-
-    async def test_busy_does_not_run_generation(self):
-        await bender_clip._render_lock.acquire()
-        try:
-            await bender_clip.video_reply(self.message)
-        finally:
-            bender_clip._render_lock.release()
-        self.generate.new.assert_not_awaited()
-        self.assertIn('другой кружок', self.message.bot.send_message.await_args.kwargs['text'])
+        self.assertGreaterEqual(len(bender_clip.QUEUE_MESSAGES), 5)

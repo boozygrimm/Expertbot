@@ -4,21 +4,23 @@ import logging
 import os
 import random
 import re
+import time
+import uuid
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
 
 from ai_logic import generate_with_retry
 from bender_triggers import EX_VIDEO_PATTERN, parse_video_request
-from bender_worker_client import BenderWorkerClient, WorkerBusy, WorkerError, WorkerTimeout
+from bender_worker_client import BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed
+from bender_queue import VideoQueue
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
 
 router = Router()
 logger = logging.getLogger(__name__)
-# A process-local guard avoids generating multiple LLM answers while the worker
-# handles a single job. The worker also enforces its own single-job limit.
-_render_lock = asyncio.Lock()
+# One shared MongoDB document coordinates admission and a single consumer.
+video_queue = VideoQueue(db.db.bender_video_queue)
 
 STATUS_MESSAGES = (
     '🎬 Снимаю видос. Не отвлекайте звезду, кожаные мешки!',
@@ -47,20 +49,6 @@ def choose_status(previous=None):
     """Pick randomly, avoiding an immediate repeat when possible."""
     choices = [text for text in STATUS_MESSAGES if text != previous]
     return random.choice(choices or STATUS_MESSAGES)
-
-
-async def rotate_status(status, *, previous=None, interval=STATUS_INTERVAL_SECONDS, sleep=asyncio.sleep):
-    """Edit the one status message until the caller cancels the task."""
-    while True:
-        await sleep(interval)
-        text = choose_status(previous)
-        try:
-            await status.edit_text(text)
-            previous = text
-        except Exception as exc:
-            # A failed edit must not interrupt generation or leave orphan tasks.
-            logger.debug('Не удалось обновить статус кружка: %s', type(exc).__name__)
-
 
 
 def spoken_text(value):
@@ -100,11 +88,177 @@ async def reply_text_safely(message, text):
         logger.warning('Не удалось отправить текстовый ответ: chat_id=%s', message.chat.id)
 
 
+CHECKING_MESSAGES = (
+    '🔧 Проверяю список заявок. Гениальность тоже любит порядок!',
+    '📋 Сверяюсь с очередью, кожаный мешок. Не дави на мои кнопки!',
+    '🎟 Ищу свободное место на съёмочной площадке!',
+)
+QUEUE_MESSAGES = (
+    '🎟 Записал в очередь. Величайший робот занят, но до тебя тоже доберётся!',
+    '🤖 Вставай в очередь, кожаный мешок. Звезда принимает по одному!',
+    '🎬 Твой билет на съёмку принят. Пока полюбуйся моим великолепием!',
+    '🪙 Очередь занята, но для тебя я оставил местечко. Бесплатно, пока что!',
+    '📋 Внёс тебя в список. Нет, взятка не ускорит очередь. Наверное.',
+    '🍿 Готовь попкорн: твоё выступление моего величества будет чуть позже!',
+    '🔧 Заявка принята. Смазываю механизм очереди сарказмом!',
+    '🏆 Даже гении не могут быть сразу везде. Хотя я стараюсь!',
+)
+FULL_MESSAGES = (
+    '🚧 Очередь забита до блеска! Приходи чуть позже, кожаный мешок.',
+    '🎟 Все места заняты. Даже у моей гениальности есть предел пропускной способности!',
+    '🤖 Сегодня аншлаг! Дай мне разгребсти очередь и попробуй ещё раз.',
+)
+BUSY_MESSAGES = (
+    '🎬 Площадка ещё занята. Твоя очередь сохранена, жду своего выхода!',
+    '🔧 Предыдущий дубль ещё заканчивается. Твоё место в очереди на месте!',
+    '🍿 Камера занята, но твой билет никуда не делся. Потерпи немного!',
+)
+
+
+def stored_reply_options(item):
+    return {
+        'chat_id': item['chat_id'],
+        'message_thread_id': item.get('thread_id'),
+        'reply_parameters': types.ReplyParameters(
+            message_id=item['message_id'], allow_sending_without_reply=True,
+        ),
+    }
+
+
+async def _edit_status(bot, item, text):
+    if item.get('status_message_id') is None:
+        return
+    try:
+        await bot.edit_message_text(chat_id=item['chat_id'], message_id=item['status_message_id'], text=text)
+    except Exception as exc:
+        logger.debug('Не удалось изменить статус очереди: %s', type(exc).__name__)
+
+
+async def _delete_status(bot, item):
+    if item.get('status_message_id') is None:
+        return
+    try:
+        await bot.delete_message(chat_id=item['chat_id'], message_id=item['status_message_id'])
+    except Exception as exc:
+        logger.debug('Не удалось удалить статус очереди: %s', type(exc).__name__)
+
+
+async def _queue_rotation(bot, item, previous):
+    while True:
+        await asyncio.sleep(STATUS_INTERVAL_SECONDS)
+        text = choose_status(previous)
+        await _edit_status(bot, item, text)
+        previous = text
+
+
+async def _report_and_remove(queue, bot, item, text):
+    # Mark first: on restart an uncertain Telegram send is never repeated.
+    await queue.update(item['id'], stage='reporting')
+    try:
+        await bot.send_message(text=text, **stored_reply_options(item))
+    except Exception as exc:
+        logger.warning('Не удалось сообщить о результате кружка: %s', type(exc).__name__)
+    await queue.remove(item['id'])
+    await _delete_status(bot, item)
+
+
+async def process_queued_video(queue, bot, item):
+    """Run or safely recover the head; return True for confirmed worker busy."""
+    job_id = item['id']
+    stage = item['stage']
+    if stage == 'reporting':
+        await queue.remove(job_id)
+        await _delete_status(bot, item)
+        return False
+    if stage == 'sending':
+        await _report_and_remove(queue, bot, item,
+            '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+        return False
+    if stage == 'ready' and item.get('retry_after', 0) > time.time():
+        return True
+
+    first_status = choose_status()
+    await _edit_status(bot, item, first_status)
+    rotation = asyncio.create_task(_queue_rotation(bot, item, first_status))
+    try:
+        if stage == 'queued':
+            try:
+                persona = await db.personas.find_one({'p_id': 'bender'})
+                if not persona:
+                    await _report_and_remove(queue, bot, item, '🤖 Не нашёл настройки Бендера.')
+                    return False
+                prompt = (
+                    f"РОЛЬ: {persona.get('prompt', 'Саркастичный робот Бендер.')}\n"
+                    f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {item['context'] or '(нет)'}\n"
+                    f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {item['query'] or 'Прокомментируй сообщение.'}\n"
+                    'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
+                    'с законченными предложениями. Только текст для произнесения, без разметки и эмодзи.'
+                )
+                generated = await asyncio.wait_for(generate_with_retry(prompt), timeout=45)
+                answer = spoken_text(generated)
+                if not answer:
+                    raise ValueError('empty response')
+            except Exception as exc:
+                logger.warning('Не удалось подготовить ответ для кружка: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')
+                return False
+            await queue.update(job_id, stage='ready', answer=answer)
+            item['answer'] = answer
+            stage = 'ready'
+
+        if stage in ('ready', 'submitting'):
+            try:
+                url = os.getenv('BENDER_WORKER_URL', '').strip()
+                key = os.getenv('BENDER_WORKER_KEY', '').strip()
+                client = BenderWorkerClient(url, key)
+                if stage == 'ready':
+                    # This marker is persisted before the POST. If the process
+                    # dies at any point, recovery only checks the same UUID.
+                    await queue.update(job_id, stage='submitting')
+                    file_id = await client.render(item['answer'], request_id=item['request_id'])
+                else:
+                    file_id = await client.resume(item['request_id'])
+            except WorkerBusy:
+                # The worker explicitly rejected this UUID; retry is safe.
+                await queue.update(job_id, stage='ready', retry_after=time.time() + 10)
+                await _edit_status(bot, item, random.choice(BUSY_MESSAGES))
+                return True
+            except WorkerFailed:
+                await _report_and_remove(queue, bot, item,
+                    f"🤖 Кружок не получился. Зато вот мой гениальный ответ:\n{item['answer']}")
+                return False
+            except (WorkerError, ValueError) as exc:
+                logger.warning('Неизвестен результат создания кружка: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    f"🤖 Связь со студией прервалась, и я не знаю, готов ли кружок. Вот ответ:\n{item['answer']}")
+                return False
+            await queue.update(job_id, stage='file_ready', file_id=file_id)
+            item['file_id'] = file_id
+            stage = 'file_ready'
+
+        if stage == 'file_ready':
+            await queue.update(job_id, stage='sending')
+            try:
+                await bot.send_video_note(video_note=item['file_id'], **stored_reply_options(item))
+            except Exception as exc:
+                logger.warning('Неизвестен результат отправки кружка: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+                return False
+            await queue.remove(job_id)
+            await _delete_status(bot, item)
+            return False
+        logger.error('Неизвестный этап задачи кружка: %s', stage)
+        await _report_and_remove(queue, bot, item, '🤖 Мои схемы запутались. Попробуй позже.')
+        return False
+    finally:
+        rotation.cancel()
+        await asyncio.gather(rotation, return_exceptions=True)
+
+
 @router.message(Command('bender'))
 @router.message(F.text.regexp(EX_VIDEO_PATTERN))
 async def video_reply(message: types.Message):
-    # During the experiment activation is per group. Unlike is_feature_enabled,
-    # this check does not enable the feature automatically in private chats.
     if message.chat.type not in ('group', 'supergroup'):
         return
     flags = await get_chat_feature_flags(message.chat.id)
@@ -119,69 +273,37 @@ async def video_reply(message: types.Message):
         return
     url = os.getenv('BENDER_WORKER_URL', '').strip()
     key = os.getenv('BENDER_WORKER_KEY', '').strip()
-    if not url or not key:
-        await reply_text_safely(message, 'Сервис видеокружков пока не настроен.')
-        return
     try:
-        client = BenderWorkerClient(url, key)
+        BenderWorkerClient(url, key)
     except ValueError:
-        logger.warning('Некорректные настройки видеоворкера')
-        await reply_text_safely(message, 'Сервис видеокружков пока не настроен.')
+        await reply_text_safely(message, '🤖 Студия кружков пока не настроена.')
         return
-    if _render_lock.locked():
-        await reply_text_safely(message, 'Я уже записываю другой кружок. Попробуй чуть позже.')
+    status = None
+    try:
+        status = await message.bot.send_message(text=random.choice(CHECKING_MESSAGES), **reply_options(message))
+    except Exception as exc:
+        logger.warning('Не удалось отправить статус очереди: %s', type(exc).__name__)
+    item = {
+        'id': f'{message.chat.id}:{message.message_id}', 'request_id': str(uuid.uuid4()),
+        'chat_id': message.chat.id, 'message_id': message.message_id,
+        'thread_id': getattr(message, 'message_thread_id', None),
+        'status_message_id': status.message_id if status is not None else None,
+        'query': query, 'context': context, 'stage': 'queued',
+    }
+    try:
+        result = await video_queue.enqueue(item)
+    except Exception as exc:
+        logger.warning('Неизвестен результат постановки в очередь: %s', type(exc).__name__)
+        await reply_text_safely(message,
+            '🤖 Очередь барахлит, и я не знаю, записал ли запрос. Пока не отправляй его повторно.')
         return
-
-    async with _render_lock:
-        status = None
-        status_task = None
-        answer = ''
-        try:
-            first_status = choose_status()
-            status = await message.bot.send_message(text=first_status, **reply_options(message))
-            status_task = asyncio.create_task(rotate_status(status, previous=first_status))
-            persona = await db.personas.find_one({'p_id': 'bender'})
-            if not persona:
-                await reply_text_safely(message, 'Не нашёл настройки Бендера.')
-                return
-            prompt = (
-                f"РОЛЬ: {persona.get('prompt', 'Саркастичный робот Бендер.')}\n"
-                f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {context or '(нет)'}\n"
-                f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {query or 'Прокомментируй сообщение.'}\n"
-                'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
-                'с законченными предложениями. Только текст для произнесения, без разметки и эмодзи.'
-            )
-            generated = await asyncio.wait_for(generate_with_retry(prompt), timeout=45)
-            answer = spoken_text(generated)
-            if not answer:
-                await reply_text_safely(message, 'Не смог придумать ответ. Попробуй позже.')
-                return
-            file_id = await client.render(answer)
-            # Telegram sends without a reply if the command was deleted.
-            await message.bot.send_video_note(video_note=file_id, **reply_options(message))
-        except WorkerBusy:
-            await reply_text_safely(message, 'Воркер сейчас занят. Попробуй чуть позже.')
-        except WorkerTimeout:
-            await reply_text_safely(message, f'Кружок готовится слишком долго. Вот текст ответа:\n{answer}')
-        except WorkerError:
-            await reply_text_safely(message, f'Не смог сделать кружок. Вот текст ответа:\n{answer}')
-        except asyncio.TimeoutError:
-            await reply_text_safely(message, 'Не удалось вовремя придумать ответ. Попробуй позже.')
-        except Exception as exc:
-            logger.warning('Ошибка создания видеокружка: chat_id=%s type=%s', message.chat.id, type(exc).__name__)
-            fallback = f'Не смог отправить кружок. Вот текст ответа:\n{answer}' if answer else 'Не смог подготовить кружок. Попробуй позже.'
-            await reply_text_safely(message, fallback)
-        finally:
-            if status_task is not None:
-                status_task.cancel()
-                try:
-                    await status_task
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:
-                    logger.debug('Задача статуса завершилась с ошибкой: %s', type(exc).__name__)
-            if status is not None:
-                try:
-                    await status.delete()
-                except Exception:
-                    logger.debug('Не удалось удалить статус видеокружка: chat_id=%s', message.chat.id)
+    if result == 'accepted':
+        await _edit_status(message.bot, item, random.choice(QUEUE_MESSAGES))
+    else:
+        if status is not None:
+            try:
+                await status.delete()
+            except Exception:
+                pass
+        if result == 'full':
+            await reply_text_safely(message, random.choice(FULL_MESSAGES))

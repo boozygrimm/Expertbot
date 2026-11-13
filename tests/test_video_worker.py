@@ -128,6 +128,21 @@ class WorkerRunnerTests(unittest.TestCase):
             self.assertNotIn('VIDEO_WORKER_KEY', env)
 
 
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_passes_smoke_plate_to_pipeline(self, popen):
+        popen.return_value.wait.return_value = 0
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job_id = str(uuid.uuid4())
+            output = root / job_id / 'clip-one'
+            output.mkdir(parents=True)
+            (output / 'result.json').write_text(json.dumps({'file_id': 'hello'}))
+            plate = root / 'plate.png'
+            worker.runner(root, -1001, 'bot-secret', 600, plate)(job_id, 'Текст')
+            args = popen.call_args.args[0]
+            self.assertEqual(args[args.index('--smoke-plate') + 1], str(plate))
+
+
 class WorkerCleanupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

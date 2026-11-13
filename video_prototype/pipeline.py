@@ -58,6 +58,7 @@ def parse_args(argv=None):
     parser.add_argument('--message-thread-id', type=int, help='ID темы форума, если нужен')
     parser.add_argument('--no-send', action='store_true', help='Только создать локальное видео')
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
+    parser.add_argument('--smoke-plate', type=Path, help='Бездымная подложка для анимации дыма')
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--tera-python', default='/data/teratts-test/.venv/bin/python')
     parser.add_argument('--render-python', default='/data/video-prototype/.venv/bin/python')
@@ -85,6 +86,8 @@ def run(args):
             raise FileNotFoundError(f'Нет картинки: {args.frames_dir / filename}')
     if args.audio and not args.audio.is_file():
         raise FileNotFoundError(f'Нет аудиофайла: {args.audio}')
+    if args.smoke_plate and not args.smoke_plate.is_file():
+        raise FileNotFoundError(f'Нет бездымной подложки: {args.smoke_plate}')
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='clip-', dir=args.output_dir))
@@ -106,12 +109,16 @@ def run(args):
         subprocess.run(command, env=env, check=True)
 
     video = work / 'video.mp4'
-    subprocess.run([
-        args.render_python, str(HERE / 'render.py'), '--audio', str(audio),
+    render_script = 'smoke_layer_render.py' if args.smoke_plate else 'render.py'
+    command = [
+        args.render_python, str(HERE / render_script), '--audio', str(audio),
         '--closed', str(args.frames_dir / 'closed.png'),
         '--open', str(args.frames_dir / 'open.png'),
         '--blink', str(args.frames_dir / 'blink.png'), '--output', str(video),
-    ], check=True)
+    ]
+    if args.smoke_plate:
+        command.extend(['--plate', str(args.smoke_plate)])
+    subprocess.run(command, check=True)
     if args.no_send:
         print(f'Локальный результат: {video}')
         return

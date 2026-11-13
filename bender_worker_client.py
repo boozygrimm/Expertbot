@@ -69,13 +69,27 @@ class BenderWorkerClient:
                     ),
                 ) as response:
                     if response.status == 409:
-                        raise WorkerBusy('Воркер занят или запрос конфликтует')
+                        payload = await response.json(content_type=None)
+                        if isinstance(payload, dict) and payload.get('error') in ('Воркер занят', 'busy'):
+                            raise WorkerBusy('Воркер занят')
+                        raise WorkerUnavailable('Конфликт запроса воркера')
                     if response.status not in (200, 202):
                         raise WorkerUnavailable('Сервис не принял запрос')
                     job = await response.json(content_type=None)
             except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
                 # The POST may have reached the worker; query the same UUID.
                 job = await self._get_job(session, request_id, deadline, retry_not_found=False)
+            return await self._wait_for_job(session, request_id, job, deadline)
+
+    async def resume(self, request_id):
+        """Check a previously submitted UUID without ever submitting it again."""
+        if str(uuid.UUID(request_id)) != request_id:
+            raise ValueError('Некорректный request_id')
+        deadline = time.monotonic() + self.total_timeout
+        timeout = aiohttp.ClientTimeout(total=self.request_timeout)
+        headers = {'Authorization': 'Bearer ' + self.secret}
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            job = await self._get_job(session, request_id, deadline, retry_not_found=False)
             return await self._wait_for_job(session, request_id, job, deadline)
 
     async def _get_job(self, session, request_id, deadline, *, retry_not_found=True):
