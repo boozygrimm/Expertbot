@@ -20,29 +20,24 @@ def effects(time_seconds):
     layer = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer, 'RGBA')
     x0, y0 = TIP
-    # Fine rising ribbons, laid over the illustration's existing static smoke.
-    # Animation is decorative and not a simulated inhalation or puff.
-    for strand in range(3):
-        points = []
-        for i in range(34):
-            h = i * 1.65
-            x = x0 - h * .09 + (2.0 + h * .04) * math.sin(h * .085 - time_seconds * 1.4 + strand * 1.8)
-            y = y0 - h - 1.5 * math.sin(time_seconds * 1.1 + strand)
-            points.append((round(x), round(y)))
-        # Broken segments drift upward and taper, rather than opaque white tubes.
-        phase = (time_seconds * 8 + strand * 11) % 23
-        for i in range(len(points) - 1):
-            fade = max(0, 1 - i / len(points))
-            wave = .45 + .55 * (math.sin((i * 1.65 + phase) * .25) ** 2)
-            alpha = round(80 * fade * wave)
-            if alpha:
-                draw.line([points[i], points[i + 1]], fill=(202, 215, 227, alpha), width=3)
-    layer = layer.filter(ImageFilter.GaussianBlur(1.3))
+    # A few translucent puffs rise from the tip and drift along the existing
+    # smoke in the picture. They fade in/out so the loop has no hard jump.
+    # Decorative only: the robot is not performing an actual inhalation.
+    for strand in range(5):
+        phase = (time_seconds * .34 + strand / 5) % 1.0
+        rise = phase * 72
+        x = x0 - 2 - rise * .16 + (2.5 + phase * 4) * math.sin(phase * 8 + strand * 1.7)
+        y = y0 - 4 - rise
+        rx = 3 + phase * 5
+        ry = 5 + phase * 7
+        alpha = round(125 * math.sin(math.pi * phase) ** 1.3)
+        draw.ellipse((x - rx, y - ry, x + rx, y + ry), fill=(198, 209, 223, alpha))
+    layer = layer.filter(ImageFilter.GaussianBlur(3))
     glow = Image.new('RGBA', (SIZE, SIZE), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow, 'RGBA')
     intensity = .5 + .5 * math.sin(time_seconds * 3.1 + .5 * math.sin(time_seconds * 6.3))
-    gd.ellipse((x0 - 4, y0 - 4, x0 + 4, y0 + 4), fill=(255, 93, 5, round(28 + 25 * intensity)))
-    glow = glow.filter(ImageFilter.GaussianBlur(3))
+    gd.ellipse((x0 - 5, y0 - 5, x0 + 5, y0 + 5), fill=(255, 90, 4, round(45 + 95 * intensity)))
+    glow = glow.filter(ImageFilter.GaussianBlur(2))
     layer = Image.alpha_composite(layer, glow)
     return layer
 
