@@ -1,8 +1,9 @@
 """Deterministic per-video guest selection and visibility-bound gaze planning.
 
 The Telegram worker is deliberately not wired to this experimental planner.
-At least one of the three character guests is selected. Decorative effects and
-future mutually exclusive sign variants are separate from character selection.
+At least one of the three character guests is selected. Bubbles, the pyramid,
+and the coin are drawn independently; future exclusive sign variants are not
+implemented here.
 """
 from dataclasses import asdict, dataclass
 import math
@@ -15,12 +16,16 @@ else:
 
 FPS = 24
 GUEST_NAMES = ('hedgehog', 'beholder', 'pai_mei')
+DECOR_NAMES = ('bubbles', 'pyramid', 'coin')
 # Natural animation duration and conservative fully visible window, measured
 # relative to the start of each original effect, in seconds.
 PROFILES = {
     'hedgehog': (3.2, .70, 2.10, 2.35),
     'beholder': (5.5, 1.00, 4.50, 3.00),
     'pai_mei': (4.5, .65, 3.85, 3.00),
+    'bubbles': (6.0, .60, 5.40, 3.00),
+    'pyramid': (5.5, .90, 4.60, 3.00),
+    'coin': (3.6, .40, 3.40, 3.25),
 }
 
 
@@ -40,11 +45,13 @@ class ScenePlan:
     frame_count: int
     fps: int
     guests: tuple
+    decorations: tuple
     looks: tuple
 
     def to_dict(self):
         return {'seed': self.seed, 'frame_count': self.frame_count, 'fps': self.fps,
                 'guests': [asdict(g) for g in self.guests],
+                'decorations': [asdict(d) for d in self.decorations],
                 'looks': [asdict(look) for look in self.looks]}
 
 
@@ -65,8 +72,11 @@ def make_plan(frame_count, seed, fps=FPS):
     seed = str(seed)
     rng = random.Random(seed)
     selected = select_guests(rng)
+    # Keep the characters' nonempty guarantee separate from decorative effects.
+    # These trial probabilities are not yet a product configuration.
+    decorations = tuple(name for name in DECOR_NAMES if rng.getrandbits(1))
     appearances = []
-    for name in selected:
+    for name in selected + decorations:
         natural, visible_start, visible_end, _ = PROFILES[name]
         length = min(frame_count, max(1, round(natural * fps)))
         start = rng.randrange(frame_count - length + 1)
@@ -89,14 +99,16 @@ def make_plan(frame_count, seed, fps=FPS):
     order = list(selected)
     rng.shuffle(order)
     priority = {name: i for i, name in enumerate(order)}
+    guest_appearances = tuple(a for a in appearances if a.name in GUEST_NAMES)
+    decor_appearances = tuple(a for a in appearances if a.name in DECOR_NAMES)
     gaze_guests = [Guest(a.name, a.visible_from_frame / fps, a.visible_until_frame / fps,
-                         priority[a.name]) for a in appearances]
+                         priority[a.name]) for a in guest_appearances]
     duration = frame_count / fps
     minimum = min(.75, max(1 / fps, duration * .20))
     glance = max(minimum, min(1.1, duration * .4))
     pause = min(.25, duration * .05)
     looks = tuple(plan_looks(gaze_guests, duration, glance=glance, pause=pause, minimum=minimum))
-    return ScenePlan(seed, frame_count, fps, tuple(appearances), looks)
+    return ScenePlan(seed, frame_count, fps, guest_appearances, decor_appearances, looks)
 
 
 def local_time(appearance, frame, fps=FPS):
@@ -105,4 +117,5 @@ def local_time(appearance, frame, fps=FPS):
         return None
     if appearance.mode != 'normal':
         return PROFILES[appearance.name][3]
-    return {'hedgehog': 1., 'beholder': 1.5, 'pai_mei': 2.}[appearance.name] + (frame - appearance.start_frame) / fps
+    return {'hedgehog': 1., 'beholder': 1.5, 'pai_mei': 2.,
+            'bubbles': 1., 'pyramid': 1.5, 'coin': 2.}[appearance.name] + (frame - appearance.start_frame) / fps

@@ -11,6 +11,9 @@ if __package__:
     from .hedgehog_render import HERE, make_run_frames, frame_with_hedgehog, run_position
     from .beholder_render import prepare_sprites, frame_with_beholder
     from .pai_mei_render import prepare_portrait, frame_with_cameo
+    from .flask_render import frame_with_bubbles
+    from .pyramid_render import frame_with_pyramid
+    from .coin_drop_render import frame_with_coin
     from .mouth_trial_render import quick_levels, render as base_render
 else:
     from render import FPS, SIZE, blink_at
@@ -20,6 +23,9 @@ else:
     from hedgehog_render import HERE, make_run_frames, frame_with_hedgehog, run_position
     from beholder_render import prepare_sprites, frame_with_beholder
     from pai_mei_render import prepare_portrait, frame_with_cameo
+    from flask_render import frame_with_bubbles
+    from pyramid_render import frame_with_pyramid
+    from coin_drop_render import frame_with_coin
     from mouth_trial_render import quick_levels, render as base_render
 
 TARGETS = {'hedgehog': [(261,174),(306,169)],
@@ -53,6 +59,16 @@ def make_effect(closed, portrait_path, plan):
 
     def effect(frame, seconds):
         index = round(seconds * plan.fps)
+        for decoration in plan.decorations:
+            t = local_time(decoration, index, plan.fps)
+            if t is None:
+                continue
+            if decoration.name == 'bubbles':
+                frame = frame_with_bubbles(frame, t)
+            elif decoration.name == 'pyramid':
+                frame = frame_with_pyramid(frame, t)
+            elif decoration.name == 'coin':
+                frame = frame_with_coin(frame, t)
         for guest in plan.guests:
             t = local_time(guest, index, plan.fps)
             if t is None:
@@ -88,6 +104,7 @@ def render(audio, closed, opened, blink, plate, portrait_path, output, seed, man
     if manifest is not None:
         Path(manifest).write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print('Гости:', ', '.join(a.name for a in plan.guests), flush=True)
+    print('Эффекты:', ', '.join(a.name for a in plan.decorations) or 'нет', flush=True)
     print('План взглядов:', ', '.join(f'{x.guest} {x.start:.1f}–{x.end:.1f} с' for x in plan.looks) or 'нет', flush=True)
     base_render(audio, closed, opened, blink, plate, output, frame_effect=effect)
     return plan

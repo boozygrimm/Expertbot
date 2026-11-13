@@ -1,6 +1,6 @@
 import unittest
 from video_prototype.gaze_planner import gaze_at
-from video_prototype.guest_planner import GUEST_NAMES, make_plan, local_time
+from video_prototype.guest_planner import GUEST_NAMES, DECOR_NAMES, make_plan, local_time
 
 
 class GuestPlannerTests(unittest.TestCase):
@@ -17,12 +17,25 @@ class GuestPlannerTests(unittest.TestCase):
         self.assertEqual(len(samples), 2**len(GUEST_NAMES)-1)
         self.assertTrue(any(len(s) > 1 for s in samples))
 
+    def test_decor_varies_independently_and_guests_remain_required(self):
+        combinations = set()
+        for seed in range(2000):
+            plan = make_plan(240, seed)
+            guests = tuple(g.name for g in plan.guests)
+            decor = tuple(d.name for d in plan.decorations)
+            self.assertTrue(guests)
+            self.assertTrue(set(decor) <= set(DECOR_NAMES))
+            self.assertTrue(all(look.guest in guests for look in plan.looks))
+            self.assertEqual(plan, make_plan(240, seed))
+            combinations.add((guests, decor))
+        self.assertEqual(len(combinations), 7 * 8)
+
     def test_every_guest_and_gaze_stays_in_valid_frames(self):
         for frames in (1,2,12,23,24,48,76,77,100,132,240,720,1439):
             for seed in range(40):
                 plan = make_plan(frames, seed)
                 guests = {g.name: g for g in plan.guests}
-                for g in plan.guests:
+                for g in plan.guests + plan.decorations:
                     self.assertLessEqual(0, g.start_frame)
                     self.assertLess(g.start_frame, g.end_frame)
                     self.assertLessEqual(g.end_frame, frames)
