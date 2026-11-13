@@ -750,3 +750,12 @@ playwright install chromium          # или системный Chromium чер
 изменены. Локально пройдены 51 тест и реальный рендер через pipeline на немом
 WAV. Подложку требуется сохранить вне каталога задач на InstaBox; службу
 нужно обновить и проверить отдельно, текущее развёртывание не изменено.
+
+Развёртывание с дымом: пользователь установил код
+`/data/video-prototype/code-smoke-828b78d`, подложку
+`/data/video-prototype/assets/smoke-free-103.png`; 24 теста на InstaBox прошли.
+В systemd добавлен drop-in `/etc/systemd/system/bender-video.service.d/smoke.conf`
+с новым `ExecStart` и `--smoke-plate`; базовый unit и старая копия
+`code-speech-128a140` сохранены. После перезапуска служба running; пользователь
+подтвердил «Всё работает» после проверки обычного кружка. Перезагрузка InstaBox
+с этим обновлением отдельно ещё не проверена.
