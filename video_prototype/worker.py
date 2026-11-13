@@ -10,10 +10,13 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -21,6 +24,8 @@ from urllib.parse import urlsplit
 HERE = Path(__file__).resolve().parent
 MAX_BODY = 8192
 MAX_JOBS = 100
+RETENTION_SECONDS = 30 * 24 * 60 * 60
+CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 class BusyError(Exception):
@@ -32,11 +37,14 @@ class JobConflict(Exception):
 
 
 class JobStore:
-    def __init__(self, run_job):
+    def __init__(self, run_job, cleanup_dir=None):
         self.lock = threading.Lock()
         self.jobs = {}
         self.active = None
         self.run_job = run_job
+        self.cleanup_dir = Path(cleanup_dir) if cleanup_dir is not None else None
+        self.next_cleanup = 0.0
+        self.cleanup_running = False
 
     def submit(self, request_id, text):
         # Lock covers duplicate detection, capacity check, and job creation.
@@ -69,6 +77,78 @@ class JobStore:
         with self.lock:
             self.jobs[request_id].update(outcome)
             self.active = None
+        self.schedule_cleanup()
+
+    def schedule_cleanup(self):
+        """Scan at startup and at most daily after jobs; never wake an idle VM."""
+        if self.cleanup_dir is None:
+            return
+        with self.lock:
+            now = time.monotonic()
+            if self.cleanup_running or now < self.next_cleanup:
+                return
+            self.cleanup_running = True
+            self.next_cleanup = now + CLEANUP_INTERVAL_SECONDS
+        try:
+            threading.Thread(target=self._cleanup_background, daemon=True).start()
+        except RuntimeError as exc:
+            with self.lock:
+                self.cleanup_running = False
+                self.next_cleanup = 0.0
+            print(f'Очистка задач: не удалось запустить поток {type(exc).__name__}', flush=True)
+
+    def _cleanup_background(self):
+        try:
+            self.cleanup_old_jobs()
+        except Exception as exc:
+            # Maintenance must never fail the worker or disclose file contents.
+            print(f'Очистка задач: ошибка {type(exc).__name__}', flush=True)
+            with self.lock:
+                self.next_cleanup = 0.0  # Retry after the next completed job.
+        finally:
+            with self.lock:
+                self.cleanup_running = False
+
+    def cleanup_old_jobs(self, *, now=None):
+        """Remove old job folders only; synchronize deletion with submission."""
+        if self.cleanup_dir is None:
+            return 0
+        now = time.time() if now is None else now
+        try:
+            entries = list(self.cleanup_dir.iterdir())
+        except FileNotFoundError:
+            return 0
+        removed = 0
+        for path in entries:
+            try:
+                # Only canonical UUID-named directories from this worker, never links.
+                if str(uuid.UUID(path.name)) != path.name:
+                    continue
+            except ValueError:
+                continue
+            with self.lock:
+                if path.name == self.active:
+                    continue
+                try:
+                    info = path.lstat()
+                    if not stat.S_ISDIR(info.st_mode):
+                        continue
+                    log_info = (path / 'worker.log').lstat()
+                    if not stat.S_ISREG(log_info.st_mode):
+                        continue
+                    latest = max(info.st_mtime, log_info.st_mtime)
+                    if now - latest < RETENTION_SECONDS:
+                        continue
+                    # Submit cannot mark this UUID active until removal finishes.
+                    shutil.rmtree(path)
+                    removed += 1
+                except FileNotFoundError:
+                    continue
+                except OSError as exc:
+                    print(f'Очистка задачи {path.name}: ошибка {type(exc).__name__}', flush=True)
+        if removed:
+            print(f'Очистка задач: удалено папок {removed}', flush=True)
+        return removed
 
     @staticmethod
     def _public(request_id, job):
@@ -216,8 +296,10 @@ def main():
         parser.error('STORAGE_CHANNEL_ID должен быть числом')
     if args.timeout <= 0 or not 1 <= args.port <= 65535:
         parser.error('Некорректный порт или таймаут')
-    store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout))
+    store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout),
+                     cleanup_dir=args.output_dir)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret))
+    store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)
     try:
         server.serve_forever()
