@@ -57,7 +57,7 @@ def frame_with_bubbles(frame, seconds):
     return image.convert('RGB').tobytes()
 
 
-def render(audio, closed, opened, blink, plate, output):
+def render(audio, closed, opened, blink, plate, output, frame_effect=frame_with_bubbles):
     levels = audio_levels(audio)
     frames = prepare_frames(make_frames(closed, opened, blink), plate)
     output = Path(output)
@@ -71,7 +71,7 @@ def render(audio, closed, opened, blink, plate, output):
         for i, state in enumerate(mouth_states(levels)):
             seconds = i / FPS
             frame = frame_with_layers(frames[state, blink_at(i)], seconds)
-            process.stdin.write(frame_with_bubbles(frame, seconds))
+            process.stdin.write(frame_effect(frame, seconds))
     finally:
         process.stdin.close()
         status = process.wait()
