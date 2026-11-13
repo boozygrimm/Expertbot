@@ -12,7 +12,7 @@ class TeraTextTests(unittest.TestCase):
 
     def test_luna_park_stress_and_word_boundaries(self):
         source = '<ru>лун+а-п+арк, ЛУН+А-П+АРКА, л+уна‑п+арке, лун+а, лун+а-парк+ета.</ru>'
-        expected = '<ru>л+уна-п+арк, Л+УНА-П+АРКА, л+уна‑п+арке, лун+а, лун+а-парк+ета.</ru>'
+        expected = '<ru>л+унап+арк, Л+УНАП+АРКА, л+унап+арке, лун+а, лун+а-парк+ета.</ru>'
         self.assertEqual(apply_overrides(source), expected)
         self.assertEqual(apply_overrides(expected), expected)
 

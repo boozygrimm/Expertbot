@@ -64,6 +64,13 @@ def apply_overrides(text):
             word = match.group().replace('+', '')
             return word[:accent_index] + '+' + word[accent_index:]
         text = re.sub(r'(?<![\w+\u0301])' + pattern + r'(?![\w+\u0301])', replace, text, flags=re.IGNORECASE)
+    # Pronounce this compound together, as preferred in listening tests.
+    # Keep the already assigned stress markers and restrict the match to park forms.
+    text = re.sub(
+        r'(?<![\w+\u0301])(л\+уна)\s*[-‑–—]\s*'
+        r'(\+?п\+?а\+?р\+?к(?:\+?а|\+?у|\+?е|\+?о\+?м|\+?и|\+?о\+?в|\+?а\+?м|\+?а\+?м\+?и|\+?а\+?х)?)(?![\w+\u0301])',
+        r'\1\2', text, flags=re.IGNORECASE,
+    )
     return text
 
 
