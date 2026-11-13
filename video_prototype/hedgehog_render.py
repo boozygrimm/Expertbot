@@ -46,36 +46,25 @@ def make_run_frames(sprite_path, width=50, count=12):
     alpha = sprite.getchannel('A')
     removed = Image.new('L', sprite.size, 0)
     legs = []
-    pad = 60
-    size = (sprite.width + 2 * pad, sprite.height + 2 * pad)
     for points, pivot in polygons:
         mask = Image.new('L', sprite.size, 0)
         ImageDraw.Draw(mask).polygon(points, fill=255)
-        # Keep the upper joints as part of the body to avoid holes at the seam.
-        lower = Image.new('L', sprite.size, 0)
-        ImageDraw.Draw(lower).rectangle((0, 251, sprite.width, sprite.height), fill=255)
-        removed = ImageChops.lighter(removed, ImageChops.multiply(mask, lower))
-        piece = sprite.copy()
-        piece.putalpha(ImageChops.multiply(alpha, mask))
-        padded = Image.new('RGBA', size)
-        padded.alpha_composite(piece, (pad, pad))
-        legs.append((padded, (pivot[0] + pad, pivot[1] + pad)))
+        removed = ImageChops.lighter(removed, mask)
+        leg = sprite.copy()
+        leg.putalpha(ImageChops.multiply(alpha, mask))
+        legs.append((leg, pivot))
     body = sprite.copy()
     body.putalpha(ImageChops.subtract(alpha, removed))
-    crop = (pad - 15, pad, pad + sprite.width + 15, pad + sprite.height + 40)
     frames = []
+    height = round(width * sprite.height / sprite.width)
     for index in range(count):
         phase = 2 * math.pi * index / count
-        merged = Image.new('RGBA', size)
+        merged = Image.new('RGBA', sprite.size)
         for i, (leg, pivot) in enumerate(legs):
-            angle = 26 * math.sin(phase + (i % 2) * math.pi)
+            angle = 17 * math.sin(phase + (i % 2) * math.pi)
             merged.alpha_composite(leg.rotate(angle, center=pivot, resample=Image.Resampling.BICUBIC))
-        merged.alpha_composite(body, (pad, pad))
-        merged = merged.crop(crop)
-        # Subtle compression as the body gathers and extends for each stride.
-        w = max(1, round(width * (1 + .045 * math.sin(phase))))
-        h = max(1, round(width * merged.height / merged.width * (1 - .04 * math.sin(phase))))
-        frames.append(merged.resize((w, h), Image.Resampling.LANCZOS))
+        merged.alpha_composite(body)
+        frames.append(merged.resize((width, height), Image.Resampling.LANCZOS))
     return frames
 
 
@@ -95,10 +84,9 @@ def frame_with_hedgehog(frame, seconds, sprites):
         return frame
     original = Image.frombytes('RGB', (SIZE, SIZE), frame).convert('RGBA')
     canvas = original.copy()
-    sprite = sprites[int(seconds * 24) % len(sprites)]
+    sprite = sprites[int(seconds * 12) % len(sprites)]
     x, baseline = position
-    # The body lifts and lands twice per second, in time with the legs.
-    bounce = round(1.8 * (1 - math.cos(seconds * 4 * math.pi)) / 2)
+    bounce = round(1.2 * abs(math.sin(seconds * 12 * math.pi)))
     canvas.alpha_composite(sprite, (x, baseline - sprite.height - bounce))
     return Image.composite(original, canvas, FOREGROUND).convert('RGB').tobytes()
 
