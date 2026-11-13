@@ -12,7 +12,7 @@ import threading
 import time
 import urllib.request
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageStat
 
 if __package__:
     from .livliv_probe import PLAYER_URL, write_player
@@ -82,7 +82,6 @@ def build_model(root, frames_dir):
                     'top_y': 0, 'bottom_y': 511, 'hair_root_y': 95},
         'expressions': [{'id': 'x_blink', 'label': {'en': 'Blink'}}],
         'layers': [
-            layer('x_background', 'background.png', 'body'),
             layer('x_head', 'head.png', 'head'),
             layer('x_mouth', 'mouth_closed.png', 'head', role='mouth',
                   frames=['textures/mouth_closed.png', 'textures/mouth_open.png', 'textures/mouth_open.png'],
@@ -93,7 +92,11 @@ def build_model(root, frames_dir):
     (root / 'model' / 'model.json').write_text(json.dumps(manifest), encoding='utf-8')
 
 
-HTML = '''<!doctype html><style>html,body {margin:0} canvas {width:480px;height:480px}</style>
+HTML = '''<!doctype html><style>
+html,body {margin:0; width:480px; height:480px}
+body {background: url('/model/textures/background.png') center / 480px 480px no-repeat}
+canvas {width:480px;height:480px}
+</style>
 <canvas width="480" height="480"></canvas>
 <script type="module">
 import { Player } from '/dist/index.js';
@@ -144,6 +147,22 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium'):
                     page.goto(f'http://127.0.0.1:{server.server_port}/', wait_until='load')
                     page.wait_for_function('typeof window.setup === "function"')
                     print('Загружаем модель:', page.evaluate('window.setup()'), flush=True)
+                    # Assert that the background really stays still while the head
+                    # moves; comparing a left strip avoids the head and antenna.
+                    page.evaluate('window.pose(0, 0, 0, false)')
+                    page.wait_for_timeout(500)
+                    first = Image.open(io.BytesIO(page.screenshot())).convert('RGB')
+                    page.evaluate('window.pose(6, 0, 0, false)')
+                    page.wait_for_timeout(700)
+                    second = Image.open(io.BytesIO(page.screenshot())).convert('RGB')
+                    diff = ImageChops.difference(first, second)
+                    background_delta = sum(ImageStat.Stat(diff.crop((0, 0, 180, 480))).mean) / 3
+                    head_delta = sum(ImageStat.Stat(diff.crop((220, 25, 380, 270))).mean) / 3
+                    print(f'Изменение фона: {background_delta:.3f}; головы: {head_delta:.3f}', flush=True)
+                    if background_delta > .5 or head_delta < .05:
+                        raise RuntimeError('Фон движется или движение головы не обнаружено; отправка отменена')
+                    page.evaluate('window.pose(0, 0, 0, false)')
+                    page.wait_for_timeout(500)
                     cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24',
                            '-s', '480x480', '-r', '24', '-i', 'pipe:0', '-i', str(audio),
                            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
@@ -154,7 +173,7 @@ def render_demo(audio, frames_dir, output, chromium='/usr/bin/chromium'):
                             t = i / 24
                             blink = (1.3 <= t <= 1.5) or (4.0 <= t <= 4.2)
                             page.evaluate('([z, y, m, b]) => window.pose(z, y, m, b)',
-                                          [1.5 * math.sin(t * 1.1), .7 * math.sin(t * .8), int(is_open), blink])
+                                          [3 * math.sin(t * 1.1), .7 * math.sin(t * .8), int(is_open), blink])
                             page.wait_for_timeout(35)
                             screenshot = page.screenshot()
                             with Image.open(io.BytesIO(screenshot)) as image:

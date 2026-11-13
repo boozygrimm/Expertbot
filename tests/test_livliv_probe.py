@@ -35,8 +35,9 @@ class LivlivProbeTests(unittest.TestCase):
             livliv_demo.build_model(root, frames)
             model_dir = root / 'model'
             model = json.loads((model_dir / 'model.json').read_text())
-            self.assertEqual([layer['group'] for layer in model['layers']], ['body', 'head', 'head', 'head'])
-            mouth = model['layers'][2]
+            self.assertEqual([layer['group'] for layer in model['layers']], ['head', 'head', 'head'])
+            self.assertIn("background.png", livliv_demo.HTML)
+            mouth = model['layers'][1]
             self.assertEqual(mouth['role'], 'mouth')
             self.assertEqual(len(mouth['frames']), len(mouth['visemes']))
             for layer in model['layers']:
