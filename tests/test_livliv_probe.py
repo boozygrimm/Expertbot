@@ -25,6 +25,19 @@ class LivlivProbeTests(unittest.TestCase):
             with Image.open(root / 'model' / manifest['layers'][0]['texture']) as result:
                 self.assertEqual(result.size, (512, 512))
 
+    def test_fill_replaces_hidden_head_but_preserves_outside(self):
+        image = Image.new('RGB', (21, 21), 'blue')
+        for y in range(8, 13):
+            for x in range(8, 13):
+                image.putpixel((x, y), (255, 0, 0))
+        mask = Image.new('L', image.size, 0)
+        for y in range(8, 13):
+            for x in range(8, 13):
+                mask.putpixel((x, y), 255)
+        result = livliv_demo.fill_hidden_background(image, mask)
+        self.assertEqual(result.getpixel((10, 10)), (0, 0, 255))
+        self.assertEqual(result.getpixel((0, 0)), (0, 0, 255))
+
     def test_layered_model_is_built_from_three_inputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

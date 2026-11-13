@@ -1,5 +1,6 @@
 """Experimental LivLiv video-note demo. It never touches the running worker."""
 import argparse
+from collections import deque
 import http.server
 import io
 import json
@@ -36,6 +37,37 @@ HEAD_OUTLINE = [
 ]
 
 
+
+def fill_hidden_background(image, head_mask):
+    """Extend adjacent background into the hidden head, without adding dependencies.
+
+    It is an approximation: the original picture has no actual background behind
+    the head. Dilate the region so an outline or antenna does not show through.
+    """
+    mask = head_mask.point(lambda value: 255 if value >= 32 else 0).filter(ImageFilter.MaxFilter(7))
+    pending = mask.copy().load()
+    result = image.convert('RGB').copy()
+    pixels = result.load()
+    width, height = image.size
+    queue = deque()
+    for y in range(height):
+        for x in range(width):
+            if not pending[x, y] and any(
+                0 <= nx < width and 0 <= ny < height and pending[nx, ny]
+                for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))
+            ):
+                queue.append((x, y))
+    while queue:
+        x, y = queue.popleft()
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= nx < width and 0 <= ny < height and pending[nx, ny]:
+                pending[nx, ny] = 0
+                pixels[nx, ny] = pixels[x, y]
+                queue.append((nx, ny))
+    softened = result.filter(ImageFilter.GaussianBlur(1))
+    return Image.composite(softened, image, mask.filter(ImageFilter.GaussianBlur(.5)))
+
+
 def build_model(root, frames_dir):
     textures = root / 'model' / 'textures'
     textures.mkdir(parents=True)
@@ -49,9 +81,9 @@ def build_model(root, frames_dir):
     head_mask = Image.new('L', (SIZE, SIZE), 0)
     ImageDraw.Draw(head_mask).polygon(HEAD_OUTLINE, fill=255)
     head_mask = head_mask.filter(ImageFilter.GaussianBlur(.6))
-    # A blurred fill hides the old head beneath the moveable head. This is an
-    # intentionally rough experiment, not a reconstructed background.
-    background = Image.composite(closed.filter(ImageFilter.GaussianBlur(14)), closed, head_mask)
+    # Reconstruct only the hidden area from its surroundings. Unlike a blur of
+    # the original head, the fill cannot leave a duplicate head behind it.
+    background = fill_hidden_background(closed, head_mask)
     background.save(textures / 'background.png')
 
     def save_patch(image, mask, name):
