@@ -182,7 +182,7 @@ def validate_request(data):
     return request_id, text
 
 
-def runner(output_dir, channel_id, token, timeout):
+def runner(output_dir, channel_id, token, timeout, smoke_plate=None):
     """Return a runner that isolates output/logs per UUID, using the existing CLI."""
     def run(request_id, text):
         job_dir = output_dir / request_id
@@ -194,6 +194,8 @@ def runner(output_dir, channel_id, token, timeout):
             sys.executable, '-u', str(HERE / 'pipeline.py'), '--text', text,
             '--channel-id', str(channel_id), '--output-dir', str(job_dir),
         ]
+        if smoke_plate is not None:
+            command.extend(['--smoke-plate', str(smoke_plate)])
         with (job_dir / 'worker.log').open('a', encoding='utf-8') as log:
             process = subprocess.Popen(command, env=environment, stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
@@ -283,6 +285,7 @@ def main():
     parser.add_argument('--bind', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=8088)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/jobs'))
+    parser.add_argument('--smoke-plate', type=Path, help='Бездымная подложка для анимации дыма')
     parser.add_argument('--timeout', type=int, default=600)
     args = parser.parse_args()
     secret = os.environ.get('VIDEO_WORKER_KEY', '')
@@ -296,8 +299,10 @@ def main():
         parser.error('STORAGE_CHANNEL_ID должен быть числом')
     if args.timeout <= 0 or not 1 <= args.port <= 65535:
         parser.error('Некорректный порт или таймаут')
-    store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout),
-                     cleanup_dir=args.output_dir)
+    if args.smoke_plate is not None and not args.smoke_plate.is_file():
+        parser.error('Бездымная подложка не найдена')
+    store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout,
+                            args.smoke_plate), cleanup_dir=args.output_dir)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret))
     store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)
