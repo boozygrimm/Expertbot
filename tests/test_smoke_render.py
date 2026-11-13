@@ -30,6 +30,14 @@ class SmokeRenderTests(unittest.TestCase):
         self.assertEqual(smoke_render.SMOKE_MASK.getpixel((20, 20)), 0)
         self.assertEqual(smoke_render.EMBER_MASK.getpixel((20, 20)), 0)
 
+    def test_highlights_leave_dark_background_and_lower_shoulder_alone(self):
+        dark = Image.new('RGB', (480, 480), (25, 25, 25))
+        self.assertIsNone(smoke_render.smoke_highlights(dark).getbbox())
+        light = Image.new('RGB', (480, 480), (180, 180, 180))
+        mask = smoke_render.smoke_highlights(light)
+        self.assertIsNotNone(mask.getbbox())
+        self.assertIsNone(mask.crop((0, 270, 480, 480)).getbbox())
+
     def test_render_uses_audio_frame_count_and_closes_ffmpeg(self):
         process = MagicMock()
         process.wait.return_value = 0

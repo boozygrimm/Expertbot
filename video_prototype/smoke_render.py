@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 import subprocess
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 
 if __package__:
     from .render import FPS, SIZE, audio_levels, blink_at, make_frames, mouth_states
@@ -40,24 +40,45 @@ SMOKE_MASK = make_smoke_mask()
 EMBER_MASK = make_ember_mask()
 
 
+def smoke_highlights(original):
+    """Approximate a smoke layer using bright pixels inside the smoke corridor.
+
+    The original is flat: this keeps the background fixed but leaves the
+    original, stationary smoke visible underneath the moving highlights.
+    """
+    light = original.convert('L').point(
+        lambda value: max(0, min(180, int((value - 50) * 2.4))))
+    # The lower smoke overlaps a bright metallic shoulder, which brightness
+    # alone cannot separate. Fade it out rather than animate the shoulder.
+    fade = Image.new('L', (1, SIZE))
+    fade.putdata([max(0, min(255, round((SIZE * 285 / 512 - y) * 255 /
+                                         (SIZE * 35 / 512))))
+                  for y in range(SIZE)])
+    fade = fade.resize((SIZE, SIZE))
+    return ImageChops.multiply(ImageChops.multiply(light, SMOKE_MASK), fade)
+
+
 def frame_with_effects(frame, time_seconds):
-    """Distort the existing smoke and brighten the existing ember, not a new arm."""
+    """Move only smoke-like highlights; leave the original background still."""
     original = Image.frombytes('RGB', (SIZE, SIZE), frame)
+    highlights = smoke_highlights(original)
     mesh = []
     for top in range(0, SIZE, 8):
         bottom = min(top + 8, SIZE)
         def offset(y):
             phase = time_seconds * 1.7 - y * .045
-            return 7 * math.sin(phase), 2 * math.sin(phase * .7)
+            return 8 * math.sin(phase), 2 * math.sin(phase * .7)
         dx1, dy1 = offset(top)
         dx2, dy2 = offset(bottom)
-        # PIL's quad order is upper-left, lower-left, lower-right, upper-right.
         mesh.append(((0, top, SIZE, bottom),
                      (dx1, top + dy1, dx2, bottom + dy2,
                       SIZE + dx2, bottom + dy2, SIZE + dx1, top + dy1)))
-    warped = original.transform((SIZE, SIZE), Image.Transform.MESH, mesh,
-                                resample=Image.Resampling.BICUBIC)
-    result = Image.composite(warped, original, SMOKE_MASK)
+    moved = highlights.transform((SIZE, SIZE), Image.Transform.MESH, mesh,
+                                 resample=Image.Resampling.BICUBIC)
+    # Apply the same corridor at the destination, protecting face and chain.
+    moved = ImageChops.multiply(moved, SMOKE_MASK)
+    smoke_color = Image.new('RGB', (SIZE, SIZE), (177, 172, 192))
+    result = Image.composite(smoke_color, original, moved)
     flicker = .5 + .5 * math.sin(time_seconds * 3.1 + .5 * math.sin(time_seconds * 6.3))
     bright = ImageEnhance.Brightness(result).enhance(1.0 + .7 * flicker)
     return Image.composite(bright, result, EMBER_MASK).tobytes()
