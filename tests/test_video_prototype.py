@@ -116,9 +116,7 @@ class PipelineTests(unittest.TestCase):
 
     @patch('video_prototype.pipeline.subprocess.run')
     @patch.dict('os.environ', {'BOT_TOKEN': 'test-token', 'VIDEO_WORKER_KEY': 'worker-secret'})
-    def test_text_runs_xvibe_then_renderer(self, subprocess_run):
-        reference = self.folder / 'reference.wav'
-        reference.write_bytes(b'reference')
+    def test_text_runs_tera_then_renderer(self, subprocess_run):
         calls = []
         environments = []
         def fake_run(command, **kwargs):
@@ -127,26 +125,25 @@ class PipelineTests(unittest.TestCase):
             Path(command[command.index('--output') + 1]).write_bytes(b'generated')
         subprocess_run.side_effect = fake_run
         args = pipeline.parse_args(['--text', 'Укуси, Бендер, в Луна-парке!',
-            '--reference', str(reference), '--frames-dir', str(self.frames),
+            '--frames-dir', str(self.frames),
             '--output-dir', str(self.output), '--no-send', '--seed', '42'])
         pipeline.run(args)
         self.assertEqual(len(calls), 2)
-        self.assertTrue(calls[0][0].endswith('/xvibe-tts'))
-        self.assertEqual(calls[0][1], 'generate')
-        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укус+и, Б+ендер, в Луна-парке!')
-        self.assertEqual(calls[0][calls[0].index('--voice') + 1], str(reference))
+        self.assertTrue(calls[0][0].endswith('/.venv/bin/python'))
+        self.assertTrue(calls[0][1].endswith('tera_speech.py'))
+        self.assertEqual(calls[0][calls[0].index('--text') + 1], 'Укуси, Бендер, в Луна-парке!')
         self.assertEqual(calls[0][calls[0].index('--seed') + 1], '42')
         self.assertNotIn('BOT_TOKEN', environments[0])
         self.assertNotIn('VIDEO_WORKER_KEY', environments[0])
-        self.assertEqual(environments[0]['HF_HOME'], '/data/xvibe-test/hf')
+        self.assertEqual(environments[0]['HF_HOME'], '/data/teratts-test/hf')
         self.assertTrue(calls[1][1].endswith('render.py'))
         self.assertEqual(calls[1][calls[1].index('--audio') + 1],
                          calls[0][calls[0].index('--output') + 1])
 
-    def test_default_voice_is_independent_of_qwen_files(self):
+    def test_default_tera_environment(self):
         args = pipeline.parse_args(['--text', 'Привет', '--no-send'])
-        self.assertEqual(str(args.reference), '/data/video-prototype/voices/bender.wav')
-        self.assertNotIn('qwen', args.xvibe_cli.lower())
+        self.assertEqual(args.tera_python, '/data/teratts-test/.venv/bin/python')
+        self.assertEqual(args.hf_home, '/data/teratts-test/hf')
 
     def test_must_choose_channel_or_local_only(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

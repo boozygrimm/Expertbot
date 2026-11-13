@@ -88,8 +88,8 @@ def validate_request(data):
     if not isinstance(data, dict) or set(data) != {'request_id', 'text'}:
         raise ValueError('Нужны только request_id и text')
     text = data['text']
-    if not isinstance(text, str) or not text.strip() or len(text) > 240:
-        raise ValueError('Текст должен содержать от 1 до 240 символов')
+    if not isinstance(text, str) or not text.strip() or len(text) > 480:
+        raise ValueError('Текст должен содержать от 1 до 480 символов')
     request_id = data['request_id']
     if not isinstance(request_id, str):
         raise ValueError('request_id должен быть UUID')

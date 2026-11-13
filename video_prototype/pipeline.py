@@ -11,11 +11,6 @@ import tempfile
 import urllib.error
 import urllib.request
 
-if __package__:
-    from .stress import apply_xvibe_stress
-else:
-    from stress import apply_xvibe_stress
-
 HERE = Path(__file__).resolve().parent
 
 
@@ -55,7 +50,7 @@ def telegram_call(token, method, fields, file_path=None):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Ручной PoC видеокружка, не бот и не сервер')
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument('--text', help='Фраза для синтеза (до 240 символов)')
+    source.add_argument('--text', help='Фраза для синтеза (до 480 символов)')
     source.add_argument('--audio', type=Path, help='Готовый моно WAV PCM 16 бит вместо TTS')
     parser.add_argument('--channel-id', type=int, help='ID приватного канала-склада')
     parser.add_argument('--chat-id', type=int, help='ID тестового чата для отправки по file_id')
@@ -64,14 +59,13 @@ def parse_args(argv=None):
     parser.add_argument('--no-send', action='store_true', help='Только создать локальное видео')
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
-    parser.add_argument('--reference', type=Path, default=Path('/data/video-prototype/voices/bender.wav'))
-    parser.add_argument('--xvibe-cli', default='/data/xvibe-test/.venv/bin/xvibe-tts')
+    parser.add_argument('--tera-python', default='/data/teratts-test/.venv/bin/python')
     parser.add_argument('--render-python', default='/data/video-prototype/.venv/bin/python')
-    parser.add_argument('--hf-home', default='/data/xvibe-test/hf')
+    parser.add_argument('--hf-home', default='/data/teratts-test/hf')
     parser.add_argument('--seed', type=int, help='Фиксировать случайность TTS для сравнения проб')
     args = parser.parse_args(argv)
-    if args.text is not None and (not args.text.strip() or len(args.text) > 240):
-        parser.error('Текст должен содержать от 1 до 240 символов')
+    if args.text is not None and (not args.text.strip() or len(args.text) > 480):
+        parser.error('Текст должен содержать от 1 до 480 символов')
     if not args.no_send and args.channel_id is None:
         parser.error('Укажи --channel-id либо --no-send')
     if args.no_send and args.chat_id is not None:
@@ -91,8 +85,6 @@ def run(args):
             raise FileNotFoundError(f'Нет картинки: {args.frames_dir / filename}')
     if args.audio and not args.audio.is_file():
         raise FileNotFoundError(f'Нет аудиофайла: {args.audio}')
-    if args.text is not None and not args.reference.is_file():
-        raise FileNotFoundError(f'Нет записи для голоса: {args.reference}')
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='clip-', dir=args.output_dir))
@@ -102,11 +94,12 @@ def run(args):
         env = os.environ.copy()
         env.pop('BOT_TOKEN', None)
         env.pop('VIDEO_WORKER_KEY', None)
+        env.pop('STORAGE_CHANNEL_ID', None)
         env['HF_HOME'] = args.hf_home
         print(f'Папка результата: {work}', flush=True)
         command = [
-            args.xvibe_cli, 'generate', '--text', apply_xvibe_stress(args.text),
-            '--voice', str(args.reference), '--output', str(audio),
+            args.tera_python, str(HERE / 'tera_speech.py'), '--text', args.text,
+            '--output', str(audio),
         ]
         if args.seed is not None:
             command.extend(['--seed', str(args.seed)])
