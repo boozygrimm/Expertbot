@@ -20,6 +20,10 @@ from .random_guest_render import make_effect
 from .render import FPS, SIZE
 
 MOCKUP = Path(__file__).resolve().parent / 'trials/sign-preview.jpg'
+TYPEWRITER = Path(__file__).resolve().parent / 'trials/typewriter.png'
+TYPEWRITER_FRAMES = 19  # blank followed by 18 non-space characters
+TYPEWRITER_DELAY = 0.3
+TYPEWRITER_INTERVAL = 0.1
 # Measured in the 768px visual reference. Protect the fingers as in the mockup.
 SIGN = [(126, 397), (274, 365), (288, 438), (149, 469)]
 HAND = [(108,465),(110,456),(119,444),(130,433),(143,426),(149,425),
@@ -49,21 +53,46 @@ def prepare_sign(mockup=MOCKUP):
     return image.crop(box), box[:2]
 
 
+def prepare_typewriter(path=TYPEWRITER):
+    """Load the precalculated fixed-phrase frames once, without runtime fonts."""
+    final, position = prepare_sign()
+    width, height = final.size
+    with Image.open(path) as sheet:
+        if sheet.size != (width * TYPEWRITER_FRAMES, height):
+            raise ValueError('Неподходящий набор кадров для печатающейся таблички')
+        sheet = sheet.convert('RGBA')
+        frames = [sheet.crop((i * width, 0, (i + 1) * width, height))
+                  for i in range(TYPEWRITER_FRAMES)]
+    return frames, position
+
+
+def typewriter_index(seconds):
+    """Brief empty sign, then one letter per interval; keep the completed text."""
+    elapsed = max(0., seconds - TYPEWRITER_DELAY)
+    return min(TYPEWRITER_FRAMES - 1, int(elapsed / TYPEWRITER_INTERVAL))
+
+
 def add_sign(frame, layer, position):
     image = Image.frombytes('RGB', (SIZE, SIZE), frame)
     image.paste(layer, position, layer)
     return image.tobytes()
 
 
-def render_trial(audio, closed, opened, blink, plate, portrait, output, seed='319', manifest=None):
+def render_trial(audio, closed, opened, blink, plate, portrait, output, seed='319', manifest=None,
+                 *, typewriter=False):
     plan = make_plan(len(quick_levels(audio)), seed, FPS)
-    layer, position = prepare_sign()
+    if typewriter:
+        layers, position = prepare_typewriter()
+    else:
+        layer, position = prepare_sign()
+        layers = [layer]
     guest_effect = make_effect(closed, portrait, plan)
 
     def effect(frame, seconds):
         # The hedgehog renderer restores the foreground from its input, so the
         # sign must be applied before, not after, the existing guest effects.
-        return guest_effect(add_sign(frame, layer, position), seconds)
+        index = typewriter_index(seconds) if typewriter else 0
+        return guest_effect(add_sign(frame, layers[index], position), seconds)
 
     if manifest is not None:
         Path(manifest).write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
@@ -83,11 +112,15 @@ def main(argv=None):
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--seed', default='319')
     parser.add_argument('--audio', type=Path, help='Готовая запись вместо нового синтеза')
+    parser.add_argument('--typewriter', action='store_true', help='Проба печати надписи по буквам')
     args = parser.parse_args(argv)
     token = os.environ.get('BOT_TOKEN', '').strip()
     if not token:
         parser.error('В окружении нужен BOT_TOKEN')
-    for path in (args.frames_dir/'closed.png', args.frames_dir/'open.png', args.frames_dir/'blink.png', args.plate, args.portrait, MOCKUP):
+    paths = [args.frames_dir/'closed.png', args.frames_dir/'open.png', args.frames_dir/'blink.png', args.plate, args.portrait, MOCKUP]
+    if args.typewriter:
+        paths.append(TYPEWRITER)
+    for path in paths:
         if not path.is_file():
             parser.error(f'Файл не найден: {path}')
     if args.audio is not None and not args.audio.is_file():
@@ -106,7 +139,7 @@ def main(argv=None):
     video = work/'video.mp4'
     started = time.monotonic()
     render_trial(audio, args.frames_dir/'closed.png', args.frames_dir/'open.png', args.frames_dir/'blink.png',
-                 args.plate, args.portrait, video, args.seed, work/'scene.json')
+                 args.plate, args.portrait, video, args.seed, work/'scene.json', typewriter=args.typewriter)
     print(f'Время рендера: {time.monotonic()-started:.1f} с', flush=True)
     print('Отправляем в Telegram один раз; при ошибке сначала проверьте чат.', flush=True)
     telegram_call(token, 'sendVideoNote', {'chat_id': args.chat_id}, video)
