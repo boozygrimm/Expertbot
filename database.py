@@ -16,6 +16,7 @@ class Database:
         self.pole_history = self.db.pole_history
         self.economy = self.db.economy 
         self.settings = self.db.settings
+        self.ex_response_choices = self.db.ex_response_choices
         
         # НОВАЯ КОЛЛЕКЦИЯ ДЛЯ АВТОРИЗАЦИИ ЧАТОВ
         self.auth_chats = self.db.auth_chats
@@ -37,6 +38,8 @@ class Database:
         await self.personas.create_index("p_id", unique=True)
         # Индекс для настроек
         await self.settings.create_index([("setting", 1), ("chat_id", 1)], unique=True)
+        # Короткоживущие меню выбора формата ответа.
+        await self.ex_response_choices.create_index("expires_at", expireAfterSeconds=0)
         # Индекс для авторизованных чатов
         await self.auth_chats.create_index("chat_id", unique=True)
         # Индекс для алхимических профилей
