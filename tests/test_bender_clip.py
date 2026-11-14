@@ -115,6 +115,29 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(opts['message_thread_id'], 7)
         self.assertEqual(self.queue.items, [])
 
+    async def test_generated_sign_is_separate_and_survives_busy_retry(self):
+        from bender_worker_client import WorkerBusy
+        item = await self.submit()
+        self.generate.return_value = '{"speech":"Вот моё мнение.","sign":"Гравитация в отпуске"}'
+        self.client.render.side_effect = [WorkerBusy(), 'file-id']
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertEqual(self.queue.items[0]['answer'], 'Вот моё мнение.')
+        self.assertEqual(self.queue.items[0]['sign'], 'ГРАВИТАЦИЯ В ОТПУСКЕ')
+        self.queue.items[0]['retry_after'] = 0
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.assertEqual(self.generate.await_count, 1)
+        self.assertEqual(self.client.render.await_count, 2)
+        for call in self.client.render.await_args_list:
+            self.assertEqual(call.args[0], 'Вот моё мнение.')
+            self.assertEqual(call.kwargs['sign'], 'ГРАВИТАЦИЯ В ОТПУСКЕ')
+            self.assertEqual(call.kwargs['request_id'], item['request_id'])
+
+    async def test_invalid_sign_keeps_speech_and_ordinary_clip(self):
+        item = await self.submit()
+        self.generate.return_value = '{"speech":"Мой ответ.","sign":"😀"}'
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'])
+
     async def test_distinct_chats_are_queued(self):
         await self.submit()
         self.message.chat.id = -1002
