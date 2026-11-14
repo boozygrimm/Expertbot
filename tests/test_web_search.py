@@ -9,7 +9,7 @@ from handlers import web_search
 
 
 class WebSearchTests(unittest.IsolatedAsyncioTestCase):
-    async def test_main_search_success_skips_fallback_and_includes_sources(self):
+    async def test_main_search_success_skips_fallback_and_hides_sources(self):
         result = [{'title': 'Марс', 'body': 'Планета', 'href': 'https://example.org/mars'}]
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=result), \
              patch.object(web_search, '_fetch_wikipedia', new_callable=AsyncMock) as wiki, \
@@ -17,7 +17,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
             answer = await web_search.smart_web_search('Марс')
         wiki.assert_not_awaited()
         self.assertIn('Марс — планета', answer)
-        self.assertIn('https://example.org/mars', answer)
+        self.assertNotIn('https://example.org/mars', answer)
         self.assertNotIn('Википедии', answer)
 
     async def test_failure_uses_labelled_encyclopedia_fallback(self):
@@ -29,7 +29,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         wiki.assert_awaited_once_with('Пифагор')
         self.assertIn('Википедии', answer)
         self.assertIn('не поиск актуальных новостей', answer)
-        self.assertIn('https://ru.wikipedia.org/?curid=1', answer)
+        self.assertNotIn('https://ru.wikipedia.org/?curid=1', answer)
 
     async def test_primary_empty_uses_fallback_too(self):
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=[]), \
@@ -83,7 +83,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Пифагор — философ', answer)
         self.assertIn('Википедии', answer)
         self.assertNotIn('Tankstelle', answer)
-        self.assertIn('https://ru.wikipedia.org/?curid=1', answer)
+        self.assertNotIn('https://ru.wikipedia.org/?curid=1', answer)
 
     async def test_irrelevant_results_and_wikipedia_failure(self):
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=[{'title': 'unrelated'}]), \
@@ -109,6 +109,31 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         wiki.assert_not_awaited()
         self.assertIn('могут быть не по теме', answer)
         self.assertNotIn('Что-то без метки', answer)
+
+    async def test_no_links_or_citation_markers_even_if_model_or_snippets_include_them(self):
+        result = [{'title': 'Новости', 'body': 'Факт https://example.org/secret и [2]',
+                   'href': 'https://example.org/news', 'date': '2026-11-12'}]
+        ai = AsyncMock(return_value='STATUS: OK\nОткрытие 12 ноября [1]: [подробнее](https://example.org/detail) и www.example.org/test')
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=result), \
+             patch.object(web_search, 'generate_with_retry', new=ai):
+            answer = await web_search.smart_web_search('открытие')
+        self.assertNotIn('https://', ai.await_args.args[0])
+        self.assertNotIn('https://', answer)
+        self.assertNotIn('www.', answer)
+        self.assertNotIn('[1]', answer)
+        self.assertIn('Открытие 12 ноября', answer)
+        self.assertIn('подробнее', answer)
+
+    async def test_unverified_results_are_also_sanitized(self):
+        result = [{'title': 'Факт', 'body': 'Смотри https://example.org/p [1]',
+                   'href': 'https://example.org/p'}]
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=result), \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value=None)):
+            answer = await web_search.smart_web_search('тест')
+        self.assertIn('могут быть не по теме', answer)
+        self.assertIn('Факт', answer)
+        self.assertNotIn('https://', answer)
+        self.assertNotIn('[1]', answer)
 
     async def test_wikipedia_api_parameters_and_snippet(self):
         response = MagicMock()
