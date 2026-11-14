@@ -91,11 +91,13 @@ async def run_expert_report(message: types.Message, persona: dict, count: int):
         await message.answer(f"⚠️ Ошибка связи с астралом: {str(e)[:100]}")
 
 async def send_persona_selection(message: types.Message, count: int):
-    """Выводит клавиатуру выбора эксперта с передачей нужного кол-ва сообщений"""
+    """Сразу запускает единственного эксперта или предлагает выбор из нескольких."""
     all_personas = await db.personas.find().to_list(length=100)
     if not all_personas:
         return await message.answer("В базе нет ни одного эксперта. Проверь запуск init_personas!")
-    
+    if len(all_personas) == 1:
+        return await run_expert_report(message, all_personas[0], count)
+
     builder = InlineKeyboardBuilder()
     for p in all_personas:
         # Вшиваем ID и количество в callback_data (максимум 64 байта в Telegram)
