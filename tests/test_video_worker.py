@@ -167,6 +167,22 @@ class WorkerRunnerTests(unittest.TestCase):
 
 
     @patch('video_prototype.worker.subprocess.Popen')
+    def test_worker_rotates_start_index_across_jobs(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            def complete(**kwargs):
+                command = popen.call_args.args[0]
+                output = Path(command[command.index('--output-dir') + 1]) / 'clip-one'
+                output.mkdir(parents=True)
+                (output / 'result.json').write_text(json.dumps({'file_id': 'id'}))
+                return 0
+            popen.return_value.wait.side_effect = complete
+            run = worker.runner(root, -1001, 'bot', 600)
+            for index in range(3):
+                self.assertEqual(run(str(uuid.uuid4()), 'текст'), 'id')
+                self.assertEqual(popen.call_args.kwargs['env']['BENDER_TTS_START_INDEX'], str(index))
+
+    @patch('video_prototype.worker.subprocess.Popen')
     def test_passes_smoke_plate_to_pipeline(self, popen):
         popen.return_value.wait.return_value = 0
         with tempfile.TemporaryDirectory() as folder:

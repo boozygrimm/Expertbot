@@ -7,6 +7,7 @@ persistent. The caller owns chat routing and reply context.
 import argparse
 import hmac
 import json
+import itertools
 import os
 from pathlib import Path
 import re
@@ -215,6 +216,7 @@ def validate_request(data):
 
 def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portrait=None):
     """Return a runner that isolates output/logs per UUID, using the existing CLI."""
+    key_rotation = itertools.count()  # One worker serializes jobs; restart resets rotation.
     def run(request_id, text):
         job_dir = output_dir / request_id
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -223,6 +225,7 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
         environment = os.environ.copy()
         environment.pop('VIDEO_WORKER_KEY', None)
         environment['BOT_TOKEN'] = token
+        environment['BENDER_TTS_START_INDEX'] = str(next(key_rotation))
         command = [
             sys.executable, '-u', str(HERE / 'pipeline.py'), '--text', text,
             '--channel-id', str(channel_id), '--output-dir', str(job_dir),
