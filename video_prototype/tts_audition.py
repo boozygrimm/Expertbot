@@ -123,7 +123,7 @@ def main(argv=None):
     parser.add_argument('--chat-id', type=int, required=True)
     parser.add_argument('--thread-id', type=int)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
-    parser.add_argument('--gemini', action='store_true', help='добавить Gemini после подтверждения бесплатного тарифа')
+    parser.add_argument('--gemini', action='store_true', help='добавить Gemini (только проект без биллинга)')
     parser.add_argument('--voices', nargs='+', choices=GEMINI_VOICES, default=['Charon', 'Fenrir'],
                         help='голоса Gemini для сравнения')
     parser.add_argument('--gemini-key-file', type=Path, help='закрытый файл ключа Gemini, права 0600')
@@ -140,8 +140,6 @@ def main(argv=None):
     if args.gemini:
         print('Используйте только ключ проекта Gemini Free Tier без включённого billing. '
               'Платный проект может списать деньги. Содержимое Free Tier может использоваться Google для улучшения продуктов.')
-        if input('Подтверждаете Free Tier без billing? Введите ДА: ').strip().upper() != 'ДА':
-            parser.error('Gemini не запущен: бесплатный тариф не подтверждён')
         try:
             key = (read_key_file(args.gemini_key_file) if args.gemini_key_file else
                    getpass.getpass('Ключ Gemini (не отображается): ').strip())

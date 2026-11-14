@@ -47,7 +47,7 @@ class AuditionTests(unittest.TestCase):
 
     def test_chosen_gemini_voices_only_and_no_key_prompt(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(t.os.environ, {'BOT_TOKEN': 'test'}), \
-             patch('builtins.input', return_value='ДА'), \
+             patch('builtins.input', side_effect=AssertionError('unexpected prompt')), \
              patch.object(t, 'read_key_file', return_value='test-key'), \
              patch.object(t, 'gemini_voice') as generate, patch.object(t, 'send_document') as send:
             result = t.main(['--chat-id', '123', '--output-dir', d, '--gemini', '--skip-edge',
