@@ -110,6 +110,20 @@ class RandomGuestRenderTests(unittest.TestCase):
         self.assertEqual(indices[-1],4)
         self.assertEqual(indices,sorted(indices))
 
+    def test_solo_hedgehog_has_visible_eye_frames_on_reported_scene(self):
+        # Exercise actual rendered eye pixels for a real 26.3-second scene,
+        # not just the scheduled look in its plan.
+        plan = planner.make_plan(631, 'c1f0b06b-6a36-42f9-8ab7-d2f6d87689e3')
+        self.assertEqual([g.name for g in plan.guests], ['hedgehog'])
+        self.assertEqual(plan.looks[0].start, 21.125)
+        with tempfile.TemporaryDirectory() as folder:
+            closed = Path(folder) / 'closed.png'
+            self.base_image.save(closed)
+            effect = renderer.make_effect(closed, None, plan)
+            before = Image.frombytes('RGB', self.size, effect(self.base, 20.0)).crop(renderer.EYE_BOX)
+            looking = Image.frombytes('RGB', self.size, effect(self.base, 21.5)).crop(renderer.EYE_BOX)
+            self.assertIsNotNone(ImageChops.difference(before, looking).getbbox())
+
     def test_missing_sensei_image_fails_only_if_sensei_was_selected(self):
         for seed in range(100):
             plan = planner.make_plan(240,seed)
