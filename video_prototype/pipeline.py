@@ -8,10 +8,17 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
+if __package__:
+    from . import gemini_tts
+else:
+    import gemini_tts
+
 HERE = Path(__file__).resolve().parent
+TTS_SECRET_VARS = ('GEMINI_TTS_KEYS', 'GEMINI_KEYS', 'GEMINI_API_KEYS', 'GEMINI_API_KEY')
 
 
 class TelegramRejected(RuntimeError):
@@ -115,15 +122,35 @@ def run(args):
         env.pop('BOT_TOKEN', None)
         env.pop('VIDEO_WORKER_KEY', None)
         env.pop('STORAGE_CHANNEL_ID', None)
+        for name in TTS_SECRET_VARS:
+            env.pop(name, None)
         env['HF_HOME'] = args.hf_home
         print(f'Папка результата: {work}', flush=True)
-        command = [
-            args.tera_python, str(HERE / 'tera_speech.py'), '--text', args.text,
-            '--output', str(audio),
-        ]
-        if args.seed is not None:
-            command.extend(['--seed', str(args.seed)])
-        subprocess.run(command, env=env, check=True)
+        provider = os.environ.get('BENDER_TTS_PROVIDER', 'tera').strip().lower()
+        if provider not in ('tera', 'gemini'):
+            raise ValueError('Неизвестный BENDER_TTS_PROVIDER')
+        generated = False
+        tts_started = time.monotonic()
+        if provider == 'gemini':
+            keys = gemini_tts.parse_keys(os.environ.get('GEMINI_TTS_KEYS', ''))
+            try:
+                start_index = int(os.environ.get('BENDER_TTS_START_INDEX', '0'))
+            except ValueError:
+                start_index = 0
+            try:
+                gemini_tts.synthesize(args.text, audio, keys, start_index)
+                generated = True
+            except gemini_tts.TTSFailure as exc:
+                print(f'Gemini TTS недоступен ({exc}); резерв Tera', flush=True)
+        if not generated:
+            command = [
+                args.tera_python, str(HERE / 'tera_speech.py'), '--text', args.text,
+                '--output', str(audio),
+            ]
+            if args.seed is not None:
+                command.extend(['--seed', str(args.seed)])
+            subprocess.run(command, env=env, check=True)
+        print(f'Озвучка: {time.monotonic() - tts_started:.1f} с (включая попытки и резерв)', flush=True)
 
     video = work / 'video.mp4'
     render_script = ('random_guest_render.py' if args.scene_seed is not None else
@@ -141,9 +168,11 @@ def run(args):
                         '--manifest', str(work / 'scene.json')])
     # Rendering does not need the Telegram token or the worker key.
     env = os.environ.copy()
-    for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID'):
+    for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', *TTS_SECRET_VARS):
         env.pop(name, None)
+    render_started = time.monotonic()
     subprocess.run(command, env=env, check=True)
+    print(f'Рендер: {time.monotonic() - render_started:.1f} с', flush=True)
     if args.no_send:
         print(f'Локальный результат: {video}')
         return
@@ -156,12 +185,14 @@ def run(args):
     # the worker can make this already-rendered file available for direct delivery.
     pending = work / 'storage-upload.pending'
     pending.write_text('pending\n', encoding='utf-8')
+    upload_started = time.monotonic()
     try:
         result = telegram_call(token, 'sendVideoNote', {'chat_id': args.channel_id}, video)
     except TelegramRejected:
         # A definite rejection must not be reported as an uncertain upload.
         pending.unlink(missing_ok=True)
         raise
+    print(f'Загрузка на склад: {time.monotonic() - upload_started:.1f} с', flush=True)
     file_id = result.get('video_note', {}).get('file_id')
     if not file_id:
         raise RuntimeError('Telegram не вернул file_id видеокружка')
