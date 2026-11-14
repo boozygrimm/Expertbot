@@ -21,6 +21,7 @@ from handlers.music import handle_music_request
 from handlers.web_search import smart_web_search
 from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
+from handlers.response_choice import offer_response_choice
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -414,6 +415,9 @@ async def handle_ex_request(message: types.Message):
                 target_persona = all_personas[0]
 
             if target_persona:
+                if target_persona.get('p_id') == 'bender' and await offer_response_choice(
+                        message, query, reply_source_text, kind='opinion', persona_id='bender'):
+                    return
                 await generate_persona_opinion(
                     message,
                     target_persona,
@@ -655,6 +659,13 @@ async def handle_ex_request(message: types.Message):
     if not await is_feature_enabled(message.chat.id, "assistant"):
         return
 
+    if await offer_response_choice(message, clean_query, reply_source_text):
+        return
+    return await generate_chat_response(message, clean_query, reply_source_text, all_personas)
+
+
+async def generate_chat_response(message, clean_query, reply_source_text, all_personas):
+    """Existing text response path, reused after a format selection."""
     if not all_personas:
         return await message.reply("В редакции сейчас нет ни одной личности. Проверь инициализацию personas.")
 

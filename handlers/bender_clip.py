@@ -301,7 +301,11 @@ async def video_reply(message: types.Message):
     query = parse_video_request(message.text)
     if query is None:
         return
-    context = reply_context(message)
+    return await enqueue_video_reply(message, query, reply_context(message))
+
+
+async def enqueue_video_reply(message, query, context):
+    """Enqueue the original request, also used after an interactive choice."""
     if not query and not context:
         await reply_text_safely(message, 'Укажи тему или ответь командой на сообщение.')
         return
