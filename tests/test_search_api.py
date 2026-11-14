@@ -109,12 +109,12 @@ class SearchFlowTests(unittest.IsolatedAsyncioTestCase):
         primary.assert_awaited_once()
         backup.assert_not_awaited()
         self.assertIn('Пифагор — философ.', answer)
-        self.assertIn('https://example.org/p', answer)
+        self.assertNotIn('https://example.org/p', answer)
 
-    async def test_bender_persona_request_keeps_facts_dates_and_real_sources(self):
+    async def test_bender_persona_request_keeps_facts_and_dates_without_links(self):
         result = [{'title': 'Телескоп', 'body': 'Факт о космосе',
                    'href': 'https://example.org/news', 'date': '2026-11-12'}]
-        ai = AsyncMock(return_value='STATUS: OK\nКожаные мешки, вот вам факт [1]!')
+        ai = AsyncMock(return_value='STATUS: OK\nКожаные мешки, вот вам факт от 2026-11-12 [1]!')
         with patch.object(search_api, 'fetch_tavily', new=AsyncMock(return_value=result)), \
              patch.object(search_api, 'fetch_firecrawl', new_callable=AsyncMock) as backup, \
              patch.object(web_search, 'generate_with_retry', new=ai):
@@ -127,7 +127,9 @@ class SearchFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('2026-11-12', prompt)
         self.assertTrue(answer.startswith('🤖 Бендер:'))
         self.assertIn('Кожаные мешки', answer)
-        self.assertIn('https://example.org/news — 2026-11-12', answer)
+        self.assertNotIn('https://example.org/news', answer)
+        self.assertNotIn('[1]', answer)
+        self.assertIn('2026-11-12', answer)
         self.assertNotIn('STATUS:', answer)
         backup.assert_not_awaited()
 

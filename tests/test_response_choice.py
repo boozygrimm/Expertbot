@@ -36,7 +36,7 @@ class ChoiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await choice.offer_response_choice(self.message, 'Что думаешь?', 'Контекст', **kwargs))
         markup = self.menu.edit_reply_markup.await_args.kwargs['reply_markup']
         self.assertEqual([b.text for row in markup.inline_keyboard for b in row],
-                         ['⭕ Кружок — наряднее', '💬 Текст — быстрее'])
+                         ['⭕ Кружок', '💬 Текст'])
         doc = await self.db.ex_response_choices.find_one({'chat_id': -1001})
         self.assertEqual(doc['menu_message_id'], 99)
         return doc

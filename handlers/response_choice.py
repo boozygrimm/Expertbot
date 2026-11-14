@@ -63,8 +63,8 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
         await message.reply('🤖 Не смог подготовить выбор ответа. Попробуй ещё раз позже.')
         return True
     builder = InlineKeyboardBuilder()
-    builder.button(text='⭕ Кружок — наряднее', callback_data=f'exfmt:{choice_id}:video')
-    builder.button(text='💬 Текст — быстрее', callback_data=f'exfmt:{choice_id}:text')
+    builder.button(text='⭕ Кружок', callback_data=f'exfmt:{choice_id}:video')
+    builder.button(text='💬 Текст', callback_data=f'exfmt:{choice_id}:text')
     builder.adjust(2)
     menu = None
     try:
