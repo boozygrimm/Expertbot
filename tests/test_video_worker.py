@@ -127,6 +127,19 @@ class WorkerHTTPTests(unittest.TestCase):
 
 
 class WorkerRunnerTests(unittest.TestCase):
+    def test_scene_worker_rejects_missing_assets_before_start(self):
+        with tempfile.TemporaryDirectory() as folder:
+            plate = Path(folder) / 'plate.png'; plate.touch()
+            env = {'VIDEO_WORKER_KEY': 'x' * 24, 'BOT_TOKEN': 'token', 'STORAGE_CHANNEL_ID': '-1001'}
+            cases = [('--random-guests',), ('--random-guests', '--smoke-plate', str(plate), '--portrait', str(plate.parent/'missing')),
+                     ('--portrait', str(plate))]
+            for options in cases:
+                with self.subTest(options=options), patch.dict(os.environ, env), \
+                     patch('sys.argv', ['worker', *options]), patch('sys.stderr'), \
+                     patch.object(worker, 'ThreadingHTTPServer') as server, self.assertRaises(SystemExit):
+                    worker.main()
+                server.assert_not_called()
+
     @patch('video_prototype.worker.subprocess.Popen')
     @patch.dict(os.environ, {'VIDEO_WORKER_KEY': 'worker-secret'})
     def test_runs_channel_only_and_returns_file_id(self, popen):
@@ -169,6 +182,24 @@ class WorkerRunnerTests(unittest.TestCase):
             worker.runner(root, -1001, 'bot-secret', 600, plate)(job_id, 'Текст')
             args = popen.call_args.args[0]
             self.assertEqual(args[args.index('--smoke-plate') + 1], str(plate))
+
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_scene_uses_job_uuid_and_configured_portrait(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); job_id = str(uuid.uuid4())
+            def complete(**kwargs):
+                output = root / job_id / 'clip-one'; output.mkdir(parents=True)
+                (output / 'result.json').write_text(json.dumps({'file_id': 'id'}))
+                return 0
+            popen.return_value.wait.side_effect = complete
+            plate = root / 'plate.png'; portrait = root / 'portrait.png'
+            result = worker.runner(root, -1001, 'secret', 600, plate, portrait)(job_id, 'text')
+            self.assertEqual(result, 'id')
+            args = popen.call_args.args[0]
+            self.assertEqual(args[args.index('--scene-seed') + 1], job_id)
+            self.assertEqual(args[args.index('--portrait') + 1], str(portrait))
+            self.assertEqual(args[args.index('--smoke-plate') + 1], str(plate))
+            self.assertNotIn('--seed', args)  # Do not alter the TTS seed.
 
     @patch('video_prototype.worker.subprocess.Popen')
     def test_uncertain_storage_upload_returns_existing_video_not_stale_one(self, popen):

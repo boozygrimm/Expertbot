@@ -213,7 +213,7 @@ def validate_request(data):
     return request_id, text
 
 
-def runner(output_dir, channel_id, token, timeout, smoke_plate=None):
+def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portrait=None):
     """Return a runner that isolates output/logs per UUID, using the existing CLI."""
     def run(request_id, text):
         job_dir = output_dir / request_id
@@ -229,6 +229,9 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None):
         ]
         if smoke_plate is not None:
             command.extend(['--smoke-plate', str(smoke_plate)])
+        if scene_portrait is not None:
+            # A UUID determines the scene without affecting the separate TTS seed.
+            command.extend(['--scene-seed', request_id, '--portrait', str(scene_portrait)])
         with (job_dir / 'worker.log').open('a', encoding='utf-8') as log:
             process = subprocess.Popen(command, env=environment, stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
@@ -348,6 +351,8 @@ def main():
     parser.add_argument('--port', type=int, default=8088)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/jobs'))
     parser.add_argument('--smoke-plate', type=Path, help='Бездымная подложка для анимации дыма')
+    parser.add_argument('--random-guests', action='store_true', help='Включить одобренную сцену со случайными гостями')
+    parser.add_argument('--portrait', type=Path, help='Сохранённый портрет сенсея')
     parser.add_argument('--timeout', type=int, default=600)
     args = parser.parse_args()
     secret = os.environ.get('VIDEO_WORKER_KEY', '')
@@ -363,8 +368,13 @@ def main():
         parser.error('Некорректный порт или таймаут')
     if args.smoke_plate is not None and not args.smoke_plate.is_file():
         parser.error('Бездымная подложка не найдена')
+    if args.random_guests and (not args.smoke_plate or not args.portrait or not args.portrait.is_file()):
+        parser.error('Для случайных гостей нужны бездымная подложка и доступный портрет сенсея')
+    if not args.random_guests and args.portrait:
+        parser.error('--portrait нужен только вместе с --random-guests')
     store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout,
-                            args.smoke_plate), cleanup_dir=args.output_dir)
+                            args.smoke_plate, args.portrait if args.random_guests else None),
+                     cleanup_dir=args.output_dir)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret))
     store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)

@@ -1,4 +1,5 @@
-"""Random-guest prototype for the existing scene; not connected to the worker."""
+"""Random-guest renderer for the existing scene, enabled explicitly by the pipeline."""
+import argparse
 import json
 from pathlib import Path
 from PIL import Image
@@ -108,3 +109,28 @@ def render(audio, closed, opened, blink, plate, portrait_path, output, seed, man
     print('План взглядов:', ', '.join(f'{x.guest} {x.start:.1f}–{x.end:.1f} с' for x in plan.looks) or 'нет', flush=True)
     base_render(audio, closed, opened, blink, plate, output, frame_effect=effect)
     return plan
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Рендер кружка со случайными гостями')
+    parser.add_argument('--audio', type=Path, required=True)
+    parser.add_argument('--closed', type=Path, required=True)
+    parser.add_argument('--open', dest='opened', type=Path, required=True)
+    parser.add_argument('--blink', type=Path, required=True)
+    parser.add_argument('--plate', type=Path, required=True)
+    parser.add_argument('--portrait', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--scene-seed', required=True)
+    parser.add_argument('--manifest', type=Path, required=True)
+    args = parser.parse_args(argv)
+    if not args.scene_seed.strip():
+        parser.error('Нужен непустой seed сцены')
+    for path in (args.audio, args.closed, args.opened, args.blink, args.plate, args.portrait):
+        if not path.is_file():
+            parser.error(f'Файл не найден: {path}')
+    render(args.audio, args.closed, args.opened, args.blink, args.plate,
+           args.portrait, args.output, args.scene_seed, args.manifest)
+
+
+if __name__ == '__main__':
+    main()
