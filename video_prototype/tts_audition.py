@@ -101,7 +101,10 @@ def main(argv=None):
     parser.add_argument('--thread-id', type=int)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--gemini', action='store_true', help='добавить Gemini после подтверждения бесплатного тарифа')
+    parser.add_argument('--skip-edge', action='store_true', help='только Gemini (вместе с --gemini)')
     args = parser.parse_args(argv)
+    if args.skip_edge and not args.gemini:
+        parser.error('--skip-edge требует --gemini')
     token = os.getenv('BOT_TOKEN', '').strip() or getpass.getpass('Токен бота (не отображается): ').strip()
     if not token:
         parser.error('Нужен токен бота')
@@ -118,8 +121,10 @@ def main(argv=None):
     work = Path(tempfile.mkdtemp(prefix='tts-audition-', dir=args.output_dir))
     print('Папка проб:', work, flush=True)
     print('Текст:', TEXT, flush=True)
-    samples = [('Edge Dmitry обычный', 'edge-dmitry.mp3', lambda p: edge_voice(TEXT, p)),
-               ('Edge Dmitry ниже', 'edge-dmitry-low.mp3', lambda p: edge_voice(TEXT, p, '-15Hz'))]
+    samples = [] if args.skip_edge else [
+        ('Edge Dmitry обычный', 'edge-dmitry.mp3', lambda p: edge_voice(TEXT, p)),
+        ('Edge Dmitry ниже', 'edge-dmitry-low.mp3', lambda p: edge_voice(TEXT, p, '-15Hz'))]
+
     if args.gemini:
         samples += [(f'Gemini {v}', f'gemini-{v.lower()}.wav',
                      lambda p, v=v: gemini_voice(key, v, TEXT, p)) for v in ('Charon', 'Fenrir')]
