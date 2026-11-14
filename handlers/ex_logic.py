@@ -555,7 +555,8 @@ async def handle_ex_request(message: types.Message):
                 e,
             )
             msg = await status_msg.edit_text(
-                "❌ Поиск сейчас не сработал. Возможно, недоступен поисковик или ИИ-обработка ответа."
+                "🤖 Бендер: ❌ Поиск сейчас не сработал. Возможно, недоступен поисковик "
+                "или ИИ-обработка ответа. Попробуй позже, кожаный мешок!"
             )
             asyncio.create_task(delete_after(msg, 15))
         return
