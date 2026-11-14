@@ -1,7 +1,8 @@
 """Image generation: Cloudflare FLUX.2 first, anonymous OVHcloud SDXL backup.
 
-Provider errors and prompts are never logged. No automatic retries: a timed-out
-request can still consume quota, and a retry could produce duplicate work.
+Only sanitized provider status, numeric codes and categories are
+logged; provider messages, prompts and credentials are never logged. No automatic
+retries: a timed-out request can still consume quota and duplicate work.
 """
 import asyncio
 import base64
@@ -22,6 +23,7 @@ CLOUDFLARE_URL = 'https://api.cloudflare.com/client/v4/accounts/{account}/ai/run
 OVH_URL = 'https://stable-diffusion-xl.endpoints.kepler.ai.cloud.ovh.net/api/text2image'
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_RESPONSE_BYTES = 17 * 1024 * 1024
+MAX_ERROR_BYTES = 16 * 1024
 # The documented limit is 2 requests/minute/IP/model. This is per process;
 # other processes or services sharing the IP can consume the same allowance.
 OVH_INTERVAL_SECONDS = 35
@@ -54,21 +56,82 @@ def _validate_image(data):
 
 async def _read_bounded(response, limit):
     chunks = bytearray()
-    async for chunk in response.content.iter_chunked(65536):
-        chunks.extend(chunk)
-        if len(chunks) > limit:
+    async for chunk in response.content.iter_chunked(min(65536, limit + 1)):
+        if len(chunk) > limit - len(chunks):
             raise ImageProviderError('response too large')
+        chunks.extend(chunk)
     return bytes(chunks)
 
 
-def _check_status(status, *, primary=False):
-    if status == 200:
-        return
-    # Do not use a different provider to work around content/policy or invalid
-    # request rejections. 401 means the primary is not accessible; 429, 408 and
-    # 5xx are quota/rate/service failures and can use the approved backup.
-    fallback = not primary or status in (401, 408, 429) or 500 <= status <= 599
-    raise ImageProviderError(f'HTTP {status}', fallback=fallback)
+def _check_status(status):
+    if status != 200:
+        raise ImageProviderError(f'HTTP {status}')
+
+
+# Codes from the Workers AI error reference: model unavailable/deprecated,
+# exhausted quota and insufficient capacity. A 3030 inference error is NOT a
+# moderation code: it can also describe unrelated failures.
+_CLOUDFLARE_AVAILABILITY_CODES = frozenset({5007, 5028, 3036, 3040})
+_FLAGGED_MESSAGES = ('your output has been flagged', 'your input has been flagged')
+
+
+def _cloudflare_failure(status, payload=None, *, body_state='parsed'):
+    """Build a safe error without retaining or logging untrusted provider text.
+
+    For ambiguous 400s (and success:false at 200), fail closed. An explicit
+    flagged message always wins over availability codes, including on 429/5xx.
+    """
+    errors = payload.get('errors') if isinstance(payload, dict) else None
+    codes = []
+    complete = isinstance(errors, list) and 0 < len(errors) <= 8
+    flagged = False
+    if isinstance(errors, list):
+        for item in errors[:8]:
+            if not isinstance(item, dict):
+                complete = False
+                continue
+            code = item.get('code')
+            if type(code) is int and 0 <= code <= 99999:
+                codes.append(code)
+            else:
+                complete = False
+            message = item.get('message')
+            if isinstance(message, str) and any(text in message.casefold() for text in _FLAGGED_MESSAGES):
+                flagged = True
+    if flagged:
+        category, fallback = 'flagged', False
+    elif status == 403:
+        category, fallback = 'forbidden', False
+    elif isinstance(errors, list) and len(errors) > 8:
+        category, fallback = 'unknown_rejection', False
+    elif status in (200, 400, 410) and complete and codes and all(
+        code in _CLOUDFLARE_AVAILABILITY_CODES for code in codes
+    ):
+        category, fallback = 'availability', True
+    elif status in (401, 408, 429) or 500 <= status <= 599:
+        category, fallback = 'http_availability', True
+    else:
+        category, fallback = 'unknown_rejection', False
+    # body_state and category are selected internally, never supplied by a server.
+    codes_text = ','.join(str(code) for code in codes) or 'none'
+    return ImageProviderError(
+        f'HTTP {status} category={category} codes={codes_text} body={body_state}',
+        fallback=fallback,
+    )
+
+
+async def _cloudflare_http_error(response):
+    try:
+        raw = await _read_bounded(response, MAX_ERROR_BYTES)
+    except ImageProviderError:
+        return _cloudflare_failure(response.status, body_state='too_large')
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+        return _cloudflare_failure(response.status, body_state='unreadable')
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError, RecursionError):
+        return _cloudflare_failure(response.status, body_state='malformed')
+    return _cloudflare_failure(response.status, payload)
 
 
 async def fetch_cloudflare(prompt):
@@ -86,9 +149,15 @@ async def fetch_cloudflare(prompt):
             async with session.post(CLOUDFLARE_URL.format(account=account), data=form,
                                     headers={'Authorization': f'Bearer {token}'},
                                     allow_redirects=False) as response:
-                _check_status(response.status, primary=True)
-                raw = await _read_bounded(response, MAX_RESPONSE_BYTES)
-    except (aiohttp.ClientError, asyncio.TimeoutError):
+                if response.status != 200:
+                    raise await _cloudflare_http_error(response)
+                try:
+                    raw = await _read_bounded(response, MAX_RESPONSE_BYTES)
+                except ImageProviderError:
+                    # This might be an oversized success:false rejection.
+                    raise ImageProviderError('HTTP 200 category=unknown_rejection codes=none body=too_large',
+                                             fallback=False) from None
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
         raise ImageProviderError('network error') from None
 
     # FLUX.2 returns JSON with base64 image. Also accept raw JPEG/PNG, as in
@@ -98,12 +167,12 @@ async def fetch_cloudflare(prompt):
     try:
         payload = json.loads(raw)
         if isinstance(payload, dict) and payload.get('success') is False:
-            raise ImageProviderError('request rejected', fallback=False)
+            raise _cloudflare_failure(200, payload)
         encoded = payload['result']['image']
         if not isinstance(encoded, str) or len(encoded) > MAX_RESPONSE_BYTES:
             raise ValueError('invalid payload')
         image = base64.b64decode(encoded, validate=True)
-    except (ValueError, TypeError, KeyError, binascii.Error):
+    except (ValueError, TypeError, KeyError, binascii.Error, RecursionError):
         raise ImageProviderError('invalid response') from None
     return _validate_image(image)
 

@@ -26,6 +26,7 @@ class ProviderHttpTests(unittest.IsolatedAsyncioTestCase):
         self.image = image_bytes()
         self.calls = []
         self.primary_status = 200
+        self.primary_raw = None
         self.primary_result = {'success': True, 'result': {'image': base64.b64encode(self.image).decode()}}
         self.backup_status = 200
         self.backup_image = self.image
@@ -52,6 +53,8 @@ class ProviderHttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def cloud(self, request):
         self.calls.append(('cloud', request.headers.get('Authorization'), await request.post()))
+        if self.primary_raw is not None:
+            return web.Response(body=self.primary_raw, status=self.primary_status)
         return web.json_response(self.primary_result, status=self.primary_status)
 
     async def ovh(self, request):
@@ -88,6 +91,103 @@ class ProviderHttpTests(unittest.IsolatedAsyncioTestCase):
         self.primary_result = {'success': False, 'errors': [{'code': 3030}]}
         self.assertIsNone(await providers.generate_image('test'))
         self.assertEqual([call[0] for call in self.calls], ['cloud'])
+
+    async def test_known_availability_codes_use_backup_even_on_400_or_200(self):
+        for status in (400, 200, 410):
+            for code in (5007, 5028, 3036, 3040):
+                with self.subTest(status=status, code=code):
+                    self.calls.clear()
+                    providers._last_ovh_request = None
+                    self.primary_status = status
+                    self.primary_result = {'success': False, 'errors': [{'code': code, 'message': 'technical failure'}]}
+                    with self.assertLogs(providers.logger, level='WARNING') as logs:
+                        self.assertEqual(await providers.generate_image('test'), self.image)
+                    self.assertEqual([call[0] for call in self.calls], ['cloud', 'ovh'])
+                    self.assertIn(f'HTTP {status} category=availability codes={code} body=parsed', logs.output[0])
+
+    async def test_unknown_invalid_and_mixed_codes_fail_closed(self):
+        cases = [
+            [{'code': 3030, 'message': 'inference failed'}],
+            [{'code': 5004}], [{'code': 3003}], [{'code': 99999}],
+            [{'code': 3036}, {'code': 3030}], [{'code': 3036}, {}],
+            [{'code': '3036'}], [{'code': True}], [{'code': 3036}] * 9,
+        ]
+        for errors in cases:
+            with self.subTest(errors=errors):
+                self.calls.clear()
+                self.primary_status = 400
+                self.primary_result = {'success': False, 'errors': errors}
+                self.assertIsNone(await providers.generate_image('test'))
+                self.assertEqual([call[0] for call in self.calls], ['cloud'])
+
+    async def test_flagged_never_falls_back_including_http_200_and_429(self):
+        for status in (200, 400, 429, 500):
+            with self.subTest(status=status):
+                self.calls.clear()
+                self.primary_status = status
+                self.primary_result = {'success': False, 'errors': [
+                    {'code': 3036, 'message': 'Your output has been flagged for review'},
+                ]}
+                with self.assertLogs(providers.logger, level='WARNING') as logs:
+                    self.assertIsNone(await providers.generate_image('test'))
+                self.assertIn('category=flagged', logs.output[0])
+                self.assertEqual([call[0] for call in self.calls], ['cloud'])
+
+    async def test_forbidden_and_redirect_never_fall_back_on_availability_code(self):
+        for status in (302, 403):
+            self.calls.clear()
+            self.primary_status = status
+            self.primary_result = {'errors': [{'code': 3036}]}
+            self.assertIsNone(await providers.generate_image('test'))
+            self.assertEqual([call[0] for call in self.calls], ['cloud'])
+
+    async def test_untrusted_error_content_never_reaches_log(self):
+        secret = 'private-prompt-and-token-DO-NOT-LOG'
+        self.primary_status = 400
+        self.primary_result = {'success': False, 'errors': [
+            {'code': 3030, 'message': secret, 'other': secret},
+            {'code': secret, 'message': secret},
+        ], 'prompt': secret}
+        with self.assertLogs(providers.logger, level='WARNING') as logs:
+            self.assertIsNone(await providers.generate_image(secret))
+        self.assertNotIn(secret, str(logs.output))
+        self.assertIn('HTTP 400 category=unknown_rejection codes=3030 body=parsed', logs.output[0])
+
+    async def test_malformed_and_oversized_error_body_fail_closed(self):
+        self.primary_status = 400
+        for body, state in ((b'not json secret', 'malformed'), (b'x' * 100, 'too_large')):
+            self.calls.clear()
+            self.primary_raw = body
+            with patch.object(providers, 'MAX_ERROR_BYTES', 20), self.assertLogs(providers.logger, level='WARNING') as logs:
+                self.assertIsNone(await providers.generate_image('test'))
+            self.assertEqual([call[0] for call in self.calls], ['cloud'])
+            self.assertIn(f'body={state}', logs.output[0])
+            self.assertNotIn('secret', str(logs.output))
+
+    async def test_oversized_200_response_fails_closed(self):
+        self.primary_raw = b'x' * 100
+        with patch.object(providers, 'MAX_RESPONSE_BYTES', 20), self.assertLogs(providers.logger, level='WARNING') as logs:
+            self.assertIsNone(await providers.generate_image('test'))
+        self.assertEqual([call[0] for call in self.calls], ['cloud'])
+        self.assertIn('body=too_large', logs.output[0])
+
+    async def test_deeply_nested_error_is_malformed(self):
+        self.primary_status = 400
+        self.primary_raw = b'[' * 1200 + b'0' + b']' * 1200
+        with self.assertLogs(providers.logger, level='WARNING') as logs:
+            self.assertIsNone(await providers.generate_image('test'))
+        self.assertIn('body=malformed', logs.output[0])
+        self.assertEqual([call[0] for call in self.calls], ['cloud'])
+
+    async def test_error_body_read_failure_keeps_status_policy(self):
+        for status, fallback in ((400, False), (403, False), (429, True)):
+            response = SimpleNamespace(status=status)
+            for error in (asyncio.TimeoutError(), OSError('secret'), providers.aiohttp.ClientPayloadError('secret')):
+                with patch.object(providers, '_read_bounded', new=AsyncMock(side_effect=error)):
+                    result = await providers._cloudflare_http_error(response)
+                self.assertEqual(result.fallback, fallback)
+                self.assertIn('body=unreadable', str(result))
+                self.assertNotIn('secret', str(result))
 
     async def test_network_failure_uses_backup(self):
         with patch.object(providers, 'fetch_cloudflare', new=AsyncMock(
