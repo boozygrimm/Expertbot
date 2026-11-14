@@ -241,6 +241,80 @@ async def _legacy_search(query: str) -> str:
     return _render_result(answer, context, fallback=True, unverified=(status == 'unknown'))
 
 
+def _take_text(text, limit):
+    """Split conservatively by UTF-16 units without losing or breaking characters."""
+    units = 0
+    end = 0
+    for character in text:
+        size = 2 if ord(character) > 0xFFFF else 1
+        if units + size > limit:
+            break
+        units += size
+        end += 1
+    if end < len(text):
+        # Prefer a readable boundary, but never discard whitespace.
+        cut = max(text.rfind('\n', 0, end), text.rfind(' ', 0, end))
+        if cut >= end // 2:
+            end = cut + 1
+    return text[:end], text[end:]
+
+
+async def _show_text_in_status(message, status, text, *, private=False, note=''):
+    """Use status plus follow-ups for text that exceeds Telegram's limit."""
+    first, rest = _take_text(text, 4096 - len(note.encode('utf-16-le')) // 2)
+    await status.edit_text(note + first, parse_mode=None)
+    send_text = message.answer if private else message.reply
+    while rest:
+        chunk, rest = _take_text(rest, 4096)
+        await send_text(chunk, parse_mode=None)
+
+
+async def deliver_search_result(message, status, text, image, *, private=False):
+    """Photo+caption when possible; preserve text on failed/uncertain delivery.
+
+    The URL is handed to Telegram, not downloaded from arbitrary hosts by Render.
+    A lost send acknowledgement can mean the photo was delivered: never resend it.
+    """
+    if not image or '❌' in text:
+        await _show_text_in_status(message, status, text, private=private)
+        return 'text'
+
+    note = '🖼 Иллюстрация из интернета, её точность не проверена.\n\n'
+    first, remaining = _take_text(text, 1024 - len(note.encode('utf-16-le')) // 2)
+    send_photo = message.answer_photo if private else message.reply_photo
+    try:
+        await send_photo(photo=image, caption=note + first, parse_mode=None)
+    except Exception as exc:
+        logger.warning('Отправка картинки поиска не подтверждена: %s', type(exc).__name__)
+        # Keep the answer even if the photo was rejected. If its acknowledgement
+        # was lost the caption may also be visible; don't retry the photo.
+        await _show_text_in_status(message, status, text, private=private)
+        return 'photo_unconfirmed'
+
+    send_text = message.answer if private else message.reply
+    while remaining:
+        chunk, rest = _take_text(remaining, 4096)
+        try:
+            await send_text(chunk, parse_mode=None)
+        except Exception as exc:
+            logger.warning('Отправка продолжения поиска не подтверждена: %s', type(exc).__name__)
+            # A lost acknowledgement can result in duplicate text, not a photo.
+            try:
+                await _show_text_in_status(
+                    message, status, remaining, private=private,
+                    note='⚠️ Продолжение (отправка не подтверждена):\n',
+                )
+            except Exception as display_error:
+                logger.warning('Не удалось показать продолжение поиска: %s', type(display_error).__name__)
+            return 'continuation_unconfirmed'
+        remaining = rest
+    try:
+        await status.delete()
+    except Exception as exc:
+        logger.warning('Не удалось удалить статус поиска: %s', type(exc).__name__)
+    return 'photo'
+
+
 @router.message(Command('search_image_probe'))
 async def cmd_search_image_probe(message: types.Message, command: CommandObject):
     """Private admin probe, independent of the normal-search rollout flag."""
@@ -252,18 +326,14 @@ async def cmd_search_image_probe(message: types.Message, command: CommandObject)
         return
     query = (command.args or 'фотографии планеты Марс').strip()[:500]
     async with _image_probe_lock:
-        await message.answer('Проверяю поиск картинки. Проба расходует квоту поиска, но не очки и не попытки рисования.')
+        status = await message.answer('Проверяю поиск картинки. Проба расходует квоту поиска, но не очки и не попытки рисования.')
         try:
             text, image = await smart_web_search_with_image(query)
-            await message.answer(text)
-            if image:
-                try:
-                    await message.answer_photo(photo=image, caption='Иллюстрация из интернета; её точность не проверена.')
-                except Exception as exc:
-                    logger.warning('Отправка картинки поиска не подтверждена: %s', type(exc).__name__)
-                    await message.answer('⚠️ Отправка картинки не подтверждена. Проверь чат.')
-            else:
+            outcome = await deliver_search_result(message, status, text, image, private=True)
+            if outcome == 'text':
                 await message.answer('Подходящая картинка не найдена или не выбрана.')
+            elif outcome in ('photo_unconfirmed', 'continuation_unconfirmed'):
+                await message.answer('⚠️ Отправка не подтверждена. Проверь чат перед повтором.')
         except Exception as exc:
             logger.warning('Проба картинки поиска не удалась: %s', type(exc).__name__)
             await message.answer('❌ Не удалось выполнить проверку поиска.')

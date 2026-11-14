@@ -18,7 +18,7 @@ from handlers.anachronism import start_anachronism
 from handlers.pole_chudes import start_game
 from handlers.reports import parse_gossip_count, send_persona_selection
 from handlers.music import handle_music_request
-from handlers.web_search import smart_web_search, smart_web_search_with_image
+from handlers.web_search import smart_web_search, smart_web_search_with_image, deliver_search_result
 from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
 from handlers.response_choice import offer_response_choice
@@ -547,16 +547,12 @@ async def handle_ex_request(message: types.Message):
                 result, image = await smart_web_search_with_image(clean_query)
             else:
                 result = await smart_web_search(clean_query)
-            msg = await status_msg.edit_text(result)
-            if "❌" in result:
-                asyncio.create_task(delete_after(msg, 15))
-            elif image:
-                try:
-                    await message.reply_photo(photo=image, caption='Иллюстрация из интернета; её точность не проверена.')
-                except Exception as exc:
-                    # Telegram may have delivered despite a lost acknowledgement.
-                    # Never retry and never expose the image URL or provider text.
-                    logger.warning('Отправка картинки поиска не подтверждена: %s', type(exc).__name__)
+            if image and '❌' not in result:
+                await deliver_search_result(message, status_msg, result, image)
+            else:
+                msg = await status_msg.edit_text(result)
+                if "❌" in result:
+                    asyncio.create_task(delete_after(msg, 15))
         except Exception as e:
             logger.error(
                 "Search error: chat_id=%s user_id=%s query=%s error=%s",
