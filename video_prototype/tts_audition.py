@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import stat
 import subprocess
 import sys
 import tempfile
@@ -95,14 +96,34 @@ def send_document(token, chat_id, thread_id, path, caption):
         raise RuntimeError('Telegram не подтвердил отправку. Проверьте чат перед повтором.') from None
 
 
+def read_key_file(path):
+    """Read a private regular file, never following a symlink."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as f:
+            info = os.fstat(f.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                    or info.st_mode & 0o077 or info.st_size > 4096):
+                raise ValueError('Файл ключа должен принадлежать текущему пользователю и иметь права 0600')
+            key = f.read(4097).decode('utf-8').strip()
+            if len(key) > 4096 or not key:
+                raise ValueError('Файл ключа пустой или слишком большой')
+            return key
+    except (OSError, UnicodeError):
+        raise ValueError('Не удалось безопасно прочитать файл ключа') from None
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--chat-id', type=int, required=True)
     parser.add_argument('--thread-id', type=int)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--gemini', action='store_true', help='добавить Gemini после подтверждения бесплатного тарифа')
+    parser.add_argument('--gemini-key-file', type=Path, help='закрытый файл ключа Gemini, права 0600')
     parser.add_argument('--skip-edge', action='store_true', help='только Gemini (вместе с --gemini)')
     args = parser.parse_args(argv)
+    if args.gemini_key_file and not args.gemini:
+        parser.error('--gemini-key-file требует --gemini')
     if args.skip_edge and not args.gemini:
         parser.error('--skip-edge требует --gemini')
     token = os.getenv('BOT_TOKEN', '').strip() or getpass.getpass('Токен бота (не отображается): ').strip()
@@ -114,7 +135,11 @@ def main(argv=None):
               'Платный проект может списать деньги. Содержимое Free Tier может использоваться Google для улучшения продуктов.')
         if input('Подтверждаете Free Tier без billing? Введите ДА: ').strip().upper() != 'ДА':
             parser.error('Gemini не запущен: бесплатный тариф не подтверждён')
-        key = getpass.getpass('Ключ Gemini (не отображается): ').strip()
+        try:
+            key = (read_key_file(args.gemini_key_file) if args.gemini_key_file else
+                   getpass.getpass('Ключ Gemini (не отображается): ').strip())
+        except ValueError as exc:
+            parser.error(str(exc))
         if not key:
             parser.error('Нужен ключ Gemini')
     args.output_dir.mkdir(parents=True, exist_ok=True)

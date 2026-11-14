@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import os
 import tempfile
 import unittest
 import wave
@@ -30,6 +31,19 @@ class AuditionTests(unittest.TestCase):
             path = Path(d) / 'a.wav'
             with self.assertRaises(RuntimeError): t.gemini_voice('key', 'Fenrir', 'текст', path)
             self.assertFalse(path.exists())
+
+    def test_key_file_must_be_private_and_regular(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'key'
+            path.write_text('secret-value\n')
+            path.chmod(0o600)
+            self.assertEqual(t.read_key_file(path), 'secret-value')
+            path.chmod(0o644)
+            with self.assertRaises(ValueError): t.read_key_file(path)
+            path.chmod(0o600)
+            link = Path(d) / 'link'
+            link.symlink_to(path)
+            with self.assertRaises(ValueError): t.read_key_file(link)
 
     def test_send_failure_stops_additional_samples(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(t.os.environ, {'BOT_TOKEN': 'test'}), \
