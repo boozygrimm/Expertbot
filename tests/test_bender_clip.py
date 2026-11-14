@@ -187,6 +187,45 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('возможно, он уже пришёл', self.bot.send_message.await_args.kwargs['text'])
         self.assertFalse(self.queue.items)
 
+    async def test_uncertain_storage_sends_saved_video_once_to_original_topic(self):
+        from bender_worker_client import WorkerUploadUncertain
+        item = await self.submit()
+        self.client.render.side_effect = WorkerUploadUncertain()
+        self.client.fetch_uncertain_video = AsyncMock(return_value=b'video')
+        async def send(**kwargs):
+            self.assertEqual(self.queue.items[0]['stage'], 'sending')
+        self.bot.send_video_note.side_effect = send
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.client.render.assert_awaited_once()
+        self.client.fetch_uncertain_video.assert_awaited_once_with(item['request_id'])
+        sent = self.bot.send_video_note.await_args.kwargs
+        self.assertEqual(sent['video_note'].data, b'video')
+        self.assertEqual(sent['chat_id'], -1001)
+        self.assertEqual(sent['message_thread_id'], 7)
+        self.assertEqual(sent['reply_parameters'].message_id, 42)
+        self.assertFalse(self.queue.items)
+
+    async def test_fallback_download_failure_never_sends_video(self):
+        from bender_worker_client import WorkerUploadUncertain, WorkerUnavailable
+        item = await self.submit()
+        self.client.render.side_effect = WorkerUploadUncertain()
+        self.client.fetch_uncertain_video = AsyncMock(side_effect=WorkerUnavailable())
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.bot.send_video_note.assert_not_awaited()
+        self.assertIn('не смог получить', self.bot.send_message.await_args.kwargs['text'])
+        self.assertFalse(self.queue.items)
+
+    async def test_fallback_recovery_and_ambiguous_send_never_repeat(self):
+        item = await self.submit()
+        self.queue.items[0].update(stage='fallback_ready', answer='Ответ')
+        self.client.fetch_uncertain_video = AsyncMock(return_value=b'video')
+        self.bot.send_video_note.side_effect = OSError('connection lost')
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.client.render.assert_not_awaited()
+        self.bot.send_video_note.assert_awaited_once()
+        self.assertIn('возможно, он уже пришёл', self.bot.send_message.await_args.kwargs['text'])
+        self.assertFalse(self.queue.items)
+
     async def test_failed_worker_falls_back_to_text(self):
         item = await self.submit()
         self.client.render.side_effect = WorkerFailed('internal')

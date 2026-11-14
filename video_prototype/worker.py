@@ -26,6 +26,14 @@ MAX_BODY = 8192
 MAX_JOBS = 100
 RETENTION_SECONDS = 30 * 24 * 60 * 60
 CLEANUP_INTERVAL_SECONDS = 24 * 60 * 60
+MAX_VIDEO_BYTES = 50 * 1024 * 1024
+
+
+class UploadUncertain(Exception):
+    """Storage upload has no reliable response; video was already rendered."""
+    def __init__(self, video_path):
+        super().__init__('Результат загрузки на склад неизвестен')
+        self.video_path = Path(video_path)
 
 
 class BusyError(Exception):
@@ -70,6 +78,9 @@ class JobStore:
             if not isinstance(file_id, str) or not file_id:
                 raise ValueError('Не получен file_id')
             outcome = {'status': 'done', 'file_id': file_id}
+        except UploadUncertain as exc:
+            print(f'Задача {request_id}: ответ склада неизвестен, видео сохранено', flush=True)
+            outcome = {'status': 'upload_uncertain', '_video_path': exc.video_path}
         except Exception as exc:
             # Never echo subprocess arguments, HTTP URLs, tokens, or input into the API.
             print(f'Задача {request_id}: ошибка {type(exc).__name__}; проверь журнал задачи и консоль сервиса', flush=True)
@@ -163,6 +174,26 @@ class JobStore:
             job = self.jobs.get(request_id)
             return self._public(request_id, job) if job else None
 
+    def read_uncertain_video(self, request_id):
+        """Only expose a completed local video for a job in the uncertain state."""
+        with self.lock:
+            job = self.jobs.get(request_id)
+            if not job or job.get('status') != 'upload_uncertain':
+                return None
+            path = job['_video_path']
+        try:
+            # The path comes only from the runner, never from the request.
+            # Do not follow a final symlink and do not return arbitrarily large files.
+            fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+            with os.fdopen(fd, 'rb') as source:
+                info = os.fstat(source.fileno())
+                if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= MAX_VIDEO_BYTES:
+                    return None
+                data = source.read(MAX_VIDEO_BYTES + 1)
+            return data if 0 < len(data) <= MAX_VIDEO_BYTES else None
+        except OSError:
+            return None
+
 
 def validate_request(data):
     if not isinstance(data, dict) or set(data) != {'request_id', 'text'}:
@@ -187,6 +218,8 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None):
     def run(request_id, text):
         job_dir = output_dir / request_id
         job_dir.mkdir(parents=True, exist_ok=True)
+        # Never recover a stale clip from an earlier execution with the same UUID.
+        previous = set(job_dir.glob('clip-*'))
         environment = os.environ.copy()
         environment.pop('VIDEO_WORKER_KEY', None)
         environment['BOT_TOKEN'] = token
@@ -208,15 +241,32 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None):
                 except ProcessLookupError:
                     pass
                 process.wait()
-                raise RuntimeError('Превышено время выполнения') from None
-            if result != 0:
-                raise RuntimeError('Процесс завершился с ошибкой')
-        # The CLI creates a fresh clip directory for this invocation.
-        results = sorted(job_dir.glob('clip-*/result.json'), key=lambda p: p.stat().st_mtime_ns)
-        if not results:
-            raise RuntimeError('Не найден результат загрузки')
-        record = json.loads(results[-1].read_text(encoding='utf-8'))
-        return record['file_id']
+                result = None
+        # Only inspect clip folders made during this invocation. A complete
+        # result takes precedence even if the subprocess subsequently failed.
+        current = [p for p in job_dir.glob('clip-*') if p not in previous and p.is_dir() and not p.is_symlink()]
+        for clip in current:
+            try:
+                record = json.loads((clip / 'result.json').read_text(encoding='utf-8'))
+                file_id = record.get('file_id')
+                if isinstance(file_id, str) and file_id:
+                    return file_id
+            except (OSError, ValueError, AttributeError):
+                pass
+        # A marker is written only after rendering and immediately before the
+        # storage upload. The destination chat has not been contacted here.
+        for clip in current:
+            video = clip / 'video.mp4'
+            try:
+                info = video.lstat()
+                marker = (clip / 'storage-upload.pending').lstat()
+                if stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_VIDEO_BYTES and stat.S_ISREG(marker.st_mode):
+                    raise UploadUncertain(video)
+            except OSError:
+                continue
+        if result is None:
+            raise RuntimeError('Превышено время выполнения')
+        raise RuntimeError('Процесс завершился с ошибкой или результат отсутствует')
     return run
 
 
@@ -250,6 +300,18 @@ def handler_for(store, secret):
             path = urlsplit(self.path).path
             if path == '/health':
                 return self.respond(200, {'status': 'ok'})
+            video_match = re.fullmatch(r'/jobs/([0-9a-f-]{36})/video', path)
+            if video_match:
+                data = store.read_uncertain_video(video_match.group(1))
+                if data is None:
+                    return self.respond(404, {'error': 'not_found'})
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp4')
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(data)
+                return
             match = re.fullmatch(r'/jobs/([0-9a-f-]{36})', path)
             if not match:
                 return self.respond(404, {'error': 'not_found'})

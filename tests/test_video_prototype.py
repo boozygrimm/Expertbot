@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+import urllib.error
 import wave
 from pathlib import Path
 from unittest.mock import patch
@@ -92,6 +93,29 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(fields['message_thread_id'], 7)
         self.assertEqual(json.loads(fields['reply_parameters']), {'message_id': 42})
 
+    @patch('video_prototype.pipeline.subprocess.run')
+    @patch('video_prototype.pipeline.telegram_call')
+    @patch.dict('os.environ', {'BOT_TOKEN': 'test-token'})
+    def test_uncertain_storage_keeps_video_and_pending_marker(self, telegram, subprocess_run):
+        subprocess_run.side_effect = self.fake_render
+        telegram.side_effect = RuntimeError('connection lost')
+        with self.assertRaisesRegex(RuntimeError, 'connection lost'):
+            pipeline.run(self.args('--channel-id', '-1001'))
+        self.assertTrue(next(self.output.glob('clip-*/video.mp4')).is_file())
+        self.assertTrue(next(self.output.glob('clip-*/storage-upload.pending')).is_file())
+        self.assertEqual(list(self.output.glob('clip-*/result.json')), [])
+        self.assertEqual(telegram.call_count, 1)
+
+    @patch('video_prototype.pipeline.subprocess.run')
+    @patch('video_prototype.pipeline.telegram_call')
+    @patch.dict('os.environ', {'BOT_TOKEN': 'test-token'})
+    def test_definite_rejection_does_not_leave_pending_marker(self, telegram, subprocess_run):
+        subprocess_run.side_effect = self.fake_render
+        telegram.side_effect = pipeline.TelegramRejected('rejected')
+        with self.assertRaises(pipeline.TelegramRejected):
+            pipeline.run(self.args('--channel-id', '-1001'))
+        self.assertEqual(list(self.output.glob('clip-*/storage-upload.pending')), [])
+
     def test_reply_needs_chat(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.args('--channel-id', '-1001', '--reply-to-message-id', '42')
@@ -148,6 +172,23 @@ class PipelineTests(unittest.TestCase):
     def test_must_choose_channel_or_local_only(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.args()
+
+    @patch('video_prototype.pipeline.urllib.request.urlopen')
+    def test_telegram_http_rejection_and_ambiguous_failure(self, urlopen):
+        def http_error(code):
+            return urllib.error.HTTPError('https://example.test', code, 'error', {},
+                                          io.BytesIO(json.dumps({'ok': False, 'error_code': code}).encode()))
+        for code, expected in [(400, pipeline.TelegramRejected), (429, pipeline.TelegramRejected),
+                               (408, RuntimeError), (500, RuntimeError)]:
+            urlopen.side_effect = http_error(code)
+            with self.subTest(code=code), self.assertRaises(expected) as caught:
+                pipeline.telegram_call('token', 'sendVideoNote', {'chat_id': -1})
+            if code in (408, 500):
+                self.assertNotIsInstance(caught.exception, pipeline.TelegramRejected)
+        urlopen.side_effect = TimeoutError()
+        with self.assertRaises(RuntimeError) as caught:
+            pipeline.telegram_call('token', 'sendVideoNote', {'chat_id': -1})
+        self.assertNotIsInstance(caught.exception, pipeline.TelegramRejected)
 
     @patch('video_prototype.pipeline.urllib.request.urlopen')
     def test_upload_multipart(self, urlopen):
