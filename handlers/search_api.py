@@ -5,6 +5,8 @@ request URLs, API keys, or provider error bodies.
 """
 import os
 import re
+import ipaddress
+from urllib.parse import urlsplit
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
@@ -81,13 +83,49 @@ def _normalize(items, *, days):
     return result
 
 
-async def fetch_tavily(query, *, news, days):
+def _image_candidates(data):
+    """Take only described public HTTPS image URLs; never fetch them on Render."""
+    images = data.get('images', []) if isinstance(data, dict) else []
+    if not isinstance(images, list):
+        return []
+    candidates = []
+    for entry in images[:20]:
+        if not isinstance(entry, dict):
+            continue
+        url, description = entry.get('url'), entry.get('description')
+        if not isinstance(url, str) or not isinstance(description, str):
+            continue
+        if not description.strip() or len(url) > 2048 or any(c.isspace() or ord(c) < 32 for c in url):
+            continue
+        try:
+            parts = urlsplit(url)
+            host = parts.hostname
+            if parts.scheme != 'https' or not host or parts.username or parts.password or parts.port not in (None, 443):
+                continue
+            if host.lower() == 'localhost' or host.lower().endswith(('.localhost', '.local', '.internal')) or '.' not in host:
+                continue
+            try:
+                if not ipaddress.ip_address(host).is_global:
+                    continue
+            except ValueError:
+                pass
+        except ValueError:
+            continue
+        candidates.append({'url': url, 'description': description.strip()[:300]})
+        if len(candidates) == 5:
+            break
+    return candidates
+
+
+async def fetch_tavily(query, *, news, days, include_images=False):
     key = os.getenv('TAVILY_API_KEY', '').strip()
     if not key:
         raise SearchProviderError('not configured')
     payload = {'query': query, 'search_depth': 'basic', 'auto_parameters': False,
                'max_results': 5, 'topic': 'news' if news else 'general',
                'include_answer': False, 'include_raw_content': False}
+    if include_images:
+        payload.update(include_images=True, include_image_descriptions=True, safe_search=True)
     if days is not None:
         payload.update(time_range='day' if days == 1 else 'month', include_published_date=True,
                        filter_by_published_date=True)
@@ -102,7 +140,8 @@ async def fetch_tavily(query, *, news, days):
         raise SearchProviderError('invalid response')
     items = [{'title': x.get('title'), 'body': x.get('content'), 'href': x.get('url'),
               'date': x.get('published_date')} for x in data['results'] if isinstance(x, dict)]
-    return _normalize(items, days=days)
+    results = _normalize(items, days=days)
+    return (results, _image_candidates(data)) if include_images else results
 
 
 async def fetch_firecrawl(query, *, news, days):
