@@ -45,6 +45,17 @@ class AuditionTests(unittest.TestCase):
             link.symlink_to(path)
             with self.assertRaises(ValueError): t.read_key_file(link)
 
+    def test_chosen_gemini_voices_only_and_no_key_prompt(self):
+        with tempfile.TemporaryDirectory() as d, patch.dict(t.os.environ, {'BOT_TOKEN': 'test'}), \
+             patch('builtins.input', return_value='ДА'), \
+             patch.object(t, 'read_key_file', return_value='test-key'), \
+             patch.object(t, 'gemini_voice') as generate, patch.object(t, 'send_document') as send:
+            result = t.main(['--chat-id', '123', '--output-dir', d, '--gemini', '--skip-edge',
+                             '--gemini-key-file', str(Path(d) / 'key'), '--voices', 'Orus', 'Algenib'])
+            self.assertEqual(result, 0)
+            self.assertEqual([call.args[1] for call in generate.call_args_list], ['Orus', 'Algenib'])
+            self.assertEqual(send.call_count, 2)
+
     def test_send_failure_stops_additional_samples(self):
         with tempfile.TemporaryDirectory() as d, patch.dict(t.os.environ, {'BOT_TOKEN': 'test'}), \
              patch.object(t, 'edge_voice', side_effect=lambda text, path: path.write_bytes(b'a')), \

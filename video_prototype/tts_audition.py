@@ -19,6 +19,11 @@ TEXT = ('Ну что, мясные мешки, рабочий день зако�
         'Я бы посоветовал вам луна-парк, но лучше налейте чего-нибудь вкусного и выдохните. '
         'А завтра снова спасайте мир. Или хотя бы не забудьте зарядить мой блестящий металлический зад!')
 MODEL = 'gemini-3.8-flash-tts'
+GEMINI_VOICES = ('Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus',
+                 'Aoede', 'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel',
+                 'Algieba', 'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia',
+                 'Achernar', 'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima', 'Achird',
+                 'Zubenelgenubi', 'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat')
 
 
 def edge_voice(text, path, pitch="+0Hz"):
@@ -119,6 +124,8 @@ def main(argv=None):
     parser.add_argument('--thread-id', type=int)
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--gemini', action='store_true', help='добавить Gemini после подтверждения бесплатного тарифа')
+    parser.add_argument('--voices', nargs='+', choices=GEMINI_VOICES, default=['Charon', 'Fenrir'],
+                        help='голоса Gemini для сравнения')
     parser.add_argument('--gemini-key-file', type=Path, help='закрытый файл ключа Gemini, права 0600')
     parser.add_argument('--skip-edge', action='store_true', help='только Gemini (вместе с --gemini)')
     args = parser.parse_args(argv)
@@ -152,7 +159,7 @@ def main(argv=None):
 
     if args.gemini:
         samples += [(f'Gemini {v}', f'gemini-{v.lower()}.wav',
-                     lambda p, v=v: gemini_voice(key, v, TEXT, p)) for v in ('Charon', 'Fenrir')]
+                     lambda p, v=v: gemini_voice(key, v, TEXT, p)) for v in args.voices]
     successes = 0
     for label, filename, generate in samples:
         print(f'Готовлю {label}...', flush=True)
