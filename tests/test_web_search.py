@@ -13,7 +13,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         result = [{'title': 'Марс', 'body': 'Планета', 'href': 'https://example.org/mars'}]
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=result), \
              patch.object(web_search, '_fetch_wikipedia', new_callable=AsyncMock) as wiki, \
-             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='Марс — планета.')):
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: OK\nМарс — планета.')):
             answer = await web_search.smart_web_search('Марс')
         wiki.assert_not_awaited()
         self.assertIn('Марс — планета', answer)
@@ -24,7 +24,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         result = [{'title': 'Пифагор', 'body': 'Философ', 'href': 'https://ru.wikipedia.org/?curid=1'}]
         with patch.object(web_search, '_fetch_ddgs_raw', side_effect=OSError('network')), \
              patch.object(web_search, '_fetch_wikipedia', new=AsyncMock(return_value=result)) as wiki, \
-             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='Пифагор — философ.')):
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: OK\nПифагор — философ.')):
             answer = await web_search.smart_web_search('Пифагор')
         wiki.assert_awaited_once_with('Пифагор')
         self.assertIn('Википедии', answer)
@@ -34,7 +34,7 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
     async def test_primary_empty_uses_fallback_too(self):
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=[]), \
              patch.object(web_search, '_fetch_wikipedia', new=AsyncMock(return_value=[{'title': 'A', 'body': 'B'}])) as wiki, \
-             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='Ответ')):
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: OK\nОтвет')):
             answer = await web_search.smart_web_search('тест')
         wiki.assert_awaited_once()
         self.assertIn('Википедии', answer)
@@ -59,14 +59,56 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
              patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value=None)):
             answer = await web_search.smart_web_search('Марс')
         self.assertIn('Планета', answer)
-        self.assertIn('Не смог обработать', answer)
+        self.assertIn('Не удалось проверить', answer)
 
     async def test_output_capped(self):
         result = [{'title': 'A', 'body': 'B', 'href': 'https://example.org/' + 'x' * 300}] * 5
         with patch.object(web_search, '_fetch_ddgs_raw', return_value=result), \
-             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='x' * 10000)):
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: OK\n' + 'x' * 10000)):
             answer = await web_search.smart_web_search('тест')
         self.assertLessEqual(len(answer), 4096)
+
+    async def test_irrelevant_primary_uses_wikipedia_not_unrelated_sources(self):
+        unrelated = [{'title': 'Tankstelle', 'body': 'Benzinpreise',
+                      'href': 'https://de.wikipedia.org/wiki/Tankstelle'}]
+        wiki_results = [{'title': 'Пифагор', 'body': 'Древнегреческий философ',
+                         'href': 'https://ru.wikipedia.org/?curid=1'}]
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=unrelated), \
+             patch.object(web_search, '_fetch_wikipedia', new=AsyncMock(return_value=wiki_results)) as wiki, \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(
+                 side_effect=['STATUS: NO', 'STATUS: OK\nПифагор — философ.'])) as ai:
+            answer = await web_search.smart_web_search('Пифагор')
+        wiki.assert_awaited_once_with('Пифагор')
+        self.assertEqual(ai.await_count, 2)
+        self.assertIn('Пифагор — философ', answer)
+        self.assertIn('Википедии', answer)
+        self.assertNotIn('Tankstelle', answer)
+        self.assertIn('https://ru.wikipedia.org/?curid=1', answer)
+
+    async def test_irrelevant_results_and_wikipedia_failure(self):
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=[{'title': 'unrelated'}]), \
+             patch.object(web_search, '_fetch_wikipedia', new=AsyncMock(side_effect=OSError())), \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: NO')):
+            answer = await web_search.smart_web_search('Пифагор')
+        self.assertIn('не дал подходящих', answer)
+        self.assertIn('недоступен', answer)
+
+    async def test_irrelevant_wikipedia_not_returned(self):
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=[]), \
+             patch.object(web_search, '_fetch_wikipedia', new=AsyncMock(return_value=[{'title': 'Несвязанный'}])), \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: NO')):
+            answer = await web_search.smart_web_search('Пифагор')
+        self.assertIn('не нашлось', answer)
+        self.assertNotIn('Несвязанный', answer)
+
+    async def test_malformed_ai_output_is_not_treated_as_relevant(self):
+        with patch.object(web_search, '_fetch_ddgs_raw', return_value=[{'title': 'Tankstelle', 'body': 'Бензин'}]), \
+             patch.object(web_search, '_fetch_wikipedia', new_callable=AsyncMock) as wiki, \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='Что-то без метки')):
+            answer = await web_search.smart_web_search('Пифагор')
+        wiki.assert_not_awaited()
+        self.assertIn('могут быть не по теме', answer)
+        self.assertNotIn('Что-то без метки', answer)
 
     async def test_wikipedia_api_parameters_and_snippet(self):
         response = MagicMock()
