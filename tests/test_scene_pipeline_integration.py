@@ -1,0 +1,49 @@
+"""Exercise the real scene renderer through the pipeline without Telegram."""
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+import wave
+
+from PIL import Image
+from video_prototype import pipeline
+
+
+@unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg is required for this integration test')
+class ScenePipelineIntegrationTests(unittest.TestCase):
+    def test_scene_render_manifest_and_storage_upload(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            frames = root / 'frames'; frames.mkdir()
+            for name, color in [('closed.png', (100, 100, 100)),
+                                ('open.png', (110, 110, 110)),
+                                ('blink.png', (90, 90, 90))]:
+                Image.new('RGB', (512, 512), color).save(frames / name)
+            plate = root / 'plate.png'; Image.new('RGB', (512, 512), (60, 60, 60)).save(plate)
+            portrait = root / 'portrait.png'; Image.new('RGB', (512, 512), (170, 130, 100)).save(portrait)
+            audio = root / 'speech.wav'
+            with wave.open(str(audio), 'wb') as output:
+                output.setnchannels(1); output.setsampwidth(2); output.setframerate(24000)
+                output.writeframes(b'\0\0' * 24000)
+            args = pipeline.parse_args(['--audio', str(audio), '--frames-dir', str(frames),
+                '--smoke-plate', str(plate), '--portrait', str(portrait),
+                '--scene-seed', '319', '--output-dir', str(root / 'jobs'),
+                '--render-python', sys.executable, '--channel-id', '-1001', '--chat-id', '-1002'])
+            with patch.dict(os.environ, {'BOT_TOKEN': 'test-secret'}), \
+                 patch.object(pipeline, 'telegram_call', side_effect=[{'video_note': {'file_id': 'cached'}}, {}]) as telegram:
+                pipeline.run(args)
+            work = next((root / 'jobs').glob('clip-*'))
+            manifest = json.loads((work / 'scene.json').read_text())
+            self.assertEqual(manifest['seed'], '319')
+            self.assertEqual({x['name'] for x in manifest['guests']}, {'hedgehog', 'beholder', 'pai_mei'})
+            self.assertEqual({x['name'] for x in manifest['decorations']}, {'bubbles', 'pyramid', 'coin'})
+            self.assertGreater((work / 'video.mp4').stat().st_size, 1000)
+            self.assertEqual(json.loads((work / 'result.json').read_text())['file_id'], 'cached')
+            self.assertEqual(telegram.call_count, 2)
+            self.assertEqual(telegram.call_args_list[0].args[2], {'chat_id': -1001})
+            self.assertEqual(telegram.call_args_list[1].args[2], {'chat_id': -1002, 'video_note': 'cached'})
+            self.assertFalse((work / 'storage-upload.pending').exists())

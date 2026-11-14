@@ -73,7 +73,13 @@ def parse_args(argv=None):
     parser.add_argument('--render-python', default='/data/video-prototype/.venv/bin/python')
     parser.add_argument('--hf-home', default='/data/teratts-test/hf')
     parser.add_argument('--seed', type=int, help='Фиксировать случайность TTS для сравнения проб')
+    parser.add_argument('--scene-seed', help='Включить сцену с гостями и задать её seed')
+    parser.add_argument('--portrait', type=Path, help='Сохранённый портрет сенсея для сцены')
     args = parser.parse_args(argv)
+    if args.scene_seed is not None and (not args.scene_seed.strip() or not args.smoke_plate or not args.portrait):
+        parser.error('Для сцены нужны непустой --scene-seed, --smoke-plate и --portrait')
+    if args.scene_seed is None and args.portrait is not None:
+        parser.error('--portrait нужен только вместе с --scene-seed')
     if args.text is not None and (not args.text.strip() or len(args.text) > 480):
         parser.error('Текст должен содержать от 1 до 480 символов')
     if not args.no_send and args.channel_id is None:
@@ -97,6 +103,8 @@ def run(args):
         raise FileNotFoundError(f'Нет аудиофайла: {args.audio}')
     if args.smoke_plate and not args.smoke_plate.is_file():
         raise FileNotFoundError(f'Нет бездымной подложки: {args.smoke_plate}')
+    if args.portrait and not args.portrait.is_file():
+        raise FileNotFoundError(f'Нет портрета сенсея: {args.portrait}')
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='clip-', dir=args.output_dir))
@@ -118,7 +126,8 @@ def run(args):
         subprocess.run(command, env=env, check=True)
 
     video = work / 'video.mp4'
-    render_script = 'smoke_layer_render.py' if args.smoke_plate else 'render.py'
+    render_script = ('random_guest_render.py' if args.scene_seed is not None else
+                     'smoke_layer_render.py' if args.smoke_plate else 'render.py')
     command = [
         args.render_python, str(HERE / render_script), '--audio', str(audio),
         '--closed', str(args.frames_dir / 'closed.png'),
@@ -127,7 +136,14 @@ def run(args):
     ]
     if args.smoke_plate:
         command.extend(['--plate', str(args.smoke_plate)])
-    subprocess.run(command, check=True)
+    if args.scene_seed is not None:
+        command.extend(['--scene-seed', args.scene_seed, '--portrait', str(args.portrait),
+                        '--manifest', str(work / 'scene.json')])
+    # Rendering does not need the Telegram token or the worker key.
+    env = os.environ.copy()
+    for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID'):
+        env.pop(name, None)
+    subprocess.run(command, env=env, check=True)
     if args.no_send:
         print(f'Локальный результат: {video}')
         return

@@ -1,9 +1,8 @@
 """Deterministic per-video guest selection and visibility-bound gaze planning.
 
-The Telegram worker is deliberately not wired to this experimental planner.
 At least one of the three character guests is selected. Bubbles, the pyramid,
 and the coin are drawn independently; future exclusive sign variants are not
-implemented here.
+implemented here. The worker enables this explicitly via its scene option.
 """
 from dataclasses import asdict, dataclass
 import math

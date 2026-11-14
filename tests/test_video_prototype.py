@@ -116,6 +116,54 @@ class PipelineTests(unittest.TestCase):
             pipeline.run(self.args('--channel-id', '-1001'))
         self.assertEqual(list(self.output.glob('clip-*/storage-upload.pending')), [])
 
+    @patch('video_prototype.pipeline.subprocess.run')
+    @patch('video_prototype.pipeline.telegram_call')
+    @patch.dict('os.environ', {'BOT_TOKEN': 'test-token', 'VIDEO_WORKER_KEY': 'secret', 'STORAGE_CHANNEL_ID': '-100'})
+    def test_scene_render_in_pipeline_preserves_storage_delivery_and_isolates_secrets(self, telegram, subprocess_run):
+        plate = self.folder / 'plate.png'; plate.touch()
+        portrait = self.folder / 'portrait.png'; portrait.touch()
+        subprocess_run.side_effect = self.fake_render
+        telegram.return_value = {'video_note': {'file_id': 'cached-id'}}
+        pipeline.run(self.args('--channel-id', '-1001', '--smoke-plate', str(plate),
+                               '--portrait', str(portrait), '--scene-seed', 'job-uuid'))
+        command = subprocess_run.call_args.args[0]
+        self.assertTrue(command[1].endswith('random_guest_render.py'))
+        self.assertEqual(command[command.index('--scene-seed') + 1], 'job-uuid')
+        self.assertEqual(command[command.index('--portrait') + 1], str(portrait))
+        self.assertEqual(Path(command[command.index('--manifest') + 1]).name, 'scene.json')
+        for key in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID'):
+            self.assertNotIn(key, subprocess_run.call_args.kwargs['env'])
+        telegram.assert_called_once()
+        self.assertEqual(json.loads(next(self.output.glob('clip-*/result.json')).read_text())['file_id'], 'cached-id')
+
+    @patch('video_prototype.pipeline.subprocess.run')
+    @patch('video_prototype.pipeline.telegram_call')
+    @patch.dict('os.environ', {'BOT_TOKEN': 'test-token'})
+    def test_scene_keeps_uncertain_upload_fallback(self, telegram, subprocess_run):
+        plate = self.folder / 'plate.png'; plate.touch()
+        portrait = self.folder / 'portrait.png'; portrait.touch()
+        subprocess_run.side_effect = self.fake_render
+        telegram.side_effect = RuntimeError('connection lost')
+        with self.assertRaisesRegex(RuntimeError, 'connection lost'):
+            pipeline.run(self.args('--channel-id', '-1001', '--smoke-plate', str(plate),
+                                   '--portrait', str(portrait), '--scene-seed', 'job-uuid'))
+        self.assertTrue(next(self.output.glob('clip-*/video.mp4')).is_file())
+        self.assertTrue(next(self.output.glob('clip-*/storage-upload.pending')).is_file())
+        telegram.assert_called_once()
+
+    def test_scene_options_require_seed_plate_and_existing_portrait_before_render(self):
+        plate = self.folder / 'plate.png'; plate.touch()
+        portrait = self.folder / 'portrait.png'
+        for options in [('--scene-seed','abc'), ('--portrait',str(portrait)),
+                        ('--scene-seed','', '--smoke-plate',str(plate), '--portrait',str(portrait))]:
+            with self.subTest(options=options), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.args('--no-send', *options)
+        args = self.args('--no-send', '--scene-seed','abc', '--smoke-plate',str(plate), '--portrait',str(portrait))
+        with patch('video_prototype.pipeline.subprocess.run') as run, self.assertRaises(FileNotFoundError):
+            pipeline.run(args)
+        run.assert_not_called()
+        self.assertFalse(self.output.exists())
+
     def test_reply_needs_chat(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.args('--channel-id', '-1001', '--reply-to-message-id', '42')
