@@ -82,6 +82,28 @@ class WorkerHTTPTests(unittest.TestCase):
         payload['text'] = ' ' * 10
         self.assertEqual(self.request('POST', '/jobs', payload)[0], 400)
 
+    def test_video_requires_auth_and_uncertain_state(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'video.mp4'
+            path.write_bytes(b'video bytes')
+            job = str(uuid.uuid4())
+            self.store.jobs[job] = {'text':'hidden','status':'upload_uncertain','_video_path':path}
+            status, public = self.request('GET','/jobs/'+job)
+            self.assertEqual(status, 200)
+            self.assertEqual(public['status'], 'upload_uncertain')
+            self.assertNotIn(str(path), json.dumps(public))
+            self.assertEqual(self.request('GET','/jobs/'+job+'/video',secret=False)[0], 401)
+            req = urllib.request.Request(self.url+'/jobs/'+job+'/video',headers={'Authorization':'Bearer '+self.secret})
+            with urllib.request.urlopen(req,timeout=3) as result:
+                self.assertEqual(result.headers['Content-Type'], 'video/mp4')
+                self.assertEqual(result.read(), b'video bytes')
+            self.store.jobs[job]['status'] = 'done'
+            self.assertEqual(self.request('GET','/jobs/'+job+'/video')[0],404)
+            self.store.jobs[job]['status'] = 'upload_uncertain'
+            link = Path(folder)/'link.mp4'; link.symlink_to(path)
+            self.store.jobs[job]['_video_path'] = link
+            self.assertEqual(self.request('GET','/jobs/'+job+'/video')[0],404)
+
     def test_failure_does_not_leak_error(self):
         def fail(request_id, text):
             raise RuntimeError('secret description')
@@ -113,8 +135,11 @@ class WorkerRunnerTests(unittest.TestCase):
             root = Path(folder)
             job_id = str(uuid.uuid4())
             output = root / job_id / 'clip-one'
-            output.mkdir(parents=True)
-            (output / 'result.json').write_text(json.dumps({'file_id': 'hello'}))
+            def complete(**kwargs):
+                output.mkdir(parents=True)
+                (output / 'result.json').write_text(json.dumps({'file_id': 'hello'}))
+                return 0
+            popen.return_value.wait.side_effect = complete
             result = worker.runner(root, -1001, 'bot-secret', 600)(job_id, 'Текст')
             self.assertEqual(result, 'hello')
             args = popen.call_args.args[0]
@@ -135,12 +160,75 @@ class WorkerRunnerTests(unittest.TestCase):
             root = Path(folder)
             job_id = str(uuid.uuid4())
             output = root / job_id / 'clip-one'
-            output.mkdir(parents=True)
-            (output / 'result.json').write_text(json.dumps({'file_id': 'hello'}))
+            def complete(**kwargs):
+                output.mkdir(parents=True)
+                (output / 'result.json').write_text(json.dumps({'file_id': 'hello'}))
+                return 0
+            popen.return_value.wait.side_effect = complete
             plate = root / 'plate.png'
             worker.runner(root, -1001, 'bot-secret', 600, plate)(job_id, 'Текст')
             args = popen.call_args.args[0]
             self.assertEqual(args[args.index('--smoke-plate') + 1], str(plate))
+
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_uncertain_storage_upload_returns_existing_video_not_stale_one(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job_id = str(uuid.uuid4())
+            old = root / job_id / 'clip-old'
+            old.mkdir(parents=True)
+            (old / 'result.json').write_text(json.dumps({'file_id': 'stale'}))
+            output = root / job_id / 'clip-new'
+            def fail_after_upload(**kwargs):
+                output.mkdir()
+                (output / 'video.mp4').write_bytes(b'mp4 contents')
+                (output / 'storage-upload.pending').write_text('pending')
+                return 1
+            popen.return_value.wait.side_effect = fail_after_upload
+            with self.assertRaises(worker.UploadUncertain) as error:
+                worker.runner(root, -1001, 'bot-secret', 600)(job_id, 'Текст')
+            self.assertEqual(error.exception.video_path, output/'video.mp4')
+
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_confirmed_file_id_wins_over_later_failure(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            job_id = str(uuid.uuid4())
+            output = root/job_id/'clip-new'
+            def after_saved(**kwargs):
+                output.mkdir(parents=True)
+                (output/'result.json').write_text(json.dumps({'file_id': 'saved'}))
+                (output/'storage-upload.pending').write_text('pending')
+                return 1
+            popen.return_value.wait.side_effect = after_saved
+            self.assertEqual(worker.runner(root, -1001, 'secret', 600)(job_id, 'text'), 'saved')
+
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_oversize_or_missing_video_does_not_offer_fallback(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for mode in ('missing', 'oversize', 'empty'):
+                job_id = str(uuid.uuid4()); output = root/job_id/'clip-new'
+                def failed(**kwargs):
+                    output.mkdir(parents=True)
+                    (output/'storage-upload.pending').write_text('pending')
+                    if mode != 'missing':
+                        with (output/'video.mp4').open('wb') as video:
+                            if mode == 'oversize': video.truncate(worker.MAX_VIDEO_BYTES + 1)
+                    return 1
+                popen.return_value.wait.side_effect = failed
+                with self.subTest(mode=mode), self.assertRaises(RuntimeError):
+                    worker.runner(root, -1001, 'secret', 600)(job_id, 'text')
+
+    @patch('video_prototype.worker.subprocess.Popen')
+    def test_render_failure_never_returns_partial_video(self, popen):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); job_id = str(uuid.uuid4()); output = root/job_id/'clip-new'
+            def failed(**kwargs):
+                output.mkdir(parents=True); (output/'video.mp4').write_bytes(b'partial')
+                return 1
+            popen.return_value.wait.side_effect = failed
+            with self.assertRaises(RuntimeError): worker.runner(root, -1001, 'secret', 600)(job_id, 'text')
 
 
 class WorkerCleanupTests(unittest.TestCase):

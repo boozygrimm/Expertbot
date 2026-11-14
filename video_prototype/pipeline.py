@@ -14,6 +14,10 @@ import urllib.request
 HERE = Path(__file__).resolve().parent
 
 
+class TelegramRejected(RuntimeError):
+    """Telegram explicitly rejected the request without accepting the video."""
+
+
 def telegram_call(token, method, fields, file_path=None):
     """Send multipart without putting the token in a shell command or logs."""
     boundary = '----video-note-' + secrets.token_hex(16)
@@ -43,7 +47,12 @@ def telegram_call(token, method, fields, file_path=None):
     except (urllib.error.URLError, TimeoutError, OSError):
         raise RuntimeError('Не удалось связаться с Telegram; проверь соединение') from None
     if not payload.get('ok'):
-        raise RuntimeError('Telegram: ' + str(payload.get('description', 'неизвестная ошибка')))
+        error = 'Telegram: ' + str(payload.get('description', 'неизвестная ошибка'))
+        code = payload.get('error_code')
+        # An explicit 4xx rejection is distinct from a lost response or 5xx.
+        if isinstance(code, int) and 400 <= code < 500 and code != 408:
+            raise TelegramRejected(error)
+        raise RuntimeError(error)
     return payload['result']
 
 
@@ -127,13 +136,23 @@ def run(args):
     if not token.strip():
         raise ValueError('Токен не введён')
     token = token.strip()
-    result = telegram_call(token, 'sendVideoNote', {'chat_id': args.channel_id}, video)
+    # Persist a marker before the external side effect. If the response is lost,
+    # the worker can make this already-rendered file available for direct delivery.
+    pending = work / 'storage-upload.pending'
+    pending.write_text('pending\n', encoding='utf-8')
+    try:
+        result = telegram_call(token, 'sendVideoNote', {'chat_id': args.channel_id}, video)
+    except TelegramRejected:
+        # A definite rejection must not be reported as an uncertain upload.
+        pending.unlink(missing_ok=True)
+        raise
     file_id = result.get('video_note', {}).get('file_id')
     if not file_id:
         raise RuntimeError('Telegram не вернул file_id видеокружка')
     record = {'channel_id': args.channel_id, 'file_id': file_id, 'video': str(video)}
     record_path = work / 'result.json'
     record_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+    pending.unlink(missing_ok=True)
     print(f'Кружок загружен в канал, file_id сохранён: {record_path}', flush=True)
     if args.chat_id is not None:
         # If this fails the channel upload and file_id remain available in result.json.

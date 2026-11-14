@@ -2,7 +2,7 @@ import unittest
 import uuid
 from aiohttp import web
 from bender_worker_client import (
-    BenderWorkerClient, WorkerBusy, WorkerFailed, WorkerTimeout, WorkerUnavailable, validate_url,
+    BenderWorkerClient, WorkerBusy, WorkerFailed, WorkerTimeout, WorkerUnavailable, WorkerUploadUncertain, validate_url,
 )
 
 
@@ -33,12 +33,24 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 return web.json_response({'error': 'not_found'}, status=404)
             if self.mode == 'failed':
                 return web.json_response({'request_id': job_id, 'status': 'failed'})
+            if self.mode == 'uncertain':
+                return web.json_response({'request_id': job_id, 'status': 'upload_uncertain'})
             if self.mode == 'slow' or self.poll_count == 1 and self.mode == 'ok':
                 return web.json_response({'request_id': job_id, 'status': 'running'})
             return web.json_response({'request_id': job_id, 'status': 'done', 'file_id': 'cached-id'})
+        async def video(request):
+            self.assertEqual(request.headers.get('Authorization'), 'Bearer test-secret')
+            if self.mode == 'missing':
+                return web.Response(status=404)
+            if self.mode == 'redirect':
+                return web.Response(status=302, headers={'Location': '/other'})
+            if self.mode == 'large':
+                return web.Response(body=b'x' * (50 * 1024 * 1024 + 1), content_type='video/mp4')
+            return web.Response(body=b'video bytes', content_type='video/mp4')
         app = web.Application()
         app.router.add_post('/jobs', post)
         app.router.add_get('/jobs/{job_id}', get)
+        app.router.add_get('/jobs/{job_id}/video', video)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, '127.0.0.1', 0)
@@ -90,6 +102,23 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.mode = 'redirect'
         with self.assertRaises(WorkerUnavailable):
             await self.client.render('Привет')
+
+    async def test_uncertain_job_fetches_only_same_uuid_without_resubmitting(self):
+        self.mode = 'uncertain'
+        job = str(uuid.uuid4())
+        with self.assertRaises(WorkerUploadUncertain):
+            await self.client.resume(job)
+        self.assertEqual(await self.client.fetch_uncertain_video(job), b'video bytes')
+        self.assertEqual(self.post_count, 0)
+
+    async def test_video_fetch_rejects_missing_redirect_and_oversized(self):
+        job = str(uuid.uuid4())
+        for mode in ('missing', 'redirect', 'large'):
+            self.mode = mode
+            with self.subTest(mode=mode), self.assertRaises(WorkerUnavailable):
+                await self.client.fetch_uncertain_video(job)
+        with self.assertRaises(ValueError):
+            await self.client.fetch_uncertain_video('not-a-uuid')
 
     async def test_timeout(self):
         self.mode = 'slow'

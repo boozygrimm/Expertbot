@@ -12,7 +12,9 @@ from aiogram.filters import Command
 
 from ai_logic import generate_with_retry
 from bender_triggers import EX_VIDEO_PATTERN, parse_video_request
-from bender_worker_client import BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed
+from bender_worker_client import (
+    BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed, WorkerUploadUncertain,
+)
 from bender_queue import VideoQueue
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
@@ -223,6 +225,11 @@ async def process_queued_video(queue, bot, item):
                 await queue.update(job_id, stage='ready', retry_after=time.time() + 10)
                 await _edit_status(bot, item, random.choice(BUSY_MESSAGES))
                 return True
+            except WorkerUploadUncertain:
+                # No attempt to the destination chat has happened. Persist the
+                # recoverable read stage before downloading the existing video.
+                await queue.update(job_id, stage='fallback_ready')
+                stage = 'fallback_ready'
             except WorkerFailed:
                 await _report_and_remove(queue, bot, item,
                     f"🤖 Кружок не получился. Зато вот мой гениальный ответ:\n{item['answer']}")
@@ -232,9 +239,36 @@ async def process_queued_video(queue, bot, item):
                 await _report_and_remove(queue, bot, item,
                     f"🤖 Связь со студией прервалась, и я не знаю, готов ли кружок. Вот ответ:\n{item['answer']}")
                 return False
-            await queue.update(job_id, stage='file_ready', file_id=file_id)
-            item['file_id'] = file_id
-            stage = 'file_ready'
+            if stage != 'fallback_ready':
+                await queue.update(job_id, stage='file_ready', file_id=file_id)
+                item['file_id'] = file_id
+                stage = 'file_ready'
+
+        if stage == 'fallback_ready':
+            try:
+                url = os.getenv('BENDER_WORKER_URL', '').strip()
+                key = os.getenv('BENDER_WORKER_KEY', '').strip()
+                client = BenderWorkerClient(url, key)
+                video = await client.fetch_uncertain_video(item['request_id'])
+            except (WorkerError, ValueError) as exc:
+                logger.warning('Не удалось получить сохранённый кружок: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    f"🤖 Связь со складом прервалась, и я не смог получить готовый кружок. Вот ответ:\n{item['answer']}")
+                return False
+            # If the worker or caller dies after this marker, do not retry the
+            # ambiguous Telegram send; the user is asked to check the chat.
+            await queue.update(job_id, stage='sending')
+            try:
+                await bot.send_video_note(video_note=types.BufferedInputFile(video, filename='video.mp4'),
+                                          **stored_reply_options(item))
+            except Exception as exc:
+                logger.warning('Неизвестен результат резервной отправки кружка: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+                return False
+            await queue.remove(job_id)
+            await _delete_status(bot, item)
+            return False
 
         if stage == 'file_ready':
             await queue.update(job_id, stage='sending')

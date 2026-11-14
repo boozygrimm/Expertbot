@@ -23,6 +23,11 @@ class WorkerFailed(WorkerError):
     pass
 
 
+class WorkerUploadUncertain(WorkerError):
+    """Storage response was lost, but the worker has a finished video."""
+    pass
+
+
 class WorkerTimeout(WorkerError):
     pass
 
@@ -92,6 +97,36 @@ class BenderWorkerClient:
             job = await self._get_job(session, request_id, deadline, retry_not_found=False)
             return await self._wait_for_job(session, request_id, job, deadline)
 
+    async def fetch_uncertain_video(self, request_id):
+        """Read a finished video for the same UUID; never resubmit generation."""
+        try:
+            if str(uuid.UUID(request_id)) != request_id:
+                raise ValueError('Некорректный request_id')
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError('Некорректный request_id') from None
+        limit = 50 * 1024 * 1024
+        # This request transfers the whole video, unlike the small status polls.
+        timeout = aiohttp.ClientTimeout(total=max(120, self.request_timeout))
+        headers = {'Authorization': 'Bearer ' + self.secret}
+        try:
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(self.base_url + '/jobs/' + request_id + '/video',
+                                       allow_redirects=False) as response:
+                    if response.status != 200 or response.content_type != 'video/mp4':
+                        raise WorkerUnavailable('Не удалось получить сохранённое видео')
+                    if response.content_length is not None and response.content_length > limit:
+                        raise WorkerUnavailable('Видео слишком большое')
+                    data = bytearray()
+                    async for chunk in response.content.iter_chunked(65536):
+                        data.extend(chunk)
+                        if len(data) > limit:
+                            raise WorkerUnavailable('Видео слишком большое')
+                    if not data:
+                        raise WorkerUnavailable('Сохранённое видео пустое')
+                    return bytes(data)
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+            raise WorkerUnavailable('Не удалось получить сохранённое видео') from None
+
     async def _get_job(self, session, request_id, deadline, *, retry_not_found=True):
         while time.monotonic() < deadline:
             try:
@@ -122,6 +157,8 @@ class BenderWorkerClient:
                 if not isinstance(file_id, str) or not file_id:
                     raise WorkerUnavailable('Воркер не вернул file_id')
                 return file_id
+            if status == 'upload_uncertain':
+                raise WorkerUploadUncertain('Ответ склада потерян, видео сохранено')
             if status == 'failed':
                 raise WorkerFailed('Воркер не смог создать кружок')
             if status != 'running':
