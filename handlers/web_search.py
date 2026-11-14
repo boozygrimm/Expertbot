@@ -279,11 +279,10 @@ async def deliver_search_result(message, status, text, image, *, private=False):
         await _show_text_in_status(message, status, text, private=private)
         return 'text'
 
-    note = '🖼 Иллюстрация из интернета, её точность не проверена.\n\n'
-    first, remaining = _take_text(text, 1024 - len(note.encode('utf-16-le')) // 2)
+    first, remaining = _take_text(text, 1024)
     send_photo = message.answer_photo if private else message.reply_photo
     try:
-        await send_photo(photo=image, caption=note + first, parse_mode=None)
+        await send_photo(photo=image, caption=first, parse_mode=None)
     except Exception as exc:
         logger.warning('Отправка картинки поиска не подтверждена: %s', type(exc).__name__)
         # Keep the answer even if the photo was rejected. If its acknowledgement

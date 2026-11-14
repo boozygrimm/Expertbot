@@ -142,11 +142,19 @@ class ImageDeliveryTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(reply_photo=AsyncMock(), reply=AsyncMock())
         result = await web_search.deliver_search_result(message, status, '🤖 Бендер: Марс!', 'https://example.org/x.jpg')
         caption = message.reply_photo.await_args.kwargs['caption']
-        self.assertIn('🤖 Бендер: Марс!', caption)
-        self.assertIn('Иллюстрация', caption)
+        self.assertEqual(caption, '🤖 Бендер: Марс!')
         self.assertEqual(result, 'photo')
         status.delete.assert_awaited_once()
         status.edit_text.assert_not_awaited()
+        message.reply.assert_not_awaited()
+
+    async def test_caption_uses_full_1024_unit_limit(self):
+        status = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock())
+        message = SimpleNamespace(reply_photo=AsyncMock(), reply=AsyncMock())
+        text = '🪐' * 512
+        result = await web_search.deliver_search_result(message, status, text, 'https://example.org/x.jpg')
+        self.assertEqual(result, 'photo')
+        self.assertEqual(message.reply_photo.await_args.kwargs['caption'], text)
         message.reply.assert_not_awaited()
 
     async def test_long_answer_in_caption_and_followup_without_loss(self):
@@ -155,11 +163,9 @@ class ImageDeliveryTests(unittest.IsolatedAsyncioTestCase):
         text = '🤖 Бендер: ' + ('планета Марс прекрасна! 🪐\n' * 100)
         self.assertEqual(await web_search.deliver_search_result(message, status, text, 'https://example.org/x.jpg'), 'photo')
         caption = message.reply_photo.await_args.kwargs['caption']
-        prefix = '🖼 Иллюстрация из интернета, её точность не проверена.\n\n'
         self.assertLessEqual(len(caption.encode('utf-16-le')) // 2, 1024)
-        self.assertTrue(caption.startswith(prefix))
         continuation = ''.join(call.args[0] for call in message.reply.await_args_list)
-        self.assertEqual(caption[len(prefix):] + continuation, text)
+        self.assertEqual(caption + continuation, text)
         for call in message.reply.await_args_list:
             self.assertLessEqual(len(call.args[0].encode('utf-16-le')) // 2, 4096)
         status.delete.assert_awaited_once()
@@ -188,9 +194,8 @@ class ImageDeliveryTests(unittest.IsolatedAsyncioTestCase):
         text = 'hello ' * 400
         self.assertEqual(await web_search.deliver_search_result(message, status, text, 'https://example.org/x.jpg'), 'continuation_unconfirmed')
         caption = message.reply_photo.await_args.kwargs['caption']
-        part = caption.split('\n\n', 1)[1]
         restored = status.edit_text.await_args.args[0].split('\n', 1)[1]
-        self.assertEqual(part + restored, text)
+        self.assertEqual(caption + restored, text)
         message.reply_photo.assert_awaited_once()
         status.delete.assert_not_awaited()
 
