@@ -18,6 +18,12 @@ import wave
 TEXT = ('Ну что, мясные мешки, рабочий день закончился? Пора отдохнуть по-настоящему. '
         'Я бы посоветовал вам луна-парк, но лучше налейте чего-нибудь вкусного и выдохните. '
         'А завтра снова спасайте мир. Или хотя бы не забудьте зарядить мой блестящий металлический зад!')
+LONG_TEXT = ('Ну что, мясные мешки, опять устали от своих важных человеческих дел? Я вас понимаю. '
+             'Сегодня я целых пять минут думал о работе, и мне уже понадобился отдых. '
+             'Так что слушайте мой гениальный план: уберите телефон, налейте чего-нибудь вкусного и просто выдохните. '
+             'Пусть весь мир немного подождёт без вашего героического участия. '
+             'А если кто-нибудь спросит, чем вы заняты, скажите: выполняете важное поручение Бендера. '
+             'И не забудьте похвалить мой блестящий металлический зад!')
 MODEL = 'gemini-3.8-flash-tts'
 GEMINI_VOICES = ('Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus',
                  'Aoede', 'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel',
@@ -122,6 +128,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--chat-id', type=int, required=True)
     parser.add_argument('--thread-id', type=int)
+    parser.add_argument('--long', action='store_true', help='длинная фраза Бендера')
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
     parser.add_argument('--gemini', action='store_true', help='добавить Gemini (только проект без биллинга)')
     parser.add_argument('--voices', nargs='+', choices=GEMINI_VOICES, default=['Charon', 'Fenrir'],
@@ -150,14 +157,15 @@ def main(argv=None):
     args.output_dir.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='tts-audition-', dir=args.output_dir))
     print('Папка проб:', work, flush=True)
-    print('Текст:', TEXT, flush=True)
+    text = LONG_TEXT if args.long else TEXT
+    print('Текст:', text, flush=True)
     samples = [] if args.skip_edge else [
-        ('Edge Dmitry обычный', 'edge-dmitry.mp3', lambda p: edge_voice(TEXT, p)),
-        ('Edge Dmitry ниже', 'edge-dmitry-low.mp3', lambda p: edge_voice(TEXT, p, '-15Hz'))]
+        ('Edge Dmitry обычный', 'edge-dmitry.mp3', lambda p: edge_voice(text, p)),
+        ('Edge Dmitry ниже', 'edge-dmitry-low.mp3', lambda p: edge_voice(text, p, '-15Hz'))]
 
     if args.gemini:
         samples += [(f'Gemini {v}', f'gemini-{v.lower()}.wav',
-                     lambda p, v=v: gemini_voice(key, v, TEXT, p)) for v in args.voices]
+                     lambda p, v=v: gemini_voice(key, v, text, p)) for v in args.voices]
     successes = 0
     for label, filename, generate in samples:
         print(f'Готовлю {label}...', flush=True)

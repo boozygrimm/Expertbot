@@ -16,6 +16,9 @@ class Response(io.BytesIO):
 
 
 class AuditionTests(unittest.TestCase):
+    def test_long_text_is_in_worker_limit(self):
+        self.assertTrue(400 < len(t.LONG_TEXT) <= 480)
+
     def test_gemini_pcm_and_key_header(self):
         body = {'candidates': [{'content': {'parts': [{'inlineData': {
             'mimeType': 'audio/L16; rate=24000', 'data': base64.b64encode(b'\0\0' * 100).decode()}}]}}]}
@@ -51,9 +54,10 @@ class AuditionTests(unittest.TestCase):
              patch.object(t, 'read_key_file', return_value='test-key'), \
              patch.object(t, 'gemini_voice') as generate, patch.object(t, 'send_document') as send:
             result = t.main(['--chat-id', '123', '--output-dir', d, '--gemini', '--skip-edge',
-                             '--gemini-key-file', str(Path(d) / 'key'), '--voices', 'Orus', 'Algenib'])
+                             '--gemini-key-file', str(Path(d) / 'key'), '--long', '--voices', 'Orus', 'Algenib'])
             self.assertEqual(result, 0)
             self.assertEqual([call.args[1] for call in generate.call_args_list], ['Orus', 'Algenib'])
+            self.assertTrue(all(call.args[2] == t.LONG_TEXT for call in generate.call_args_list))
             self.assertEqual(send.call_count, 2)
 
     def test_send_failure_stops_additional_samples(self):
