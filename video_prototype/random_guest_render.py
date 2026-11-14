@@ -16,6 +16,7 @@ if __package__:
     from .pyramid_render import frame_with_pyramid
     from .coin_drop_render import frame_with_coin
     from .mouth_trial_render import quick_levels, render as base_render
+    from . import dynamic_sign
 else:
     from render import FPS, SIZE, blink_at
     from gaze_planner import gaze_at
@@ -28,6 +29,7 @@ else:
     from pyramid_render import frame_with_pyramid
     from coin_drop_render import frame_with_coin
     from mouth_trial_render import quick_levels, render as base_render
+    import dynamic_sign
 
 TARGETS = {'hedgehog': [(261,174),(306,169)],
            'beholder': [(259,171),(303,166)],
@@ -98,10 +100,29 @@ def make_effect(closed, portrait_path, plan):
     return effect
 
 
-def render(audio, closed, opened, blink, plate, portrait_path, output, seed, manifest=None):
+def render(audio, closed, opened, blink, plate, portrait_path, output, seed, manifest=None, *, sign=None):
     frame_count = len(quick_levels(audio))
     plan = make_plan(frame_count, seed, FPS)
     effect = make_effect(closed, portrait_path, plan)
+    if sign:
+        try:
+            layers, position = dynamic_sign.prepare(sign)
+        except Exception as exc:
+            # A failed sign must never prevent an otherwise ordinary clip.
+            print(f'Табличка недоступна ({type(exc).__name__}); обычный кружок', flush=True)
+        else:
+            guest_effect = effect
+            sign_available = True
+            def effect(frame, seconds):
+                nonlocal sign_available
+                if sign_available:
+                    try:
+                        index = dynamic_sign.index_at(seconds, len(layers), frame_count / FPS)
+                        frame = dynamic_sign.apply(frame, layers[index], position)
+                    except Exception as exc:
+                        sign_available = False
+                        print(f'Табличка недоступна ({type(exc).__name__}); обычный кружок', flush=True)
+                return guest_effect(frame, seconds)
     if manifest is not None:
         Path(manifest).write_text(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print('Гости:', ', '.join(a.name for a in plan.guests), flush=True)
@@ -122,6 +143,7 @@ def main(argv=None):
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--scene-seed', required=True)
     parser.add_argument('--manifest', type=Path, required=True)
+    parser.add_argument('--sign', help='Необязательная короткая надпись')
     args = parser.parse_args(argv)
     if not args.scene_seed.strip():
         parser.error('Нужен непустой seed сцены')
@@ -129,7 +151,7 @@ def main(argv=None):
         if not path.is_file():
             parser.error(f'Файл не найден: {path}')
     render(args.audio, args.closed, args.opened, args.blink, args.plate,
-           args.portrait, args.output, args.scene_seed, args.manifest)
+           args.portrait, args.output, args.scene_seed, args.manifest, sign=args.sign)
 
 
 if __name__ == '__main__':

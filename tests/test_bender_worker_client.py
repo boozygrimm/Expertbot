@@ -47,7 +47,11 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             if self.mode == 'large':
                 return web.Response(body=b'x' * (50 * 1024 * 1024 + 1), content_type='video/mp4')
             return web.Response(body=b'video bytes', content_type='video/mp4')
+        async def health(request):
+            self.assertEqual(request.headers.get('Authorization'), 'Bearer test-secret')
+            return web.json_response({'status': 'ok', 'capabilities': [] if self.mode == 'old-worker' else ['animated-sign-v1']})
         app = web.Application()
+        app.router.add_get('/health', health)
         app.router.add_post('/jobs', post)
         app.router.add_get('/jobs/{job_id}', get)
         app.router.add_get('/jobs/{job_id}/video', video)
@@ -68,6 +72,17 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(self.poll_count, 2)
         self.assertEqual(self.job['text'], 'Привет')
         self.assertEqual(set(self.job), {'text', 'request_id'})
+
+    async def test_sign_is_optional_and_separate_from_speech(self):
+        self.assertEqual(await self.client.render('Озвучка', sign='Космос в отпуске'), 'cached-id')
+        self.assertEqual(self.job['text'], 'Озвучка')
+        self.assertEqual(self.job['sign'], 'КОСМОС В ОТПУСКЕ')
+        self.poll_count = 0
+        self.assertEqual(await self.client.render('Озвучка', sign='😀'), 'cached-id')
+        self.assertNotIn('sign', self.job)
+        self.mode = 'old-worker'
+        self.assertEqual(await self.client.render('Озвучка', sign='КОСМОС'), 'cached-id')
+        self.assertNotIn('sign', self.job)
 
     async def test_busy_and_failed(self):
         self.mode = 'busy'

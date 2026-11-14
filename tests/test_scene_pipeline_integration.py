@@ -30,6 +30,7 @@ class ScenePipelineIntegrationTests(unittest.TestCase):
                 wav.writeframes(b'\1\0' * 24000)
             args = pipeline.parse_args(['--text', 'Тест', '--frames-dir', str(frames),
                 '--smoke-plate', str(plate), '--portrait', str(portrait), '--scene-seed', '319',
+                '--sign', 'ГРАВИТАЦИЯ В ОТПУСКЕ',
                 '--output-dir', str(root / 'jobs'), '--render-python', sys.executable, '--channel-id', '-1001'])
             with patch.dict(os.environ, {'BENDER_TTS_PROVIDER': 'gemini', 'GEMINI_TTS_KEYS': 'secret',
                                          'BOT_TOKEN': 'bot'}), \
@@ -38,6 +39,7 @@ class ScenePipelineIntegrationTests(unittest.TestCase):
                 pipeline.run(args)
             work = next((root / 'jobs').glob('clip-*'))
             self.assertEqual(api.call_count, 1)
+            self.assertEqual(api.call_args.args[1], 'Тест')
             self.assertGreater((work / 'video.mp4').stat().st_size, 1000)
             self.assertEqual(json.loads((work / 'result.json').read_text())['file_id'], 'cached')
             self.assertTrue((work / 'scene.json').exists())

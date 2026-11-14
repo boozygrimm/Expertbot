@@ -22,6 +22,11 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+if __package__:
+    from .sign_text import normalize_sign
+else:
+    from sign_text import normalize_sign
+
 HERE = Path(__file__).resolve().parent
 MAX_BODY = 8192
 MAX_JOBS = 100
@@ -55,12 +60,13 @@ class JobStore:
         self.next_cleanup = 0.0
         self.cleanup_running = False
 
-    def submit(self, request_id, text):
+    def submit(self, request_id, text, sign=None):
+        sign = normalize_sign(sign)
         # Lock covers duplicate detection, capacity check, and job creation.
         with self.lock:
             existing = self.jobs.get(request_id)
             if existing:
-                if existing['text'] != text:
+                if existing['text'] != text or existing.get('sign') != sign:
                     raise JobConflict('request_id уже использован для другого текста')
                 return self._public(request_id, existing), False
             if self.active is not None:
@@ -68,14 +74,14 @@ class JobStore:
             # Completed records are bounded; an evicted request can be submitted again.
             while len(self.jobs) >= MAX_JOBS:
                 self.jobs.pop(next(iter(self.jobs)))
-            self.jobs[request_id] = {'text': text, 'status': 'running'}
+            self.jobs[request_id] = {'text': text, 'sign': sign, 'status': 'running'}
             self.active = request_id
-            threading.Thread(target=self._execute, args=(request_id, text), daemon=True).start()
+            threading.Thread(target=self._execute, args=(request_id, text, sign), daemon=True).start()
             return self._public(request_id, self.jobs[request_id]), True
 
-    def _execute(self, request_id, text):
+    def _execute(self, request_id, text, sign):
         try:
-            file_id = self.run_job(request_id, text)
+            file_id = self.run_job(request_id, text, sign) if sign else self.run_job(request_id, text)
             if not isinstance(file_id, str) or not file_id:
                 raise ValueError('Не получен file_id')
             outcome = {'status': 'done', 'file_id': file_id}
@@ -197,8 +203,8 @@ class JobStore:
 
 
 def validate_request(data):
-    if not isinstance(data, dict) or set(data) != {'request_id', 'text'}:
-        raise ValueError('Нужны только request_id и text')
+    if not isinstance(data, dict) or not {'request_id', 'text'} <= set(data) or set(data) - {'request_id', 'text', 'sign'}:
+        raise ValueError('Нужны request_id, text и необязательная sign')
     text = data['text']
     if not isinstance(text, str) or not text.strip() or len(text) > 480:
         raise ValueError('Текст должен содержать от 1 до 480 символов')
@@ -211,13 +217,13 @@ def validate_request(data):
         raise ValueError('request_id должен быть UUID') from None
     if str(parsed) != request_id:
         raise ValueError('request_id должен быть UUID в стандартной записи')
-    return request_id, text
+    return request_id, text, normalize_sign(data.get('sign'))
 
 
 def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portrait=None):
     """Return a runner that isolates output/logs per UUID, using the existing CLI."""
     key_rotation = itertools.count()  # One worker serializes jobs; restart resets rotation.
-    def run(request_id, text):
+    def run(request_id, text, sign=None):
         job_dir = output_dir / request_id
         job_dir.mkdir(parents=True, exist_ok=True)
         # Never recover a stale clip from an earlier execution with the same UUID.
@@ -235,6 +241,8 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
         if scene_portrait is not None:
             # A UUID determines the scene without affecting the separate TTS seed.
             command.extend(['--scene-seed', request_id, '--portrait', str(scene_portrait)])
+            if sign:
+                command.append('--sign=' + sign)
         with (job_dir / 'worker.log').open('a', encoding='utf-8') as log:
             process = subprocess.Popen(command, env=environment, stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
@@ -305,7 +313,7 @@ def handler_for(store, secret):
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
             if path == '/health':
-                return self.respond(200, {'status': 'ok'})
+                return self.respond(200, {'status': 'ok', 'capabilities': ['animated-sign-v1']})
             video_match = re.fullmatch(r'/jobs/([0-9a-f-]{36})/video', path)
             if video_match:
                 data = store.read_uncertain_video(video_match.group(1))
@@ -337,8 +345,8 @@ def handler_for(store, secret):
                 return self.respond(413, {'error': 'invalid_length'})
             try:
                 data = json.loads(self.rfile.read(length).decode('utf-8'))
-                request_id, text = validate_request(data)
-                job, created = store.submit(request_id, text)
+                request_id, text, sign = validate_request(data)
+                job, created = store.submit(request_id, text, sign)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 return self.respond(400, {'error': str(exc)})
             except (BusyError, JobConflict) as exc:

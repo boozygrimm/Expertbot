@@ -50,7 +50,7 @@ class WorkerHTTPTests(unittest.TestCase):
 
     def test_health_requires_secret(self):
         self.assertEqual(self.request('GET', '/health', secret=False)[0], 401)
-        self.assertEqual(self.request('GET', '/health'), (200, {'status': 'ok'}))
+        self.assertEqual(self.request('GET', '/health'), (200, {'status': 'ok', 'capabilities': ['animated-sign-v1']}))
 
     def test_job_is_idempotent_busy_and_returns_file_id(self):
         job = str(uuid.uuid4())
@@ -71,6 +71,34 @@ class WorkerHTTPTests(unittest.TestCase):
             time.sleep(.01)
         self.assertEqual(self.request('GET', '/jobs/' + job)[1]['file_id'], 'telegram-file-id')
         self.assertNotIn('text', self.request('GET', '/jobs/' + job)[1])
+
+    def test_optional_sign_reaches_worker_and_conflicts_are_rejected(self):
+        calls = []
+        release = threading.Event()
+        started = threading.Event()
+        def run(request_id, text, sign):
+            calls.append((request_id, text, sign))
+            started.set()
+            release.wait(3)
+            return 'file-id'
+        self.server.shutdown(); self.server.server_close(); self.thread.join()
+        self.store = worker.JobStore(run)
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), worker.handler_for(self.store, self.secret))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f'http://127.0.0.1:{self.server.server_port}'
+        job = str(uuid.uuid4())
+        payload = {'request_id': job, 'text': 'Озвучка', 'sign': 'Гравитация в отпуске'}
+        try:
+            self.assertEqual(self.request('POST', '/jobs', payload)[0], 202)
+            self.assertTrue(started.wait(2))
+            self.assertEqual(calls, [(job, 'Озвучка', 'ГРАВИТАЦИЯ В ОТПУСКЕ')])
+            self.assertEqual(self.request('POST', '/jobs', payload)[0], 200)
+            payload['sign'] = 'ДРУГАЯ ШУТКА'
+            self.assertEqual(self.request('POST', '/jobs', payload)[0], 409)
+            self.assertNotIn('sign', self.request('GET', '/jobs/' + job)[1])
+        finally:
+            release.set()
 
     def test_rejects_extra_fields_and_bad_payloads(self):
         payload = {'request_id': str(uuid.uuid4()), 'text': 'Привет', 'chat_id': -1001}
@@ -209,9 +237,11 @@ class WorkerRunnerTests(unittest.TestCase):
                 return 0
             popen.return_value.wait.side_effect = complete
             plate = root / 'plate.png'; portrait = root / 'portrait.png'
-            result = worker.runner(root, -1001, 'secret', 600, plate, portrait)(job_id, 'text')
+            result = worker.runner(root, -1001, 'secret', 600, plate, portrait)(job_id, 'text', 'КОСМОС')
             self.assertEqual(result, 'id')
             args = popen.call_args.args[0]
+            self.assertEqual(args[args.index('--text') + 1], 'text')
+            self.assertIn('--sign=КОСМОС', args)
             self.assertEqual(args[args.index('--scene-seed') + 1], job_id)
             self.assertEqual(args[args.index('--portrait') + 1], str(portrait))
             self.assertEqual(args[args.index('--smoke-plate') + 1], str(plate))

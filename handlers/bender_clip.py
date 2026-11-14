@@ -16,6 +16,7 @@ from bender_worker_client import (
     BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed, WorkerUploadUncertain,
 )
 from bender_queue import VideoQueue
+from video_prototype.sign_text import parse_generated
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
 
@@ -194,18 +195,25 @@ async def process_queued_video(queue, bot, item):
                     f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {item['context'] or '(нет)'}\n"
                     f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {item['query'] or 'Прокомментируй сообщение.'}\n"
                     'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
-                    'с законченными предложениями. Только текст для произнесения, без разметки и эмодзи.'
+                    'с законченными предложениями, без разметки и эмодзи. Дополнительно придумай '
+                    'короткую юмористическую надпись по теме сообщения для таблички: от 1 до 3 слов, '
+                    'всего не больше 22 символов, каждое слово не больше 12 символов. '
+                    'Только русские или латинские буквы, цифры, пробелы и знаки ! ? , . -. '
+                    'Верни строго один JSON-объект с полями "speech" (только произносимый ответ) '
+                    'и "sign" (только надпись). Без пояснений и Markdown; sign не произносится.'
                 )
                 generated = await asyncio.wait_for(generate_with_retry(prompt), timeout=45)
-                answer = spoken_text(generated)
+                speech, sign = parse_generated(generated)
+                answer = spoken_text(speech)
                 if not answer:
                     raise ValueError('empty response')
             except Exception as exc:
                 logger.warning('Не удалось подготовить ответ для кружка: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')
                 return False
-            await queue.update(job_id, stage='ready', answer=answer)
+            await queue.update(job_id, stage='ready', answer=answer, sign=sign)
             item['answer'] = answer
+            item['sign'] = sign
             stage = 'ready'
 
         if stage in ('ready', 'submitting'):
@@ -217,7 +225,10 @@ async def process_queued_video(queue, bot, item):
                     # This marker is persisted before the POST. If the process
                     # dies at any point, recovery only checks the same UUID.
                     await queue.update(job_id, stage='submitting')
-                    file_id = await client.render(item['answer'], request_id=item['request_id'])
+                    if item.get('sign'):
+                        file_id = await client.render(item['answer'], request_id=item['request_id'], sign=item['sign'])
+                    else:
+                        file_id = await client.render(item['answer'], request_id=item['request_id'])
                 else:
                     file_id = await client.resume(item['request_id'])
             except WorkerBusy:

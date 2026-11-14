@@ -6,6 +6,8 @@ from urllib.parse import urlsplit
 
 import aiohttp
 
+from video_prototype.sign_text import normalize_sign
+
 
 class WorkerError(Exception):
     """Failure safe to present to the user without exposing request details."""
@@ -54,7 +56,7 @@ class BenderWorkerClient:
         self.request_timeout = request_timeout
         self.poll_interval = poll_interval
 
-    async def render(self, text, *, request_id=None):
+    async def render(self, text, *, request_id=None, sign=None):
         if not isinstance(text, str) or not text.strip() or len(text) > 480:
             raise ValueError('Текст должен содержать от 1 до 480 символов')
         request_id = request_id or str(uuid.uuid4())
@@ -63,12 +65,16 @@ class BenderWorkerClient:
         deadline = time.monotonic() + self.total_timeout
         timeout = aiohttp.ClientTimeout(total=self.request_timeout)
         headers = {'Authorization': 'Bearer ' + self.secret}
+        payload = {'request_id': request_id, 'text': text}
+        sign = normalize_sign(sign)
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            if sign and await self._supports_sign(session, deadline):
+                payload['sign'] = sign
             # Never automatically submit again after an ambiguous failure. The
             # worker's in-memory idempotency cannot survive a restart.
             try:
                 async with session.post(
-                    self.base_url + '/jobs', json={'request_id': request_id, 'text': text},
+                    self.base_url + '/jobs', json=payload,
                     allow_redirects=False, timeout=aiohttp.ClientTimeout(
                         total=min(self.request_timeout, max(0.001, deadline - time.monotonic()))
                     ),
@@ -85,6 +91,21 @@ class BenderWorkerClient:
                 # The POST may have reached the worker; query the same UUID.
                 job = await self._get_job(session, request_id, deadline, retry_not_found=False)
             return await self._wait_for_job(session, request_id, job, deadline)
+
+    async def _supports_sign(self, session, deadline):
+        """Old workers reject extra fields; probe briefly and fall back before POST."""
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            async with session.get(self.base_url + '/health', allow_redirects=False,
+                                   timeout=aiohttp.ClientTimeout(total=min(1, remaining))) as response:
+                if response.status != 200:
+                    return False
+                payload = await response.json(content_type=None)
+                return isinstance(payload, dict) and 'animated-sign-v1' in payload.get('capabilities', [])
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError):
+            return False
 
     async def resume(self, request_id):
         """Check a previously submitted UUID without ever submitting it again."""

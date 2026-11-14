@@ -82,6 +82,7 @@ def parse_args(argv=None):
     parser.add_argument('--seed', type=int, help='Фиксировать случайность TTS для сравнения проб')
     parser.add_argument('--scene-seed', help='Включить сцену с гостями и задать её seed')
     parser.add_argument('--portrait', type=Path, help='Сохранённый портрет сенсея для сцены')
+    parser.add_argument('--sign', help='Необязательная надпись для сцены')
     args = parser.parse_args(argv)
     if args.scene_seed is not None and (not args.scene_seed.strip() or not args.smoke_plate or not args.portrait):
         parser.error('Для сцены нужны непустой --scene-seed, --smoke-plate и --portrait')
@@ -166,6 +167,8 @@ def run(args):
     if args.scene_seed is not None:
         command.extend(['--scene-seed', args.scene_seed, '--portrait', str(args.portrait),
                         '--manifest', str(work / 'scene.json')])
+        if args.sign:
+            command.append('--sign=' + args.sign)
     # Rendering does not need the Telegram token or the worker key.
     env = os.environ.copy()
     for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', *TTS_SECRET_VARS):
