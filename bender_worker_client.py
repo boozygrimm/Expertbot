@@ -1,5 +1,6 @@
 """Client for the experimental video worker (no chat routing or secrets in logs)."""
 import asyncio
+import logging
 import time
 import uuid
 from urllib.parse import urlsplit
@@ -7,6 +8,8 @@ from urllib.parse import urlsplit
 import aiohttp
 
 from video_prototype.sign_text import normalize_sign
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerError(Exception):
@@ -68,8 +71,11 @@ class BenderWorkerClient:
         payload = {'request_id': request_id, 'text': text}
         sign = normalize_sign(sign)
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            if sign and await self._supports_sign(session, deadline):
-                payload['sign'] = sign
+            if sign:
+                if await self._supports_sign(session, deadline):
+                    payload['sign'] = sign
+                else:
+                    logger.warning('Не удалось подтвердить поддержку таблички; кружок будет без надписи')
             # Never automatically submit again after an ambiguous failure. The
             # worker's in-memory idempotency cannot survive a restart.
             try:
@@ -147,19 +153,33 @@ class BenderWorkerClient:
         return False
 
     async def _supports_sign(self, session, deadline):
-        """Old workers reject extra fields; probe briefly and fall back before POST."""
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        try:
-            async with session.get(self.base_url + '/health', allow_redirects=False,
-                                   timeout=aiohttp.ClientTimeout(total=min(1, remaining))) as response:
-                if response.status != 200:
-                    return False
-                payload = await response.json(content_type=None)
-                return isinstance(payload, dict) and 'animated-sign-v1' in payload.get('capabilities', [])
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError):
-            return False
+        """Allow a sleeping worker to wake before deciding whether it supports signs.
+
+        Only health checks are retried. Old workers and definitive errors still
+        fall back to a normal clip, without ever resubmitting a job POST.
+        """
+        probe_deadline = min(deadline, time.monotonic() + 30)
+        while time.monotonic() < probe_deadline:
+            remaining = probe_deadline - time.monotonic()
+            try:
+                async with session.get(
+                    self.base_url + '/health', allow_redirects=False,
+                    timeout=aiohttp.ClientTimeout(total=min(self.request_timeout, remaining)),
+                ) as response:
+                    if response.status == 200:
+                        payload = await response.json(content_type=None)
+                        capabilities = payload.get('capabilities') if isinstance(payload, dict) else None
+                        return isinstance(capabilities, list) and 'animated-sign-v1' in capabilities
+                    if response.status not in (502, 503, 504):
+                        return False
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                pass
+            except (ValueError, TypeError):
+                return False
+            remaining = probe_deadline - time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(min(2, remaining))
+        return False
 
     async def resume(self, request_id):
         """Check a previously submitted UUID without ever submitting it again."""
