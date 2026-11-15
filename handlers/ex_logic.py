@@ -30,6 +30,7 @@ from handlers.voice_context import add_voice_reply_context
 
 router = Router()
 logger = logging.getLogger(__name__)
+EX_ADDRESS_RE = re.compile(r'(?i)^экс(?:перт)?(?=$|[\s,!.?:;])')
 CHAT_MUSIC_FALSE_POSITIVES = (
     "подпевай",
     "подпой",
@@ -329,6 +330,16 @@ async def hidden_daily_summary_command(message: types.Message):
         await status_msg.edit_text(str(report))
 
 
+def is_reply_to_bot(message):
+    """Only a direct reply to this bot is an implicit address."""
+    source = getattr(message, 'reply_to_message', None)
+    author = getattr(source, 'from_user', None)
+    bot = getattr(message, 'bot', None)
+    author_id = getattr(author, 'id', None)
+    bot_id = getattr(bot, 'id', None)
+    return isinstance(author_id, int) and not isinstance(author_id, bool) and author_id > 0 and author_id == bot_id
+
+
 async def _try_auto_voice(message, query, context, requested):
     if not requested or message.chat.type not in ('group', 'supergroup'):
         return False
@@ -349,15 +360,12 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
     is_ex_triggered = False
     query = ""
 
-    match = re.match(r"(?i)^экс(?:перт)?[\s,]*(.*)", text)
+    match = EX_ADDRESS_RE.match(text)
+    is_bot_reply = is_reply_to_bot(message)
     if match:
         is_ex_triggered = True
-        query = match.group(1).strip()
-    elif (
-        message.reply_to_message
-        and message.reply_to_message.from_user
-        and message.reply_to_message.from_user.id == message.bot.id
-    ):
+        query = re.sub(r'^[\s,]*', '', text[match.end():]).strip()
+    elif is_bot_reply:
         is_ex_triggered = True
         query = text.strip()
 
@@ -368,8 +376,17 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
         query = "Прокомментируй фото." if has_request_photo(message) else "Продолжи диалог."
 
     if message.reply_to_message and (message.reply_to_message.voice or message.reply_to_message.video_note):
-        triggers = ["что там", "че там", "расшифруй", "голос", "гс", "слушай"]
-        if any(tr in query.lower() for tr in triggers) or query == "Продолжи диалог.":
+        # A voice reply to the bot without «Экс» is a conversation, not an
+        # automatic request to print its transcript merely because it mentions
+        # a voice. An explicit transcription request still takes precedence.
+        implicit_spoken_reply = is_bot_reply and not match and bool(
+            getattr(message, 'voice', None) or getattr(message, 'video_note', None))
+        if implicit_spoken_reply:
+            wants_transcription = bool(re.search(r'(?i)\b(?:расшифруй|транскрибируй)\b', query))
+        else:
+            triggers = ["что там", "че там", "расшифруй", "голос", "гс", "слушай"]
+            wants_transcription = any(tr in query.lower() for tr in triggers) or query == "Продолжи диалог."
+        if wants_transcription:
             if not await is_feature_enabled(message.chat.id, "voice"):
                 return
 

@@ -1,7 +1,6 @@
 import asyncio
 import html
 import logging
-import re
 from aiogram import Router, types, F
 from aiogram.filters import Command
 
@@ -9,7 +8,7 @@ from database import db
 from handlers.audio_transcription import get_transcription, short_transcript
 from handlers.admin_panel import get_chat_feature_flags
 # Импортируем обработчик Экса, чтобы он мог отвечать на голосовые команды
-from handlers.ex_logic import handle_ex_request
+from handlers.ex_logic import EX_ADDRESS_RE, handle_ex_request, is_reply_to_bot
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -28,7 +27,8 @@ async def toggle_voice(message: types.Message):
             f"🎙 **Публикация расшифровок в чат**\nСейчас: {status}\n\n"
             "`/voice on` — публиковать текст\n`/voice off` — не публиковать\n\n"
             "При включённом модуле «Голосовые» текст сохраняется в истории даже при /voice off. "
-            "Если начать запись с «Экс», бот ответит и при /voice off — без публикации расшифровки."
+            "Если начать запись с «Экс» или ответить записью на сообщение бота, "
+            "он ответит и при /voice off — без публикации расшифровки."
         )
 
     new_status = args[1].lower() == "on"
@@ -71,8 +71,10 @@ async def handle_voice_messages(message: types.Message, voice_transcription_task
             shown = short_transcript(text)
             await status_msg.edit_text(f"🎙 <b>Расшифровка:</b>\n{html.escape(shown)}", parse_mode="HTML")
 
-        # A normal word like «экскурсия» is not an address to the bot.
-        if not re.match(r'(?i)^экс(?:перт)?(?=$|[\s,!.?:;])', text.strip()):
+        # A normal word like «экскурсия» is not an address; a direct reply to
+        # this bot is, just as it is for text messages.
+        text = text.strip()
+        if not text or (not EX_ADDRESS_RE.match(text) and not is_reply_to_bot(message)):
             return
         prefer_voice = False
         if message.chat.type in ('group', 'supergroup'):
