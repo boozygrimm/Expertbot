@@ -53,21 +53,27 @@ class VoiceBotReplyTests(unittest.IsolatedAsyncioTestCase):
             edit_reply_markup=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
         return message
 
-    async def test_voice_and_circle_reply_to_any_bot_format_auto_with_context(self):
+    async def test_voice_reply_auto_and_circle_reply_menu_preserve_context(self):
         for incoming in ('voice', 'video_note'):
-            for source_kind in ('voice', 'video_note', 'text'):
+            for i, source_kind in enumerate(('voice', 'video_note', 'text')):
                 with self.subTest(incoming=incoming, source=source_kind):
-                    message = self.request(incoming, source_kind)
+                    message = self.request(incoming, source_kind, mid=50 + i)
                     with patch.object(ex_logic, 'analyze_intent', new=AsyncMock(side_effect=lambda q, context='': ('CHAT', q))), \
                          patch.object(bender_clip, 'enqueue_voice_reply', new_callable=AsyncMock) as send, \
                          patch.object(audio_transcription, 'start_transcription') as recognize_source:
                         await voice_rec.handle_voice_messages(message)
-                    send.assert_awaited_once()
-                    target, query, context = send.await_args.args
+                    if incoming == 'voice':
+                        send.assert_awaited_once()
+                        target, query, context = send.await_args.args
+                        self.assertEqual((target.message_id, target.message_thread_id), (50 + i, 7))
+                        message.reply.assert_not_awaited()
+                    else:
+                        send.assert_not_awaited()
+                        self.assertEqual(message.reply.await_args.args[0], '🤖 Как мне ответить?')
+                        doc = await self.db.ex_response_choices.find_one({'message_id': 50 + i})
+                        query, context = doc['query'], doc['context']
                     self.assertEqual(query, 'А что было дальше?')
                     self.assertIn('Раньше было вот что.', context)
-                    self.assertEqual((target.message_id, target.message_thread_id), (50, 7))
-                    message.reply.assert_not_awaited()
                     recognize_source.assert_not_called()
 
     async def test_auto_off_opens_menu_and_callback_keeps_context(self):

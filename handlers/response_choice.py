@@ -1,10 +1,12 @@
 """Per-request response format choice, isolated from special-purpose handlers."""
 from datetime import datetime, timedelta, timezone
+import asyncio
 import logging
 import re
 import uuid
 
 from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -14,12 +16,49 @@ from handlers.admin_panel import get_chat_feature_flags
 
 router = Router()
 logger = logging.getLogger(__name__)
-CHOICE_LIFETIME = timedelta(minutes=15)
+CHOICE_LIFETIME = timedelta(minutes=3)
+CLEANUP_RETENTION = timedelta(days=1)
+CLEANUP_RETRY = timedelta(minutes=1)
+CLEANUP_INTERVAL_SECONDS = 5
+CLEANUP_BATCH_SIZE = 50
 CALLBACK_RE = re.compile(r'^exfmt:([0-9a-f]{32}):(text|video|voice)$')
 
 
 def now():
     return datetime.now(timezone.utc)
+
+
+async def cleanup_expired_choices(bot):
+    """Remove expired menus; small leased batches survive restarts and retries."""
+    for _ in range(CLEANUP_BATCH_SIZE):
+        timestamp = now()
+        job = await db.ex_response_choices.find_one_and_update(
+            {'cleanup_at': {'$lte': timestamp}},
+            {'$set': {'cleanup_at': timestamp + CLEANUP_RETRY}},
+            sort=[('cleanup_at', 1)], return_document=ReturnDocument.BEFORE,
+        )
+        if not job:
+            break
+        try:
+            await asyncio.wait_for(bot.delete_message(job['chat_id'], job['menu_message_id']), timeout=10)
+        except TelegramBadRequest as exc:
+            # Clicking or a human may already have deleted the menu.
+            if 'message to delete not found' not in str(exc).lower():
+                logger.warning('Не удалось удалить просроченное меню: %s', type(exc).__name__)
+                continue
+        except Exception as exc:
+            logger.warning('Не удалось удалить просроченное меню: %s', type(exc).__name__)
+            continue
+        await db.ex_response_choices.delete_one({'_id': job['_id']})
+
+
+async def run_choice_cleanup(bot):
+    while True:
+        try:
+            await cleanup_expired_choices(bot)
+        except Exception as exc:
+            logger.warning('Ошибка очистки меню выбора: %s', type(exc).__name__)
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
 
 class OriginalReplyTarget:
@@ -81,10 +120,19 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
         # Publish the buttons only after the message ID is stored: a callback
         # can arrive immediately, before a send_message call returns.
         menu = await message.reply('🤖 Как мне ответить?')
+        doc['expires_at'] = now() + CHOICE_LIFETIME
         result = await db.ex_response_choices.update_one(
-            {'_id': choice_id, 'state': 'pending'}, {'$set': {'menu_message_id': menu.message_id}})
+            {'_id': choice_id, 'state': 'pending'},
+            {'$set': {'menu_message_id': menu.message_id, 'expires_at': doc['expires_at']}})
         if not result.matched_count:
             raise RuntimeError('choice no longer pending')
+        # A separate, text-free cleanup record survives the choice's TTL and
+        # process restarts. It must exist before the buttons become clickable.
+        await db.ex_response_choices.insert_one({
+            '_id': f'cleanup:{choice_id}', 'chat_id': message.chat.id,
+            'menu_message_id': menu.message_id, 'cleanup_at': doc['expires_at'],
+            'expires_at': doc['expires_at'] + CLEANUP_RETENTION,
+        })
         await menu.edit_reply_markup(reply_markup=builder.as_markup())
     except Exception as exc:
         logger.warning('Не удалось открыть выбор ответа: %s', type(exc).__name__)
@@ -147,7 +195,13 @@ async def response_choice_callback(callback: types.CallbackQuery):
     try:
         await callback.message.delete()
     except Exception as exc:
+        # The cleanup record remains and will retry after the deadline.
         logger.debug('Не удалось удалить меню выбора: %s', type(exc).__name__)
+    else:
+        try:
+            await db.ex_response_choices.delete_one({'_id': f'cleanup:{choice_id}'})
+        except Exception as exc:
+            logger.warning('Не удалось убрать задание очистки меню: %s', type(exc).__name__)
     target = OriginalReplyTarget(callback, claimed)
     if choice == 'video':
         from handlers.bender_clip import enqueue_video_reply

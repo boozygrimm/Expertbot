@@ -176,6 +176,104 @@ class ChoiceTests(unittest.IsolatedAsyncioTestCase):
             await choice.response_choice_callback(callback)
         video.assert_awaited_once()
 
+    async def test_cleanup_deadline_and_restart_after_choice_ttl_removal(self):
+        with patch.object(choice, 'now', return_value=choice.now()) as clock:
+            created = clock.return_value
+            doc = await self.offer()
+            job = await self.db.ex_response_choices.find_one({'_id': f"cleanup:{doc['_id']}"})
+            self.assertEqual(choice.CHOICE_LIFETIME, timedelta(minutes=3))
+            self.assertEqual(job['cleanup_at'], doc['expires_at'])
+            self.assertNotIn('query', job)
+            self.assertNotIn('context', job)
+            bot = SimpleNamespace(delete_message=AsyncMock())
+            clock.return_value = created + timedelta(minutes=3, seconds=-1)
+            await choice.cleanup_expired_choices(bot)
+            bot.delete_message.assert_not_awaited()
+            # Mongo TTL can remove the choice before the restarted worker sees it.
+            await self.db.ex_response_choices.delete_one({'_id': doc['_id']})
+            clock.return_value = created + timedelta(minutes=3)
+            await choice.cleanup_expired_choices(bot)
+            bot.delete_message.assert_awaited_once_with(-1001, 99)
+            self.assertIsNone(await self.db.ex_response_choices.find_one({'_id': job['_id']}))
+
+    async def test_cleanup_retry_and_expired_callback(self):
+        doc = await self.offer()
+        key = f"cleanup:{doc['_id']}"
+        await self.db.ex_response_choices.update_one({'_id': doc['_id']},
+            {'$set': {'expires_at': choice.now() - timedelta(seconds=1)}})
+        await self.db.ex_response_choices.update_one({'_id': key},
+            {'$set': {'cleanup_at': choice.now() - timedelta(seconds=1)}})
+        callback = self.callback(doc)
+        with patch.object(ex_logic, 'generate_chat_response', new_callable=AsyncMock) as answer:
+            await choice.response_choice_callback(callback)
+        answer.assert_not_awaited()
+        self.assertIn('устарел', callback.answer.await_args.args[0])
+        bot = SimpleNamespace(delete_message=AsyncMock(side_effect=[OSError('network'), True]))
+        await choice.cleanup_expired_choices(bot)
+        bot.delete_message.assert_awaited_once()
+        self.assertIsNotNone(await self.db.ex_response_choices.find_one({'_id': key}))
+        await choice.cleanup_expired_choices(bot)
+        bot.delete_message.assert_awaited_once()  # retry is not immediate
+        await self.db.ex_response_choices.update_one({'_id': key},
+            {'$set': {'cleanup_at': choice.now() - timedelta(seconds=1)}})
+        await choice.cleanup_expired_choices(bot)
+        self.assertEqual(bot.delete_message.await_count, 2)
+        self.assertIsNone(await self.db.ex_response_choices.find_one({'_id': key}))
+
+    async def test_already_deleted_menu_is_not_retried_forever(self):
+        from aiogram.exceptions import TelegramBadRequest
+        doc = await self.offer()
+        key = f"cleanup:{doc['_id']}"
+        await self.db.ex_response_choices.update_one({'_id': key},
+            {'$set': {'cleanup_at': choice.now() - timedelta(seconds=1)}})
+        bot = SimpleNamespace(delete_message=AsyncMock(side_effect=TelegramBadRequest(
+            method=MagicMock(), message='message to delete not found')))
+        await choice.cleanup_expired_choices(bot)
+        self.assertIsNone(await self.db.ex_response_choices.find_one({'_id': key}))
+
+    async def test_click_removes_cleanup_job_only_after_successful_delete(self):
+        doc = await self.offer()
+        key = f"cleanup:{doc['_id']}"
+        with patch.object(ex_logic, 'generate_chat_response', new_callable=AsyncMock):
+            await choice.response_choice_callback(self.callback(doc))
+        self.assertIsNone(await self.db.ex_response_choices.find_one({'_id': key}))
+
+    async def test_click_delete_failure_keeps_cleanup_job_and_does_not_lose_answer(self):
+        doc = await self.offer()
+        key = f"cleanup:{doc['_id']}"
+        self.menu.delete.side_effect = OSError('network')
+        with patch.object(ex_logic, 'generate_chat_response', new_callable=AsyncMock) as answer:
+            await choice.response_choice_callback(self.callback(doc))
+        answer.assert_awaited_once()
+        self.assertIsNotNone(await self.db.ex_response_choices.find_one({'_id': key}))
+
+    async def test_claim_before_expiry_completes_even_if_cleanup_runs_during_delete(self):
+        doc = await self.offer()
+        entered, release = asyncio.Event(), asyncio.Event()
+        async def delayed_delete():
+            entered.set()
+            await release.wait()
+        self.menu.delete.side_effect = delayed_delete
+        callback = self.callback(doc)
+        with patch.object(ex_logic, 'generate_chat_response', new_callable=AsyncMock) as answer:
+            task = asyncio.create_task(choice.response_choice_callback(callback))
+            await entered.wait()
+            await self.db.ex_response_choices.update_one({'_id': f"cleanup:{doc['_id']}"},
+                {'$set': {'cleanup_at': choice.now() - timedelta(seconds=1)}})
+            bot = SimpleNamespace(delete_message=AsyncMock())
+            await choice.cleanup_expired_choices(bot)
+            release.set()
+            await task
+        answer.assert_awaited_once()
+        bot.delete_message.assert_awaited_once_with(-1001, 99)
+
+    async def test_cleanup_job_exists_before_buttons_are_visible(self):
+        async def on_publish(**kwargs):
+            doc = await self.db.ex_response_choices.find_one({'message_id': 42})
+            self.assertIsNotNone(await self.db.ex_response_choices.find_one({'_id': f"cleanup:{doc['_id']}"}))
+        self.menu.edit_reply_markup.side_effect = on_publish
+        await self.offer()
+
 
 class RoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_special_intents_do_not_show_format_menu(self):

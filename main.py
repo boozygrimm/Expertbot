@@ -8,6 +8,7 @@ from handlers.alc_heritage import ensure_default_lore
 from personas import init_personas
 from database import db
 from handlers.bender_clip import process_queued_video, video_queue
+from handlers.response_choice import run_choice_cleanup
 
 async def main():
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
@@ -29,15 +30,14 @@ async def main():
     
     queue_task = asyncio.create_task(video_queue.run(
         lambda queue, item: process_queued_video(queue, bot, item)))
+    cleanup_task = asyncio.create_task(run_choice_cleanup(bot))
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
         queue_task.cancel()
-        try:
-            await queue_task
-        except asyncio.CancelledError:
-            pass
+        cleanup_task.cancel()
+        await asyncio.gather(queue_task, cleanup_task, return_exceptions=True)
         await runner.cleanup()
 
 if __name__ == "__main__":
