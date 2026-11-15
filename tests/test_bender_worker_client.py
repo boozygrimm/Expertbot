@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 import uuid
 from aiohttp import web
@@ -11,6 +12,9 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.job = None
         self.post_count = 0
         self.poll_count = 0
+        self.health_count = 0
+        self.health_delay = 0
+        self.health_transient = 0
         self.mode = 'ok'
         async def post(request):
             self.post_count += 1
@@ -49,6 +53,11 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             return web.Response(body=b'video bytes', content_type='video/mp4')
         async def health(request):
             self.assertEqual(request.headers.get('Authorization'), 'Bearer test-secret')
+            self.health_count += 1
+            if self.health_delay:
+                await asyncio.sleep(self.health_delay)
+            if self.health_count <= self.health_transient:
+                return web.Response(status=503)
             return web.json_response({'status': 'ok', 'capabilities': [] if self.mode == 'old-worker' else ['animated-sign-v1']})
         app = web.Application()
         app.router.add_get('/health', health)
@@ -81,8 +90,28 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.client.render('Озвучка', sign='😀'), 'cached-id')
         self.assertNotIn('sign', self.job)
         self.mode = 'old-worker'
-        self.assertEqual(await self.client.render('Озвучка', sign='КОСМОС'), 'cached-id')
+        with self.assertLogs('bender_worker_client', level='WARNING') as logs:
+            self.assertEqual(await self.client.render('Озвучка', sign='КОСМОС'), 'cached-id')
+        self.assertIn('поддержку таблички', logs.output[0])
+        self.assertNotIn('Озвучка', ' '.join(logs.output))
+        self.assertNotIn('КОСМОС', ' '.join(logs.output))
         self.assertNotIn('sign', self.job)
+
+    async def test_sign_survives_health_check_slower_than_one_second(self):
+        self.client.total_timeout = 4
+        self.client.request_timeout = 2
+        self.health_delay = 1.2
+        self.assertEqual(await self.client.render('Озвучка', sign='ПРОБА'), 'cached-id')
+        self.assertEqual(self.job['sign'], 'ПРОБА')
+        self.assertEqual(self.post_count, 1)
+
+    async def test_sign_survives_worker_waking_up(self):
+        self.client.total_timeout = 5
+        self.health_transient = 1
+        self.assertEqual(await self.client.render('Озвучка', sign='ПРОБА'), 'cached-id')
+        self.assertEqual(self.health_count, 2)
+        self.assertEqual(self.job['sign'], 'ПРОБА')
+        self.assertEqual(self.post_count, 1)
 
     async def test_busy_and_failed(self):
         self.mode = 'busy'

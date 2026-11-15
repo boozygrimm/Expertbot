@@ -136,7 +136,10 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_sign_keeps_speech_and_ordinary_clip(self):
         item = await self.submit()
         self.generate.return_value = '{"speech":"Мой ответ.","sign":"😀"}'
-        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        with self.assertLogs(bender_clip.logger, level='WARNING') as logs:
+            await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertIn('не вернула подходящую надпись', logs.output[0])
+        self.assertNotIn('Мой ответ', ' '.join(logs.output))
         self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'])
 
     async def test_distinct_chats_are_queued(self):

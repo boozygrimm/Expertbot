@@ -258,6 +258,8 @@ async def process_queued_video(queue, bot, item):
                 answer = spoken_text(speech)
                 if not answer:
                     raise ValueError('empty response')
+                if not is_voice and not sign:
+                    logger.warning('Модель не вернула подходящую надпись для таблички; кружок будет без неё')
             except Exception as exc:
                 logger.warning('Не удалось подготовить ответ для медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')
