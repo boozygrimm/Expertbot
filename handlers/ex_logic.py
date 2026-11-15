@@ -22,6 +22,7 @@ from handlers.web_search import smart_web_search, smart_web_search_with_image, d
 from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
 from handlers.response_choice import offer_response_choice
+from handlers.photo_context import has_request_photo, add_photo_context
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -324,10 +325,10 @@ async def hidden_daily_summary_command(message: types.Message):
 
 @router.message()
 async def handle_ex_request(message: types.Message):
-    if not message.text:
+    text = message.text or (message.caption if message.photo else None)
+    if not text:
         return
 
-    text = message.text
     is_ex_triggered = False
     query = ""
 
@@ -347,7 +348,7 @@ async def handle_ex_request(message: types.Message):
         return
 
     if not query:
-        query = "Продолжи диалог."
+        query = "Прокомментируй фото." if has_request_photo(message) else "Продолжи диалог."
 
     if message.reply_to_message and (message.reply_to_message.voice or message.reply_to_message.video_note):
         triggers = ["что там", "че там", "расшифруй", "голос", "гс", "слушай"]
@@ -415,6 +416,12 @@ async def handle_ex_request(message: types.Message):
                 target_persona = all_personas[0]
 
             if target_persona:
+                if has_request_photo(message):
+                    if not await is_feature_enabled(message.chat.id, "assistant"):
+                        return
+                    reply_source_text = await add_photo_context(message, query, reply_source_text)
+                    if reply_source_text is None:
+                        return
                 if target_persona.get('p_id') == 'bender' and await offer_response_choice(
                         message, query, reply_source_text, kind='opinion', persona_id='bender'):
                     return
@@ -667,6 +674,10 @@ async def handle_ex_request(message: types.Message):
     if not await is_feature_enabled(message.chat.id, "assistant"):
         return
 
+    if has_request_photo(message):
+        reply_source_text = await add_photo_context(message, clean_query, reply_source_text)
+        if reply_source_text is None:
+            return
     if await offer_response_choice(message, clean_query, reply_source_text):
         return
     return await generate_chat_response(message, clean_query, reply_source_text, all_personas)

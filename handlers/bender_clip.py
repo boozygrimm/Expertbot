@@ -19,6 +19,7 @@ from bender_queue import VideoQueue
 from video_prototype.sign_text import parse_generated
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
+from handlers.photo_context import has_request_photo, add_photo_context
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -303,16 +304,22 @@ async def process_queued_video(queue, bot, item):
 
 @router.message(Command('bender'))
 @router.message(F.text.regexp(EX_VIDEO_PATTERN))
+@router.message(F.photo, F.caption.regexp(EX_VIDEO_PATTERN))
 async def video_reply(message: types.Message):
     if message.chat.type not in ('group', 'supergroup'):
         return
     flags = await get_chat_feature_flags(message.chat.id)
     if not flags.get('video_notes', False):
         return
-    query = parse_video_request(message.text)
+    query = parse_video_request(message.text or getattr(message, 'caption', None))
     if query is None:
         return
-    return await enqueue_video_reply(message, query, reply_context(message))
+    context = reply_context(message)
+    if has_request_photo(message):
+        context = await add_photo_context(message, query or 'Прокомментируй фото.', context)
+        if context is None:
+            return
+    return await enqueue_video_reply(message, query, context)
 
 
 async def enqueue_video_reply(message, query, context):

@@ -383,7 +383,7 @@ def detect_message_feature(message: types.Message):
     if message.voice or message.video_note:
         return "voice"
 
-    text = (message.text or "").strip()
+    text = (message.text or (getattr(message, "caption", None) if getattr(message, "photo", None) else None) or "").strip()
     if not text:
         return None
 

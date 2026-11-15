@@ -5,7 +5,7 @@ import logging
 import os
 import random
 from datetime import datetime, timedelta
-from PIL import Image
+from PIL import Image, ImageOps
 
 from ai_audio import transcribe_audio_groq as _transcribe_audio_groq
 from ai_image_prompt import (
@@ -176,6 +176,49 @@ async def recognize_media(bot, file_id, is_animation=False):
     except Exception as e:
         logger.error(f"Recognize Media Error: {e}")
         return "[МЕДИА]"
+
+async def describe_request_photo(bot, file_id, query):
+    """Describe a photo for a direct request; None means vision failed.
+
+    Unlike background logging, never return a generic media marker as evidence.
+    """
+    try:
+        dest = io.BytesIO()
+        await bot.download(file_id, destination=dest)
+        if not dest.getvalue():
+            return None
+        with Image.open(io.BytesIO(dest.getvalue())) as source:
+            image = ImageOps.exif_transpose(source).convert("RGB")
+            image.thumbnail((1024, 1024))
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=85)
+        data = output.getvalue()
+        prompt = (
+            "Опиши только то, что действительно видно на фото, уделяя внимание вопросу пользователя. "
+            "Не выдумывай невидимые детали; если что-то неразборчиво, так и скажи. "
+            f"Вопрос пользователя: {query[:1000]}"
+        )
+        def valid(value):
+            text = str(value or '').strip()
+            return bool(text and text.upper() not in ('[ФОТО]', '[МЕДИА]', '[ВИДЕО-СТИКЕР/АНИМАЦИЯ]'))
+
+        try:
+            description = await generate_with_retry(prompt, media_data=data)
+        except Exception as exc:
+            logger.warning("Gemini vision failed: %s", type(exc).__name__)
+            description = None
+        if not valid(description):
+            # This new fallback must not silently activate a paid model.
+            if not OPENROUTER_VISION_MODEL.endswith(':free'):
+                return None
+            description, status = await try_openrouter_vision(prompt, data)
+            if status != 200 or not valid(description):
+                return None
+        return str(description).strip()
+    except Exception as exc:
+        logger.warning("Direct photo recognition failed: %s", type(exc).__name__)
+        return None
+
 
 # Поддержка старых вызовов
 recognize_image = recognize_media
