@@ -282,17 +282,25 @@ async def process_queued_video(queue, bot, item):
                 answer = spoken_text(speech)
                 if not answer:
                     raise ValueError('empty response')
-                if not is_voice and not sign:
-                    logger.warning('Модель не вернула подходящую надпись для таблички; пробуем получить отдельно')
-                    sign = await recover_missing_sign(answer)
             except Exception as exc:
                 logger.warning('Не удалось подготовить ответ для медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')
                 return False
-            await queue.update(job_id, stage='ready', answer=answer, sign=sign)
+            # Persist speech before the optional retry. Keep the existing ready
+            # stage so an older bot can still process the item after rollback.
+            sign_pending = not is_voice and not sign
+            stage = 'ready'
+            await queue.update(job_id, stage=stage, answer=answer, sign=sign, sign_pending=sign_pending)
             item['answer'] = answer
             item['sign'] = sign
-            stage = 'ready'
+            item['sign_pending'] = sign_pending
+
+        if stage == 'ready' and not is_voice and item.get('sign_pending'):
+            logger.warning('Модель не вернула подходящую надпись для таблички; пробуем получить отдельно')
+            sign = await recover_missing_sign(item['answer'])
+            await queue.update(job_id, sign=sign, sign_pending=False)
+            item['sign'] = sign
+            item['sign_pending'] = False
 
         if stage in ('ready', 'submitting'):
             try:

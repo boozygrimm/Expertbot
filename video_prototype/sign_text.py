@@ -22,7 +22,10 @@ def normalize_sign(value):
 
 
 def parse_sign_retry(value):
-    """Accept only a short plain phrase or a JSON sign field, never prose."""
+    """Accept a structurally valid short phrase or a JSON sign field.
+
+    Length and character checks cannot guarantee the model returned an apt sign.
+    """
     if not isinstance(value, str) or len(value) > 256:
         return None
     raw = value.strip()

@@ -147,6 +147,21 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'],
                                                    sign='КОСМИЧЕСКИЙ БОСС')
 
+    async def test_restart_during_sign_retry_preserves_original_speech(self):
+        item = await self.submit()
+        self.generate.return_value = '{"speech":"Мой ответ.","sign":"😀"}'
+        with patch.object(bender_clip, 'recover_missing_sign', new=AsyncMock(side_effect=asyncio.CancelledError)):
+            with self.assertRaises(asyncio.CancelledError):
+                await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertEqual(self.queue.items[0]['stage'], 'ready')
+        self.assertTrue(self.queue.items[0]['sign_pending'])
+        self.assertEqual(self.queue.items[0]['answer'], 'Мой ответ.')
+        self.client.render.assert_not_awaited()
+        with patch.object(bender_clip, 'recover_missing_sign', new=AsyncMock(return_value='КОСМОС')):
+            await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.assertEqual(self.generate.await_count, 1)
+        self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'], sign='КОСМОС')
+
     async def test_recovered_sign_is_preserved_on_worker_busy(self):
         from bender_worker_client import WorkerBusy
         item = await self.submit()
