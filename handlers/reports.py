@@ -121,6 +121,19 @@ async def gossip_cmd(message: types.Message):
 
 @router.callback_query(F.data.startswith("rep:"))
 async def persona_callback(callback: types.CallbackQuery):
+    # Message authorization middleware does not run for callback queries.
+    # A previously issued button must not bypass a revoked group authorization.
+    chat = getattr(callback.message, 'chat', None)
+    if not chat:
+        return await callback.answer("Не удалось проверить доступ к чату.", show_alert=True)
+    if chat.type != 'private':
+        try:
+            approved = await db.auth_chats.find_one({'chat_id': chat.id, 'status': 'approved'})
+        except Exception as exc:
+            logger.warning("Не удалось проверить доступ к сплетням: %s", type(exc).__name__)
+            return await callback.answer("Не удалось проверить доступ к чату. Попробуй позже.", show_alert=True)
+        if not approved:
+            return await callback.answer("Этот чат больше не авторизован.", show_alert=True)
     # Парсим callback_data: rep : p_id : count
     parts = callback.data.split(":")
     if len(parts) != 3:

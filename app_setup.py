@@ -52,7 +52,9 @@ def configure_dispatcher() -> Dispatcher:
     dp.message.middleware(FeatureAccessMiddleware())
     dp.callback_query.middleware(FeatureAccessMiddleware())
 
-    @dp.message(Command(commands=["start", "help", "справка", "экс помощь"]), F.text.in_({"/start", "/help", "/справка", "/экс помощь"}))
+    @dp.message(Command("help", "хелп", "хэлп", "справка", ignore_case=True))
+    @dp.message(Command("start", ignore_case=True), F.text.regexp(r"(?i)^/start(?:@[a-z0-9_]+)?\s*$"))
+    @dp.message(Command("экс", ignore_case=True), F.text.regexp(r"(?i)^/экс(?:@[a-z0-9_]+)?\s+помощь\s*$"))
     async def cmd_help(message: types.Message):
         await message.answer(HELP_TEXT, parse_mode="Markdown")
 
