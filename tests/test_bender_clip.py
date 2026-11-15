@@ -80,6 +80,7 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.queue = FakeQueue()
         patches = [
             patch.object(bender_clip, 'video_queue', self.queue),
+            patch.object(bender_clip, 'add_recent_context', new=AsyncMock(side_effect=lambda message, context, messages: context)),
             patch.object(bender_clip, 'get_chat_feature_flags', new=AsyncMock(return_value={'video_notes': True})),
             patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example', 'BENDER_WORKER_KEY': 'secret'}),
             patch.object(bender_clip.db.personas, 'find_one', new=AsyncMock(return_value={'p_id': 'bender', 'prompt': 'робот'})),

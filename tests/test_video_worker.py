@@ -50,7 +50,7 @@ class WorkerHTTPTests(unittest.TestCase):
 
     def test_health_requires_secret(self):
         self.assertEqual(self.request('GET', '/health', secret=False)[0], 401)
-        self.assertEqual(self.request('GET', '/health'), (200, {'status': 'ok', 'capabilities': ['animated-sign-v1']}))
+        self.assertEqual(self.request('GET', '/health'), (200, {'status': 'ok', 'capabilities': ['animated-sign-v1', 'voice-notes-v1']}))
 
     def test_job_is_idempotent_busy_and_returns_file_id(self):
         job = str(uuid.uuid4())

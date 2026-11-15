@@ -92,6 +92,60 @@ class BenderWorkerClient:
                 job = await self._get_job(session, request_id, deadline, retry_not_found=False)
             return await self._wait_for_job(session, request_id, job, deadline)
 
+    async def render_voice(self, text, *, request_id=None):
+        """Submit audio-only work only to a worker that explicitly supports it."""
+        if not isinstance(text, str) or not text.strip() or len(text) > 480:
+            raise ValueError('Текст должен содержать от 1 до 480 символов')
+        request_id = request_id or str(uuid.uuid4())
+        if str(uuid.UUID(request_id)) != request_id:
+            raise ValueError('Некорректный request_id')
+        deadline = time.monotonic() + self.total_timeout
+        timeout = aiohttp.ClientTimeout(total=self.request_timeout)
+        headers = {'Authorization': 'Bearer ' + self.secret}
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            if not await self._supports_voice(session, deadline):
+                raise WorkerUnavailable('Студия недоступна или пока не поддерживает голосовые')
+            try:
+                async with session.post(self.base_url + '/voice-jobs', json={'request_id': request_id, 'text': text},
+                    allow_redirects=False, timeout=aiohttp.ClientTimeout(
+                        total=min(self.request_timeout, max(0.001, deadline - time.monotonic())))) as response:
+                    if response.status == 409:
+                        payload = await response.json(content_type=None)
+                        if isinstance(payload, dict) and payload.get('error') in ('Воркер занят', 'busy'):
+                            raise WorkerBusy('Воркер занят')
+                        raise WorkerUnavailable('Конфликт запроса воркера')
+                    if response.status not in (200, 202):
+                        raise WorkerUnavailable('Сервис не принял запрос')
+                    job = await response.json(content_type=None)
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                job = await self._get_job(session, request_id, deadline, retry_not_found=False)
+            return await self._wait_for_job(session, request_id, job, deadline)
+
+    async def _supports_voice(self, session, deadline):
+        """Give a sleeping worker time to wake, without sending any job twice."""
+        probe_deadline = min(deadline, time.monotonic() + 30)
+        while time.monotonic() < probe_deadline:
+            remaining = probe_deadline - time.monotonic()
+            try:
+                async with session.get(
+                    self.base_url + '/health', allow_redirects=False,
+                    timeout=aiohttp.ClientTimeout(total=min(self.request_timeout, remaining)),
+                ) as response:
+                    if response.status == 200:
+                        payload = await response.json(content_type=None)
+                        capabilities = payload.get('capabilities') if isinstance(payload, dict) else None
+                        return isinstance(capabilities, list) and 'voice-notes-v1' in capabilities
+                    if response.status not in (502, 503, 504):
+                        return False
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                pass
+            except (ValueError, TypeError):
+                return False
+            remaining = probe_deadline - time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(min(2, remaining))
+        return False
+
     async def _supports_sign(self, session, deadline):
         """Old workers reject extra fields; probe briefly and fall back before POST."""
         remaining = deadline - time.monotonic()
@@ -147,6 +201,34 @@ class BenderWorkerClient:
                     return bytes(data)
         except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
             raise WorkerUnavailable('Не удалось получить сохранённое видео') from None
+
+    async def fetch_uncertain_voice(self, request_id):
+        """Fetch the already-created voice note; never submit TTS again."""
+        try:
+            if str(uuid.UUID(request_id)) != request_id:
+                raise ValueError('Некорректный request_id')
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError('Некорректный request_id') from None
+        limit = 50 * 1024 * 1024
+        timeout = aiohttp.ClientTimeout(total=max(120, self.request_timeout))
+        headers = {'Authorization': 'Bearer ' + self.secret}
+        try:
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(self.base_url + '/jobs/' + request_id + '/voice', allow_redirects=False) as response:
+                    if response.status != 200 or response.content_type != 'audio/ogg':
+                        raise WorkerUnavailable('Не удалось получить сохранённое голосовое')
+                    if response.content_length is not None and response.content_length > limit:
+                        raise WorkerUnavailable('Голосовое слишком большое')
+                    data = bytearray()
+                    async for chunk in response.content.iter_chunked(65536):
+                        data.extend(chunk)
+                        if len(data) > limit:
+                            raise WorkerUnavailable('Голосовое слишком большое')
+                    if not data:
+                        raise WorkerUnavailable('Сохранённое голосовое пустое')
+                    return bytes(data)
+        except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+            raise WorkerUnavailable('Не удалось получить сохранённое голосовое') from None
 
     async def _get_job(self, session, request_id, deadline, *, retry_not_found=True):
         while time.monotonic() < deadline:

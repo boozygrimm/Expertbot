@@ -78,6 +78,7 @@ async def run_expert_report(message: types.Message, persona: dict, count: int):
                 await db.messages.insert_one({
                     "message_id": sent.message_id,
                     "chat_id": message.chat.id,
+                    "message_thread_id": getattr(message, 'message_thread_id', None),
                     "user_name": f"🤖 {persona['name']}",
                     "text": part,
                     "reactions": [],

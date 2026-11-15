@@ -36,10 +36,11 @@ MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
 
 class UploadUncertain(Exception):
-    """Storage upload has no reliable response; video was already rendered."""
-    def __init__(self, video_path):
+    """Storage upload has no reliable response; media was already created."""
+    def __init__(self, video_path, kind='video'):
         super().__init__('Результат загрузки на склад неизвестен')
         self.video_path = Path(video_path)
+        self.kind = kind
 
 
 class BusyError(Exception):
@@ -60,13 +61,15 @@ class JobStore:
         self.next_cleanup = 0.0
         self.cleanup_running = False
 
-    def submit(self, request_id, text, sign=None):
+    def submit(self, request_id, text, sign=None, kind='video'):
+        if kind not in ('video', 'voice') or (kind == 'voice' and sign):
+            raise ValueError('Некорректный формат задачи')
         sign = normalize_sign(sign)
         # Lock covers duplicate detection, capacity check, and job creation.
         with self.lock:
             existing = self.jobs.get(request_id)
             if existing:
-                if existing['text'] != text or existing.get('sign') != sign:
+                if existing['text'] != text or existing.get('sign') != sign or existing.get('kind', 'video') != kind:
                     raise JobConflict('request_id уже использован для другого текста')
                 return self._public(request_id, existing), False
             if self.active is not None:
@@ -74,24 +77,27 @@ class JobStore:
             # Completed records are bounded; an evicted request can be submitted again.
             while len(self.jobs) >= MAX_JOBS:
                 self.jobs.pop(next(iter(self.jobs)))
-            self.jobs[request_id] = {'text': text, 'sign': sign, 'status': 'running'}
+            self.jobs[request_id] = {'text': text, 'sign': sign, 'kind': kind, 'status': 'running'}
             self.active = request_id
-            threading.Thread(target=self._execute, args=(request_id, text, sign), daemon=True).start()
+            threading.Thread(target=self._execute, args=(request_id, text, sign, kind), daemon=True).start()
             return self._public(request_id, self.jobs[request_id]), True
 
-    def _execute(self, request_id, text, sign):
+    def _execute(self, request_id, text, sign, kind):
         try:
-            file_id = self.run_job(request_id, text, sign) if sign else self.run_job(request_id, text)
+            if kind == 'voice':
+                file_id = self.run_job(request_id, text, kind='voice')
+            else:
+                file_id = self.run_job(request_id, text, sign) if sign else self.run_job(request_id, text)
             if not isinstance(file_id, str) or not file_id:
                 raise ValueError('Не получен file_id')
             outcome = {'status': 'done', 'file_id': file_id}
         except UploadUncertain as exc:
-            print(f'Задача {request_id}: ответ склада неизвестен, видео сохранено', flush=True)
+            print(f'Задача {request_id}: ответ склада неизвестен, медиа сохранено', flush=True)
             outcome = {'status': 'upload_uncertain', '_video_path': exc.video_path}
         except Exception as exc:
             # Never echo subprocess arguments, HTTP URLs, tokens, or input into the API.
             print(f'Задача {request_id}: ошибка {type(exc).__name__}; проверь журнал задачи и консоль сервиса', flush=True)
-            outcome = {'status': 'failed', 'error': 'Не удалось создать или загрузить кружок'}
+            outcome = {'status': 'failed', 'error': 'Не удалось создать или загрузить медиа'}
         with self.lock:
             self.jobs[request_id].update(outcome)
             self.active = None
@@ -182,10 +188,16 @@ class JobStore:
             return self._public(request_id, job) if job else None
 
     def read_uncertain_video(self, request_id):
-        """Only expose a completed local video for a job in the uncertain state."""
+        return self._read_uncertain(request_id, 'video')
+
+    def read_uncertain_voice(self, request_id):
+        return self._read_uncertain(request_id, 'voice')
+
+    def _read_uncertain(self, request_id, kind):
+        """Expose only the media of the requested type for an uncertain job."""
         with self.lock:
             job = self.jobs.get(request_id)
-            if not job or job.get('status') != 'upload_uncertain':
+            if not job or job.get('status') != 'upload_uncertain' or job.get('kind', 'video') != kind:
                 return None
             path = job['_video_path']
         try:
@@ -223,7 +235,7 @@ def validate_request(data):
 def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portrait=None):
     """Return a runner that isolates output/logs per UUID, using the existing CLI."""
     key_rotation = itertools.count()  # One worker serializes jobs; restart resets rotation.
-    def run(request_id, text, sign=None):
+    def run(request_id, text, sign=None, kind='video'):
         job_dir = output_dir / request_id
         job_dir.mkdir(parents=True, exist_ok=True)
         # Never recover a stale clip from an earlier execution with the same UUID.
@@ -236,9 +248,11 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
             sys.executable, '-u', str(HERE / 'pipeline.py'), '--text', text,
             '--channel-id', str(channel_id), '--output-dir', str(job_dir),
         ]
-        if smoke_plate is not None:
+        if kind == 'voice':
+            command.append('--voice-only')
+        elif smoke_plate is not None:
             command.extend(['--smoke-plate', str(smoke_plate)])
-        if scene_portrait is not None:
+        if kind == 'video' and scene_portrait is not None:
             # A UUID determines the scene without affecting the separate TTS seed.
             command.extend(['--scene-seed', request_id, '--portrait', str(scene_portrait)])
             if sign:
@@ -270,12 +284,12 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
         # A marker is written only after rendering and immediately before the
         # storage upload. The destination chat has not been contacted here.
         for clip in current:
-            video = clip / 'video.mp4'
+            video = clip / ('voice.ogg' if kind == 'voice' else 'video.mp4')
             try:
                 info = video.lstat()
                 marker = (clip / 'storage-upload.pending').lstat()
                 if stat.S_ISREG(info.st_mode) and 0 < info.st_size <= MAX_VIDEO_BYTES and stat.S_ISREG(marker.st_mode):
-                    raise UploadUncertain(video)
+                    raise UploadUncertain(video, kind)
             except OSError:
                 continue
         if result is None:
@@ -313,7 +327,19 @@ def handler_for(store, secret):
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
             if path == '/health':
-                return self.respond(200, {'status': 'ok', 'capabilities': ['animated-sign-v1']})
+                return self.respond(200, {'status': 'ok', 'capabilities': ['animated-sign-v1', 'voice-notes-v1']})
+            voice_match = re.fullmatch(r'/jobs/([0-9a-f-]{36})/voice', path)
+            if voice_match:
+                data = store.read_uncertain_voice(voice_match.group(1))
+                if data is None:
+                    return self.respond(404, {'error': 'not_found'})
+                self.send_response(200)
+                self.send_header('Content-Type', 'audio/ogg')
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Cache-Control', 'no-store')
+                self.end_headers()
+                self.wfile.write(data)
+                return
             video_match = re.fullmatch(r'/jobs/([0-9a-f-]{36})/video', path)
             if video_match:
                 data = store.read_uncertain_video(video_match.group(1))
@@ -335,7 +361,8 @@ def handler_for(store, secret):
         def do_POST(self):
             if not self.authorized():
                 return self.respond(401, {'error': 'unauthorized'})
-            if urlsplit(self.path).path != '/jobs':
+            path = urlsplit(self.path).path
+            if path not in ('/jobs', '/voice-jobs'):
                 return self.respond(404, {'error': 'not_found'})
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -346,7 +373,10 @@ def handler_for(store, secret):
             try:
                 data = json.loads(self.rfile.read(length).decode('utf-8'))
                 request_id, text, sign = validate_request(data)
-                job, created = store.submit(request_id, text, sign)
+                kind = 'voice' if path == '/voice-jobs' else 'video'
+                if kind == 'voice' and sign:
+                    raise ValueError('Для голосового надпись не поддерживается')
+                job, created = store.submit(request_id, text, sign, kind=kind)
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 return self.respond(400, {'error': str(exc)})
             except (BusyError, JobConflict) as exc:

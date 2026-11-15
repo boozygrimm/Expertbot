@@ -36,6 +36,18 @@ FEATURES = OrderedDict({
         "default": False,
         "hint": "Ответы видеокружком по /bender или Экс, кружок."
     },
+    "voice_replies": {
+        "label": "Голосовые ответы Бендера",
+        "icon": "🗣",
+        "default": False,
+        "hint": "Вариант голосового ответа в меню; по умолчанию следует настройке кружков. Нужен обновлённый воркер студии."
+    },
+    "auto_voice_replies": {
+        "label": "Автоответ голосом",
+        "icon": "🔊",
+        "default": False,
+        "hint": "На обращение голосом или кружком отвечать голосом без выбора. Нужны «Голосовые» и «Эксперт». Специальные команды выполняются как обычно."
+    },
     "images": {
         "label": "Картинки",
         "icon": "🎨",
@@ -52,7 +64,7 @@ FEATURES = OrderedDict({
         "label": "Голосовые",
         "icon": "🎙",
         "default": True,
-        "hint": "Авторасшифровка и ручная расшифровка голосовых."
+        "hint": "Расшифровка голосовых и кружков, сохранение текста в историю и ручные запросы. /voice управляет публикацией в чат."
     },
     "reports": {
         "label": "Отчёты",
@@ -177,6 +189,12 @@ async def get_chat_feature_flags(chat_id: int) -> dict:
     if doc:
         flags.update(doc.get("features", {}))
 
+    # Existing chats with video choice get the new format too, while chats
+    # without a studio menu keep their previous text-only behavior. An explicit
+    # voice setting overrides this default independently of video.
+    if "voice_replies" not in (doc or {}).get("features", {}):
+        flags["voice_replies"] = bool(flags.get("video_notes", False))
+
     if "social" not in (doc or {}).get("features", {}):
         flags["social"] = await _get_legacy_social_state(chat_id, "social_module", FEATURES["social"]["default"])
     if "social_18" not in (doc or {}).get("features", {}):
@@ -272,7 +290,10 @@ async def build_feature_panel_markup(chat_id: int):
     builder.button(text="ℹ️ Подробнее", callback_data="feat:details")
     builder.button(text="🔄 Обновить", callback_data="feat:refresh")
     builder.button(text="❌ Закрыть", callback_data="feat:close")
-    builder.adjust(5, 5, 2, 2)
+    feature_rows = [5] * (len(FEATURES) // 5)
+    if len(FEATURES) % 5:
+        feature_rows.append(len(FEATURES) % 5)
+    builder.adjust(*feature_rows, 2, 2)
     return builder.as_markup()
 
 

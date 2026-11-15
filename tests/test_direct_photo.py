@@ -82,6 +82,7 @@ class PhotoRoutingTests(unittest.IsolatedAsyncioTestCase):
             patch.object(response_choice, 'get_chat_feature_flags', new=AsyncMock(side_effect=lambda _: self.flags)),
             patch.object(ex_logic, 'is_feature_enabled', new=AsyncMock(side_effect=lambda _, flag: self.flags.get(flag, True))),
             patch.object(ex_logic, 'analyze_intent', new=AsyncMock(side_effect=lambda query, context='': ('CHAT', query))),
+            patch.object(bender_clip, 'add_recent_context', new=AsyncMock(side_effect=lambda message, context, messages: context)),
             patch.object(photo_context, 'describe_request_photo', new=AsyncMock(return_value='На фото рыжий кот'))]
         self.recognize = patches[-1].new
         for p in patches:

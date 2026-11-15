@@ -1,11 +1,13 @@
-import os
 import asyncio
+import html
 import logging
+import re
 from aiogram import Router, types, F
 from aiogram.filters import Command
 
 from database import db
-from ai_logic import transcribe_audio_groq
+from handlers.audio_transcription import get_transcription, short_transcript
+from handlers.admin_panel import get_chat_feature_flags
 # Импортируем обработчик Экса, чтобы он мог отвечать на голосовые команды
 from handlers.ex_logic import handle_ex_request
 
@@ -23,8 +25,10 @@ async def toggle_voice(message: types.Message):
         doc = await db.settings.find_one({"setting": "auto_voice", "chat_id": chat_id})
         status = "ВКЛЮЧЕНО ✅" if doc and doc.get("value") else "ВЫКЛЮЧЕНО ❌"
         return await message.reply(
-            f"🎙 **Распознавание голосовых**\nСейчас: {status}\n\n"
-            f"Для изменения напиши:\n`/voice on` — включить авто-текст\n`/voice off` — отключить"
+            f"🎙 **Публикация расшифровок в чат**\nСейчас: {status}\n\n"
+            "`/voice on` — публиковать текст\n`/voice off` — не публиковать\n\n"
+            "При включённом модуле «Голосовые» текст сохраняется в истории даже при /voice off. "
+            "Если начать запись с «Экс», бот ответит и при /voice off — без публикации расшифровки."
         )
 
     new_status = args[1].lower() == "on"
@@ -35,57 +39,57 @@ async def toggle_voice(message: types.Message):
         upsert=True
     )
     
-    await message.reply(f"🎙 Авто-распознавание голосовых {'ВКЛЮЧЕНО ✅' if new_status else 'ВЫКЛЮЧЕНО ❌'}")
+    await message.reply(
+        f"🎙 Публикация расшифровок в чат {'ВКЛЮЧЕНА ✅' if new_status else 'ВЫКЛЮЧЕНА ❌'}. "
+        "Сохранение в историю управляется модулем «Голосовые» в панели."
+    )
 
 # --- ОБРАБОТЧИК ГОЛОСОВЫХ И КРУЖКОВ ---
 @router.message(F.voice | F.video_note)
-async def handle_voice_messages(message: types.Message):
+async def handle_voice_messages(message: types.Message, voice_transcription_task=None):
     chat_id = message.chat.id
     
     # 1. Проверяем, включено ли авто-распознавание
     doc = await db.settings.find_one({"setting": "auto_voice", "chat_id": chat_id})
     auto_voice = doc.get("value", False) if doc else False
     
-    # Если выключено и это не прямой ответ-команда Эксу (обработается в ex_logic) - игнорим
-    if not auto_voice:
-        return
-
-    file_id = message.voice.file_id if message.voice else message.video_note.file_id
-    file_ext = "ogg" if message.voice else "mp4"
-    file_path = f"temp_{file_id}.{file_ext}"
-
-    status_msg = await message.reply("⏳ <i>Слушаю...</i>", parse_mode="HTML")
-
+    # Publication is optional. The logger already starts transcription even
+    # with /voice off; both paths share the same in-flight result.
+    status_msg = None
+    if auto_voice:
+        status_msg = await message.reply("⏳ <i>Слушаю...</i>", parse_mode="HTML")
     try:
-        # Скачиваем файл
-        file = await message.bot.get_file(file_id)
-        await message.bot.download_file(file.file_path, file_path)
-        
-        # Распознаем
-        text = await transcribe_audio_groq(file_path)
-        text = text.strip()
-
-        if not text or "❌" in text:
-            await status_msg.edit_text("🤷‍♂️ Не удалось разобрать речь.")
+        text = (await asyncio.shield(voice_transcription_task) if voice_transcription_task is not None
+                else await get_transcription(message, retry_failed=False))
+        if not text:
+            if status_msg:
+                await status_msg.edit_text("🤷‍♂️ Не удалось разобрать речь.")
             return
 
-        # Отправляем результат
-        result_text = f"🎙 <b>Расшифровка:</b>\n{text}"
-        await status_msg.edit_text(result_text, parse_mode="HTML")
+        if status_msg:
+            # Telegram text is limited to 4096 characters; escape recognized HTML.
+            shown = short_transcript(text)
+            await status_msg.edit_text(f"🎙 <b>Расшифровка:</b>\n{html.escape(shown)}", parse_mode="HTML")
 
-        # А теперь МАГИЯ: Если ГС начинается с обращения к Эксу, заставляем Экса ответить!
-        lower_text = text.lower()
-        if lower_text.startswith(("экс", "эксперт")):
-            # Создаем фейковое сообщение с распознанным текстом
-            fake_message = message.model_copy(update={"text": text})
-            # Прокидываем его в основной ИИ-модуль
+        # A normal word like «экскурсия» is not an address to the bot.
+        if not re.match(r'(?i)^экс(?:перт)?(?=$|[\s,!.?:;])', text.strip()):
+            return
+        prefer_voice = False
+        if message.chat.type in ('group', 'supergroup'):
+            try:
+                flags = await get_chat_feature_flags(chat_id)
+            except Exception as exc:
+                logger.warning("Не удалось проверить настройки обращения: %s", type(exc).__name__)
+                return
+            if not flags.get('voice', True) or not flags.get('assistant', True):
+                return
+            prefer_voice = bool(flags.get('auto_voice_replies', False))
+        fake_message = message.model_copy(update={"text": text})
+        if prefer_voice:
+            await handle_ex_request(fake_message, prefer_voice=True)
+        else:
             await handle_ex_request(fake_message)
-
-    except Exception as e:
-        logger.error(f"Ошибка обработки голосового: {e}")
-        await status_msg.edit_text("❌ Ошибка при обработке аудио.")
-    finally:
-        # Убираем мусор за собой
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            
+    except Exception as exc:
+        logger.warning("Ошибка обработки голосового: %s", type(exc).__name__)
+        if status_msg:
+            await status_msg.edit_text("❌ Ошибка при обработке аудио.")
