@@ -73,7 +73,7 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
     if 'video' in formats:
         builder.button(text='⭕ Кружок', callback_data=f'exfmt:{choice_id}:video')
     if 'voice' in formats:
-        builder.button(text='🎙 Голосовое', callback_data=f'exfmt:{choice_id}:voice')
+        builder.button(text='🎙 Голос', callback_data=f'exfmt:{choice_id}:voice')
     builder.button(text='💬 Текст', callback_data=f'exfmt:{choice_id}:text')
     builder.adjust(len(formats))
     menu = None

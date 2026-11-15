@@ -274,7 +274,7 @@ class VoiceChoiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_three_choices_and_voice_keeps_original_context(self):
         await response_choice.offer_response_choice(self.msg, 'вопрос', 'фото и диалог')
         markup = self.menu.edit_reply_markup.await_args.kwargs['reply_markup']
-        self.assertEqual([b.text for row in markup.inline_keyboard for b in row], ['⭕ Кружок', '🎙 Голосовое', '💬 Текст'])
+        self.assertEqual([b.text for row in markup.inline_keyboard for b in row], ['⭕ Кружок', '🎙 Голос', '💬 Текст'])
         doc = await self.db.ex_response_choices.find_one({'message_id': 42})
         cb = SimpleNamespace(data=f"exfmt:{doc['_id']}:voice", message=self.menu,
                              from_user=self.msg.from_user, bot=self.msg.bot, answer=AsyncMock())
@@ -490,7 +490,7 @@ class VoiceEndToEndTests(unittest.IsolatedAsyncioTestCase):
             voice.assert_not_awaited()
             self.assertEqual(msg.reply.await_args.args[0], '🤖 Как мне ответить?')
             buttons = msg.reply.return_value.edit_reply_markup.await_args.kwargs['reply_markup']
-            self.assertIn('🎙 Голосовое', [b.text for row in buttons.inline_keyboard for b in row])
+            self.assertIn('🎙 Голос', [b.text for row in buttons.inline_keyboard for b in row])
         self.flags['voice'] = False
         msg, voice = await self.run_message('video_note', 'Экс, как дела?')
         voice.assert_not_awaited(); msg.reply.assert_not_awaited()
