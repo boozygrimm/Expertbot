@@ -6,7 +6,7 @@ from aiogram.filters import Command
 
 from database import db
 from handlers.audio_transcription import get_transcription, short_transcript
-from handlers.admin_panel import get_chat_feature_flags
+from handlers.admin_panel import get_chat_feature_flags, is_chat_admin
 # Импортируем обработчик Экса, чтобы он мог отвечать на голосовые команды
 from handlers.ex_logic import EX_ADDRESS_RE, handle_ex_request, is_reply_to_bot
 
@@ -25,14 +25,27 @@ async def toggle_voice(message: types.Message):
         status = "ВКЛЮЧЕНО ✅" if doc and doc.get("value") else "ВЫКЛЮЧЕНО ❌"
         return await message.reply(
             f"🎙 **Публикация расшифровок в чат**\nСейчас: {status}\n\n"
-            "`/voice on` — публиковать текст\n`/voice off` — не публиковать\n\n"
+            "`/voice on` — публиковать текст\n`/voice off` — не публиковать\n"
+            "В группе переключать публикацию могут только администраторы и владелец бота.\n\n"
             "При включённом модуле «Голосовые» текст сохраняется в истории даже при /voice off. "
             "Если начать запись с «Экс» или ответить записью на сообщение бота, "
             "он ответит и при /voice off — без публикации расшифровки."
         )
 
+    if message.chat.type != 'private':
+        if not message.from_user:
+            return await message.reply("❌ Переключать публикацию могут только администраторы чата.")
+        try:
+            allowed = await asyncio.wait_for(
+                is_chat_admin(message.bot, chat_id, message.from_user.id), timeout=5)
+        except Exception as exc:
+            logger.warning("Не удалось проверить права для /voice: %s", type(exc).__name__)
+            return await message.reply("⚠️ Не удалось проверить права администратора. Попробуй позже.")
+        if not allowed:
+            return await message.reply("❌ Переключать публикацию могут только администраторы чата.")
+
     new_status = args[1].lower() == "on"
-    
+
     await db.settings.update_one(
         {"setting": "auto_voice", "chat_id": chat_id},
         {"$set": {"value": new_status}},
