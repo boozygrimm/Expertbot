@@ -475,13 +475,18 @@ class VoiceEndToEndTests(unittest.IsolatedAsyncioTestCase):
             await voice_rec.handle_voice_messages(msg)
         return msg, voice
 
-    async def test_addressed_voice_and_video_note_auto_without_menu(self):
-        for kind in ('voice', 'video_note'):
-            with self.subTest(kind=kind), patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=('CHAT', 'как дела?'))):
-                msg, voice = await self.run_message(kind, 'Экс, как дела?')
-                voice.assert_awaited_once()
-                self.assertEqual(voice.await_args.args[1], 'как дела?')
-                msg.reply.assert_not_awaited()
+    async def test_addressed_voice_is_auto_but_circle_opens_choice(self):
+        with patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=('CHAT', 'как дела?'))):
+            msg, voice = await self.run_message('voice', 'Экс, как дела?')
+            voice.assert_awaited_once()
+            self.assertEqual(voice.await_args.args[1], 'как дела?')
+            msg.reply.assert_not_awaited()
+            msg, voice = await self.run_message('video_note', 'Экс, как дела?')
+            voice.assert_not_awaited()
+            self.assertEqual(msg.reply.await_args.args[0], '🤖 Как мне ответить?')
+            buttons = msg.reply.return_value.edit_reply_markup.await_args.kwargs['reply_markup']
+            self.assertEqual([b.text for row in buttons.inline_keyboard for b in row],
+                             ['⭕ Кружок', '🎙 Голос', '💬 Текст'])
 
     async def test_auto_off_opens_format_menu_and_voice_off_blocks(self):
         self.flags['auto_voice_replies'] = False
@@ -508,6 +513,24 @@ class VoiceEndToEndTests(unittest.IsolatedAsyncioTestCase):
                 _, voice = await self.run_message('voice', 'Экс, пример')
                 voice.assert_not_awaited()
                 {'MUSIC': music, 'IMAGE': image, 'SEARCH': search, 'GOSSIP': gossip, 'POLE': pole}[intent].assert_awaited_once()
+
+    async def test_circle_special_actions_still_bypass_choice(self):
+        with patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=('MUSIC', 'песня'))), \
+             patch.object(ex_logic, 'handle_music_request', new_callable=AsyncMock) as music, \
+             patch.object(ex_logic, 'offer_response_choice', new_callable=AsyncMock) as offer:
+            _, voice = await self.run_message('video_note', 'Экс, песня')
+        music.assert_awaited_once()
+        offer.assert_not_awaited()
+        voice.assert_not_awaited()
+
+    async def test_circle_with_only_text_enabled_uses_legacy_text(self):
+        self.flags.update(voice_replies=False, video_notes=False)
+        with patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=('CHAT', 'как дела?'))), \
+             patch.object(ex_logic, 'generate_chat_response', new_callable=AsyncMock) as answer:
+            msg, voice = await self.run_message('video_note', 'Экс, как дела?')
+        answer.assert_awaited_once()
+        voice.assert_not_awaited()
+        msg.reply.assert_not_awaited()
 
     async def test_new_switches_default_off(self):
         self.assertFalse(admin_panel.FEATURES['voice_replies']['default'])

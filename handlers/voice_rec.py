@@ -85,7 +85,7 @@ async def handle_voice_messages(message: types.Message, voice_transcription_task
                 return
             if not flags.get('voice', True) or not flags.get('assistant', True):
                 return
-            prefer_voice = bool(flags.get('auto_voice_replies', False))
+            prefer_voice = bool(message.voice and flags.get('auto_voice_replies', False))
         fake_message = message.model_copy(update={"text": text})
         if prefer_voice:
             await handle_ex_request(fake_message, prefer_voice=True)
