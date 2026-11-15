@@ -9,6 +9,7 @@ import uuid
 
 from aiogram import F, Router, types
 from aiogram.filters import Command
+from aiogram.exceptions import TelegramBadRequest
 
 from ai_logic import generate_with_retry
 from bender_style import apply_bender_tone
@@ -17,6 +18,7 @@ from bender_worker_client import (
     BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed, WorkerUploadUncertain,
 )
 from bender_queue import VideoQueue
+from config import get_msk_now
 from video_prototype.sign_text import parse_generated
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
@@ -49,13 +51,19 @@ STATUS_MESSAGES = (
     '🎥 Убираю лишнее из кадра. Моё великолепие останется!',
     '🏆 Готовлю речь для вручения награды самому себе!',
 )
+VOICE_STATUS_MESSAGES = (
+    '🎙 Записываю голосовое. Мои динамики уже разогреваются!',
+    '🎧 Готовлю ответ. У величайшего робота отличный голос!',
+    '🎤 Проверяю микрофон. Скоро всё расскажу!',
+)
 STATUS_INTERVAL_SECONDS = 15
 
 
-def choose_status(previous=None):
+def choose_status(previous=None, *, kind='video'):
     """Pick randomly, avoiding an immediate repeat when possible."""
-    choices = [text for text in STATUS_MESSAGES if text != previous]
-    return random.choice(choices or STATUS_MESSAGES)
+    messages = VOICE_STATUS_MESSAGES if kind == 'voice' else STATUS_MESSAGES
+    choices = [text for text in messages if text != previous]
+    return random.choice(choices or messages)
 
 
 def spoken_text(value):
@@ -153,7 +161,7 @@ async def _delete_status(bot, item):
 async def _queue_rotation(bot, item, previous):
     while True:
         await asyncio.sleep(STATUS_INTERVAL_SECONDS)
-        text = choose_status(previous)
+        text = choose_status(previous, kind=item.get('kind', 'video'))
         await _edit_status(bot, item, text)
         previous = text
 
@@ -169,22 +177,60 @@ async def _report_and_remove(queue, bot, item, text):
     await _delete_status(bot, item)
 
 
+async def _save_sent_media_history(item, sent):
+    """Store TTS input after confirmed delivery, without recognizing or resending.
+
+    The deterministic id makes a repeated bookkeeping attempt harmless. A lost
+    Telegram response or a crash before this write can still leave no history.
+    """
+    message_id = getattr(sent, 'message_id', None)
+    answer = item.get('answer')
+    if not isinstance(message_id, int) or isinstance(message_id, bool) or message_id <= 0:
+        return
+    if not isinstance(answer, str) or not answer.strip():
+        return
+    label = 'Голосовое' if item.get('kind', 'video') == 'voice' else 'Кружок'
+    document = {
+        '_id': f"bender-media:{item['chat_id']}:{message_id}",
+        'message_id': message_id,
+        'chat_id': item['chat_id'],
+        'message_thread_id': item.get('thread_id'),
+        'user_name': '🤖 Бендер',
+        'text': f'[{label} Бендера, текст для озвучки: {answer}]',
+        'audio_status': 'ready',
+        'audio_transcript': answer,
+        'audio_source': 'tts_input',
+        'reactions': [],
+        'createdAt': get_msk_now(),
+    }
+    try:
+        await asyncio.wait_for(db.messages.update_one(
+            {'_id': document['_id']}, {'$setOnInsert': document}, upsert=True), timeout=1.0)
+    except Exception as exc:
+        # The message is already delivered: a DB failure must never trigger a resend.
+        logger.warning('Не удалось сохранить отправленное медиа в историю: %s', type(exc).__name__)
+
+
 async def process_queued_video(queue, bot, item):
     """Run or safely recover the head; return True for confirmed worker busy."""
     job_id = item['id']
     stage = item['stage']
+    is_voice = item.get('kind', 'video') == 'voice'
+    uncertain_delivery = (
+        '🤖 Связь прервалась во время отправки голосового. Проверь чат: возможно, оно уже пришло.' if is_voice else
+        '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.'
+    )
     if stage == 'reporting':
         await queue.remove(job_id)
         await _delete_status(bot, item)
         return False
     if stage == 'sending':
-        await _report_and_remove(queue, bot, item,
-            '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+        await _report_and_remove(queue, bot, item, uncertain_delivery)
         return False
     if stage == 'ready' and item.get('retry_after', 0) > time.time():
         return True
 
-    first_status = choose_status()
+    first_status = choose_status(kind=item.get('kind', 'video'))
     await _edit_status(bot, item, first_status)
     rotation = asyncio.create_task(_queue_rotation(bot, item, first_status))
     try:
@@ -199,12 +245,13 @@ async def process_queued_video(queue, bot, item):
                     f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {item['context'] or '(нет)'}\n"
                     f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {item['query'] or 'Прокомментируй сообщение.'}\n"
                     'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
-                    'с законченными предложениями, без разметки и эмодзи. Дополнительно придумай '
-                    'короткую юмористическую надпись по теме сообщения для таблички: от 1 до 3 слов, '
-                    'всего не больше 22 символов, каждое слово не больше 12 символов. '
-                    'Только русские или латинские буквы, цифры, пробелы и знаки ! ? , . -. '
-                    'Верни строго один JSON-объект с полями "speech" (только произносимый ответ) '
-                    'и "sign" (только надпись). Без пояснений и Markdown; sign не произносится.'
+                    'с законченными предложениями, без разметки и эмодзи. '
+                    + ('Верни только произносимый текст, без пояснений и JSON.' if is_voice else
+                       'Дополнительно придумай короткую юмористическую надпись по теме сообщения для таблички: от 1 до 3 слов, '
+                       'всего не больше 22 символов, каждое слово не больше 12 символов. '
+                       'Только русские или латинские буквы, цифры, пробелы и знаки ! ? , . -. '
+                       'Верни строго один JSON-объект с полями "speech" (только произносимый ответ) '
+                       'и "sign" (только надпись). Без пояснений и Markdown; sign не произносится.')
                 )
                 generated = await asyncio.wait_for(generate_with_retry(prompt), timeout=45)
                 speech, sign = parse_generated(generated)
@@ -212,7 +259,7 @@ async def process_queued_video(queue, bot, item):
                 if not answer:
                     raise ValueError('empty response')
             except Exception as exc:
-                logger.warning('Не удалось подготовить ответ для кружка: %s', type(exc).__name__)
+                logger.warning('Не удалось подготовить ответ для медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')
                 return False
             await queue.update(job_id, stage='ready', answer=answer, sign=sign)
@@ -229,7 +276,9 @@ async def process_queued_video(queue, bot, item):
                     # This marker is persisted before the POST. If the process
                     # dies at any point, recovery only checks the same UUID.
                     await queue.update(job_id, stage='submitting')
-                    if item.get('sign'):
+                    if is_voice:
+                        file_id = await client.render_voice(item['answer'], request_id=item['request_id'])
+                    elif item.get('sign'):
                         file_id = await client.render(item['answer'], request_id=item['request_id'], sign=item['sign'])
                     else:
                         file_id = await client.render(item['answer'], request_id=item['request_id'])
@@ -247,11 +296,13 @@ async def process_queued_video(queue, bot, item):
                 stage = 'fallback_ready'
             except WorkerFailed:
                 await _report_and_remove(queue, bot, item,
+                    f"🤖 Голосовое не получилось. Зато вот мой гениальный ответ:\n{item['answer']}" if is_voice else
                     f"🤖 Кружок не получился. Зато вот мой гениальный ответ:\n{item['answer']}")
                 return False
             except (WorkerError, ValueError) as exc:
-                logger.warning('Неизвестен результат создания кружка: %s', type(exc).__name__)
+                logger.warning('Неизвестен результат создания медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item,
+                    f"🤖 Связь со студией прервалась, и я не знаю, готово ли голосовое. Вот ответ:\n{item['answer']}" if is_voice else
                     f"🤖 Связь со студией прервалась, и я не знаю, готов ли кружок. Вот ответ:\n{item['answer']}")
                 return False
             if stage != 'fallback_ready':
@@ -264,23 +315,35 @@ async def process_queued_video(queue, bot, item):
                 url = os.getenv('BENDER_WORKER_URL', '').strip()
                 key = os.getenv('BENDER_WORKER_KEY', '').strip()
                 client = BenderWorkerClient(url, key)
-                video = await client.fetch_uncertain_video(item['request_id'])
+                video = await (client.fetch_uncertain_voice(item['request_id']) if is_voice else
+                               client.fetch_uncertain_video(item['request_id']))
             except (WorkerError, ValueError) as exc:
-                logger.warning('Не удалось получить сохранённый кружок: %s', type(exc).__name__)
+                logger.warning('Не удалось получить сохранённое медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item,
+                    f"🤖 Связь со складом прервалась, и я не смог получить готовое голосовое. Вот ответ:\n{item['answer']}" if is_voice else
                     f"🤖 Связь со складом прервалась, и я не смог получить готовый кружок. Вот ответ:\n{item['answer']}")
                 return False
             # If the worker or caller dies after this marker, do not retry the
             # ambiguous Telegram send; the user is asked to check the chat.
             await queue.update(job_id, stage='sending')
             try:
-                await bot.send_video_note(video_note=types.BufferedInputFile(video, filename='video.mp4'),
-                                          **stored_reply_options(item))
-            except Exception as exc:
-                logger.warning('Неизвестен результат резервной отправки кружка: %s', type(exc).__name__)
+                if is_voice:
+                    sent = await bot.send_voice(voice=types.BufferedInputFile(video, filename='voice.ogg'),
+                                                **stored_reply_options(item))
+                else:
+                    sent = await bot.send_video_note(video_note=types.BufferedInputFile(video, filename='video.mp4'),
+                                                     **stored_reply_options(item))
+            except TelegramBadRequest:
                 await _report_and_remove(queue, bot, item,
-                    '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+                    f"🤖 Telegram не принял голосовое. Вот мой ответ:\n{item['answer']}" if is_voice else
+                    uncertain_delivery)
                 return False
+            except Exception as exc:
+                logger.warning('Неизвестен результат резервной отправки медиа: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    uncertain_delivery)
+                return False
+            await _save_sent_media_history(item, sent)
             await queue.remove(job_id)
             await _delete_status(bot, item)
             return False
@@ -288,12 +351,21 @@ async def process_queued_video(queue, bot, item):
         if stage == 'file_ready':
             await queue.update(job_id, stage='sending')
             try:
-                await bot.send_video_note(video_note=item['file_id'], **stored_reply_options(item))
-            except Exception as exc:
-                logger.warning('Неизвестен результат отправки кружка: %s', type(exc).__name__)
+                if is_voice:
+                    sent = await bot.send_voice(voice=item['file_id'], **stored_reply_options(item))
+                else:
+                    sent = await bot.send_video_note(video_note=item['file_id'], **stored_reply_options(item))
+            except TelegramBadRequest:
                 await _report_and_remove(queue, bot, item,
-                    '🤖 Связь прервалась во время отправки кружка. Проверь чат: возможно, он уже пришёл.')
+                    f"🤖 Telegram не принял голосовое. Вот мой ответ:\n{item['answer']}" if is_voice else
+                    uncertain_delivery)
                 return False
+            except Exception as exc:
+                logger.warning('Неизвестен результат отправки медиа: %s', type(exc).__name__)
+                await _report_and_remove(queue, bot, item,
+                    uncertain_delivery)
+                return False
+            await _save_sent_media_history(item, sent)
             await queue.remove(job_id)
             await _delete_status(bot, item)
             return False
@@ -330,17 +402,28 @@ async def video_reply(message: types.Message):
 
 
 async def enqueue_video_reply(message, query, context):
-    """Enqueue the original request, also used after an interactive choice."""
+    return await _enqueue_media_reply(message, query, context, kind='video')
+
+
+async def enqueue_voice_reply(message, query, context):
+    return await _enqueue_media_reply(message, query, context, kind='voice')
+
+
+async def _enqueue_media_reply(message, query, context, *, kind):
+    """One shared FIFO for voice and video; never enqueue one request twice."""
     if not query and not context:
         await reply_text_safely(message, 'Укажи тему или ответь командой на сообщение.')
         return
     url = os.getenv('BENDER_WORKER_URL', '').strip()
     key = os.getenv('BENDER_WORKER_KEY', '').strip()
-    try:
-        BenderWorkerClient(url, key)
-    except ValueError:
-        await reply_text_safely(message, '🤖 Студия кружков пока не настроена.')
-        return
+    if kind == 'video':
+        try:
+            BenderWorkerClient(url, key)
+        except ValueError:
+            await reply_text_safely(message, '🤖 Студия кружков пока не настроена.')
+            return
+    # Voice jobs still enter the queue if the studio is unconfigured: the
+    # worker error path can then deliver the prepared answer as text.
     status = None
     try:
         status = await message.bot.send_message(text=random.choice(CHECKING_MESSAGES), **reply_options(message))
@@ -351,7 +434,7 @@ async def enqueue_video_reply(message, query, context):
         'chat_id': message.chat.id, 'message_id': message.message_id,
         'thread_id': getattr(message, 'message_thread_id', None),
         'status_message_id': status.message_id if status is not None else None,
-        'query': query, 'context': context, 'stage': 'queued',
+        'query': query, 'context': context, 'stage': 'queued', 'kind': kind,
     }
     try:
         result = await video_queue.enqueue(item)
@@ -361,7 +444,7 @@ async def enqueue_video_reply(message, query, context):
             '🤖 Очередь барахлит, и я не знаю, записал ли запрос. Пока не отправляй его повторно.')
         return
     if result == 'accepted':
-        await _edit_status(message.bot, item, random.choice(QUEUE_MESSAGES))
+        await _edit_status(message.bot, item, ('🎙 Записал голосовой ответ в очередь.' if kind == 'voice' else random.choice(QUEUE_MESSAGES)))
     else:
         if status is not None:
             try:

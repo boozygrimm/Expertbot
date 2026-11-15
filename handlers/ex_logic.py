@@ -22,7 +22,7 @@ from handlers.reports import parse_gossip_count, send_persona_selection
 from handlers.music import handle_music_request
 from handlers.web_search import smart_web_search, smart_web_search_with_image, deliver_search_result
 from handlers.image_gen import process_image_request
-from handlers.admin_panel import is_feature_enabled
+from handlers.admin_panel import is_feature_enabled, get_chat_feature_flags
 from handlers.response_choice import offer_response_choice
 from handlers.photo_context import has_request_photo, add_photo_context
 from handlers.recent_context import add_recent_context
@@ -329,8 +329,19 @@ async def hidden_daily_summary_command(message: types.Message):
         await status_msg.edit_text(str(report))
 
 
+async def _try_auto_voice(message, query, context, requested):
+    if not requested or message.chat.type not in ('group', 'supergroup'):
+        return False
+    flags = await get_chat_feature_flags(message.chat.id)
+    if not all(flags.get(key, False) for key in ('auto_voice_replies', 'voice', 'assistant')):
+        return False
+    from handlers.bender_clip import enqueue_voice_reply
+    await enqueue_voice_reply(message, query, context[:4000])
+    return True
+
+
 @router.message()
-async def handle_ex_request(message: types.Message):
+async def handle_ex_request(message: types.Message, *, prefer_voice=False):
     text = message.text or (message.caption if message.photo else None)
     if not text:
         return
@@ -370,7 +381,7 @@ async def handle_ex_request(message: types.Message):
                 if audio_text:
                     shown = short_transcript(audio_text)
                     await status_msg.edit_text(
-                        f"🎙 <b>Там сказали:</b>\n{html.escape(shown)}", parse_mode="HTML")
+                        f"🎙 <b>Текст записи (может отличаться от аудио):</b>\n{html.escape(shown)}", parse_mode="HTML")
                 else:
                     await status_msg.edit_text(
                         "⚠️ Расшифровка не удалась. Возможно, запись слишком шумная, короткая "
@@ -410,6 +421,9 @@ async def handle_ex_request(message: types.Message):
                 if reply_source_text is None:
                     return
                 reply_source_text = await add_recent_context(message, reply_source_text, getattr(db, 'messages', None))
+                if target_persona.get('p_id') == 'bender' and await _try_auto_voice(
+                        message, query, reply_source_text, prefer_voice):
+                    return
                 if target_persona.get('p_id') == 'bender' and await offer_response_choice(
                         message, query, reply_source_text, kind='opinion', persona_id='bender'):
                     return
@@ -670,6 +684,8 @@ async def handle_ex_request(message: types.Message):
     if reply_source_text is None:
         return
     reply_source_text = await add_recent_context(message, reply_source_text, getattr(db, 'messages', None))
+    if await _try_auto_voice(message, clean_query, reply_source_text, prefer_voice):
+        return
     if await offer_response_choice(message, clean_query, reply_source_text):
         return
     return await generate_chat_response(message, clean_query, reply_source_text, all_personas)

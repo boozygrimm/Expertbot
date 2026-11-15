@@ -15,7 +15,7 @@ from handlers.admin_panel import get_chat_feature_flags
 router = Router()
 logger = logging.getLogger(__name__)
 CHOICE_LIFETIME = timedelta(minutes=15)
-CALLBACK_RE = re.compile(r'^exfmt:([0-9a-f]{32}):(text|video)$')
+CALLBACK_RE = re.compile(r'^exfmt:([0-9a-f]{32}):(text|video|voice)$')
 
 
 def now():
@@ -44,7 +44,14 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
     if message.chat.type not in ('group', 'supergroup') or not message.from_user:
         return False
     flags = await get_chat_feature_flags(message.chat.id)
-    if not flags.get('assistant', True) or not flags.get('video_notes', False):
+    if not flags.get('assistant', True):
+        return False
+    formats = ['text']
+    if flags.get('video_notes', False):
+        formats.append('video')
+    if flags.get('voice_replies', False):
+        formats.append('voice')
+    if len(formats) == 1:
         return False
     # Deterministic id makes redelivery of the original Telegram message harmless.
     choice_id = uuid.uuid5(uuid.NAMESPACE_URL, f'exfmt:{message.chat.id}:{message.message_id}').hex
@@ -52,7 +59,7 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
         '_id': choice_id, 'chat_id': message.chat.id, 'message_id': message.message_id,
         'thread_id': getattr(message, 'message_thread_id', None), 'user_id': message.from_user.id,
         'query': query, 'context': context, 'kind': kind, 'persona_id': persona_id,
-        'state': 'pending', 'expires_at': now() + CHOICE_LIFETIME,
+        'formats': formats, 'state': 'pending', 'expires_at': now() + CHOICE_LIFETIME,
     }
     try:
         await db.ex_response_choices.insert_one(doc)
@@ -63,9 +70,12 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
         await message.reply('🤖 Не смог подготовить выбор ответа. Попробуй ещё раз позже.')
         return True
     builder = InlineKeyboardBuilder()
-    builder.button(text='⭕ Кружок', callback_data=f'exfmt:{choice_id}:video')
+    if 'video' in formats:
+        builder.button(text='⭕ Кружок', callback_data=f'exfmt:{choice_id}:video')
+    if 'voice' in formats:
+        builder.button(text='🎙 Голосовое', callback_data=f'exfmt:{choice_id}:voice')
     builder.button(text='💬 Текст', callback_data=f'exfmt:{choice_id}:text')
-    builder.adjust(2)
+    builder.adjust(len(formats))
     menu = None
     try:
         # Publish the buttons only after the message ID is stored: a callback
@@ -110,11 +120,15 @@ async def response_choice_callback(callback: types.CallbackQuery):
             return await callback.answer('Выбор устарел. Отправь запрос заново.', show_alert=True)
         if doc.get('user_id') != callback.from_user.id:
             return await callback.answer('Выбрать может автор запроса.', show_alert=True)
+        if choice not in doc.get('formats', ['text', 'video']):
+            return await callback.answer('Этот вариант не предлагался. Отправь запрос заново.', show_alert=True)
         flags = await get_chat_feature_flags(chat_id)
         if not flags.get('assistant', True):
             return await callback.answer('Эксперт выключен в настройках чата.', show_alert=True)
         if choice == 'video' and not flags.get('video_notes', False):
             return await callback.answer('Кружки выключены. Можно выбрать текст.', show_alert=True)
+        if choice == 'voice' and not flags.get('voice_replies', False):
+            return await callback.answer('Голосовые ответы выключены. Можно выбрать текст.', show_alert=True)
         claimed = await db.ex_response_choices.find_one_and_update(
             {'_id': choice_id, 'chat_id': chat_id, 'menu_message_id': callback.message.message_id,
              'user_id': callback.from_user.id, 'state': 'pending', 'expires_at': {'$gt': now()}},
@@ -138,6 +152,9 @@ async def response_choice_callback(callback: types.CallbackQuery):
     if choice == 'video':
         from handlers.bender_clip import enqueue_video_reply
         return await enqueue_video_reply(target, claimed['query'], claimed['context'][:4000])
+    if choice == 'voice':
+        from handlers.bender_clip import enqueue_voice_reply
+        return await enqueue_voice_reply(target, claimed['query'], claimed['context'][:4000])
     from handlers.ex_logic import generate_chat_response, generate_persona_opinion
     if claimed['kind'] == 'opinion':
         persona = await db.personas.find_one({'p_id': claimed['persona_id']})

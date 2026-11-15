@@ -28,7 +28,7 @@ async def add_voice_reply_context(message, context):
     if not text:
         await message.reply('🎙 Не смог разобрать запись, поэтому не стану выдумывать её содержание.')
         return None
-    label = 'Расшифровка записи (может содержать ошибки): '
+    label = 'Текст записи (распознавание или текст для озвучки; может содержать ошибки и отличаться от аудио): '
     prefix = (context or '')[:3200]
     available = max(0, 3900 - len(prefix) - len(label) - 2)
     return (prefix + '\n\n' if prefix else '') + label + text[:available]

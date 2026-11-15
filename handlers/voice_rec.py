@@ -74,6 +74,7 @@ async def handle_voice_messages(message: types.Message, voice_transcription_task
         # A normal word like «экскурсия» is not an address to the bot.
         if not re.match(r'(?i)^экс(?:перт)?(?=$|[\s,!.?:;])', text.strip()):
             return
+        prefer_voice = False
         if message.chat.type in ('group', 'supergroup'):
             try:
                 flags = await get_chat_feature_flags(chat_id)
@@ -82,8 +83,12 @@ async def handle_voice_messages(message: types.Message, voice_transcription_task
                 return
             if not flags.get('voice', True) or not flags.get('assistant', True):
                 return
+            prefer_voice = bool(flags.get('auto_voice_replies', False))
         fake_message = message.model_copy(update={"text": text})
-        await handle_ex_request(fake_message)
+        if prefer_voice:
+            await handle_ex_request(fake_message, prefer_voice=True)
+        else:
+            await handle_ex_request(fake_message)
     except Exception as exc:
         logger.warning("Ошибка обработки голосового: %s", type(exc).__name__)
         if status_msg:

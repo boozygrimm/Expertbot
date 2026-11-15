@@ -34,8 +34,9 @@ def telegram_call(token, method, fields, file_path=None):
     if file_path:
         media = Path(file_path).read_bytes()
         if len(media) > 50 * 1024 * 1024:
-            raise ValueError('Видео больше 50 МБ')
-        body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="video_note"; filename="clip.mp4"\r\nContent-Type: video/mp4\r\n\r\n'.encode())
+            raise ValueError('Медиа больше 50 МБ')
+        field, filename, content_type = ('voice', 'voice.ogg', 'audio/ogg') if method == 'sendVoice' else ('video_note', 'clip.mp4', 'video/mp4')
+        body.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{filename}"\r\nContent-Type: {content_type}\r\n\r\n'.encode())
         body.extend(media)
         body.extend(b'\r\n')
     body.extend(f'--{boundary}--\r\n'.encode())
@@ -72,7 +73,8 @@ def parse_args(argv=None):
     parser.add_argument('--chat-id', type=int, help='ID тестового чата для отправки по file_id')
     parser.add_argument('--reply-to-message-id', type=int, help='ID сообщения в целевом чате, на которое ответить')
     parser.add_argument('--message-thread-id', type=int, help='ID темы форума, если нужен')
-    parser.add_argument('--no-send', action='store_true', help='Только создать локальное видео')
+    parser.add_argument('--no-send', action='store_true', help='Только создать локальный файл')
+    parser.add_argument('--voice-only', action='store_true', help='Только голосовое без рендера видео')
     parser.add_argument('--frames-dir', type=Path, default=Path('/data/video-prototype/preview'))
     parser.add_argument('--smoke-plate', type=Path, help='Бездымная подложка для анимации дыма')
     parser.add_argument('--output-dir', type=Path, default=Path('/data/video-prototype/clips'))
@@ -84,6 +86,8 @@ def parse_args(argv=None):
     parser.add_argument('--portrait', type=Path, help='Сохранённый портрет сенсея для сцены')
     parser.add_argument('--sign', help='Необязательная надпись для сцены')
     args = parser.parse_args(argv)
+    if args.voice_only and (args.scene_seed is not None or args.smoke_plate or args.portrait or args.sign):
+        parser.error('--voice-only нельзя сочетать с настройками видеосцены')
     if args.scene_seed is not None and (not args.scene_seed.strip() or not args.smoke_plate or not args.portrait):
         parser.error('Для сцены нужны непустой --scene-seed, --smoke-plate и --portrait')
     if args.scene_seed is None and args.portrait is not None:
@@ -104,9 +108,10 @@ def parse_args(argv=None):
 
 
 def run(args):
-    for filename in ('closed.png', 'open.png', 'blink.png'):
-        if not (args.frames_dir / filename).is_file():
-            raise FileNotFoundError(f'Нет картинки: {args.frames_dir / filename}')
+    if not args.voice_only:
+        for filename in ('closed.png', 'open.png', 'blink.png'):
+            if not (args.frames_dir / filename).is_file():
+                raise FileNotFoundError(f'Нет картинки: {args.frames_dir / filename}')
     if args.audio and not args.audio.is_file():
         raise FileNotFoundError(f'Нет аудиофайла: {args.audio}')
     if args.smoke_plate and not args.smoke_plate.is_file():
@@ -153,31 +158,43 @@ def run(args):
             subprocess.run(command, env=env, check=True)
         print(f'Озвучка: {time.monotonic() - tts_started:.1f} с (включая попытки и резерв)', flush=True)
 
-    video = work / 'video.mp4'
-    render_script = ('random_guest_render.py' if args.scene_seed is not None else
-                     'smoke_layer_render.py' if args.smoke_plate else 'render.py')
-    command = [
-        args.render_python, str(HERE / render_script), '--audio', str(audio),
-        '--closed', str(args.frames_dir / 'closed.png'),
-        '--open', str(args.frames_dir / 'open.png'),
-        '--blink', str(args.frames_dir / 'blink.png'), '--output', str(video),
-    ]
-    if args.smoke_plate:
-        command.extend(['--plate', str(args.smoke_plate)])
-    if args.scene_seed is not None:
-        command.extend(['--scene-seed', args.scene_seed, '--portrait', str(args.portrait),
-                        '--manifest', str(work / 'scene.json')])
-        if args.sign:
-            command.append('--sign=' + args.sign)
-    # Rendering does not need the Telegram token or the worker key.
-    env = os.environ.copy()
-    for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', *TTS_SECRET_VARS):
-        env.pop(name, None)
-    render_started = time.monotonic()
-    subprocess.run(command, env=env, check=True)
-    print(f'Рендер: {time.monotonic() - render_started:.1f} с', flush=True)
+    if args.voice_only:
+        media = work / 'voice.ogg'
+        env = os.environ.copy()
+        for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', *TTS_SECRET_VARS):
+            env.pop(name, None)
+        subprocess.run(['ffmpeg', '-nostdin', '-y', '-loglevel', 'error', '-i', str(audio),
+                        '-c:a', 'libopus', '-b:a', '48k', '-vn', str(media)], env=env, check=True)
+        media_kind, send_method = 'voice', 'sendVoice'
+    else:
+        video = work / 'video.mp4'
+        render_script = ('random_guest_render.py' if args.scene_seed is not None else
+                         'smoke_layer_render.py' if args.smoke_plate else 'render.py')
+        command = [
+            args.render_python, str(HERE / render_script), '--audio', str(audio),
+            '--closed', str(args.frames_dir / 'closed.png'),
+            '--open', str(args.frames_dir / 'open.png'),
+            '--blink', str(args.frames_dir / 'blink.png'), '--output', str(video),
+        ]
+        if args.smoke_plate:
+            command.extend(['--plate', str(args.smoke_plate)])
+        if args.scene_seed is not None:
+            command.extend(['--scene-seed', args.scene_seed, '--portrait', str(args.portrait),
+                            '--manifest', str(work / 'scene.json')])
+            if args.sign:
+                command.append('--sign=' + args.sign)
+        # Rendering does not need the Telegram token or the worker key.
+        env = os.environ.copy()
+        for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', *TTS_SECRET_VARS):
+            env.pop(name, None)
+        render_started = time.monotonic()
+        subprocess.run(command, env=env, check=True)
+        print(f'Рендер: {time.monotonic() - render_started:.1f} с', flush=True)
+        media = video
+        media_kind, send_method = 'video_note', 'sendVideoNote'
+
     if args.no_send:
-        print(f'Локальный результат: {video}')
+        print(f'Локальный результат: {media}')
         return
 
     token = os.environ.get('BOT_TOKEN') or getpass.getpass('Токен бота (ввод не виден): ')
@@ -190,29 +207,30 @@ def run(args):
     pending.write_text('pending\n', encoding='utf-8')
     upload_started = time.monotonic()
     try:
-        result = telegram_call(token, 'sendVideoNote', {'chat_id': args.channel_id}, video)
+        result = telegram_call(token, send_method, {'chat_id': args.channel_id}, media)
     except TelegramRejected:
         # A definite rejection must not be reported as an uncertain upload.
         pending.unlink(missing_ok=True)
         raise
     print(f'Загрузка на склад: {time.monotonic() - upload_started:.1f} с', flush=True)
-    file_id = result.get('video_note', {}).get('file_id')
+    file_id = result.get(media_kind, {}).get('file_id')
     if not file_id:
-        raise RuntimeError('Telegram не вернул file_id видеокружка')
-    record = {'channel_id': args.channel_id, 'file_id': file_id, 'video': str(video)}
+        raise RuntimeError('Telegram не вернул file_id медиа')
+    record = {'channel_id': args.channel_id, 'file_id': file_id,
+              'voice' if args.voice_only else 'video': str(media)}
     record_path = work / 'result.json'
     record_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
     pending.unlink(missing_ok=True)
-    print(f'Кружок загружен в канал, file_id сохранён: {record_path}', flush=True)
+    print(f'Медиа загружено в канал, file_id сохранён: {record_path}', flush=True)
     if args.chat_id is not None:
         # If this fails the channel upload and file_id remain available in result.json.
-        fields = {'chat_id': args.chat_id, 'video_note': file_id}
+        fields = {'chat_id': args.chat_id, media_kind: file_id}
         if args.reply_to_message_id is not None:
             fields['reply_parameters'] = json.dumps({'message_id': args.reply_to_message_id})
         if args.message_thread_id is not None:
             fields['message_thread_id'] = args.message_thread_id
-        telegram_call(token, 'sendVideoNote', fields)
-        print('Кружок отправлен в тестовый чат по file_id', flush=True)
+        telegram_call(token, send_method, fields)
+        print('Медиа отправлено в тестовый чат по file_id', flush=True)
 
 
 def main():
