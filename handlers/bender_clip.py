@@ -19,7 +19,7 @@ from bender_worker_client import (
 )
 from bender_queue import VideoQueue
 from config import get_msk_now
-from video_prototype.sign_text import parse_generated
+from video_prototype.sign_text import parse_generated, parse_sign_retry
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
 from handlers.photo_context import has_request_photo, add_photo_context
@@ -57,6 +57,30 @@ VOICE_STATUS_MESSAGES = (
     '🎤 Проверяю микрофон. Скоро всё расскажу!',
 )
 STATUS_INTERVAL_SECONDS = 15
+SIGN_RETRY_TIMEOUT = 8
+SIGN_FALLBACK = 'БЕНДЕР В ДЕЛЕ'
+
+
+async def recover_missing_sign(answer):
+    """One bounded retry for a sign only; never change the speech or log it."""
+    prompt = (
+        'Придумай короткую смешную надпись Бендера по смыслу ответа ниже. '
+        'Верни только надпись: от одного до трёх слов, до 22 символов, '
+        'слово до 12 символов; только русские или латинские буквы, цифры, '
+        'пробелы и знаки ! ? , . -. Без кавычек, эмодзи и пояснений.\n'
+        f'Ответ для контекста: {answer}'
+    )
+    try:
+        result = await asyncio.wait_for(generate_with_retry(prompt, use_fast_model=True),
+                                        timeout=SIGN_RETRY_TIMEOUT)
+        sign = parse_sign_retry(result)
+        if sign:
+            logger.info('Надпись для таблички получена повторным запросом')
+            return sign
+    except Exception as exc:
+        logger.warning('Повторный запрос надписи не удался: %s', type(exc).__name__)
+    logger.warning('Использована запасная надпись для таблички')
+    return SIGN_FALLBACK
 
 
 def choose_status(previous=None, *, kind='video'):
@@ -259,7 +283,8 @@ async def process_queued_video(queue, bot, item):
                 if not answer:
                     raise ValueError('empty response')
                 if not is_voice and not sign:
-                    logger.warning('Модель не вернула подходящую надпись для таблички; кружок будет без неё')
+                    logger.warning('Модель не вернула подходящую надпись для таблички; пробуем получить отдельно')
+                    sign = await recover_missing_sign(answer)
             except Exception as exc:
                 logger.warning('Не удалось подготовить ответ для медиа: %s', type(exc).__name__)
                 await _report_and_remove(queue, bot, item, '🤖 Мои гениальные схемы не придумали ответ. Попробуй позже.')

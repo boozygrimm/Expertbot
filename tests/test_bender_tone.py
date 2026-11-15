@@ -113,7 +113,8 @@ class ToneRoutingTests(unittest.IsolatedAsyncioTestCase):
         client.render = AsyncMock(return_value='file-id')
         fake_db = SimpleNamespace(personas=SimpleNamespace(find_one=AsyncMock(return_value=self.persona)))
         with patch.object(bender_clip, 'db', fake_db), \
-             patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(return_value='Здравствуйте!')) as generate, \
+             patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(
+                 return_value='{"speech":"Здравствуйте!","sign":"БЕНДЕР В ДЕЛЕ"}')) as generate, \
              patch.object(bender_clip, 'BenderWorkerClient', return_value=client):
             await bender_clip.process_queued_video(queue, bot, item)
         prompt = generate.await_args.args[0]

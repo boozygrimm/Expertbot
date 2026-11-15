@@ -21,6 +21,23 @@ def normalize_sign(value):
     return value
 
 
+def parse_sign_retry(value):
+    """Accept only a short plain phrase or a JSON sign field, never prose."""
+    if not isinstance(value, str) or len(value) > 256:
+        return None
+    raw = value.strip()
+    if raw.startswith('```'):
+        raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.I)
+        raw = re.sub(r'\s*```\s*$', '', raw)
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        parsed = raw
+    if isinstance(parsed, dict):
+        parsed = parsed.get('sign')
+    return normalize_sign(parsed)
+
+
 def parse_generated(value):
     """Return speech and optional sign; never append structured fields to speech.
 

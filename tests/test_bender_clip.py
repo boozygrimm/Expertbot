@@ -84,7 +84,8 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
             patch.object(bender_clip, 'get_chat_feature_flags', new=AsyncMock(return_value={'video_notes': True})),
             patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example', 'BENDER_WORKER_KEY': 'secret'}),
             patch.object(bender_clip.db.personas, 'find_one', new=AsyncMock(return_value={'p_id': 'bender', 'prompt': 'робот'})),
-            patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(return_value='Вот моё мнение.')),
+            patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(
+                return_value='{"speech":"Вот моё мнение.","sign":"БЕНДЕР В ДЕЛЕ"}')),
         ]
         self.generate = patches[-1].new
         for p in patches:
@@ -109,7 +110,8 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item['stage'], 'queued')
         await bender_clip.process_queued_video(self.queue, self.bot, item)
         self.assertIn(item['context'], self.generate.await_args.args[0])
-        self.client.render.assert_awaited_once_with('Вот моё мнение.', request_id=item['request_id'])
+        self.client.render.assert_awaited_once_with('Вот моё мнение.', request_id=item['request_id'],
+                                                   sign='БЕНДЕР В ДЕЛЕ')
         opts = bender_clip.stored_reply_options(item)
         self.bot.send_video_note.assert_awaited_once_with(video_note='file-id', **opts)
         self.assertTrue(opts['reply_parameters'].allow_sending_without_reply)
@@ -133,14 +135,68 @@ class HandlerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call.kwargs['sign'], 'ГРАВИТАЦИЯ В ОТПУСКЕ')
             self.assertEqual(call.kwargs['request_id'], item['request_id'])
 
-    async def test_invalid_sign_keeps_speech_and_ordinary_clip(self):
+    async def test_invalid_sign_retries_only_sign_and_keeps_speech(self):
         item = await self.submit()
-        self.generate.return_value = '{"speech":"Мой ответ.","sign":"😀"}'
+        self.generate.side_effect = ['{"speech":"Мой ответ.","sign":"😀"}', 'КОСМИЧЕСКИЙ БОСС']
         with self.assertLogs(bender_clip.logger, level='WARNING') as logs:
             await bender_clip.process_queued_video(self.queue, self.bot, item)
         self.assertIn('не вернула подходящую надпись', logs.output[0])
         self.assertNotIn('Мой ответ', ' '.join(logs.output))
-        self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'])
+        self.assertEqual(self.generate.await_count, 2)
+        self.assertTrue(self.generate.await_args.kwargs['use_fast_model'])
+        self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'],
+                                                   sign='КОСМИЧЕСКИЙ БОСС')
+
+    async def test_recovered_sign_is_preserved_on_worker_busy(self):
+        from bender_worker_client import WorkerBusy
+        item = await self.submit()
+        self.generate.side_effect = ['{"speech":"Мой ответ.","sign":"😀"}', 'КОСМИЧЕСКИЙ БОСС']
+        self.client.render.side_effect = [WorkerBusy(), 'file-id']
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertEqual(self.queue.items[0]['answer'], 'Мой ответ.')
+        self.assertEqual(self.queue.items[0]['sign'], 'КОСМИЧЕСКИЙ БОСС')
+        self.queue.items[0]['retry_after'] = 0
+        await bender_clip.process_queued_video(self.queue, self.bot, self.queue.items[0].copy())
+        self.assertEqual(self.generate.await_count, 2)
+        self.assertEqual(self.client.render.await_count, 2)
+        for call in self.client.render.await_args_list:
+            self.assertEqual(call.args[0], 'Мой ответ.')
+            self.assertEqual(call.kwargs['request_id'], item['request_id'])
+            self.assertEqual(call.kwargs['sign'], 'КОСМИЧЕСКИЙ БОСС')
+
+    async def test_sign_retry_failure_uses_safe_fallback(self):
+        for failure in (asyncio.TimeoutError(), OSError('network'), '😀'):
+            with self.subTest(failure=type(failure).__name__):
+                item = await self.submit()
+                self.generate.reset_mock()
+                self.client.render.reset_mock()
+                self.generate.side_effect = ['{"speech":"Мой ответ.","sign":"😀"}', failure]
+                with self.assertLogs(bender_clip.logger, level='WARNING') as logs:
+                    await bender_clip.process_queued_video(self.queue, self.bot, item)
+                self.assertIn('Использована запасная надпись', ' '.join(logs.output))
+                self.client.render.assert_awaited_once_with('Мой ответ.', request_id=item['request_id'],
+                                                           sign=bender_clip.SIGN_FALLBACK)
+
+    async def test_sign_retry_has_a_hard_deadline(self):
+        async def slow(*args, **kwargs):
+            await asyncio.sleep(2)
+            return 'СЛИШКОМ ПОЗДНО'
+
+        with patch.object(bender_clip, 'SIGN_RETRY_TIMEOUT', 0.02), \
+             patch.object(bender_clip, 'generate_with_retry', new=AsyncMock(side_effect=slow)):
+            result = await asyncio.wait_for(bender_clip.recover_missing_sign('Мой ответ.'), 1)
+        self.assertEqual(result, bender_clip.SIGN_FALLBACK)
+
+    async def test_no_extra_sign_request_for_voice(self):
+        item = await self.submit()
+        self.queue.items[0]['kind'] = 'voice'
+        item['kind'] = 'voice'
+        self.generate.return_value = 'Мой голосовой ответ.'
+        self.client.render_voice = AsyncMock(return_value='voice-id')
+        self.bot.send_voice = AsyncMock()
+        await bender_clip.process_queued_video(self.queue, self.bot, item)
+        self.assertEqual(self.generate.await_count, 1)
+        self.client.render_voice.assert_awaited_once_with('Мой голосовой ответ.', request_id=item['request_id'])
 
     async def test_distinct_chats_are_queued(self):
         await self.submit()

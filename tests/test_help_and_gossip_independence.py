@@ -9,7 +9,7 @@ os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
 os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
 
 from aiogram import Bot
-from aiogram.methods import SendMessage
+from aiogram.methods import GetChat, SendMessage
 from aiogram.types import Update, User
 from mongomock_motor import AsyncMongoMockClient
 
@@ -32,6 +32,8 @@ class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
         requests = []
         async def telegram(bot_arg, method, **kwargs):
             requests.append(method)
+            if isinstance(method, GetChat):
+                return SimpleNamespace(active_usernames=[])
             return True
 
         counter = 0
