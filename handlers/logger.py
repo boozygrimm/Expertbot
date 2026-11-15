@@ -5,6 +5,8 @@ from aiogram.types import Message, ContentType
 from database import db
 from ai_logic import recognize_media
 from config import get_msk_now
+from handlers.admin_panel import is_feature_enabled
+from handlers.audio_transcription import start_transcription, _store_result
 
 async def background_vision_update(bot, message_id, chat_id, file_id, is_animation=False):
     """Фоновое распознавание медиа"""
@@ -33,7 +35,16 @@ class ChatLoggerMiddleware(BaseMiddleware):
             ContentType.VOICE, ContentType.DOCUMENT
         ]
         
+        is_speech = bool(event.voice or event.video_note)
         should_log = event.content_type not in ignore_types
+        if is_speech:
+            # This middleware precedes FeatureAccessMiddleware. Fail closed if
+            # the panel cannot be checked; /voice only controls chat publication.
+            try:
+                should_log = await is_feature_enabled(event.chat.id, "voice")
+            except Exception as exc:
+                logging.warning("Не удалось проверить модуль голосовых: %s", type(exc).__name__)
+                should_log = False
 
         # Игнорируем команды и системные слова
         if event.text:
@@ -50,7 +61,10 @@ class ChatLoggerMiddleware(BaseMiddleware):
             is_animation = False
             file_id = None
 
-            if event.photo:
+            if is_speech:
+                label = "Голосовое" if event.voice else "Кружок"
+                content = f"{content} [{label}: распознаётся...]".strip()
+            elif event.photo:
                 has_media = True
                 file_id = event.photo[-1].file_id
                 content = f"{content} [Фото анализируется...]".strip()
@@ -64,24 +78,38 @@ class ChatLoggerMiddleware(BaseMiddleware):
                 file_id = event.sticker.file_id
                 content = f"{content} [Стикер анализируется...]".strip()
 
+            saved = False
             try:
-                # Мгновенная запись
-                await db.messages.insert_one({
+                # Store the topic for new messages; old forum records lack it.
+                document = {
                     "message_id": event.message_id,
                     "chat_id": event.chat.id,
+                    "message_thread_id": getattr(event, "message_thread_id", None),
                     "user_name": user_name,
                     "text": content,
                     "reactions": [],
-                    "createdAt": get_msk_now()
-                })
+                    "createdAt": get_msk_now(),
+                }
+                if is_speech:
+                    document["audio_status"] = "pending"
+                await db.messages.insert_one(document)
+                saved = True
             except Exception as e:
                 logging.error(f"Ошибка БД в логгере: {e}")
 
-            # Запускаем зрение в фоне
+            # Existing photo logging stays independent of the speech pipeline.
             if has_media and file_id:
                 asyncio.create_task(
                     background_vision_update(event.bot, event.message_id, event.chat.id, file_id, is_animation)
                 )
+            if is_speech and saved:
+                task = start_transcription(event)
+                if task is None:
+                    await _store_result(event, None)
+                else:
+                    # Even a completed task remains available to the selected
+                    # handler, avoiding a duplicate request if Mongo is slow.
+                    data['voice_transcription_task'] = task
 
         # 3. КРИТИЧНО: Передаем сообщение дальше по цепочке роутеров!
         return await handler(event, data)

@@ -11,6 +11,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 
 from ai_logic import generate_with_retry
+from bender_style import apply_bender_tone
 from bender_triggers import EX_VIDEO_PATTERN, parse_video_request
 from bender_worker_client import (
     BenderWorkerClient, WorkerBusy, WorkerError, WorkerFailed, WorkerUploadUncertain,
@@ -20,6 +21,8 @@ from video_prototype.sign_text import parse_generated
 from database import db
 from handlers.admin_panel import get_chat_feature_flags
 from handlers.photo_context import has_request_photo, add_photo_context
+from handlers.recent_context import add_recent_context
+from handlers.voice_context import add_voice_reply_context
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -27,10 +30,10 @@ logger = logging.getLogger(__name__)
 video_queue = VideoQueue(db.db.bender_video_queue)
 
 STATUS_MESSAGES = (
-    '🎬 Снимаю видос. Не отвлекайте звезду, кожаные мешки!',
+    '🎬 Снимаю видос. Звезда готовится к выходу!',
     '🧽 Полирую пузо для крупного плана. Это искусство!',
     '📹 Настраиваю камеру. Мой блестящий зад должен попасть в кадр!',
-    '🎙 Прочищаю динамик. Без автографов, я занят!',
+    '🎙 Прочищаю динамик. Скоро можно будет брать автографы!',
     '💰 Считаю гонорар за съёмку. Вам выставить счёт?',
     '🤖 Даже шедевру нужно время. Особенно такому великолепному!',
     '🎞 Ищу свой лучший ракурс. Трудный выбор: все хороши!',
@@ -41,9 +44,9 @@ STATUS_MESSAGES = (
     '🎬 Прогоняю дубль. Даже мои ошибки достойны награды!',
     '📡 Заряжаю сарказм. Держитесь подальше от антенны!',
     '🛠 Смазываю шарниры. Звезда должна двигаться красиво!',
-    '🍿 Выгоняю зрителей со съёмочной площадки. Сеанс позже!',
+    '🍿 Готовлю съёмочную площадку. Сеанс скоро начнётся!',
     '💡 Ставлю свет. Пусть все увидят моё металлическое великолепие!',
-    '🎥 Убираю лишнее из кадра. Люди, это я про вас!',
+    '🎥 Убираю лишнее из кадра. Моё великолепие останется!',
     '🏆 Готовлю речь для вручения награды самому себе!',
 )
 STATUS_INTERVAL_SECONDS = 15
@@ -94,12 +97,12 @@ async def reply_text_safely(message, text):
 
 CHECKING_MESSAGES = (
     '🔧 Проверяю список заявок. Гениальность тоже любит порядок!',
-    '📋 Сверяюсь с очередью, кожаный мешок. Не дави на мои кнопки!',
+    '📋 Сверяюсь с очередью. Мои кнопки уже работают!',
     '🎟 Ищу свободное место на съёмочной площадке!',
 )
 QUEUE_MESSAGES = (
     '🎟 Записал в очередь. Величайший робот занят, но до тебя тоже доберётся!',
-    '🤖 Вставай в очередь, кожаный мешок. Звезда принимает по одному!',
+    '🤖 Записал в очередь. Звезда принимает по одному!',
     '🎬 Твой билет на съёмку принят. Пока полюбуйся моим великолепием!',
     '🪙 Очередь занята, но для тебя я оставил местечко. Бесплатно, пока что!',
     '📋 Внёс тебя в список. Нет, взятка не ускорит очередь. Наверное.',
@@ -108,7 +111,7 @@ QUEUE_MESSAGES = (
     '🏆 Даже гении не могут быть сразу везде. Хотя я стараюсь!',
 )
 FULL_MESSAGES = (
-    '🚧 Очередь забита до блеска! Приходи чуть позже, кожаный мешок.',
+    '🚧 Очередь забита до блеска! Приходи чуть позже.',
     '🎟 Все места заняты. Даже у моей гениальности есть предел пропускной способности!',
     '🤖 Сегодня аншлаг! Дай мне разгребсти очередь и попробуй ещё раз.',
 )
@@ -192,7 +195,7 @@ async def process_queued_video(queue, bot, item):
                     await _report_and_remove(queue, bot, item, '🤖 Не нашёл настройки Бендера.')
                     return False
                 prompt = (
-                    f"РОЛЬ: {persona.get('prompt', 'Саркастичный робот Бендер.')}\n"
+                    f"РОЛЬ: {apply_bender_tone(persona.get('prompt', 'Самоуверенный робот Бендер.'))}\n"
                     f"СООБЩЕНИЕ ДЛЯ КОНТЕКСТА: {item['context'] or '(нет)'}\n"
                     f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {item['query'] or 'Прокомментируй сообщение.'}\n"
                     'Ответь на русском от лица персонажа, примерно 300–400 символов, не более 450 символов, '
@@ -319,6 +322,10 @@ async def video_reply(message: types.Message):
         context = await add_photo_context(message, query or 'Прокомментируй фото.', context)
         if context is None:
             return
+    context = await add_voice_reply_context(message, context)
+    if context is None:
+        return
+    context = await add_recent_context(message, context, getattr(db, 'messages', None))
     return await enqueue_video_reply(message, query, context)
 
 

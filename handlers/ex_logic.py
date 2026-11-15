@@ -1,4 +1,5 @@
 import re
+import html
 import os
 import random
 import time
@@ -11,6 +12,7 @@ from aiogram import Router, types, F
 
 from database import db
 from ai_logic import generate_with_retry, get_daily_summary, try_groq
+from bender_style import apply_bender_tone
 from config import get_msk_now
 
 from handlers.viselitsa import start_hangman
@@ -23,6 +25,8 @@ from handlers.image_gen import process_image_request
 from handlers.admin_panel import is_feature_enabled
 from handlers.response_choice import offer_response_choice
 from handlers.photo_context import has_request_photo, add_photo_context
+from handlers.recent_context import add_recent_context
+from handlers.voice_context import add_voice_reply_context
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -90,7 +94,7 @@ HELP_TEXT = (
     "• **Погода:** *«Экс, погода в Нск»*, *«Экс, прогноз Питер»*\n"
     "• **Музыка:** *«Экс, найди песню Rammstein»*, *«Экс, включи Time in a Bottle»*\n"
     "• **Картинки:** *«Экс, нарисуй кота-джедая»* или команда `/img`\n"
-    "• **Голосовые:** команда `/voice`, затем ответом на голосовое или кружок\n"
+    "• **Голосовые:** `/voice on` — публиковать расшифровки в чат; `/voice off` — не публиковать\n"
     "• **Игры:** *«Экс, крути барабан»*, *«Экс, палач»*, *«Экс, ставка 1000»*\n"
     "• **База алхимика:** команда `/base`\n"
     "• **Сплетни чата:** команда `/gossip`\n"
@@ -223,8 +227,9 @@ async def generate_persona_opinion(
     status_msg = await message.reply(loading_text)
 
     prompt = (
-        f"ТЫ: {target_persona['name']}. {target_persona.get('prompt', '')}\n\n"
-        f"КОНТЕКСТ (СООБЩЕНИЕ, КОТОРОЕ ТЕБЕ ПОКАЗАЛИ):\n«{source_text}»\n\n"
+        f"ТЫ: {target_persona['name']}. "
+        f"{apply_bender_tone(target_persona.get('prompt', '')) if target_persona.get('p_id') == 'bender' else target_persona.get('prompt', '')}\n\n"
+        f"КОНТЕКСТ (СООБЩЕНИЕ ДЛЯ ОТВЕТА И, ВОЗМОЖНО, НЕДАВНЯЯ ПЕРЕПИСКА):\n«{source_text}»\n\n"
         f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {user_query}\n\n"
         "ЗАДАНИЕ: Внимательно проанализируй контекст и выдай подробный, развернутый "
         "комментарий от своего лица. Лимит: 1500 знаков."
@@ -266,6 +271,7 @@ async def generate_persona_opinion(
             await db.messages.insert_one({
                 "message_id": sent.message_id,
                 "chat_id": message.chat.id,
+                "message_thread_id": getattr(message, 'message_thread_id', None),
                 "user_name": f"🤖 {target_persona['name']}",
                 "text": response,
                 "reactions": [],
@@ -356,44 +362,22 @@ async def handle_ex_request(message: types.Message):
             if not await is_feature_enabled(message.chat.id, "voice"):
                 return
 
-            from ai_logic import transcribe_audio_groq
-
-            target_msg = message.reply_to_message
-            file_id = target_msg.voice.file_id if target_msg.voice else target_msg.video_note.file_id
-            file_ext = "ogg" if target_msg.voice else "mp4"
-            file_path = f"temp_manual_{file_id}.{file_ext}"
+            from handlers.audio_transcription import get_transcription, short_transcript
 
             status_msg = await message.reply("⏳ <i>Расшифровываю...</i>", parse_mode="HTML")
             try:
-                file = await message.bot.get_file(file_id)
-                await message.bot.download_file(file.file_path, file_path)
-                audio_text = await transcribe_audio_groq(file_path)
-
-                if audio_text and "❌" not in audio_text:
+                audio_text = await get_transcription(message.reply_to_message)
+                if audio_text:
+                    shown = short_transcript(audio_text)
                     await status_msg.edit_text(
-                        f"🎙 <b>Там сказали:</b>\n{audio_text}",
-                        parse_mode="HTML",
-                    )
+                        f"🎙 <b>Там сказали:</b>\n{html.escape(shown)}", parse_mode="HTML")
                 else:
                     await status_msg.edit_text(
                         "⚠️ Расшифровка не удалась. Возможно, запись слишком шумная, короткая "
-                        "или сервис распознавания временно недоступен."
-                    )
-            except Exception as e:
-                logger.error(
-                    "Voice manual transcription error: chat_id=%s user_id=%s file_id=%s error=%s",
-                    message.chat.id,
-                    message.from_user.id if message.from_user else "unknown",
-                    file_id,
-                    e,
-                )
-                await status_msg.edit_text(
-                    "❌ Не смог расшифровать голосовое. Проверь, что это обычное голосовое или "
-                    "кружок, и попробуй еще раз позже."
-                )
-            finally:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+                        "или сервис распознавания временно недоступен.")
+            except Exception as exc:
+                logger.warning("Voice manual transcription error: %s", type(exc).__name__)
+                await status_msg.edit_text("❌ Не смог расшифровать голосовое. Попробуй ещё раз позже.")
             return
 
     if query.lower() in ["хэлп", "help", "помоги", "справка"]:
@@ -422,6 +406,10 @@ async def handle_ex_request(message: types.Message):
                     reply_source_text = await add_photo_context(message, query, reply_source_text)
                     if reply_source_text is None:
                         return
+                reply_source_text = await add_voice_reply_context(message, reply_source_text)
+                if reply_source_text is None:
+                    return
+                reply_source_text = await add_recent_context(message, reply_source_text, getattr(db, 'messages', None))
                 if target_persona.get('p_id') == 'bender' and await offer_response_choice(
                         message, query, reply_source_text, kind='opinion', persona_id='bender'):
                     return
@@ -570,7 +558,7 @@ async def handle_ex_request(message: types.Message):
             )
             msg = await status_msg.edit_text(
                 "🤖 Бендер: ❌ Поиск сейчас не сработал. Возможно, недоступен поисковик "
-                "или ИИ-обработка ответа. Попробуй позже, кожаный мешок!"
+                "или ИИ-обработка ответа. Попробуй позже!"
             )
             asyncio.create_task(delete_after(msg, 15))
         return
@@ -596,7 +584,7 @@ async def handle_ex_request(message: types.Message):
 
         # Пустой запрос - подсказка
         if not clean_query:
-            return await message.reply("🤖 Бендер: Эй, кожаный мешок! Укажи, что именно хочешь создать. Например: **Экс, шпора спирт**", parse_mode="Markdown")
+            return await message.reply("🤖 Бендер: Укажи, что именно хочешь создать. Например: **Экс, шпора спирт**", parse_mode="Markdown")
 
         match = find_alchemy_recipe(clean_query)
         if not match:
@@ -678,6 +666,10 @@ async def handle_ex_request(message: types.Message):
         reply_source_text = await add_photo_context(message, clean_query, reply_source_text)
         if reply_source_text is None:
             return
+    reply_source_text = await add_voice_reply_context(message, reply_source_text)
+    if reply_source_text is None:
+        return
+    reply_source_text = await add_recent_context(message, reply_source_text, getattr(db, 'messages', None))
     if await offer_response_choice(message, clean_query, reply_source_text):
         return
     return await generate_chat_response(message, clean_query, reply_source_text, all_personas)
@@ -696,13 +688,13 @@ async def generate_chat_response(message, clean_query, reply_source_text, all_pe
     context_block = ""
     if reply_source_text:
         context_block = (
-            "КОНТЕКСТ ДИАЛОГА (СООБЩЕНИЕ, НА КОТОРОЕ ТЫ ОТВЕЧАЕШЬ):\n"
+            "КОНТЕКСТ ДИАЛОГА (НЕДАВНИЕ СООБЩЕНИЯ ИЛИ СООБЩЕНИЕ ДЛЯ ОТВЕТА):\n"
             f"«{reply_source_text}»\n\n"
         )
 
     full_prompt = (
         "Ты должен строго отыгрывать следующую роль. НИКОГДА не выходи из образа.\n"
-        f"РОЛЬ: {persona.get('prompt', 'Будь собой')}\n\n"
+        f"РОЛЬ: {apply_bender_tone(persona.get('prompt', 'Будь собой')) if persona.get('p_id') == 'bender' else persona.get('prompt', 'Будь собой')}\n\n"
         f"{context_block}"
         f"ВОПРОС ПОЛЬЗОВАТЕЛЯ: {clean_query}\n\n"
         "ЗАДАНИЕ: Отвечай развернуто, учитывая детали контекста диалога "
@@ -746,6 +738,7 @@ async def generate_chat_response(message, clean_query, reply_source_text, all_pe
             await db.messages.insert_one({
                 "message_id": sent.message_id,
                 "chat_id": message.chat.id,
+                "message_thread_id": getattr(message, 'message_thread_id', None),
                 "user_name": f"🤖 {persona['name']}",
                 "text": response,
                 "reactions": [],

@@ -10,6 +10,7 @@ from aiogram.filters import Command, CommandObject
 from config import ADMIN_ID
 from ddgs import DDGS
 from ai_logic import generate_with_retry
+from bender_style import BENDER_TONE
 from handlers import search_api
 
 router = Router()
@@ -83,8 +84,8 @@ async def _evaluate_results(query, results):
         'Если они не по теме или информации недостаточно, ответь ровно STATUS: NO. '
         'Иначе первая строка должна быть ровно STATUS: OK, затем на новой строке '
         'ответь от первого лица как Бендер Сгибальщик Родригес из Футурамы: '
-        'ярко, самоуверенно, с ехидными шутками и фирменным сарказмом на протяжении всего ответа. '
-        'Не ограничивай образ коротким вступлением, но не теряй факты и конкретику. '
+        'с узнаваемым характером на протяжении всего ответа, не теряя фактов и конкретики. '
+        f'{BENDER_TONE} '
         'Расскажи суть исключительно по фрагментам, с датами и важными деталями; '
         'если сведений недостаточно, честно укажи это. Не добавляй ссылки, адреса сайтов, '
         'список источников или ссылки на номера источников. Не выдумывай цитаты. '
@@ -187,7 +188,7 @@ async def _search_with_apis(query: str, *, with_image=False):
             return text, image
         return text
     if had_failure and (had_results or had_success):
-        text = '🤖 Бендер: ❌ Доступный поиск не дал подходящих результатов, а один из сервисов сейчас недоступен. Чините интернет, кожаные мешки!'
+        text = '🤖 Бендер: ❌ Доступный поиск не дал подходящих результатов, а один из сервисов сейчас недоступен. Мои схемы пока не справились. Попробуй позже!'
         return (text, None) if with_image else text
     if had_results or had_success:
         if days is not None:
@@ -195,7 +196,7 @@ async def _search_with_apis(query: str, *, with_image=False):
         else:
             text = '🤖 Бендер: ❌ По этому запросу подходящей информации не нашлось. Даже моя гениальность тут не поможет!'
         return (text, None) if with_image else text
-    text = '🤖 Бендер: ❌ Основной и резервный поиск сейчас недоступны. Попробуй позже, кожаный мешок!'
+    text = '🤖 Бендер: ❌ Основной и резервный поиск сейчас недоступны. Попробуй позже!'
     return (text, None) if with_image else text
 
 
@@ -229,7 +230,7 @@ async def _legacy_search(query: str) -> str:
         logger.warning('Резервный поиск в Википедии недоступен: %s', type(exc).__name__)
         if primary_irrelevant:
             return '🤖 Бендер: ❌ Основной поиск не дал подходящих результатов, а резервный поиск сейчас недоступен. Вот досада!'
-        return '🤖 Бендер: ❌ Поиск сейчас недоступен. Попробуй позже, кожаный мешок!'
+        return '🤖 Бендер: ❌ Поиск сейчас недоступен. Попробуй позже!'
     if not raw_results:
         if primary_failed:
             return '🤖 Бендер: ❌ Основной поиск недоступен, а в Википедии ничего не нашлось. Попробуй позже!'
