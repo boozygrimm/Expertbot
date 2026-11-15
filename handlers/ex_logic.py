@@ -100,7 +100,8 @@ HELP_TEXT = (
     "• Картинки: `/img кот самурай` или *«Экс, нарисуй кота»*\n"
     "• Кружок напрямую: `/bender вопрос` или *«Экс, кружок вопрос»*\n"
     "• Сплетни: `/gossip 50`; игры: `/pole`, `/vis`, `/anachronism`, `/topgame`\n"
-    "• Алхимия: `/base`, `/pohod`; рецепт: *«Экс, шпора спирт»*\n\n"
+    "• Алхимия: `/base`, `/pohod`; рецепт: *«Экс, шпора спирт»*\n"
+    "• Социальные действия и настройки профиля: `/соцсправка`\n\n"
     "`/voice on` и `/voice off` управляют публикацией расшифровки в чат; в группе переключать её могут администраторы и владелец бота. "
     "Если модуль «Голосовые» включён, новые голосовые и кружки могут распознаваться "
     "и сохраняться в историю и при `/voice off`. Музыка и аудиофайлы не расшифровываются.\n\n"
@@ -409,7 +410,7 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
                 await status_msg.edit_text("❌ Не смог расшифровать голосовое. Попробуй ещё раз позже.")
             return
 
-    if query.lower() in ["хэлп", "help", "помоги", "справка"]:
+    if query.lower() in ["хелп", "хэлп", "help", "помоги", "справка"]:
         return await message.reply(HELP_TEXT, parse_mode="Markdown")
 
     all_personas = await db.personas.find().to_list(length=100)
@@ -596,8 +597,6 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
         return
 
     if intent == "GOSSIP":
-        if not await is_feature_enabled(message.chat.id, "reports"):
-            return
         await send_persona_selection(message, parse_gossip_count(clean_query))
         return
 

@@ -67,10 +67,10 @@ FEATURES = OrderedDict({
         "hint": "Расшифровка голосовых и кружков, сохранение текста в историю и ручные запросы. /voice управляет публикацией в чат."
     },
     "reports": {
-        "label": "Отчёты",
+        "label": "Отчёты (резерв)",
         "icon": "📰",
         "default": True,
-        "hint": "Сплетни, выбор эксперта и сводки по чату."
+        "hint": "Резервная настройка; не управляет сплетнями или суточным отчётом."
     },
     "games": {
         "label": "Игры",
@@ -133,10 +133,6 @@ GAME_CALLBACK_PREFIXES = (
     "hm_take_turn",
     "hm_cl_",
     "anach:",
-)
-
-REPORT_CALLBACK_PREFIXES = (
-    "rep:",
 )
 
 DAILY_CALLBACK_PREFIXES = (
@@ -415,14 +411,23 @@ def detect_message_feature(message: types.Message):
 
     if lower_text.startswith(("/panel", "/панель")):
         return None
+    # Explicit help commands should work even as replies when the assistant
+    # feature is disabled. Deep links are still routed by their own handlers.
+    if (re.match(r"^/(?:help|хелп|хэлп|справка)(?:@[a-z0-9_]+)?(?:\s|$)", lower_text)
+            or re.match(r"^/start(?:@[a-z0-9_]+)?$", lower_text)
+            or re.match(r"^/экс(?:@[a-z0-9_]+)?\s+помощь\s*$", lower_text)):
+        return None
     if lower_text.startswith(("/img", "/pic", "/рис")):
         return "images"
     if lower_text.startswith("/song"):
         return "music"
     if lower_text.startswith("/voice"):
         return "voice"
-    if re.match(r"^/?(вещай|сплетни|выбор)(\s+\d+)?$", lower_text):
-        return "reports"
+    # Gossip has its own handler and is independent of the report and
+    # assistant switches, even when the command replies to a bot message.
+    if (re.match(r"^/?(вещай|сплетни|выбор)(\s+\d+)?$", lower_text)
+            or re.match(r"^/gossip(?:@[a-z0-9_]+)?(?:\s|$)", lower_text)):
+        return None
     if lower_text.startswith(("/vis", "/виселица", "/pole", "/anachronism", "/анахронизм", "/ставка", "/topgame", "/топигр", "/очки")):
         return "games"
     if lower_text.startswith(("/base", "/база", "/pohod", "/поход", "/добыча", "/regen_quests")):
@@ -452,8 +457,6 @@ def detect_callback_feature(callback: types.CallbackQuery):
         return None
     if data in DAILY_CALLBACK_PREFIXES or any(data.startswith(prefix) for prefix in DAILY_CALLBACK_PREFIXES):
         return "daily_reports"
-    if any(data.startswith(prefix) for prefix in REPORT_CALLBACK_PREFIXES):
-        return "reports"
     if data in GAME_CALLBACK_PREFIXES or any(data.startswith(prefix) for prefix in GAME_CALLBACK_PREFIXES):
         return "games"
     if data == "altar_open" or data == "quests_open" or any(data.startswith(prefix) for prefix in ALCHEMY_CALLBACK_PREFIXES):
