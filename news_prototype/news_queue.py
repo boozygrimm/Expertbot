@@ -31,6 +31,23 @@ async def enqueue_script(collection, candidate_id: str, script: dict) -> bool:
     return False
 
 
+async def enqueue_program(collection, candidate_id: str, scripts: list[dict]) -> bool:
+    from video_prototype.news_jobs import validate_program
+    if not isinstance(candidate_id, str) or not candidate_id or len(candidate_id) > 256:
+        raise ValueError('Неверный ID выпуска')
+    request_id = str(uuid.uuid5(NAMESPACE, candidate_id))
+    _, scripts = validate_program({'request_id': request_id, 'scripts': scripts})
+    doc = {'kind': 'program', 'candidate_id': candidate_id, 'request_id': request_id,
+           'scripts': scripts, 'stage': 'queued', 'created_at': datetime.now(timezone.utc)}
+    result = await collection.update_one({'_id': request_id}, {'$setOnInsert': doc}, upsert=True)
+    if result.upserted_id is not None:
+        return True
+    existing = await collection.find_one({'_id': request_id})
+    if not existing or any(existing.get(k) != doc[k] for k in ('kind', 'candidate_id', 'request_id', 'scripts')):
+        raise ValueError('Для этого выпуска уже сохранены другие сценарии')
+    return False
+
+
 READY_STORY_STAGES = ('ready_for_review', 'fetching_review', 'sending_review', 'review_sent',
                       'review_uncertain', 'review_too_large', 'review_download_failed')
 
@@ -107,7 +124,13 @@ async def run_idle_once(queue, collection, client) -> None:
     job = await collection.find_one({'stage': 'queued'}, sort=[('created_at', 1)])
     if not job or await queue.head():
         return
-    if job.get('kind') != 'digest' and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
+    if job.get('kind') == 'program':
+        try:
+            if not await client.supports_programs():
+                return
+        except (AttributeError, NewsWorkerError):
+            return
+    if job.get('kind') not in ('digest', 'program') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
         try:
             if not await client.supports_images():
                 return
@@ -126,6 +149,8 @@ async def run_idle_once(queue, collection, client) -> None:
     try:
         if job.get('kind') == 'digest':
             state = await client.submit_digest(job['request_id'], job['inputs'])
+        elif job.get('kind') == 'program':
+            state = await client.submit_program(job['request_id'], job['scripts'])
         else:
             state = await client.submit(job['request_id'], job['script'])
     except NewsBusy:

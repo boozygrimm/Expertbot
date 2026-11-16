@@ -110,6 +110,57 @@ async def admit(db, owner_id: int, url: str, script: dict) -> str:
     return 'queued' if created else 'already_queued'
 
 
+async def admit_program(db, owner_id: int, stories: list[dict]) -> str:
+    """Reserve the same owner slot for one reviewed multi-story program."""
+    from news_prototype.news_queue import enqueue_program
+    from video_prototype.news_jobs import validate_program
+    if type(owner_id) is not int or owner_id <= 0 or not isinstance(stories, list) or not 2 <= len(stories) <= 4:
+        raise ValueError('Неверный выпуск')
+    checked = []
+    for item in stories:
+        if not isinstance(item, dict) or set(item) != {'url', 'script'}:
+            raise ValueError('Неверный сюжет')
+        try:
+            url = validate_url(item['url'])
+        except ArticleError:
+            raise ValueError('Неверный источник') from None
+        checked.append({'url': url, 'script': validate_script(item['script'])})
+    scripts = [item['script'] for item in checked]
+    validate_program({'request_id': str(uuid.uuid4()), 'scripts': scripts})
+    canonical = json.dumps({'owner_id': owner_id, 'stories': checked}, ensure_ascii=False,
+                           sort_keys=True, separators=(',', ':')).encode('utf-8')
+    candidate_id = 'owner-trial:' + hashlib.sha256(canonical).hexdigest()
+    request_id = str(uuid.uuid5(NAMESPACE, candidate_id))
+    doc = {'owner_id': owner_id, 'source_id': 'owner_trial', 'kind': 'program',
+           'title': 'Выпуск по сценариям владельца', 'verification': 'needs_review', 'stories': checked}
+    await db.news_owner_trial_gate.update_one({'_id': 'slot'},
+        {'$setOnInsert': {'candidate_id': candidate_id, 'created_at': datetime.now(timezone.utc)}}, upsert=True)
+    gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
+    if gate and gate.get('candidate_id') is None and gate.get('ready_for_next') is True:
+        prior = await db.news_owner_trial_jobs.find_one({'_id': request_id})
+        if prior:
+            saved = await db.news_owner_trial_candidates.find_one({'_id': candidate_id})
+            message_id = prior.get('review_message_id')
+            if (saved and all(saved.get(k) == v for k, v in doc.items())
+                    and prior.get('kind') == 'program' and prior.get('candidate_id') == candidate_id
+                    and prior.get('request_id') == request_id and prior.get('scripts') == scripts
+                    and prior.get('stage') == 'review_sent' and type(message_id) is int and message_id > 0):
+                return 'already_queued'
+            raise ValueError('Сохранённый выпуск требует проверки')
+        await db.news_owner_trial_gate.update_one({'_id': 'slot', 'candidate_id': None, 'ready_for_next': True},
+            {'$set': {'candidate_id': candidate_id, 'ready_for_next': False,
+                      'created_at': datetime.now(timezone.utc)}})
+        gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
+    if not gate or gate.get('candidate_id') != candidate_id:
+        raise ValueError('Слот занят')
+    await db.news_owner_trial_candidates.update_one({'_id': candidate_id}, {'$setOnInsert': doc}, upsert=True)
+    stored = await db.news_owner_trial_candidates.find_one({'_id': candidate_id})
+    if not stored or any(stored.get(k) != v for k, v in doc.items()):
+        raise ValueError('Сохранённый выпуск не совпадает')
+    created = await enqueue_program(db.news_owner_trial_jobs, candidate_id, scripts)
+    return 'queued' if created else 'already_queued'
+
+
 async def dispatch_once(queue, jobs, client) -> None:
     """Shared media queue idle hook; no trial submission while users are waiting."""
     if not enabled() or await queue.head():

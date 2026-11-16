@@ -120,6 +120,22 @@ class NewsWorkerTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/news-jobs', {'request_id': str(uuid.uuid4()),
                          'script': script | {'image_b64': 'bad!'}})[0], 400)
 
+    def test_program_capability_validation_and_shared_slot(self):
+        self.news.run_program = self.news.run_job
+        job = str(uuid.uuid4())
+        payload = {'request_id': job, 'scripts': [self.script, self.script]}
+        self.assertIn('news-program-v1', json.loads(self.request('GET', '/health')[1])['capabilities'])
+        self.assertEqual(self.request('POST', '/news-programs', payload, auth=False)[0], 401)
+        self.assertEqual(self.request('POST', '/news-programs', {'request_id': job, 'scripts': [self.script]})[0], 400)
+        self.assertEqual(self.request('POST', '/news-programs', payload)[0], 202)
+        self.assertTrue(self.started.wait(2))
+        self.assertEqual(self.request('POST', '/news-programs', payload)[0], 200)
+        changed = {'request_id': job, 'scripts': [self.script, self.script | {'ticker':'ИЗМЕНЕНО'}]}
+        self.assertEqual(self.request('POST', '/news-programs', changed)[0], 409)
+        self.assertEqual(self.request('POST', '/jobs', {'request_id':str(uuid.uuid4()), 'text':'test'})[0], 409)
+        self.assertEqual(json.loads((self.root/'news'/job/'request.json').read_text())['scripts'], payload['scripts'])
+        self.assertEqual(self.calls, [job])
+
     def test_normal_job_blocks_news(self):
         self.assertEqual(self.request('POST','/jobs',{'request_id':str(uuid.uuid4()),'text':'test'})[0],202)
         self.assertTrue(self.started.wait(2))

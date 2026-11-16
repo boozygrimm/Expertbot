@@ -67,6 +67,9 @@ class NewsWorkerClient:
         """Never submit an illustrated story to an older worker that drops images."""
         return await self._supports('news-story-image-v1')
 
+    async def supports_programs(self) -> bool:
+        return await self._supports('news-program-v1')
+
     async def _status(self, session: aiohttp.ClientSession, request_id: str) -> dict | None:
         try:
             async with session.get(self.base_url + '/news-jobs/' + request_id,
@@ -92,6 +95,12 @@ class NewsWorkerClient:
         if not isinstance(script, dict):
             raise ValueError('Нужен сценарий')
         return await self._submit('/news-jobs', request_id, {'request_id': request_id, 'script': script})
+
+    async def submit_program(self, request_id: str, scripts: list[dict]) -> dict:
+        valid_id(request_id)
+        from video_prototype.news_jobs import validate_program
+        _, scripts = validate_program({'request_id': request_id, 'scripts': scripts})
+        return await self._submit('/news-programs', request_id, {'request_id': request_id, 'scripts': scripts})
 
     async def submit_digest(self, request_id: str, inputs: list[str]) -> dict:
         valid_id(request_id)

@@ -43,6 +43,25 @@ def validate_request(value: object) -> tuple[str, dict]:
     return request_id, validate_script(value['script'])
 
 
+MAX_PROGRAM_STORIES = 4
+MAX_PROGRAM_BYTES = 2_000_000
+
+
+def validate_program(value: object) -> tuple[str, list[dict]]:
+    if not isinstance(value, dict) or set(value) != {'request_id', 'scripts'}:
+        raise ValueError('Неверная задача выпуска')
+    request_id = validate_id(value['request_id'])
+    scripts = value['scripts']
+    if not isinstance(scripts, list) or not 2 <= len(scripts) <= MAX_PROGRAM_STORIES:
+        raise ValueError('Нужно от двух до четырёх сюжетов')
+    from news_prototype.story_audio import validate_script
+    checked = [validate_script(script) for script in scripts]
+    if any(not script['ticker'] or {t['speaker'] for t in script['turns']} != {'Бендер', 'Киберсенсей'}
+           for script in checked):
+        raise ValueError('В каждом сюжете нужны оба ведущих и строка')
+    return request_id, checked
+
+
 def validate_digest(value: object) -> tuple[str, list[str]]:
     if not isinstance(value, dict) or set(value) != {'request_id', 'inputs'}:
         raise ValueError('Неверная задача дайджеста')
@@ -57,8 +76,9 @@ def validate_digest(value: object) -> tuple[str, list[str]]:
 
 
 class NewsJobs:
-    def __init__(self, shared, root: Path, run_job, run_digest=None):
+    def __init__(self, shared, root: Path, run_job, run_digest=None, run_program=None):
         self.shared, self.root, self.run_job, self.run_digest = shared, Path(root), run_job, run_digest
+        self.run_program = run_program
         self.states = {}
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.root.is_symlink() or not self.root.is_dir():
@@ -135,6 +155,12 @@ class NewsJobs:
         request_id, script = validate_request({'request_id': request_id, 'script': script})
         return self._submit(request_id, script, self.run_job)
 
+    def submit_program(self, request_id: str, scripts: list[dict]) -> tuple[dict, bool]:
+        request_id, scripts = validate_program({'request_id': request_id, 'scripts': scripts})
+        if self.run_program is None:
+            raise ValueError('Выпуск недоступен')
+        return self._submit(request_id, {'scripts': scripts}, self.run_program)
+
     def submit_digest(self, request_id: str, inputs: list[str]) -> tuple[dict, bool]:
         request_id, inputs = validate_digest({'request_id': request_id, 'inputs': inputs})
         if self.run_digest is None:
@@ -167,7 +193,7 @@ class NewsJobs:
                     raise NewsConflict('Идентификатор уже используется')
                 request = folder / 'request.json'
                 try:
-                    if request.is_symlink() or request.stat().st_size > 600_000 or request.read_bytes() != canonical:
+                    if request.is_symlink() or request.stat().st_size > MAX_PROGRAM_BYTES or request.read_bytes() != canonical:
                         raise NewsConflict('Идентификатор уже используется')
                 except OSError:
                     raise NewsConflict('Результат предыдущего запуска неизвестен') from None
@@ -252,6 +278,24 @@ def runner(repo_root: Path):
                                      start_new_session=True)
         if process.returncode:
             raise RuntimeError('Не удалось создать новостной сюжет')
+    return run
+
+
+def program_runner(repo_root: Path):
+    """Render approved stories sequentially and assemble one final video."""
+    repo_root = Path(repo_root)
+    def run(request_id: str, folder: Path) -> None:
+        env = os.environ.copy()
+        for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
+                     'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
+            env.pop(name, None)
+        command = [sys.executable, '-u', '-m', 'news_prototype.program_job',
+                   '--request', str(folder / 'request.json'), '--output-dir', str(folder / 'work')]
+        with (folder / 'worker.log').open('ab') as log:
+            process = subprocess.run(command, cwd=repo_root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+        if process.returncode:
+            raise RuntimeError('Не удалось создать выпуск')
     return run
 
 

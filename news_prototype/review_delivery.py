@@ -59,8 +59,12 @@ async def run_once(jobs, candidates, client, bot, admin_id: int) -> str:
                 return 'cancelled'
             sending = True
             try:
-                review_caption = ('Дайджест из готовых сюжетов. Проверь факты и монтаж перед публикацией.'
-                                  if job.get('kind') == 'digest' else caption(candidate))
+                if job.get('kind') == 'digest':
+                    review_caption = 'Дайджест из готовых сюжетов. Проверь факты и монтаж перед публикацией.'
+                elif job.get('kind') == 'program':
+                    review_caption = 'Выпуск из проверенных сюжетов. Проверь видео и монтаж перед публикацией.'
+                else:
+                    review_caption = caption(candidate)
                 result = await bot.send_video(admin_id, FSInputFile(video), caption=review_caption,
                                               parse_mode=None)
             except Exception:

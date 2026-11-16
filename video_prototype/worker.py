@@ -332,6 +332,8 @@ def handler_for(store, secret, news=None):
                 capabilities = ['animated-sign-v1', 'voice-notes-v1']
                 if news is not None:
                     capabilities.extend(['news-story-v1', 'news-story-image-v1'])
+                    if news.run_program is not None:
+                        capabilities.append('news-program-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:
@@ -392,23 +394,27 @@ def handler_for(store, secret, news=None):
             if not self.authorized():
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
-            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests')):
+            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests', '/news-programs')):
                 return self.respond(404, {'error': 'not_found'})
             try:
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 return self.respond(400, {'error': 'invalid_length'})
             # An optional sanitized thumbnail is bounded separately by its codec.
-            limit = 600_000 if path == '/news-jobs' else (100_000 if path == '/news-digests' else MAX_BODY)
+            limit = (2_000_000 if path == '/news-programs' else
+                     600_000 if path == '/news-jobs' else 100_000 if path == '/news-digests' else MAX_BODY)
             if not 0 < length <= limit:
                 return self.respond(413, {'error': 'invalid_length'})
-            if path in ('/news-jobs', '/news-digests'):
-                from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest
+            if path in ('/news-jobs', '/news-digests', '/news-programs'):
+                from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest, validate_program
                 try:
                     data = json.loads(self.rfile.read(length).decode('utf-8'))
                     if path == '/news-digests':
                         request_id, inputs = validate_digest(data)
                         job, created = news.submit_digest(request_id, inputs)
+                    elif path == '/news-programs':
+                        request_id, scripts = validate_program(data)
+                        job, created = news.submit_program(request_id, scripts)
                     else:
                         request_id, script = validate_news(data)
                         job, created = news.submit(request_id, script)
@@ -476,9 +482,10 @@ def main():
         if str(HERE.parent) not in sys.path:
             sys.path.insert(0, str(HERE.parent))
         from news_prototype import story_pipeline  # noqa: F401
-        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner
+        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner, program_runner
         news_root = args.output_dir.parent / 'news-jobs'
-        news = NewsJobs(store, news_root, news_runner(HERE.parent), digest_runner(HERE.parent, news_root))
+        news = NewsJobs(store, news_root, news_runner(HERE.parent), digest_runner(HERE.parent, news_root),
+                        program_runner(HERE.parent))
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret, news))
     store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)

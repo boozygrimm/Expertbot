@@ -65,6 +65,32 @@ def prepare_input(value: str) -> tuple[str, str]:
     return url, accent
 
 
+def prepare_many_input(value: str) -> tuple[list[str], str]:
+    """Parse two to four source URLs and an optional shared accent."""
+    if not isinstance(value, str) or len(value) > 4096:
+        raise ValueError('Неверный запрос')
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines or not re.fullmatch(r'/news_prepare_many(?:@[A-Za-z0-9_]+)?', lines[0], re.I):
+        raise ValueError('Нужна команда и ссылки')
+    accent = ''
+    if len(lines) > 1 and lines[-1].casefold().startswith('акцент:'):
+        accent = lines.pop().partition(':')[2].strip()
+    if len(accent) > 1500 or not 3 <= len(lines) <= 5:
+        raise ValueError('Нужно от двух до четырёх ссылок')
+    urls = [_url(line) for line in lines[1:]]
+    if len(set(urls)) != len(urls):
+        raise ValueError('Ссылки не должны повторяться')
+    return urls, accent
+
+
+def batch_draft_ids(message_id: int, count: int) -> list[int]:
+    # Telegram message IDs are signed 32-bit. Reserve a disjoint numeric range
+    # for children so these can still be addressed by existing /news_edit.
+    if type(message_id) is not int or not 0 < message_id < 2**31 or not 2 <= count <= 4:
+        raise ValueError('Неверный номер сообщения')
+    return [100_000_000_000 + message_id * 10 + i for i in range(1, count + 1)]
+
+
 def editable_message(draft_id: int, url: str, script: dict) -> str:
     script = validate_script(script)
     if not script['ticker'] or {turn['speaker'] for turn in script['turns']} != {'Бендер', 'Киберсенсей'}:

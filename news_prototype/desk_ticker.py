@@ -69,8 +69,8 @@ def overlay(assets: tuple[Image.Image, int], t: float) -> tuple[Image.Image, tup
     return resized, (round(LEFT*sx), round(TOP*sy))
 
 
-def apply(frame: Image.Image, assets: tuple[Image.Image, int], t: float) -> Image.Image:
+def apply(frame: Image.Image, assets: tuple[Image.Image, int], t: float, *, offset_y: int = 0) -> Image.Image:
     layer, position = overlay(assets, t)
     result = frame.convert('RGBA')
-    result.alpha_composite(layer, position)
+    result.alpha_composite(layer, (position[0], position[1] + offset_y))
     return result.convert('RGB')
