@@ -70,7 +70,10 @@ def render(folder: Path, output: Path, ffmpeg: str) -> None:
         if panel is not None:
             frame = news_picture.apply(frame, panel, timestamp, limits)
         if ticker is not None:
-            frame = desk_ticker.apply(frame, ticker, max(0.0, timestamp - 1.48))
+            # Move the ticker below the portrait cutaway while it is visible.
+            # This keeps the entire image unobstructed instead of cropping it.
+            offset = round(56 * news_picture.opacity_at(timestamp, limits)) if panel is not None else 0
+            frame = desk_ticker.apply(frame, ticker, max(0.0, timestamp - 1.48), offset_y=offset)
         return frame
     combined_trial.render(folder, output, ffmpeg, timeline=timeline,
                           screen_overlay=overlay if ticker is not None or panel is not None else None)

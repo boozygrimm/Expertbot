@@ -73,12 +73,16 @@ async def trial_status(message: types.Message) -> None:
     text = labels.get(stage, 'Неизвестное состояние; нужна ручная проверка.')
     if stage == 'queued':
         try:
-            job = await db.db.news_owner_trial_jobs.find_one({'stage': 'queued', 'script.image_b64': {'$exists': True}})
+            job = await db.db.news_owner_trial_jobs.find_one({'stage': 'queued', '$or': [
+                {'script.image_b64': {'$exists': True}}, {'kind': 'program'}]})
             if job:
                 import os
                 from news_prototype.news_worker_client import NewsWorkerClient
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-                if not await client.supports_images():
+                if job.get('kind') == 'program':
+                    if not await client.supports_programs():
+                        text += '\nВоркер сейчас не подтверждает поддержку выпусков; задача остаётся в очереди.'
+                elif not await client.supports_images():
                     text += '\nВоркер сейчас не подтверждает поддержку картинки; задача останется в очереди без повторной отправки.'
         except Exception:
             # Status must remain available even when worker health is unreachable.
