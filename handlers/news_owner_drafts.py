@@ -131,6 +131,27 @@ async def prepare(message: types.Message) -> None:
         await message.answer(f'Состояние не подтверждено. Проверьте /news_draft {draft_id}; не повторяйте вслепую.', parse_mode=None)
 
 
+async def prepare_urls(message: types.Message, urls: list[str], accent: str = '') -> None:
+    ids = owner_drafts.batch_draft_ids(message.message_id, len(urls))
+    for draft_id, url in zip(ids, urls):
+        await owner_drafts.create(db.db, message.from_user.id, draft_id, url, accent)
+    await message.answer('Готовлю по одному черновику на ссылку. Используется квота Gemini; '
+                         'видео пока не создаётся.', parse_mode=None)
+    results = await asyncio.gather(*(owner_drafts.process_new(
+        db.db, message.from_user.id, draft_id, article_fetch.fetch_article,
+        make_draft, news_image_fetch.fetch_thumbnail, analyze_image) for draft_id in ids),
+        return_exceptions=True)
+    for draft_id, result in zip(ids, results):
+        if isinstance(result, Exception):
+            logger.warning('Не удалось подготовить черновик: %s', type(result).__name__)
+            await message.answer(f'Состояние черновика не подтверждено: /news_draft {draft_id}.', parse_mode=None)
+        else:
+            await show(message, draft_id, for_program=True)
+    await message.answer('Когда проверите все готовые черновики, соберите выпуск:\n/news_program '
+                         + ' '.join(str(draft_id) for draft_id in ids)
+                         + '\nЕсли источника не хватает, сначала пришлите текст через /news_source.', parse_mode=None)
+
+
 @router.message(Command('news_prepare_many'))
 async def prepare_many(message: types.Message) -> None:
     if not authorized(message):
@@ -140,30 +161,102 @@ async def prepare_many(message: types.Message) -> None:
         return
     try:
         urls, accent = owner_drafts.prepare_many_input(message.text or '')
-        ids = owner_drafts.batch_draft_ids(message.message_id, len(urls))
-        for draft_id, url in zip(ids, urls):
-            await owner_drafts.create(db.db, message.from_user.id, draft_id, url, accent)
-        await message.answer('Готовлю по одному черновику на ссылку. Используется квота Gemini; '
-                             'видео пока не создаётся.', parse_mode=None)
-        results = await asyncio.gather(*(owner_drafts.process_new(
-            db.db, message.from_user.id, draft_id, article_fetch.fetch_article,
-            make_draft, news_image_fetch.fetch_thumbnail, analyze_image) for draft_id in ids),
-            return_exceptions=True)
-        for draft_id, result in zip(ids, results):
-            if isinstance(result, Exception):
-                logger.warning('Не удалось подготовить черновик: %s', type(result).__name__)
-                await message.answer(f'Состояние черновика не подтверждено: /news_draft {draft_id}.', parse_mode=None)
-            else:
-                await show(message, draft_id, for_program=True)
-        await message.answer('Когда проверите все готовые черновики, соберите выпуск:\n/news_program '
-                             + ' '.join(str(draft_id) for draft_id in ids)
-                             + '\nЕсли источника не хватает, сначала пришлите текст через /news_source.', parse_mode=None)
+        await prepare_urls(message, urls, accent)
     except ValueError:
         await message.answer('Укажите команду /news_prepare_many, затем с новой строки от двух до четырёх '
                              'разных ссылок и, при желании, строку Акцент: ...', parse_mode=None)
     except Exception as exc:
         logger.warning('Не удалось подтвердить черновики: %s', type(exc).__name__)
         await message.answer('Подготовка не подтверждена. Проверьте /news_drafts; повторяйте только отсутствующие ссылки.', parse_mode=None)
+
+
+@router.message(Command('news_discover'))
+async def discover(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    if not enabled():
+        await message.answer('Подготовка черновиков выключена.', parse_mode=None)
+        return
+    if len((message.text or '').split()) != 1:
+        await message.answer('Используйте /news_discover без параметров.', parse_mode=None)
+        return
+    from news_prototype import owner_discovery
+    try:
+        batch = message.message_id
+        snapshot = await owner_discovery.get_snapshot(db.db, message.from_user.id, batch)
+        if not snapshot:
+            await message.answer('Собираю новости за последние сутки. Для перевода заголовков может использоваться '
+                                 'квота Gemini; сценарии и рендер не запускаются.', parse_mode=None)
+            items, failed = await owner_discovery.collect()
+            if items:
+                from ai_providers import fire_gemini_key
+                from models import GEMINI_CHAT_MODEL
+                translations = await owner_discovery.translate_titles(items, fire_gemini_key(), GEMINI_CHAT_MODEL)
+                if translations:
+                    for item, translated in zip(items, translations):
+                        item['translated_title'] = translated
+            snapshot = await owner_discovery.save_snapshot(db.db, message.from_user.id, batch, items, failed)
+        items = snapshot['items']
+        if not items:
+            if len(snapshot.get('failed', [])) == len(owner_discovery.SOURCES):
+                text = 'Не удалось проверить источники.'
+            else:
+                text = 'За последние сутки новостей не найдено.'
+            if snapshot.get('failed'):
+                text += ' Недоступны источники: ' + ', '.join(snapshot['failed']) + '.'
+            await message.answer(text, parse_mode=None)
+            return
+        header = 'Новости за последние сутки. Заголовки могут быть автоматически переведены; проверьте источник.\n'
+        if snapshot.get('failed'):
+            header += 'Недоступны: ' + ', '.join(snapshot['failed']) + '.\n'
+        lines = []
+        for index, item in enumerate(items, 1):
+            title = item.get('translated_title', item['title'])
+            date = item['published_at'][:16].replace('T', ' ') + ' UTC'
+            lines.append(f'{index}. {title}\n{item["source"]} · {date}\n{item["url"]}\n')
+        part = header
+        for line in lines:
+            if len((part + line).encode('utf-16-le')) // 2 > 3500:
+                await message.answer(part, parse_mode=None, disable_web_page_preview=True)
+                part = ''
+            part += line
+        if part:
+            await message.answer(part, parse_mode=None, disable_web_page_preview=True)
+        if len(items) < 2:
+            await message.answer('Найден только один вариант. Для выпуска добавьте другую ссылку вручную '
+                                 'через /news_prepare_many или обновите подборку позже.', parse_mode=None)
+        else:
+            await message.answer(f'Выбери от двух до четырёх новостей из подборки №{batch}:\n'
+                                 f'/news_pick {batch} 1 2\n'
+                                 'Замени 1 и 2 на нужные номера. Сценарии и ролик пока не созданы.', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось получить подборку: %s', type(exc).__name__)
+        await message.answer('Не удалось получить подборку. Попробуйте позже.', parse_mode=None)
+
+
+@router.message(Command('news_pick'))
+async def pick(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    if not enabled():
+        await message.answer('Подготовка черновиков выключена.', parse_mode=None)
+        return
+    from news_prototype import owner_discovery
+    try:
+        parts = (message.text or '').split()
+        if not 4 <= len(parts) <= 6:
+            raise ValueError
+        batch = _id(parts[1])
+        indices = [_id(value) for value in parts[2:]]
+        snapshot = await owner_discovery.get_snapshot(db.db, message.from_user.id, batch)
+        urls = owner_discovery.choose(snapshot, indices)
+        await prepare_urls(message, urls)
+    except (ValueError, article_fetch.ArticleError):
+        await message.answer('Укажите номер подборки и от двух до четырёх разных номеров новостей: '
+                             '/news_pick НОМЕР_ПОДБОРКИ 1 2', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось подготовить выбранные новости: %s', type(exc).__name__)
+        await message.answer('Состояние не подтверждено. Проверьте /news_drafts; не повторяйте вслепую.', parse_mode=None)
 
 
 @router.message(Command('news_drafts'))
