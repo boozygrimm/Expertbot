@@ -303,7 +303,8 @@ class ProgramWorkerTests(unittest.TestCase):
             portrait = Image.new('RGB', (100, 200), 'red')
             ImageDraw.Draw(portrait).rectangle((0, 100, 99, 199), fill='blue')
             image = BytesIO(); portrait.save(image, format='PNG')
-            first = SCRIPT | {'image_b64': news_image_codec.make_thumbnail(image.getvalue())}
+            first = SCRIPT | {'image_b64': news_image_codec.make_thumbnail(image.getvalue()),
+                              'image_regions': [[0, 550, 1000, 1000], [0, 0, 1000, 450]]}
             second = SCRIPT | {'ticker':'ВТОРАЯ НОВОСТЬ'}
             request = folder/'request.json'; request.write_text(json.dumps({'scripts':[first,second]}))
             def synthesize(text, target, keys, start_index):
@@ -333,8 +334,9 @@ class ProgramWorkerTests(unittest.TestCase):
                     shots.append(shot.convert('RGB'))
             # At x=320 the full portrait is absent but the enlarged halves reach it.
             self.assertLess(shots[0].getpixel((320, 249))[0], 150)
-            self.assertGreater(shots[1].getpixel((320, 249))[0], 150)
-            self.assertGreater(shots[2].getpixel((320, 249))[2], 150)
+            # The model-selected order is intentionally opposite the fallback.
+            self.assertGreater(shots[1].getpixel((320, 249))[2], 150)
+            self.assertGreater(shots[2].getpixel((320, 249))[0], 150)
             self.assertLess(shots[3].getpixel((320, 249))[0], 150)
             # The complete picture, including both ends, returns after details.
             self.assertGreater(shots[3].getpixel((467, 70))[0], 150)

@@ -70,6 +70,9 @@ class NewsWorkerClient:
     async def supports_programs(self) -> bool:
         return await self._supports('news-program-v1')
 
+    async def supports_image_focus(self) -> bool:
+        return await self._supports('news-image-focus-v1')
+
     async def _status(self, session: aiohttp.ClientSession, request_id: str) -> dict | None:
         try:
             async with session.get(self.base_url + '/news-jobs/' + request_id,

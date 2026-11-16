@@ -46,7 +46,7 @@ def load_story(folder: Path):
     return audio, turns, ticker
 
 
-def render(folder: Path, output: Path, ffmpeg: str) -> None:
+def render(folder: Path, output: Path, ffmpeg: str, *, image_regions: list | None = None) -> None:
     audio, turns, text = load_story(folder)
     inputs = [audio, folder / 'story.json', *(path for path, _ in turns)]
     if output.resolve() in {path.resolve() for path in inputs}:
@@ -62,7 +62,7 @@ def render(folder: Path, output: Path, ffmpeg: str) -> None:
             raise ValueError('Недопустимое изображение новости')
         import base64
         from news_prototype import news_picture
-        views = news_picture.prepare_views(base64.b64encode(image_file.read_bytes()).decode('ascii'))
+        views = news_picture.prepare_views(base64.b64encode(image_file.read_bytes()).decode('ascii'), image_regions)
         panel = views[0]
         duration = len(timeline[1]) / podcast_video_trial.bender.FPS
         limits = news_picture.window(duration, combined_trial.INTRO_FRAMES / podcast_video_trial.bender.FPS)

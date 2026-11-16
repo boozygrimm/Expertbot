@@ -46,6 +46,11 @@ def validate_script(data: object) -> dict:
         from news_prototype.news_image_codec import decode_thumbnail
         decode_thumbnail(data['image_b64'])
         script['image_b64'] = data['image_b64']
+    if 'image_regions' in data:
+        if 'image_b64' not in script:
+            raise ValueError('Области без изображения')
+        from news_prototype.image_focus import validate_regions
+        script['image_regions'] = validate_regions(data['image_regions'])
     return script
 
 

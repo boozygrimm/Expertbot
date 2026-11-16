@@ -34,7 +34,7 @@ def run(script: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
             with os.fdopen(fd, 'wb') as target:
                 target.write(image)
         _state(folder, 'rendering')
-        story_video.render(folder, temporary, ffmpeg)
+        story_video.render(folder, temporary, ffmpeg, image_regions=script.get('image_regions'))
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(temporary),
                         '-f', 'null', '-'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         temporary.replace(output)

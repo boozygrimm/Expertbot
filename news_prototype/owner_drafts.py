@@ -6,6 +6,8 @@ response is never interpreted as permission to repeat an external operation.
 """
 from __future__ import annotations
 
+import asyncio
+
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -150,7 +152,8 @@ async def get(db, owner_id: int, draft_id: int) -> dict | None:
     return await db.news_owner_drafts.find_one({'_id': _key(owner_id, draft_id), 'owner_id': owner_id})
 
 
-async def _finish_editing(db, item: dict, draft, image_b64: str | None = None) -> str:
+async def _finish_editing(db, item: dict, draft, image_b64: str | None = None,
+                          image_regions: list | None = None) -> str:
     key = item['_id']
     try:
         result = await draft(item)
@@ -164,8 +167,11 @@ async def _finish_editing(db, item: dict, draft, image_b64: str | None = None) -
         script = validate_script(result.get('script'))
         # The model never controls media; it comes only from the verified post.
         script.pop('image_b64', None)
+        script.pop('image_regions', None)
         if image_b64:
             script['image_b64'] = image_b64
+            if image_regions:
+                script['image_regions'] = image_regions
         script = validate_script(script)
         editable_message(item['draft_id'], item['url'], script)
         rev = revision(item['url'], script)
@@ -179,7 +185,8 @@ async def _finish_editing(db, item: dict, draft, image_b64: str | None = None) -
         return 'editor_failed'
 
 
-async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_image=None) -> str:
+async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_image=None,
+                      analyze_image=None) -> str:
     key = _key(owner_id, draft_id)
     claimed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'new'},
                                                      {'$set': {'stage': 'fetching'}})
@@ -192,7 +199,6 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
             raise ValueError('Не найден текст')
         additions = {k: article[k] for k in ('title', 'summary', 'resolved_url') if k in article}
         item = item | additions
-        story_editor.prompt_for(item)
     except Exception:
         await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'}, {'$set': {'stage': 'needs_source'}})
         return 'needs_source'
@@ -208,11 +214,44 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
             additions['image_kind'] = media['kind']
         except Exception:
             image_b64 = None  # Missing or unsafe media must never prevent the story.
+    regions = None
+    if image_b64:
+        additions['image_analysis'] = 'unavailable'
+        if analyze_image:
+            try:
+                from news_prototype.image_vision import TIMEOUT_SECONDS
+                from news_prototype.image_focus import validate_regions
+                analysis = await asyncio.wait_for(analyze_image(image_b64), timeout=TIMEOUT_SECONDS)
+                description = analysis.get('description') if isinstance(analysis, dict) else None
+                if not isinstance(description, str) or not description.strip() or len(description) > 1800:
+                    raise ValueError('Неверное описание')
+                description = description.strip()
+                additions['image_description'] = description
+                additions['image_analysis'] = 'analyzed'
+                item = item | {'image_description': description}
+                try:
+                    if analysis.get('regions'):
+                        regions = validate_regions(analysis['regions'])
+                except ValueError:
+                    regions = None
+            except Exception:
+                # A timeout or bad vision response must not block text-only editing.
+                pass
+    try:
+        story_editor.prompt_for(item)
+    except ValueError:
+        # /news_source currently starts a text-only draft; do not retain an
+        # image-derived description without the corresponding review image.
+        for field in ('image_description', 'image_analysis', 'image_kind'):
+            additions.pop(field, None)
+        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
+                                               {'$set': dict(additions, stage='needs_source')})
+        return 'needs_source'
     claimed = await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
                                                      {'$set': dict(additions, stage='editing')})
     if not claimed.modified_count:
         return 'changed'
-    return await _finish_editing(db, item, draft, image_b64)
+    return await _finish_editing(db, item, draft, image_b64, regions)
 
 
 async def provide_source(db, owner_id: int, draft_id: int, text: str, draft) -> str:
@@ -241,14 +280,33 @@ async def edit(db, owner_id: int, draft_id: int, expected: str, url: str, script
     if not current or current.get('url') != url:
         raise ValueError('Источник нельзя менять в готовом черновике')
     script.pop('image_b64', None)
+    script.pop('image_regions', None)
     if 'image_b64' in current.get('script', {}):
         script['image_b64'] = current['script']['image_b64']
+        if 'image_regions' in current['script']:
+            script['image_regions'] = current['script']['image_regions']
     new_rev = revision(url, script)
     if new_rev == expected and current.get('stage') == 'draft_ready' and current.get('revision') == expected:
         return 'unchanged'
     changed = await db.news_owner_drafts.update_one(
         {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
         {'$set': {'script': script, 'revision': new_rev, 'verification': 'needs_review', 'edited_by_owner': True}})
+    return 'saved' if changed.modified_count else 'stale'
+
+
+async def remove_focus(db, owner_id: int, draft_id: int, expected: str) -> str:
+    if not REVISION.fullmatch(expected or ''):
+        raise ValueError('Неверная версия')
+    item = await get(db, owner_id, draft_id)
+    if not item or item.get('stage') != 'draft_ready' or item.get('revision') != expected:
+        return 'stale'
+    script = dict(item['script'])
+    if 'image_regions' not in script:
+        return 'unchanged'
+    script.pop('image_regions')
+    changed = await db.news_owner_drafts.update_one(
+        {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
+        {'$set': {'script': script, 'revision': revision(item['url'], script), 'verification': 'needs_review'}})
     return 'saved' if changed.modified_count else 'stale'
 
 
@@ -262,6 +320,7 @@ async def remove_image(db, owner_id: int, draft_id: int, expected: str) -> str:
     if 'image_b64' not in script:
         return 'unchanged'
     script.pop('image_b64')
+    script.pop('image_regions', None)
     changed = await db.news_owner_drafts.update_one(
         {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
         {'$set': {'script': script, 'revision': revision(item['url'], script), 'verification': 'needs_review'},

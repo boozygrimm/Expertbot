@@ -16,7 +16,7 @@ class StoryPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             folder=Path(tmp)/'job'
             def prepare(script, path, ffmpeg, keys): path.mkdir()
-            def render(path, output, ffmpeg): output.write_bytes(b'fake video')
+            def render(path, output, ffmpeg, *, image_regions=None): output.write_bytes(b'fake video')
             with patch.object(story_pipeline.story_audio, 'prepare', side_effect=prepare), \
                  patch.object(story_pipeline.story_video, 'render', side_effect=render), \
                  patch.object(story_pipeline.subprocess, 'run') as decode:
