@@ -103,7 +103,8 @@ def _text(item: ET.Element, *paths: str) -> str:
     return ''
 
 
-def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime) -> list[dict]:
+def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime,
+               max_items: int = MAX_ITEMS) -> list[dict]:
     if source_id not in FEEDS or len(data) > MAX_BYTES:
         raise FeedError('Неизвестный или слишком большой источник')
     if since.tzinfo is None or now.tzinfo is None or since > now:
@@ -121,7 +122,7 @@ def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime) -
     else:
         raise FeedError('Неподдерживаемый формат ленты')
     # Never silently advance the source cursor past entries we did not inspect.
-    if len(items) > MAX_ITEMS:
+    if type(max_items) is not int or not 1 <= max_items <= 1000 or len(items) > max_items:
         raise FeedError('Слишком много записей в ленте')
     name, _ = FEEDS[source_id]
     result, seen = [], set()
