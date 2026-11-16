@@ -124,7 +124,7 @@ def write_sound(dialogue: Path, output: Path, dialogue_frames: int) -> None:
         wav.writeframes(result.tobytes())
 
 
-def render(folder: Path, output: Path, ffmpeg: str) -> None:
+def render(folder: Path, output: Path, ffmpeg: str, *, screen_overlay=None) -> None:
     audio, active, states = podcast.dialogue_timeline(folder)
     frames = podcast.prepare_frames()
     hatch_assets, hedgehog_assets = hatch.prepare(), hedgehog.prepare()
@@ -176,6 +176,8 @@ def render(folder: Path, output: Path, ffmpeg: str) -> None:
                     frame = frame.convert('RGB')
                 else:
                     frame = base
+                if screen_overlay is not None:
+                    frame = screen_overlay(frame, t)
                 frame = display(frame, mask, off, t, off_press)
                 frame = press.add_finger(frame, finger, finger_amount(t, (ON_PRESS, off_press)))
                 process.stdin.write(frame.tobytes())
