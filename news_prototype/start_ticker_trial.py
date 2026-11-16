@@ -8,11 +8,11 @@ import tarfile
 import tempfile
 import urllib.request
 
-REF = 'a84cac7faf04860a5dfe1244349f67c8733a02fc'
+REF = '652c27fc26ba37b7fbf70723827fb252d903a6a9'
 URL = f'https://codeload.github.com/boozygrimm/Expertbot/tar.gz/{REF}'
 PYTHON = Path('/data/video-prototype/.venv/bin/python')
 FILES = {
-    'news_prototype/desk_ticker.py': '1fa2cf4fdcebaa665b2caa2591c02c1f4a23a7e46c84318875c05eb019be9532',
+    'news_prototype/desk_ticker.py': '5a20a08d2a6bd93c4bcfaf6143325a054e831e22392065884b2e02588be48a1b',
     'news_prototype/ticker_trial.py': '1df83969682ebd7f1cefb7023e03643a9378c639f7e8970a85368f09d29ddfff',
     'news_prototype/run_ticker_trial.py': '6bad160854ed74d0820635f2e03fc48d6c8309df69ec0f0c3d3d2c0f5ff6d4dd',
     'video_prototype/assets/sign-font.ttf': '1ffb931670d76dede07c8f66cf9400eb46d503e94d2d1a9f5690638fe9eb0a1d',
