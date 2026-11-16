@@ -399,9 +399,13 @@ async def approve_program(message: types.Message) -> None:
         return
     try:
         parts = (message.text or '').split()
-        if len(parts) != 3:
+        if len(parts) != 3 or not owner_drafts.REVISION.fullmatch(parts[2]):
             raise ValueError
         program_id = _id(parts[1])
+    except ValueError:
+        await message.answer('Скопируйте команду подтверждения из выпуска.', parse_mode=None)
+        return
+    try:
         program = await owner_program.get(db.db, message.from_user.id, program_id)
         if program and program.get('stage') == 'ready_for_review' and program.get('revision') == parts[2]:
             from news_prototype.news_worker_client import NewsWorkerClient
@@ -414,8 +418,9 @@ async def approve_program(message: types.Message) -> None:
                 await message.answer('Воркер пока не подтвердил поддержку выпусков. Рендер не запущен.', parse_mode=None)
                 return
         result = await owner_program.approve(db.db, message.from_user.id, program_id, parts[2])
-    except ValueError:
-        await message.answer('Скопируйте команду подтверждения из выпуска.', parse_mode=None)
+    except ValueError as exc:
+        logger.warning('Не удалось проверить данные выпуска: %s', type(exc).__name__)
+        await message.answer(f'Не удалось проверить данные выпуска. Откройте /news_program_status {program_id}.', parse_mode=None)
         return
     except Exception as exc:
         logger.warning('Не удалось подтвердить выпуск: %s', type(exc).__name__)

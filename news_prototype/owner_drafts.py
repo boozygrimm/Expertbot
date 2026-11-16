@@ -29,7 +29,11 @@ def _url(value: str) -> str:
 
 
 def _key(owner_id: int, draft_id: int) -> str:
-    if type(owner_id) is not int or owner_id <= 0 or type(draft_id) is not int or draft_id <= 0:
+    # MongoDB decodes integer values beyond int32 as bson.int64.Int64, an int
+    # subclass. Batch draft IDs intentionally use that range. Accept integer
+    # subclasses while still excluding bool and non-integral values.
+    if (not isinstance(owner_id, int) or isinstance(owner_id, bool) or owner_id <= 0
+            or not isinstance(draft_id, int) or isinstance(draft_id, bool) or draft_id <= 0):
         raise ValueError('Неверный идентификатор')
     return f'owner-draft:{owner_id}:{draft_id}'
 
