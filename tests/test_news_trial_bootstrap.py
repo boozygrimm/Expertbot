@@ -11,6 +11,7 @@ from news_prototype import start_podcast_video_trial as podcast_bootstrap
 from news_prototype import start_sensei_hatch_trial as hatch_bootstrap
 from news_prototype import start_hedgehog_trial as hedgehog_bootstrap
 from news_prototype import start_combined_trial as combined_bootstrap
+from news_prototype import start_ticker_trial as ticker_bootstrap
 
 
 def archive_for(name, data):
@@ -78,6 +79,18 @@ class NewsTrialBootstrapTests(unittest.TestCase):
                 tar.addfile(info, io.BytesIO(b'tampered'))
             with self.assertRaises(ValueError):
                 combined_bootstrap.unpack_checked(archive.getvalue(), Path(folder))
+
+    def test_ticker_launcher_rejects_tampering(self):
+        name = 'news_prototype/example.py'
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(ticker_bootstrap, 'FILES', {name: hashlib.sha256(b'expected').hexdigest()}):
+            archive = io.BytesIO()
+            with tarfile.open(fileobj=archive, mode='w:gz') as tar:
+                info = tarfile.TarInfo(f'Expertbot-{ticker_bootstrap.REF}/{name}')
+                info.size = len(b'tampered')
+                tar.addfile(info, io.BytesIO(b'tampered'))
+            with self.assertRaises(ValueError):
+                ticker_bootstrap.unpack_checked(archive.getvalue(), Path(folder))
 
     def test_rejects_tampering(self):
         name = 'news_prototype/example.py'
