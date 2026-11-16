@@ -95,8 +95,9 @@ def load_image(path: Path) -> Image.Image:
         return img.convert('RGB').resize(SIZE, Image.Resampling.LANCZOS)
 
 
-def face_frames(opened: Image.Image, closed: Image.Image, blink: Image.Image) -> dict[tuple[bool, bool], bytes]:
-    mouth = mask_for((397, 315, 493, 374), 8)
+def face_frames(opened: Image.Image, closed: Image.Image, blink: Image.Image,
+                mouth_box: tuple[int, int, int, int] = (397, 315, 493, 374)) -> dict[tuple[bool, bool], bytes]:
+    mouth = mask_for(mouth_box, 8)
     eyes = mask_for((421, 251, 520, 301), 14)
     result = {}
     for is_open in (False, True):
@@ -122,13 +123,15 @@ def write_wav(path: Path, samples: array.array, rate: int) -> None:
         wav.writeframes(little_endian.tobytes())
 
 
-def render(audio: Path, output: Path, ffmpeg: str) -> None:
+def render(audio: Path, output: Path, ffmpeg: str, *, soft_teeth: bool = False) -> None:
     rate, source = read_pcm(audio)
     samples = padded(source, rate)
     states = mouth_states(levels(samples, rate))
-    frames = face_frames(load_image(HERE / 'studio_mockup_corrected.png'),
-                         load_image(HERE / 'bender_closed_reference.png'),
-                         load_image(HERE / 'bender_blink_reference.png'))
+    opened = 'studio_mockup_soft.png' if soft_teeth else 'studio_mockup_corrected.png'
+    closed = 'bender_soft_closed.png' if soft_teeth else 'bender_closed_reference.png'
+    box = (390, 308, 498, 380) if soft_teeth else (397, 315, 493, 374)
+    frames = face_frames(load_image(HERE / opened), load_image(HERE / closed),
+                         load_image(HERE / 'bender_blink_reference.png'), box)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='news-presenter-') as directory:
         wav = Path(directory) / 'speech.wav'
@@ -159,8 +162,9 @@ def main() -> None:
     parser.add_argument('--audio', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--ffmpeg', default='ffmpeg')
+    parser.add_argument('--soft-teeth', action='store_true', help='Проба с менее крупными зубами')
     args = parser.parse_args()
-    render(args.audio, args.output, args.ffmpeg)
+    render(args.audio, args.output, args.ffmpeg, soft_teeth=args.soft_teeth)
     print(f'Проба готова: {args.output}', flush=True)
 
 
