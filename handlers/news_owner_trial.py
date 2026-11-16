@@ -71,6 +71,18 @@ async def trial_status(message: types.Message) -> None:
               'interrupted':'Воркер прерван; нужна ручная проверка.',
               'failed':'Подготовка не удалась; нужна ручная проверка.'}
     text = labels.get(stage, 'Неизвестное состояние; нужна ручная проверка.')
+    if stage == 'queued':
+        try:
+            job = await db.db.news_owner_trial_jobs.find_one({'stage': 'queued', 'script.image_b64': {'$exists': True}})
+            if job:
+                import os
+                from news_prototype.news_worker_client import NewsWorkerClient
+                client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+                if not await client.supports_images():
+                    text += '\nВоркер сейчас не подтверждает поддержку картинки; задача останется в очереди без повторной отправки.'
+        except Exception:
+            # Status must remain available even when worker health is unreachable.
+            text += '\nНе удалось проверить поддержку изображения воркером.'
     if stage == 'review_sent' and finished_id:
         text += ('\nДля новой пробы освободить слот вручную:\n'
                  f'/news_trial_next {finished_id}')

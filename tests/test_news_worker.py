@@ -102,6 +102,24 @@ class NewsWorkerTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/news-digests',{'request_id':str(uuid.uuid4()),'inputs':[ids[0],digest]})[0],400)
         self.assertEqual(self.calls,[digest])
 
+    def test_image_capability_payload_and_idempotency(self):
+        from io import BytesIO
+        from PIL import Image
+        from news_prototype.news_image_codec import make_thumbnail
+        image = BytesIO(); Image.new('RGB', (20, 20), 'red').save(image, format='PNG')
+        thumb = make_thumbnail(image.getvalue())
+        job = str(uuid.uuid4()); script = self.script | {'image_b64': thumb}
+        self.assertIn('news-story-image-v1', json.loads(self.request('GET', '/health')[1])['capabilities'])
+        self.assertEqual(self.request('POST', '/news-jobs', {'request_id': job, 'script': script})[0], 202)
+        self.assertTrue(self.started.wait(2))
+        self.assertEqual(self.request('POST', '/news-jobs', {'request_id': job, 'script': script})[0], 200)
+        saved = json.loads((self.root / 'news' / job / 'request.json').read_text())
+        self.assertEqual(saved['image_b64'], thumb)
+        changed = dict(script); changed.pop('image_b64')
+        self.assertEqual(self.request('POST', '/news-jobs', {'request_id': job, 'script': changed})[0], 409)
+        self.assertEqual(self.request('POST', '/news-jobs', {'request_id': str(uuid.uuid4()),
+                         'script': script | {'image_b64': 'bad!'}})[0], 400)
+
     def test_normal_job_blocks_news(self):
         self.assertEqual(self.request('POST','/jobs',{'request_id':str(uuid.uuid4()),'text':'test'})[0],202)
         self.assertTrue(self.started.wait(2))

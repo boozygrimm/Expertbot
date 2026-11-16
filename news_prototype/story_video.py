@@ -52,11 +52,28 @@ def render(folder: Path, output: Path, ffmpeg: str) -> None:
     if output.resolve() in {path.resolve() for path in inputs}:
         raise ValueError('Файл результата совпадает с исходным материалом')
     timeline = podcast_video_trial.dialogue_timeline_from_parts(audio, turns)
-    overlay = None
-    if text:
-        assets = desk_ticker.prepare(text)
-        overlay = lambda frame, timestamp: desk_ticker.apply(frame, assets, max(0.0, timestamp - 1.48))
-    combined_trial.render(folder, output, ffmpeg, timeline=timeline, screen_overlay=overlay)
+    ticker = desk_ticker.prepare(text) if text else None
+    image_file = folder / 'news-image.jpg'
+    if output.resolve() == image_file.resolve():
+        raise ValueError('Файл результата совпадает с изображением')
+    panel = limits = None
+    if image_file.exists() or image_file.is_symlink():
+        if image_file.is_symlink() or not image_file.is_file() or image_file.stat().st_size > 180_000:
+            raise ValueError('Недопустимое изображение новости')
+        import base64
+        from news_prototype import news_picture
+        panel = news_picture.prepare(base64.b64encode(image_file.read_bytes()).decode('ascii'))
+        duration = len(timeline[1]) / podcast_video_trial.bender.FPS
+        limits = news_picture.window(duration, combined_trial.INTRO_FRAMES / podcast_video_trial.bender.FPS)
+
+    def overlay(frame, timestamp):
+        if panel is not None:
+            frame = news_picture.apply(frame, panel, timestamp, limits)
+        if ticker is not None:
+            frame = desk_ticker.apply(frame, ticker, max(0.0, timestamp - 1.48))
+        return frame
+    combined_trial.render(folder, output, ffmpeg, timeline=timeline,
+                          screen_overlay=overlay if ticker is not None or panel is not None else None)
 
 
 def main():

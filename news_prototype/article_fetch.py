@@ -162,7 +162,7 @@ async def fetch_article(url: str) -> dict:
     current = validate_url(url)
     # Telegram's landing page is not the post itself. Only a validated public
     # post link is rewritten to the official HTML widget, then matched by ID.
-    from news_prototype.telegram_post import widget_for, extract_post
+    from news_prototype.telegram_post import widget_for, extract_post_info
     telegram = widget_for(current)
     if telegram:
         current, post = telegram
@@ -197,9 +197,15 @@ async def fetch_article(url: str) -> dict:
                         data.extend(chunk)
                         if len(data) > MAX_BYTES:
                             raise ArticleError('Страница слишком большая')
-                    title, body = (extract_post(bytes(data), post, response.charset) if telegram
-                                   else extract_article(bytes(data), response.charset))
-                    return {'title': title, 'summary': body, 'resolved_url': current}
+                    if telegram:
+                        title, body, media = extract_post_info(bytes(data), post, response.charset)
+                    else:
+                        title, body = extract_article(bytes(data), response.charset)
+                        media = None
+                    result = {'title': title, 'summary': body, 'resolved_url': current}
+                    if media:
+                        result['media'] = media
+                    return result
         raise ArticleError('Не удалось прочитать страницу')
     except ArticleError:
         raise

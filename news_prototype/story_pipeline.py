@@ -7,6 +7,7 @@ and rerunning never overwrites an existing job or repeats it automatically.
 from __future__ import annotations
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 from news_prototype import story_audio, story_video
@@ -26,6 +27,12 @@ def run(script: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
     _state(folder, 'audio_ready')
     temporary, output = folder / 'video.partial.mp4', folder / 'video.mp4'
     try:
+        if 'image_b64' in script:
+            from news_prototype.news_image_codec import decode_thumbnail
+            image = decode_thumbnail(script['image_b64'])
+            fd = os.open(folder / 'news-image.jpg', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as target:
+                target.write(image)
         _state(folder, 'rendering')
         story_video.render(folder, temporary, ffmpeg)
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(temporary),
@@ -44,7 +51,7 @@ def main() -> None:
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--ffmpeg', default='ffmpeg')
     args = parser.parse_args()
-    if args.script.stat().st_size > 100_000:
+    if args.script.stat().st_size > 600_000:
         raise SystemExit('Сценарий слишком большой')
     script = json.loads(args.script.read_text(encoding='utf-8'))
     print('Используется квота Gemini. Готовый ролик не публикуется автоматически.', flush=True)
