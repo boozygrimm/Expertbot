@@ -299,11 +299,15 @@ class ProgramWorkerTests(unittest.TestCase):
         from tests.test_podcast_video_trial import make_segment
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)/str(uuid.uuid4()); folder.mkdir()
-            image = BytesIO(); Image.new('RGB', (100, 200), 'red').save(image, format='PNG')
+            from PIL import ImageDraw
+            portrait = Image.new('RGB', (100, 200), 'red')
+            ImageDraw.Draw(portrait).rectangle((0, 100, 99, 199), fill='blue')
+            image = BytesIO(); portrait.save(image, format='PNG')
             first = SCRIPT | {'image_b64': news_image_codec.make_thumbnail(image.getvalue())}
             second = SCRIPT | {'ticker':'ВТОРАЯ НОВОСТЬ'}
             request = folder/'request.json'; request.write_text(json.dumps({'scripts':[first,second]}))
-            def synthesize(text, target, keys, start_index): make_segment(target, seconds=1)
+            def synthesize(text, target, keys, start_index):
+                make_segment(target, seconds=6 if target.parent.name == 'story-1' else 1)
             with patch.object(story_audio.gemini_tts, 'synthesize', side_effect=synthesize) as synth:
                 video = program_job.run(request, folder/'work', imageio_ffmpeg.get_ffmpeg_exe(), ['not-used'])
             self.assertEqual(synth.call_count, 4)
@@ -311,14 +315,30 @@ class ProgramWorkerTests(unittest.TestCase):
             self.assertTrue((folder/'work'/'story-1'/'video.mp4').exists())
             self.assertTrue((folder/'work'/'story-2'/'video.mp4').exists())
             self.assertEqual(json.loads((folder/'work'/'status.json').read_text())['stage'], 'ready_for_review')
-            # The first image must appear in the combined video, not just an intermediate.
+            # Sample the final assembled MP4, not just the prepared panels.
             import subprocess
+            from news_prototype import story_video, podcast_video_trial, combined_trial
+            audio, turns, _ = story_video.load_story(folder/'work'/'story-1')
+            timeline = podcast_video_trial.dialogue_timeline_from_parts(audio, turns)
+            fps = podcast_video_trial.bender.FPS
+            start, end = news_picture.window(len(timeline[1]) / fps, combined_trial.INTRO_FRAMES / fps)
+            self.assertGreaterEqual(end - start, news_picture.MIN_ZOOM_SECONDS)
             ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-            frame = subprocess.check_output([ffmpeg, '-hide_banner', '-loglevel', 'error',
-                '-ss', '2.8', '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'])
-            with Image.open(BytesIO(frame)) as shot:
-                r, g, b = shot.convert('RGB').getpixel((450, 200))
-            self.assertGreater(r, 180); self.assertLess(g, 60); self.assertLess(b, 60)
+            shots = []
+            for fraction in (.10, .34, .64, .90):
+                at = start + (end - start) * fraction
+                frame = subprocess.check_output([ffmpeg, '-hide_banner', '-loglevel', 'error',
+                    '-ss', str(at), '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'])
+                with Image.open(BytesIO(frame)) as shot:
+                    shots.append(shot.convert('RGB'))
+            # At x=320 the full portrait is absent but the enlarged halves reach it.
+            self.assertLess(shots[0].getpixel((320, 249))[0], 150)
+            self.assertGreater(shots[1].getpixel((320, 249))[0], 150)
+            self.assertGreater(shots[2].getpixel((320, 249))[2], 150)
+            self.assertLess(shots[3].getpixel((320, 249))[0], 150)
+            # The complete picture, including both ends, returns after details.
+            self.assertGreater(shots[3].getpixel((467, 70))[0], 150)
+            self.assertGreater(shots[3].getpixel((467, 428))[2], 150)
 
     def test_portrait_larger_and_uncropped_against_blurred_background(self):
         img = Image.new('RGB',(100,200),'green')
