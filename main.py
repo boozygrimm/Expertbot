@@ -28,8 +28,19 @@ async def main():
     
     logging.info(f"--- Бот запущен на порту {port} ---")
     
+    news_idle = None
+    if os.getenv('NEWS_RENDER_QUEUE_ENABLED', '').strip() == '1':
+        # The hook runs only when ordinary user-media requests are absent.
+        try:
+            from news_prototype.news_queue import run_idle_once
+            from news_prototype.news_worker_client import NewsWorkerClient
+            client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+            async def news_idle(queue):
+                await run_idle_once(queue, db.db.news_render_jobs, client)
+        except (ValueError, ImportError):
+            logging.warning('Очередь новостей отключена: не готовы настройки или зависимости')
     queue_task = asyncio.create_task(video_queue.run(
-        lambda queue, item: process_queued_video(queue, bot, item)))
+        lambda queue, item: process_queued_video(queue, bot, item), idle_process=news_idle))
     cleanup_task = asyncio.create_task(run_choice_cleanup(bot))
     try:
         await bot.delete_webhook(drop_pending_updates=True)

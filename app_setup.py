@@ -1,4 +1,5 @@
 import logging
+import os
 
 from aiohttp import web
 from aiogram import Dispatcher, F, types
@@ -90,12 +91,51 @@ def configure_dispatcher() -> Dispatcher:
     dp.include_router(alc_core.router)
 
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
+    if os.getenv("NEWS_INTAKE_ENABLED", "").strip() == "1":
+        # Candidate intake only; no automatic rendering or publishing.
+        from handlers import news_intake
+        dp.include_router(news_intake.router)
+
     dp.include_router(bender_clip.router)
     dp.include_router(response_choice.router)
 
     # всегда последний
     dp.include_router(ex_logic.router)
     return dp
+
+
+async def poll_news_sources():
+    try:
+        from database import db
+        from news_prototype.news_scheduler import poll
+        await poll(db.db)
+    except Exception as exc:
+        logging.warning('Не удалось собрать новости: %s', type(exc).__name__)
+
+
+async def prepare_news_scripts():
+    try:
+        from database import db
+        from ai_providers import fire_gemini_key
+        from models import GEMINI_CHAT_MODEL
+        from news_prototype.news_scheduler import edit
+        await edit(db.db, fire_gemini_key(), GEMINI_CHAT_MODEL)
+    except Exception as exc:
+        logging.warning('Не удалось обработать новости: %s', type(exc).__name__)
+
+
+async def deliver_news_review():
+    try:
+        from database import db
+        from news_prototype.news_scheduler import _locked
+        from news_prototype.news_worker_client import NewsWorkerClient
+        from news_prototype.review_delivery import run_once
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        async def deliver():
+            await run_once(db.db.news_render_jobs, db.db.news_candidates, client, bot, ADMIN_ID)
+        await _locked(db.db.news_locks, 'review', deliver)
+    except Exception as exc:
+        logging.warning('Не удалось передать новостной сюжет на просмотр: %s', type(exc).__name__)
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -108,6 +148,13 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(process_expeditions_tick, "interval", minutes=1)
     scheduler.add_job(notify_arrived_expeditions, "interval", minutes=2)
     scheduler.add_job(process_random_fort_events, "cron", hour="*/2", minute=15)
+    # Each stage is opt-in; no news publication or group forwarding is added.
+    if os.getenv('NEWS_COLLECTION_ENABLED', '').strip() == '1':
+        scheduler.add_job(poll_news_sources, 'interval', minutes=30, max_instances=1, coalesce=True)
+    if os.getenv('NEWS_EDITOR_ENABLED', '').strip() == '1':
+        scheduler.add_job(prepare_news_scripts, 'interval', minutes=5, max_instances=1, coalesce=True)
+    if os.getenv('NEWS_REVIEW_ENABLED', '').strip() == '1':
+        scheduler.add_job(deliver_news_review, 'interval', minutes=1, max_instances=1, coalesce=True)
     return scheduler
 
 

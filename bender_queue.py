@@ -97,8 +97,8 @@ class VideoQueue:
             if not result.matched_count:
                 return
 
-    async def run(self, process):
-        """Process one head at a time; never hold a MongoDB lock over I/O."""
+    async def run(self, process, *, idle_process=None):
+        """Process user media first; an optional idle hook shares this lease."""
         while True:
             delay = IDLE_SECONDS
             heartbeat = None
@@ -112,6 +112,8 @@ class VideoQueue:
                         # means the submission was not accepted.
                         busy = await process(self, item)
                         delay = BUSY_SECONDS if busy else 0
+                    elif idle_process is not None:
+                        await idle_process(self)
             except asyncio.CancelledError:
                 raise
             except LeaseLost:

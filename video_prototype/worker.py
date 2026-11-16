@@ -60,6 +60,8 @@ class JobStore:
         self.cleanup_dir = Path(cleanup_dir) if cleanup_dir is not None else None
         self.next_cleanup = 0.0
         self.cleanup_running = False
+        # Optional safety gate supplied by the disabled-by-default news extension.
+        self.external_busy = None
 
     def submit(self, request_id, text, sign=None, kind='video'):
         if kind not in ('video', 'voice') or (kind == 'voice' and sign):
@@ -72,7 +74,7 @@ class JobStore:
                 if existing['text'] != text or existing.get('sign') != sign or existing.get('kind', 'video') != kind:
                     raise JobConflict('request_id уже использован для другого текста')
                 return self._public(request_id, existing), False
-            if self.active is not None:
+            if self.active is not None or (self.external_busy is not None and self.external_busy()):
                 raise BusyError('Воркер занят')
             # Completed records are bounded; an evicted request can be submitted again.
             while len(self.jobs) >= MAX_JOBS:
@@ -298,7 +300,7 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
     return run
 
 
-def handler_for(store, secret):
+def handler_for(store, secret, news=None):
     secret_bytes = secret.encode('utf-8')
 
     class Handler(BaseHTTPRequestHandler):
@@ -327,7 +329,35 @@ def handler_for(store, secret):
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
             if path == '/health':
-                return self.respond(200, {'status': 'ok', 'capabilities': ['animated-sign-v1', 'voice-notes-v1']})
+                capabilities = ['animated-sign-v1', 'voice-notes-v1']
+                if news is not None:
+                    capabilities.append('news-story-v1')
+                return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
+            news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
+            if news is not None and news_match:
+                request_id = news_match.group(1)
+                try:
+                    state = news.status(request_id)
+                except ValueError:
+                    state = None
+                if state is None:
+                    return self.respond(404, {'error': 'not_found'})
+                if not news_match.group(2):
+                    return self.respond(200, state)
+                if state['status'] != 'ready':
+                    return self.respond(404, {'error': 'not_found'})
+                try:
+                    fd, size = news.open_video(request_id)
+                except (ValueError, OSError):
+                    return self.respond(404, {'error': 'not_found'})
+                with os.fdopen(fd, 'rb') as video:
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'video/mp4')
+                    self.send_header('Content-Length', str(size))
+                    self.send_header('Cache-Control', 'no-store')
+                    self.end_headers()
+                    shutil.copyfileobj(video, self.wfile, length=1024 * 1024)
+                return
             voice_match = re.fullmatch(r'/jobs/([0-9a-f-]{36})/voice', path)
             if voice_match:
                 data = store.read_uncertain_voice(voice_match.group(1))
@@ -362,14 +392,36 @@ def handler_for(store, secret):
             if not self.authorized():
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
-            if path not in ('/jobs', '/voice-jobs'):
+            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests')):
                 return self.respond(404, {'error': 'not_found'})
             try:
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 return self.respond(400, {'error': 'invalid_length'})
-            if not 0 < length <= MAX_BODY:
+            limit = 100_000 if path in ('/news-jobs', '/news-digests') else MAX_BODY
+            if not 0 < length <= limit:
                 return self.respond(413, {'error': 'invalid_length'})
+            if path in ('/news-jobs', '/news-digests'):
+                from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest
+                try:
+                    data = json.loads(self.rfile.read(length).decode('utf-8'))
+                    if path == '/news-digests':
+                        request_id, inputs = validate_digest(data)
+                        job, created = news.submit_digest(request_id, inputs)
+                    else:
+                        request_id, script = validate_news(data)
+                        job, created = news.submit(request_id, script)
+                except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
+                    return self.respond(400, {'error': 'invalid_news_job'})
+                except NewsBusy:
+                    return self.respond(409, {'error': 'busy'})
+                except NewsConflict:
+                    return self.respond(409, {'error': 'conflict'})
+                except (OSError, RuntimeError):
+                    # A reservation may already exist. Caller must inspect it,
+                    # not submit a new UUID after an uncertain response.
+                    return self.respond(503, {'error': 'news_submission_uncertain'})
+                return self.respond(202 if created else 200, job)
             try:
                 data = json.loads(self.rfile.read(length).decode('utf-8'))
                 request_id, text, sign = validate_request(data)
@@ -416,7 +468,17 @@ def main():
     store = JobStore(runner(args.output_dir, channel_id, token.strip(), args.timeout,
                             args.smoke_plate, args.portrait if args.random_guests else None),
                      cleanup_dir=args.output_dir)
-    server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret))
+    news = None
+    if os.getenv('NEWS_WORKER_ENABLED', '').strip() == '1':
+        # The new mode is opt-in and uses the exact same active slot as circles.
+        # Import lazily so the current deployment does not require news assets.
+        if str(HERE.parent) not in sys.path:
+            sys.path.insert(0, str(HERE.parent))
+        from news_prototype import story_pipeline  # noqa: F401
+        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner
+        news_root = args.output_dir.parent / 'news-jobs'
+        news = NewsJobs(store, news_root, news_runner(HERE.parent), digest_runner(HERE.parent, news_root))
+    server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret, news))
     store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)
     try:

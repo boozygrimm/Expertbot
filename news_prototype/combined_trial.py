@@ -124,8 +124,8 @@ def write_sound(dialogue: Path, output: Path, dialogue_frames: int) -> None:
         wav.writeframes(result.tobytes())
 
 
-def render(folder: Path, output: Path, ffmpeg: str, *, screen_overlay=None) -> None:
-    audio, active, states = podcast.dialogue_timeline(folder)
+def render(folder: Path, output: Path, ffmpeg: str, *, screen_overlay=None, timeline=None) -> None:
+    audio, active, states = timeline if timeline is not None else podcast.dialogue_timeline(folder)
     frames = podcast.prepare_frames()
     hatch_assets, hedgehog_assets = hatch.prepare(), hedgehog.prepare()
     window = hatch_trial.event_window(active)

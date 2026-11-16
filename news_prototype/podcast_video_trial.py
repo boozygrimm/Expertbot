@@ -40,6 +40,14 @@ def read_wav(path: Path) -> tuple[int, array.array]:
 def dialogue_timeline(folder: Path) -> tuple[Path, list[str | None], list[bool]]:
     parts = [folder / f'{i}-normalized.wav' for i in range(1, 5)]
     audio = folder / 'dialogue.wav'
+    return dialogue_timeline_from_parts(audio, list(zip(parts, SPEAKERS)))
+
+
+def dialogue_timeline_from_parts(audio: Path, turns: list[tuple[Path, str]]) -> tuple[Path, list[str | None], list[bool]]:
+    """Validate a saved dialogue and animate any explicitly assigned turns."""
+    if not turns or any(speaker not in SPEAKERS for _, speaker in turns):
+        raise ValueError('Нужны реплики известных ведущих')
+    parts = [path for path, _ in turns]
     counts = [len(read_wav(path)[1]) for path in parts]
     rate, joined = read_wav(audio)
     # Reconstruct the reference and compare PCM samples, not WAV headers.
@@ -52,7 +60,7 @@ def dialogue_timeline(folder: Path) -> tuple[Path, list[str | None], list[bool]]
     spans = []
     cursor = 0
     for idx, count in enumerate(counts):
-        spans.append((cursor, cursor + count, SPEAKERS[idx]))
+        spans.append((cursor, cursor + count, turns[idx][1]))
         cursor += count
         if idx < len(counts) - 1:
             cursor += round(rate * GAP_MS / 1000)
