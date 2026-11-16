@@ -8,13 +8,13 @@ import tarfile
 import tempfile
 import urllib.request
 
-REF = '2033d2af458b7b3e1390c0f870e3cf7ee44fe065'
+REF = 'f5073edb553da5c76d8c71281711a768e40a9409'
 URL = f'https://codeload.github.com/boozygrimm/Expertbot/tar.gz/{REF}'
 PYTHON = Path('/data/video-prototype/.venv/bin/python')
 FILES = {
     'news_prototype/fly_cockpit.png': '3bcbe4080706741959c6932b4f8c85f67f60ed33062a58ebb0617e568e3399f7',
-    'news_prototype/sensei_hatch.py': 'b5adcd3fa7aa2093921229b9c72131ff0d315b652125bd128b5f3b67da2d17c4',
-    'news_prototype/sensei_hatch_trial.py': 'fc557d94f4c2780af1c18ca9a6d97bf4c21256136474aa857cb15679d816e54b',
+    'news_prototype/sensei_hatch.py': '13abb133ca58c5fc78c3c80b0070e6aa4f0859aba8353e94e1c84514f4f6e1df',
+    'news_prototype/sensei_hatch_trial.py': 'dc6ecc1468e81d6d690c5044e43691f1aa31abb854bb7afb21828ddef8310872',
     'news_prototype/run_sensei_hatch_trial.py': 'aa20e75e5f4d9d1f6d84f9cfb0844c31e7f787e834f614b15d50e59c5046a975',
     'news_prototype/sensei_open_subtle.png': '04abbfd7b5c096cb7bdd0ce41135c2e68aae0091e5666df035b6d48e032f3b36',
     'news_prototype/studio_mockup_soft.png': '8ad7c9af29fa3d144d204a5984b6a71fee5dc003c056ed2c5240b8e545ceabc0',
