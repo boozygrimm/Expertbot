@@ -61,6 +61,60 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
                     '/news_prepare_many\n' + '\n'.join(f'https://t.me/A/{i}' for i in range(1, 6))):
             with self.subTest(bad=bad), self.assertRaises(ValueError): owner_drafts.prepare_many_input(bad)
 
+    async def test_mongo_int64_batch_ids_are_accepted_by_real_approval_handler(self):
+        # PyMongo decodes BSON int64 as bson.int64.Int64, unlike mongomock.
+        # Reproduce the production round trip for the exact mixed-ID case.
+        from bson import BSON
+        from bson.int64 import Int64
+        from handlers import news_owner_drafts as handler
+        large_id = 100000059802
+        await self.ready(5987); await self.ready(large_id, image=True)
+        await owner_program.create(self.db, 123, 5993, [5987, large_id])
+        saved = await owner_program.get(self.db, 123, 5993)
+        round_tripped = BSON.encode({'stories': saved['stories']})
+        stories = BSON(round_tripped).decode()['stories']
+        self.assertIs(type(stories[1]['draft_id']), Int64)
+        await self.db.news_owner_programs.update_one({'_id': saved['_id']}, {'$set': {'stories': stories}})
+        reread = await owner_program.get(self.db, 123, 5993)
+        self.assertIs(type(reread['stories'][1]['draft_id']), Int64)
+        self.assertEqual(owner_program.revision(reread['stories']), saved['revision'])
+        client = SimpleNamespace(supports_programs=AsyncMock(return_value=True))
+        text = f'/news_program_approve 5993 {saved["revision"]}'
+        message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
+                                  text=text, message_id=6000, answer=AsyncMock())
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
+             patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
+            await handler.approve_program(message)
+            self.assertIn('поставлен', message.answer.await_args.args[0])
+            await handler.approve_program(message)
+            self.assertIn('повторный рендер не запущен', message.answer.await_args.args[0])
+        job = await self.db.news_owner_trial_jobs.find_one({})
+        self.assertEqual(job['kind'], 'program')
+        self.assertEqual(job['stage'], 'queued')
+        self.assertEqual(len(job['scripts']), 2)
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
+
+    async def test_internal_value_error_is_not_reported_as_bad_command(self):
+        from handlers import news_owner_drafts as handler
+        program = await self.ready_program()
+        text = f'/news_program_approve 50 {program["revision"]}'
+        message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
+                                  text=text, message_id=6000, answer=AsyncMock())
+        client = SimpleNamespace(supports_programs=AsyncMock(return_value=True))
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
+             patch.object(owner_program, 'approve', side_effect=ValueError('internal')), \
+             patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
+            await handler.approve_program(message)
+        self.assertIn('Не удалось проверить данные выпуска', message.answer.await_args.args[0])
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    def test_draft_key_accepts_bson_int64_but_not_bool(self):
+        from bson.int64 import Int64
+        self.assertEqual(owner_drafts._key(Int64(123), Int64(100000059802)), 'owner-draft:123:100000059802')
+        for owner, draft in ((True, 1), (1, True), (1.0, 1), (1, 1.0), (0, 1), (1, -1)):
+            with self.subTest(owner=owner, draft=draft), self.assertRaises(ValueError):
+                owner_drafts._key(owner, draft)
+
     async def test_review_snapshot_no_render_until_approval(self):
         program = await self.ready_program()
         self.assertEqual([s['draft_id'] for s in program['stories']], [10,11])
