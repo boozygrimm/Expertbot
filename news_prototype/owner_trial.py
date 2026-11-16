@@ -11,9 +11,11 @@ import hashlib
 import json
 import os
 import re
+import uuid
 
 from news_prototype.article_fetch import validate_url, ArticleError
-from news_prototype.news_queue import enqueue_script
+from news_prototype.news_queue import NAMESPACE, enqueue_script
+from news_prototype.news_worker_client import valid_id
 from news_prototype.story_audio import validate_script
 
 OTHER_FLAGS = ('NEWS_INTAKE_ENABLED', 'NEWS_COLLECTION_ENABLED', 'NEWS_EDITOR_ENABLED',
@@ -71,13 +73,35 @@ async def admit(db, owner_id: int, url: str, script: dict) -> str:
                            ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
     digest = hashlib.sha256(canonical).hexdigest()
     candidate_id = 'owner-trial:' + digest
+    doc = {'owner_id': owner_id, 'source_id': 'owner_trial', 'url': url,
+           'title': 'Пробный сюжет по сценарию владельца', 'verification': 'needs_review', 'script': script}
     await db.news_owner_trial_gate.update_one({'_id': 'slot'},
         {'$setOnInsert': {'candidate_id': candidate_id, 'created_at': datetime.now(timezone.utc)}}, upsert=True)
     gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
+    if gate and gate.get('candidate_id') is None and gate.get('ready_for_next') is True:
+        # A late duplicate of a delivered scenario must not steal the newly
+        # opened slot or start another rendering. Any other existing record in
+        # an open slot is anomalous and remains blocked for manual inspection.
+        request_id = str(uuid.uuid5(NAMESPACE, candidate_id))
+        prior = await db.news_owner_trial_jobs.find_one({'_id': request_id})
+        if prior:
+            saved = await db.news_owner_trial_candidates.find_one({'_id': candidate_id})
+            message_id = prior.get('review_message_id')
+            if (saved and all(saved.get(k) == v for k, v in doc.items())
+                    and prior.get('candidate_id') == candidate_id and prior.get('request_id') == request_id
+                    and prior.get('script') == script and prior.get('stage') == 'review_sent'
+                    and type(message_id) is int and message_id > 0):
+                return 'already_queued'
+            raise ValueError('Сохранённая проба требует ручной проверки')
+        # A slot explicitly reopened after confirmed delivery can be claimed
+        # once. A malformed/missing candidate alone is not permission.
+        await db.news_owner_trial_gate.update_one(
+            {'_id': 'slot', 'candidate_id': None, 'ready_for_next': True},
+            {'$set': {'candidate_id': candidate_id, 'ready_for_next': False,
+                      'created_at': datetime.now(timezone.utc)}})
+        gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
     if not gate or gate.get('candidate_id') != candidate_id:
         raise ValueError('Слот уже занят другой пробой')
-    doc = {'owner_id': owner_id, 'source_id': 'owner_trial', 'url': url,
-           'title': 'Пробный сюжет по сценарию владельца', 'verification': 'needs_review', 'script': script}
     await db.news_owner_trial_candidates.update_one({'_id': candidate_id}, {'$setOnInsert': doc}, upsert=True)
     stored = await db.news_owner_trial_candidates.find_one({'_id': candidate_id})
     if not stored or any(stored.get(k) != v for k, v in doc.items()):
@@ -96,9 +120,58 @@ async def dispatch_once(queue, jobs, client) -> None:
         await run_idle_once(queue, jobs, client)
 
 
+async def status_info(db) -> tuple[str, str | None]:
+    gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
+    if not gate or (gate.get('candidate_id') is None and gate.get('ready_for_next') is True):
+        return 'not_queued', None
+    candidate_id = gate.get('candidate_id')
+    if not isinstance(candidate_id, str) or not re.fullmatch(r'owner-trial:[0-9a-f]{64}', candidate_id):
+        return 'admission_incomplete', None
+    request_id = str(uuid.uuid5(NAMESPACE, candidate_id))
+    job = await db.news_owner_trial_jobs.find_one({'_id': request_id, 'candidate_id': candidate_id})
+    if not job:
+        return 'admission_incomplete', None
+    stage = job.get('stage', 'unknown')
+    message_id = job.get('review_message_id')
+    # A token is offered only for an explicitly confirmed Telegram delivery.
+    if (stage == 'review_sent' and job.get('request_id') == request_id
+            and type(message_id) is int and message_id > 0):
+        return stage, request_id
+    return stage, None
+
+
 async def status(db) -> str:
+    stage, _ = await status_info(db)
+    return stage
+
+
+async def open_next(db, owner_id: int, request_id: str) -> str:
+    """Explicitly reopen the slot only for the specified confirmed delivery.
+
+    The old job and candidate are never deleted or replayed. A stale or repeated
+    command cannot release a different, newer job. Uncertain/failed/in-flight
+    jobs remain blocked for manual investigation.
+    """
+    if type(owner_id) is not int or owner_id <= 0:
+        raise ValueError('Неверный владелец')
+    request_id = valid_id(request_id)
     gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
     if not gate:
-        return 'not_queued'
-    job = await db.news_owner_trial_jobs.find_one({'candidate_id': gate.get('candidate_id')})
-    return job.get('stage', 'unknown') if job else 'admission_incomplete'
+        return 'not_allowed'
+    if gate.get('candidate_id') is None and gate.get('ready_for_next') is True:
+        return 'already_open' if gate.get('last_released_request_id') == request_id else 'not_allowed'
+    candidate_id = gate.get('candidate_id')
+    if (not isinstance(candidate_id, str) or not re.fullmatch(r'owner-trial:[0-9a-f]{64}', candidate_id)
+            or str(uuid.uuid5(NAMESPACE, candidate_id)) != request_id):
+        return 'not_allowed'
+    candidate = await db.news_owner_trial_candidates.find_one({'_id': candidate_id, 'owner_id': owner_id})
+    job = await db.news_owner_trial_jobs.find_one({'_id': request_id, 'request_id': request_id,
+                                                  'candidate_id': candidate_id, 'stage': 'review_sent'})
+    message_id = job.get('review_message_id') if job else None
+    if not candidate or type(message_id) is not int or message_id <= 0:
+        return 'not_allowed'
+    result = await db.news_owner_trial_gate.update_one(
+        {'_id': 'slot', 'candidate_id': candidate_id},
+        {'$set': {'candidate_id': None, 'ready_for_next': True,
+                  'last_released_request_id': request_id, 'released_at': datetime.now(timezone.utc)}})
+    return 'opened' if result.modified_count else 'changed'

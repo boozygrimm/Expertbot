@@ -52,7 +52,7 @@ async def trial_status(message: types.Message) -> None:
         await message.answer('Изолированная проба выключена или конфликтует с настройками новостей.')
         return
     try:
-        stage = await owner_trial.status(db.db)
+        stage, finished_id = await owner_trial.status_info(db.db)
     except Exception as exc:
         logger.warning('Не удалось получить состояние пробной задачи: %s', type(exc).__name__)
         await message.answer('Не удалось получить состояние. Не создавай новую пробу вслепую.')
@@ -70,4 +70,37 @@ async def trial_status(message: types.Message) -> None:
               'uncertain':'Приём воркером не подтверждён; нужна ручная проверка.',
               'interrupted':'Воркер прерван; нужна ручная проверка.',
               'failed':'Подготовка не удалась; нужна ручная проверка.'}
-    await message.answer(labels.get(stage, 'Неизвестное состояние; нужна ручная проверка.'))
+    text = labels.get(stage, 'Неизвестное состояние; нужна ручная проверка.')
+    if stage == 'review_sent' and finished_id:
+        text += ('\nДля новой пробы освободить слот вручную:\n'
+                 f'/news_trial_next {finished_id}')
+    await message.answer(text)
+
+
+@router.message(Command('news_trial_next'))
+async def next_trial(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    if not owner_trial.enabled():
+        await message.answer('Изолированная проба выключена или конфликтует с настройками новостей.')
+        return
+    parts = (message.text or '').split()
+    if len(parts) != 2:
+        await message.answer('Нужна команда с идентификатором из /news_trial_status.')
+        return
+    try:
+        result = await owner_trial.open_next(db.db, message.from_user.id, parts[1])
+    except ValueError:
+        await message.answer('Неверный идентификатор. Скопируй команду из /news_trial_status.')
+        return
+    except Exception as exc:
+        logger.warning('Не удалось подтвердить освобождение слота: %s', type(exc).__name__)
+        await message.answer('Не удалось подтвердить освобождение. Проверь /news_trial_status.')
+        return
+    labels = {
+        'opened': 'Слот свободен. Предыдущий ролик сохранён; новый сценарий ещё не отправлен.',
+        'already_open': 'Слот уже свободен; повторной отправки предыдущего ролика не было.',
+        'not_allowed': 'Слот нельзя освободить: идентификатор не совпадает или доставка не подтверждена.',
+        'changed': 'Состояние изменилось. Проверь /news_trial_status.',
+    }
+    await message.answer(labels.get(result, 'Состояние не подтверждено. Проверь /news_trial_status.'))
