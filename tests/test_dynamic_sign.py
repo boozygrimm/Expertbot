@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 from PIL import Image
 from video_prototype import dynamic_sign, random_guest_render
-from video_prototype.sign_text import normalize_sign, parse_generated
+from video_prototype.sign_text import normalize_sign, parse_generated, parse_sign_retry
 
 
 class SignTextTests(unittest.TestCase):
@@ -12,6 +12,20 @@ class SignTextTests(unittest.TestCase):
                       'СТРОКА\n😀', '"КРИВО"', '---', ['test']):
             with self.subTest(value=value):
                 self.assertIsNone(normalize_sign(value))
+
+    def test_sign_only_retry_accepts_bounded_phrase_not_explanation(self):
+        for value, expected in [
+            ('Космос в отпуске', 'КОСМОС В ОТПУСКЕ'),
+            ('"РОБОТ БОСС"', 'РОБОТ БОСС'),
+            ('```json\n{"sign":"СУПЕР РОБОТ"}\n```', 'СУПЕР РОБОТ'),
+            ('Надпись: Космос', None),
+            ('😀', None),
+            ('Очень длинное объяснение, которое точно не надпись', None),
+            ('{"speech":"НЕ НАДПИСЬ"}', None),
+            (None, None),
+        ]:
+            with self.subTest(value=value):
+                self.assertEqual(parse_sign_retry(value), expected)
 
     def test_isolate_speech_and_invalid_sign(self):
         for value, expected in [
@@ -40,7 +54,7 @@ class DynamicSignTests(unittest.TestCase):
         self.assertEqual(dynamic_sign.index_at(23/24, len(frames), duration=1), 18)
 
     def test_various_text_and_safe_rejection(self):
-        for phrase in ('ХЛЕБ', 'ВЕЧНЫЙ БОСС', 'ЭЙ, РОБОТ!', 'BIG BANG'):
+        for phrase in ('ХЛЕБ', 'ВЕЧНЫЙ БОСС', 'ЭЙ, РОБОТ!', 'BIG BANG', 'БЕНДЕР В ДЕЛЕ'):
             with self.subTest(phrase=phrase):
                 frames, _ = dynamic_sign.prepare(phrase)
                 self.assertEqual(len(frames)-1, len(phrase.replace(' ', '')))
