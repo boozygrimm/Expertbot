@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from news_prototype import start_bender_trial as bootstrap
+from news_prototype import start_podcast_video_trial as podcast_bootstrap
 
 
 def archive_for(name, data):
@@ -26,6 +27,18 @@ class NewsTrialBootstrapTests(unittest.TestCase):
             root = Path(folder)
             bootstrap.unpack_checked(archive_for(name, payload), root)
             self.assertEqual((root / name).read_bytes(), payload)
+
+    def test_podcast_launcher_rejects_tampering(self):
+        name = 'news_prototype/example.py'
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(podcast_bootstrap, 'FILES', {name: hashlib.sha256(b'expected').hexdigest()}):
+            archive = io.BytesIO()
+            with tarfile.open(fileobj=archive, mode='w:gz') as tar:
+                info = tarfile.TarInfo(f'Expertbot-{podcast_bootstrap.REF}/{name}')
+                info.size = len(b'tampered')
+                tar.addfile(info, io.BytesIO(b'tampered'))
+            with self.assertRaises(ValueError):
+                podcast_bootstrap.unpack_checked(archive.getvalue(), Path(folder))
 
     def test_rejects_tampering(self):
         name = 'news_prototype/example.py'
