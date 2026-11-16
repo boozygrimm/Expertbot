@@ -51,7 +51,7 @@ class NewsWorkerClient:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.base_url + '/health', headers=self.headers,
-                                       allow_redirects=False, timeout=self.timeout) as resp:
+                                       allow_redirects=False, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                     if resp.status != 200:
                         return False
                     data = await read_json(resp)

@@ -91,6 +91,13 @@ def configure_dispatcher() -> Dispatcher:
     dp.include_router(alc_core.router)
 
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
+    if os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1':
+        from news_prototype.owner_trial import enabled as owner_trial_enabled
+        if owner_trial_enabled():
+            from handlers import news_owner_trial
+            dp.include_router(news_owner_trial.router)
+        else:
+            logging.warning('Изолированная новостная проба выключена из-за конфликтующих флагов')
     if os.getenv("NEWS_INTAKE_ENABLED", "").strip() == "1":
         # Candidate intake only; no automatic rendering or publishing.
         from handlers import news_intake
@@ -138,6 +145,23 @@ async def deliver_news_review():
         logging.warning('Не удалось передать новостной сюжет на просмотр: %s', type(exc).__name__)
 
 
+async def deliver_owner_news_trial():
+    try:
+        from database import db
+        from news_prototype.owner_trial import enabled
+        from news_prototype.news_scheduler import _locked
+        from news_prototype.news_worker_client import NewsWorkerClient
+        from news_prototype.review_delivery import run_once
+        if not enabled():
+            return
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        async def deliver():
+            await run_once(db.db.news_owner_trial_jobs, db.db.news_owner_trial_candidates, client, bot, ADMIN_ID)
+        await _locked(db.db.news_locks, 'owner-trial-review', deliver)
+    except Exception as exc:
+        logging.warning('Не удалось передать пробный сюжет: %s', type(exc).__name__)
+
+
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_cron_time, "cron", minute="*")
@@ -149,6 +173,10 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(notify_arrived_expeditions, "interval", minutes=2)
     scheduler.add_job(process_random_fort_events, "cron", hour="*/2", minute=15)
     # Each stage is opt-in; no news publication or group forwarding is added.
+    if os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1':
+        from news_prototype.owner_trial import enabled as owner_trial_enabled
+        if owner_trial_enabled():
+            scheduler.add_job(deliver_owner_news_trial, 'interval', minutes=1, max_instances=1, coalesce=True)
     if os.getenv('NEWS_COLLECTION_ENABLED', '').strip() == '1':
         scheduler.add_job(poll_news_sources, 'interval', minutes=30, max_instances=1, coalesce=True)
     if os.getenv('NEWS_EDITOR_ENABLED', '').strip() == '1':

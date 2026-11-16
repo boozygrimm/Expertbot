@@ -39,6 +39,17 @@ async def main():
                 await run_idle_once(queue, db.db.news_render_jobs, client)
         except (ValueError, ImportError):
             logging.warning('Очередь новостей отключена: не готовы настройки или зависимости')
+    if os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1':
+        try:
+            from news_prototype.owner_trial import enabled as owner_trial_enabled
+            if owner_trial_enabled():
+                from news_prototype.owner_trial import dispatch_once
+                from news_prototype.news_worker_client import NewsWorkerClient
+                trial_client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+                async def news_idle(queue):
+                    await dispatch_once(queue, db.db.news_owner_trial_jobs, trial_client)
+        except (ValueError, ImportError):
+            logging.warning('Очередь изолированной пробы отключена: не готовы настройки или зависимости')
     queue_task = asyncio.create_task(video_queue.run(
         lambda queue, item: process_queued_video(queue, bot, item), idle_process=news_idle))
     cleanup_task = asyncio.create_task(run_choice_cleanup(bot))
