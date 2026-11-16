@@ -21,6 +21,8 @@ class DeskTickerTests(unittest.TestCase):
         loop, pos3 = ticker.overlay(assets, assets[1] / ticker.SPEED)
         self.assertEqual(pos, pos2)
         self.assertEqual(pos, pos3)
+        # The sign starts six source pixels below the first trial's placement.
+        self.assertEqual(pos, (round(475 * 960 / 1365), round(566 * 540 / 768)))
         self.assertIsNotNone(ImageChops.difference(first.convert('RGB'), later.convert('RGB')).getbbox())
         self.assertEqual(first.tobytes(), loop.tobytes())
         frame = Image.new('RGB', ticker.bender.SIZE, (100, 120, 140))

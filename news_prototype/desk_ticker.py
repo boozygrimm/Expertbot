@@ -12,7 +12,9 @@ from news_prototype import bender_trial as bender
 FONT = Path(__file__).resolve().parent.parent / 'video_prototype/assets/sign-font.ttf'
 TEXT = 'СТУДИЯ ЗАПУЩЕНА  -  ЁЖ НА СТРАЖЕ ФАКТОВ  -  БЕНДЕР НА СТРАЖЕ ВЕЛИКОЛЕПИЯ  -  '
 WIDTH, HEIGHT, SPLIT = 425, 22, 198
-LEFT, TOP = 475, 560
+# Six source pixels lower than the first trial (about four at output size),
+# keeping the centre corner below the top edge of the desk.
+LEFT, TOP = 475, 566
 SPEED = 32  # native pixels per second
 GAP = 75
 
