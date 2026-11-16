@@ -29,7 +29,7 @@ def event_window(active: list[str | None], fps: int = bender.FPS) -> tuple[float
     available = max(0.0, duration - start - .1)
     if available < .3:
         return None
-    motion = min(.6, available / 3)
+    motion = min(.9, available / 3)
     hold = min(2.2, max(0.0, available - 2 * motion))
     return start, hold, motion
 

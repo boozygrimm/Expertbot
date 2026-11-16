@@ -5,6 +5,7 @@ approximately; the pilot is a separate stylized sprite, not a 3D model.
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -13,6 +14,14 @@ from news_prototype import bender_trial as bender
 
 HERE = Path(__file__).resolve().parent
 NATIVE = bender.REF_SIZE
+HINGE = (934, 253)
+MAX_ANGLE = -24.0
+
+
+def rotate_lid(lid: Image.Image, amount: float) -> Image.Image:
+    """Rotate a rigid layer around the fixed right-hand hinge; no frame blending."""
+    amount = max(0.0, min(1.0, amount))
+    return lid.rotate(MAX_ANGLE * amount, resample=Image.Resampling.BICUBIC, center=HINGE)
 
 
 def prepare() -> tuple[Image.Image, Image.Image, Image.Image, Image.Image]:
@@ -67,18 +76,31 @@ def overlay_at_fraction(assets: tuple[Image.Image, Image.Image, Image.Image, Ima
 
     cavity = Image.new('RGBA', NATIVE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(cavity)
-    draw.rounded_rectangle((826, 223, 929, 263), radius=17, fill=(9, 18, 29, 255),
+    draw.rounded_rectangle((826, 210, 929, 263), radius=17, fill=(9, 18, 29, 255),
                            outline=(134, 160, 171, 255), width=2)
-    # Reveal the pilot from bottom to top as the hatch lifts, not by crossfading
-    # unrelated full-scene images.
-    visible_height = max(1, round(38 * amount))
-    pilot_area = pilot.crop((0, 38 - visible_height, 94, 38))
-    cavity.alpha_composite(pilot_area, dest=(831, 260 - visible_height))
+    cavity.alpha_composite(pilot, dest=(831, 222))
+    # The hatch reveals a triangular opening around its fixed right hinge.
+    # Clip the cockpit to that opening; the rotated lid remains in front.
     clip = Image.new('L', NATIVE, 0)
-    ImageDraw.Draw(clip).rounded_rectangle((826, 263 - visible_height, 929, 263), radius=min(9, visible_height // 2), fill=255)
+    left, right, pivot_y = 815, HINGE[0], HINGE[1]
+    left_y = round(pivot_y - (right - left) * math.sin(math.radians(abs(MAX_ANGLE) * amount)))
+    bottom = pivot_y + round(10 * amount)
+    ImageDraw.Draw(clip).polygon([(left, left_y), (right, pivot_y), (right, bottom), (left, bottom)], fill=255)
     cavity.putalpha(Image.composite(cavity.getchannel('A'), Image.new('L', NATIVE, 0), clip))
     effect.alpha_composite(cavity)
-    effect.alpha_composite(lid, dest=(round(6 * amount), round(-34 * amount)))
+    # A fixed pivot grounds the motion: only the opposite end of the rigid lid
+    # swings upward, rather than making the whole cap float vertically.
+    hinge = Image.new('RGBA', NATIVE, (0, 0, 0, 0))
+    d = ImageDraw.Draw(hinge)
+    d.ellipse((929, 248, 939, 258), fill=(45, 62, 72, 255), outline=(170, 192, 199, 255), width=2)
+    d.ellipse((932, 251, 936, 255), fill=(121, 156, 168, 255))
+    effect.alpha_composite(hinge)
+    effect.alpha_composite(rotate_lid(lid, amount))
+    # Hide unavoidable cut-out edge differences at the very start/end so the
+    # original closed head is reached continuously, rather than popping in.
+    if amount < .08:
+        alpha = effect.getchannel('A').point(lambda value: round(value * amount / .08))
+        effect.putalpha(alpha)
     return effect.resize(bender.SIZE, Image.Resampling.LANCZOS)
 
 

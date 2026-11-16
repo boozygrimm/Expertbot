@@ -31,6 +31,27 @@ class SenseiHatchTests(unittest.TestCase):
         self.assertLess(bbox[2], 690)
         self.assertLess(bbox[3], 200)
 
+    def test_overlay_approaches_closed_head_continuously(self):
+        assets = sensei_hatch.prepare()
+        tiny = sensei_hatch.overlay_at_fraction(assets, .0001)
+        small = sensei_hatch.overlay_at_fraction(assets, .01)
+        self.assertLessEqual(tiny.getchannel('A').getextrema()[1], 1)
+        self.assertGreater(small.getchannel('A').getextrema()[1], tiny.getchannel('A').getextrema()[1])
+
+    def test_lid_rotates_around_fixed_hinge(self):
+        lid = Image.new('RGBA', sensei_hatch.NATIVE, (0, 0, 0, 0))
+        pivot_x, pivot_y = sensei_hatch.HINGE
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(lid)
+        draw.ellipse((pivot_x - 2, pivot_y - 2, pivot_x + 2, pivot_y + 2), fill=(255, 255, 255, 255))
+        draw.ellipse((pivot_x - 102, pivot_y - 2, pivot_x - 98, pivot_y + 2), fill=(255, 0, 0, 255))
+        rotated = sensei_hatch.rotate_lid(lid, 1)
+        self.assertGreater(rotated.getpixel((pivot_x, pivot_y))[3], 0)
+        # The left tip rises while the right pivot remains fixed.
+        bbox = rotated.getchannel('R').getbbox()
+        self.assertLess(bbox[1], pivot_y - 25)
+        self.assertGreaterEqual(bbox[3], pivot_y)
+
     def test_event_at_third_turn_and_fits_duration(self):
         active = (['Бендер'] * 72 + [None] * 8 + ['Киберсенсей'] * 72 +
                   [None] * 8 + ['Бендер'] * 72 + [None] * 8 + ['Киберсенсей'] * 72)
