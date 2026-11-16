@@ -78,6 +78,34 @@ class ImageCodecTests(unittest.TestCase):
         self.assertIsNotNone(news_picture.window(2, 2))
         self.assertIsNone(news_picture.window(0, 2))
 
+    def test_portrait_detail_sequence_and_short_story_fallback(self):
+        image = Image.new('RGB', (100, 200), 'red')
+        from PIL import ImageDraw
+        ImageDraw.Draw(image).rectangle((0, 100, 99, 199), fill='blue')
+        stream = BytesIO(); image.save(stream, format='PNG')
+        views = news_picture.prepare_views(codec.make_thumbnail(stream.getvalue()))
+        self.assertEqual(len(views), 3)
+        full, top, bottom = views
+        limits = (10.0, 20.0)
+        self.assertIs(news_picture.view_at(views, 11, limits), full)
+        self.assertIs(news_picture.view_at(views, 13.4, limits), top)
+        self.assertIs(news_picture.view_at(views, 16.4, limits), bottom)
+        self.assertIs(news_picture.view_at(views, 19, limits), full)
+        # Detail views are wider; preserve the original upper and lower edges.
+        self.assertLess(full.getpixel((195, 194))[0], 120)
+        self.assertGreater(top.getpixel((195, 194))[0], 180)
+        self.assertGreater(bottom.getpixel((195, 194))[2], 180)
+        self.assertGreater(full.getpixel((342, 10))[0], 180)
+        self.assertGreater(full.getpixel((342, 378))[2], 180)
+        transition = news_picture.view_at(views, 12, limits)
+        self.assertIsNot(transition, full); self.assertIsNot(transition, top)
+        self.assertIs(news_picture.view_at(views, 2, (0, 6)), full)
+        self.assertEqual(len(news_picture.prepare_views(codec.make_thumbnail(picture_bytes((200, 100))))), 1)
+        for duration in (.1, 2, 10, 100):
+            start, end = news_picture.window(duration, 1.75)
+            self.assertGreater(start, 1.75)
+            self.assertLessEqual(end, 1.75 + duration)
+
     def test_reject_invalid_or_giant(self):
         for val in ('not base64!', base64.b64encode(b'not a jpeg').decode(), 'A' * (codec.MAX_B64_CHARS+1)):
             with self.subTest(value=val[:15]), self.assertRaises(ValueError): codec.decode_thumbnail(val)

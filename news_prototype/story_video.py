@@ -56,19 +56,20 @@ def render(folder: Path, output: Path, ffmpeg: str) -> None:
     image_file = folder / 'news-image.jpg'
     if output.resolve() == image_file.resolve():
         raise ValueError('Файл результата совпадает с изображением')
-    panel = limits = None
+    panel = views = limits = None
     if image_file.exists() or image_file.is_symlink():
         if image_file.is_symlink() or not image_file.is_file() or image_file.stat().st_size > 180_000:
             raise ValueError('Недопустимое изображение новости')
         import base64
         from news_prototype import news_picture
-        panel = news_picture.prepare(base64.b64encode(image_file.read_bytes()).decode('ascii'))
+        views = news_picture.prepare_views(base64.b64encode(image_file.read_bytes()).decode('ascii'))
+        panel = views[0]
         duration = len(timeline[1]) / podcast_video_trial.bender.FPS
         limits = news_picture.window(duration, combined_trial.INTRO_FRAMES / podcast_video_trial.bender.FPS)
 
     def overlay(frame, timestamp):
         if panel is not None:
-            frame = news_picture.apply(frame, panel, timestamp, limits)
+            frame = news_picture.apply(frame, panel, timestamp, limits, views=views)
         if ticker is not None:
             # Move the ticker below the portrait cutaway while it is visible.
             # This keeps the entire image unobstructed instead of cropping it.
