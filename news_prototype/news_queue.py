@@ -107,6 +107,12 @@ async def run_idle_once(queue, collection, client) -> None:
     job = await collection.find_one({'stage': 'queued'}, sort=[('created_at', 1)])
     if not job or await queue.head():
         return
+    if job.get('kind') != 'digest' and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
+        try:
+            if not await client.supports_images():
+                return
+        except (AttributeError, NewsWorkerError):
+            return
     changed = await collection.update_one({'_id': job['_id'], 'stage': 'queued'},
                                           {'$set': {'stage': 'submitting', 'updated_at': datetime.now(timezone.utc)}})
     if not changed.modified_count:

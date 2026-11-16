@@ -46,8 +46,7 @@ class NewsWorkerClient:
         self.headers = {'Authorization': 'Bearer ' + secret}
         self.timeout = aiohttp.ClientTimeout(total=30)
 
-    async def supports_news(self) -> bool:
-        """Fail closed unless this worker explicitly advertises the news protocol."""
+    async def _supports(self, capability: str) -> bool:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(self.base_url + '/health', headers=self.headers,
@@ -56,9 +55,17 @@ class NewsWorkerClient:
                         return False
                     data = await read_json(resp)
                     return (isinstance(data, dict) and isinstance(data.get('capabilities'), list)
-                            and 'news-story-v1' in data['capabilities'])
+                            and capability in data['capabilities'])
         except (aiohttp.ClientError, TimeoutError, ValueError):
             return False
+
+    async def supports_news(self) -> bool:
+        """Fail closed unless this worker explicitly advertises the news protocol."""
+        return await self._supports('news-story-v1')
+
+    async def supports_images(self) -> bool:
+        """Never submit an illustrated story to an older worker that drops images."""
+        return await self._supports('news-story-image-v1')
 
     async def _status(self, session: aiohttp.ClientSession, request_id: str) -> dict | None:
         try:

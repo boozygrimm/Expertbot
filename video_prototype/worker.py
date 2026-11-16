@@ -331,7 +331,7 @@ def handler_for(store, secret, news=None):
             if path == '/health':
                 capabilities = ['animated-sign-v1', 'voice-notes-v1']
                 if news is not None:
-                    capabilities.append('news-story-v1')
+                    capabilities.extend(['news-story-v1', 'news-story-image-v1'])
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:
@@ -398,7 +398,8 @@ def handler_for(store, secret, news=None):
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 return self.respond(400, {'error': 'invalid_length'})
-            limit = 100_000 if path in ('/news-jobs', '/news-digests') else MAX_BODY
+            # An optional sanitized thumbnail is bounded separately by its codec.
+            limit = 600_000 if path == '/news-jobs' else (100_000 if path == '/news-digests' else MAX_BODY)
             if not 0 < length <= limit:
                 return self.respond(413, {'error': 'invalid_length'})
             if path in ('/news-jobs', '/news-digests'):

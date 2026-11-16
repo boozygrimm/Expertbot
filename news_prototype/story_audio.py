@@ -40,7 +40,13 @@ def validate_script(data: object) -> dict:
     ticker = data.get('ticker')
     if ticker is not None and (not isinstance(ticker, str) or not ticker.strip() or len(ticker) > 200):
         raise ValueError('Неверный текст строки')
-    return {'turns': result, 'ticker': ticker}
+    script = {'turns': result, 'ticker': ticker}
+    if 'image_b64' in data:
+        # Strictly validate the bounded, sanitized JPEG at every trust boundary.
+        from news_prototype.news_image_codec import decode_thumbnail
+        decode_thumbnail(data['image_b64'])
+        script['image_b64'] = data['image_b64']
+    return script
 
 
 def prepare(script: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:

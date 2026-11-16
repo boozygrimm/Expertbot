@@ -96,6 +96,9 @@ def configure_dispatcher() -> Dispatcher:
         if owner_trial_enabled():
             from handlers import news_owner_trial
             dp.include_router(news_owner_trial.router)
+            if os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1':
+                from handlers import news_owner_drafts
+                dp.include_router(news_owner_drafts.router)
         else:
             logging.warning('Изолированная новостная проба выключена из-за конфликтующих флагов')
     if os.getenv("NEWS_INTAKE_ENABLED", "").strip() == "1":

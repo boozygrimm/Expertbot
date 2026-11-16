@@ -146,7 +146,7 @@ class NewsJobs:
                     raise ValueError
                 # Digests may only contain original story jobs, never other digests.
                 request_file = source_folder / 'request.json'
-                if request_file.stat().st_size > 100_000:
+                if request_file.stat().st_size > 600_000:
                     raise ValueError
                 stored = json.loads(request_file.read_text(encoding='utf-8'))
                 validate_request({'request_id': source_id, 'script': stored})
@@ -167,7 +167,7 @@ class NewsJobs:
                     raise NewsConflict('Идентификатор уже используется')
                 request = folder / 'request.json'
                 try:
-                    if request.is_symlink() or request.stat().st_size > 100_000 or request.read_bytes() != canonical:
+                    if request.is_symlink() or request.stat().st_size > 600_000 or request.read_bytes() != canonical:
                         raise NewsConflict('Идентификатор уже используется')
                 except OSError:
                     raise NewsConflict('Результат предыдущего запуска неизвестен') from None
