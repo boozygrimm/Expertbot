@@ -8,7 +8,7 @@ from __future__ import annotations
 import base64
 import binascii
 from io import BytesIO
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
 MAX_INPUT_BYTES = 4_000_000
 MAX_PIXELS = 12_000_000
@@ -70,3 +70,24 @@ def decode_thumbnail(value: object) -> bytes:
         except (OSError, ValueError, SyntaxError):
             raise ValueError('Повреждённое изображение') from None
     return raw
+
+
+def review_preview(value: str, regions: list | None = None) -> bytes:
+    """Render owner-only focus outlines; never modify the source used for video."""
+    raw = decode_thumbnail(value)
+    if not regions:
+        return raw
+    from news_prototype.image_focus import validate_regions
+    boxes = validate_regions(regions)
+    with Image.open(BytesIO(raw)) as original:
+        image = original.convert('RGB')
+    draw = ImageDraw.Draw(image)
+    width = max(2, round(min(image.size) / 150))
+    for index, (x1, y1, x2, y2) in enumerate(boxes, 1):
+        left, top = x1 * image.width // 1000, y1 * image.height // 1000
+        right, bottom = min(image.width - 1, x2 * image.width // 1000), min(image.height - 1, y2 * image.height // 1000)
+        draw.rectangle((left, top, right, bottom), outline=(255, 75, 0), width=width)
+        draw.text((left + width, top + width), str(index), fill=(255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0))
+    out = BytesIO()
+    image.save(out, format='JPEG', quality=85)
+    return out.getvalue()

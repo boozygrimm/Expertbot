@@ -225,6 +225,7 @@ class MediaFlowTests(unittest.IsolatedAsyncioTestCase):
                 queue = VideoQueue(self.db.media); await queue.ensure(); await queue.acquire()
                 client = NewsWorkerClient(f'http://127.0.0.1:{server.server_port}', 'secret')
                 self.assertTrue(await client.supports_images())
+                self.assertTrue(await client.supports_image_focus())
                 with patch.dict('os.environ', {'NEWS_OWNER_TRIAL_ENABLED': '1',
                         **{flag: '0' for flag in owner_trial.OTHER_FLAGS}}):
                     for _ in range(100):

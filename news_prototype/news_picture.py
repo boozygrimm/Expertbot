@@ -22,11 +22,11 @@ def _panel(source: Image.Image, background: Image.Image) -> Image.Image:
     return panel
 
 
-def prepare_views(image_b64: str) -> tuple[Image.Image, ...]:
-    """Prepare the full image and, for portraits, overlapping detail views.
+def prepare_views(image_b64: str, regions: list | None = None) -> tuple[Image.Image, ...]:
+    """Prepare full and optional model-selected detail views.
 
-    The top and bottom views are purely geometric: no text or faces are inferred.
-    The entire source is shown first and last; the crops overlap in the middle.
+    With no valid regions, portrait images use overlapping geometric halves.
+    The full image is always shown first and last.
     """
     raw = decode_thumbnail(image_b64)
     width, height = BOX[2] - BOX[0], BOX[3] - BOX[1]
@@ -35,6 +35,20 @@ def prepare_views(image_b64: str) -> tuple[Image.Image, ...]:
     background = ImageOps.fit(source, (width, height), Image.Resampling.LANCZOS)
     background = ImageEnhance.Brightness(background.filter(ImageFilter.GaussianBlur(22))).enhance(.35)
     full = _panel(source, background)
+    if regions:
+        from news_prototype.image_focus import validate_regions
+        checked = validate_regions(regions)
+        crops = []
+        for x1, y1, x2, y2 in checked:
+            # Small margin around approximate vision coordinates keeps context.
+            left = max(0, (x1 - 30) * source.width // 1000)
+            top = max(0, (y1 - 30) * source.height // 1000)
+            right = min(source.width, ((x2 + 30) * source.width + 999) // 1000)
+            bottom = min(source.height, ((y2 + 30) * source.height + 999) // 1000)
+            crops.append(_panel(source.crop((left, top, right, bottom)), background))
+        if len(crops) == 1:
+            crops.append(crops[0])
+        return full, *crops
     if source.width >= source.height * .85 or source.height < 4:
         return (full,)
     top_end = max(1, round(source.height * .55))

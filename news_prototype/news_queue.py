@@ -136,6 +136,13 @@ async def run_idle_once(queue, collection, client) -> None:
                 return
         except (AttributeError, NewsWorkerError):
             return
+    scripts = job.get('scripts', []) if job.get('kind') == 'program' else [job.get('script')]
+    if any(isinstance(script, dict) and 'image_regions' in script for script in scripts):
+        try:
+            if not await client.supports_image_focus():
+                return
+        except (AttributeError, NewsWorkerError):
+            return
     changed = await collection.update_one({'_id': job['_id'], 'stage': 'queued'},
                                           {'$set': {'stage': 'submitting', 'updated_at': datetime.now(timezone.utc)}})
     if not changed.modified_count:

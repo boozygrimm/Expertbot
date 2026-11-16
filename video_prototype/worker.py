@@ -331,7 +331,7 @@ def handler_for(store, secret, news=None):
             if path == '/health':
                 capabilities = ['animated-sign-v1', 'voice-notes-v1']
                 if news is not None:
-                    capabilities.extend(['news-story-v1', 'news-story-image-v1'])
+                    capabilities.extend(['news-story-v1', 'news-story-image-v1', 'news-image-focus-v1'])
                     if news.run_program is not None:
                         capabilities.append('news-program-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})

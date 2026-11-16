@@ -1,6 +1,7 @@
 """Private owner-only news preparation, editing, and explicit approval."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -28,6 +29,13 @@ async def make_draft(candidate):
     return await editor_client.draft(candidate, fire_gemini_key(), GEMINI_CHAT_MODEL)
 
 
+async def analyze_image(image_b64):
+    from ai_providers import fire_gemini_key
+    from models import GEMINI_CHAT_MODEL
+    from news_prototype import image_vision
+    return await image_vision.analyze(image_b64, fire_gemini_key(), GEMINI_CHAT_MODEL)
+
+
 def _id(value: str) -> int:
     if not isinstance(value, str) or not re.fullmatch(r'[1-9][0-9]{0,14}', value):
         raise ValueError('Неверный номер')
@@ -47,14 +55,28 @@ async def show(message, draft_id: int, *, for_program: bool = False) -> None:
                              + ('После проверки соберите выпуск из нужных черновиков.' if for_program else
                                 'Для рендера подтвердите текущую версию отдельной командой.'), parse_mode=None)
         await message.answer(editable, parse_mode=None, disable_web_page_preview=True)
+        analysis = item.get('image_analysis')
+        if analysis == 'analyzed':
+            await message.answer('Распознавание картинки (может ошибаться, сверьте с оригиналом):\n'
+                                 + item.get('image_description', ''), parse_mode=None)
+        elif analysis == 'unavailable':
+            await message.answer('Не удалось распознать картинку; сценарий подготовлен по тексту. '
+                                 'Проверьте, нет ли важных сведений на изображении.', parse_mode=None)
         image = item['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
             label = 'кадр-превью видео' if item.get('image_kind') == 'video_thumbnail' else 'изображение поста'
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Найдено {label}. Оно появится в ролике крупным планом. '
-                                               'Текст на картинке редактор не читает — проверьте его вручную. '
+                                               'Проверьте содержимое и кадрирование перед публикацией. '
                                                f'Убрать: /news_noimage {draft_id} {item["revision"]}', parse_mode=None)
+            regions = item['script'].get('image_regions')
+            if regions:
+                from news_prototype.news_image_codec import review_preview
+                await message.answer_photo(types.BufferedInputFile(review_preview(image, regions), filename='focus.jpg'),
+                                           caption='Рамки показывают области для увеличения. '
+                                                   'Если они выбраны неудачно, используйте обычное кадрирование: '
+                                                   f'/news_nofocus {draft_id} {item["revision"]}', parse_mode=None)
         else:
             await message.answer('Картинка не найдена или недоступна — ролик будет без неё.', parse_mode=None)
         if not for_program:
@@ -102,7 +124,7 @@ async def prepare(message: types.Message) -> None:
             pass
     try:
         await owner_drafts.process_new(db.db, message.from_user.id, draft_id, article_fetch.fetch_article,
-                                       make_draft, news_image_fetch.fetch_thumbnail)
+                                       make_draft, news_image_fetch.fetch_thumbnail, analyze_image)
         await show(message, draft_id)
     except Exception as exc:
         logger.warning('Не удалось подтвердить состояние черновика: %s', type(exc).__name__)
@@ -123,10 +145,16 @@ async def prepare_many(message: types.Message) -> None:
             await owner_drafts.create(db.db, message.from_user.id, draft_id, url, accent)
         await message.answer('Готовлю по одному черновику на ссылку. Используется квота Gemini; '
                              'видео пока не создаётся.', parse_mode=None)
-        for draft_id in ids:
-            await owner_drafts.process_new(db.db, message.from_user.id, draft_id, article_fetch.fetch_article,
-                                           make_draft, news_image_fetch.fetch_thumbnail)
-            await show(message, draft_id, for_program=True)
+        results = await asyncio.gather(*(owner_drafts.process_new(
+            db.db, message.from_user.id, draft_id, article_fetch.fetch_article,
+            make_draft, news_image_fetch.fetch_thumbnail, analyze_image) for draft_id in ids),
+            return_exceptions=True)
+        for draft_id, result in zip(ids, results):
+            if isinstance(result, Exception):
+                logger.warning('Не удалось подготовить черновик: %s', type(result).__name__)
+                await message.answer(f'Состояние черновика не подтверждено: /news_draft {draft_id}.', parse_mode=None)
+            else:
+                await show(message, draft_id, for_program=True)
         await message.answer('Когда проверите все готовые черновики, соберите выпуск:\n/news_program '
                              + ' '.join(str(draft_id) for draft_id in ids)
                              + '\nЕсли источника не хватает, сначала пришлите текст через /news_source.', parse_mode=None)
@@ -224,6 +252,31 @@ async def edit_draft(message: types.Message) -> None:
         await message.answer('Сохранение не подтверждено. Проверьте /news_drafts.', parse_mode=None)
 
 
+@router.message(Command('news_nofocus'))
+async def remove_focus(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    if not enabled():
+        await message.answer('Подготовка черновиков выключена.', parse_mode=None)
+        return
+    try:
+        parts = (message.text or '').split()
+        if len(parts) != 3:
+            raise ValueError
+        draft_id = _id(parts[1])
+        result = await owner_drafts.remove_focus(db.db, message.from_user.id, draft_id, parts[2])
+        if result == 'stale':
+            await message.answer(f'Версия изменилась. Проверьте /news_draft {draft_id}.', parse_mode=None)
+        else:
+            await message.answer('Автоматические области убраны.' if result == 'saved' else 'Областей не было.', parse_mode=None)
+            await show(message, draft_id)
+    except ValueError:
+        await message.answer('Скопируйте команду из черновика.', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось изменить кадрирование: %s', type(exc).__name__)
+        await message.answer('Сохранение не подтверждено. Проверьте /news_drafts.', parse_mode=None)
+
+
 @router.message(Command('news_noimage'))
 async def remove_image(message: types.Message) -> None:
     if not authorized(message):
@@ -267,12 +320,17 @@ async def approve_draft(message: types.Message) -> None:
             try:
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
                 supported = await client.supports_images()
+                focus_supported = (not item['script'].get('image_regions') or await client.supports_image_focus())
             except (ValueError, OSError):
                 supported = False
             if not supported:
                 await message.answer(f'Воркер не подтвердил поддержку картинки. Рендер не запущен. '
                                      f'Можно убрать её командой /news_noimage {draft_id} {parts[2]} '
                                      'или сначала обновить воркер.', parse_mode=None)
+                return
+            if not focus_supported:
+                await message.answer('Воркер не подтвердил поддержку выбранных областей картинки. '
+                                     'Обновите воркер; рендер не запущен.', parse_mode=None)
                 return
         result = await owner_drafts.approve(db.db, message.from_user.id, draft_id, parts[2])
     except ValueError:
@@ -323,6 +381,13 @@ async def show_program(message, program_id: int) -> None:
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Сюжет {index}: {label}. Убрать: '
                                                f'/news_noimage {story["draft_id"]} {story["revision"]}', parse_mode=None)
+            regions = story['script'].get('image_regions')
+            if regions:
+                from news_prototype.news_image_codec import review_preview
+                await message.answer_photo(types.BufferedInputFile(review_preview(image, regions), filename='focus.jpg'),
+                                           caption=f'Сюжет {index}: автоматически выбранные области. '
+                                                   f'Отменить: /news_nofocus {story["draft_id"]} {story["revision"]}',
+                                           parse_mode=None)
         else:
             await message.answer('Этот сюжет будет без картинки.', parse_mode=None)
     await message.answer(f'Если все сюжеты проверены, подтвердите один общий рендер:\n'
@@ -412,10 +477,16 @@ async def approve_program(message: types.Message) -> None:
             try:
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
                 supported = await client.supports_programs()
+                needs_focus = any(story.get('script', {}).get('image_regions') for story in program.get('stories', []))
+                focus_supported = not needs_focus or await client.supports_image_focus()
             except (ValueError, OSError):
                 supported = False
             if not supported:
                 await message.answer('Воркер пока не подтвердил поддержку выпусков. Рендер не запущен.', parse_mode=None)
+                return
+            if not focus_supported:
+                await message.answer('Воркер не подтвердил поддержку выбранных областей картинки. '
+                                     'Обновите воркер; рендер не запущен.', parse_mode=None)
                 return
         result = await owner_program.approve(db.db, message.from_user.id, program_id, parts[2])
     except ValueError as exc:
