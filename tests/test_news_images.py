@@ -229,7 +229,7 @@ class MediaFlowTests(unittest.IsolatedAsyncioTestCase):
                 with patch.dict('os.environ', {'NEWS_OWNER_TRIAL_ENABLED': '1',
                         **{flag: '0' for flag in owner_trial.OTHER_FLAGS}}):
                     for _ in range(100):
-                        await owner_trial.dispatch_once(queue, self.db.news_owner_trial_jobs, client)
+                        await owner_trial.dispatch_once(queue, self.db, client)
                         if await owner_trial.status(self.db) == 'ready_for_review': break
                         await asyncio.sleep(.01)
                 self.assertEqual(await owner_trial.status(self.db), 'ready_for_review')

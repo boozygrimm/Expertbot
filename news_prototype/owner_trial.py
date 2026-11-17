@@ -208,10 +208,11 @@ async def admit_program(db, owner_id: int, stories: list[dict]) -> str:
     return 'queued' if created else 'already_queued'
 
 
-async def dispatch_once(queue, jobs, client) -> None:
-    """Shared media queue idle hook; no trial submission while users are waiting."""
-    if not enabled() or await queue.head():
+async def dispatch_once(queue, db, client) -> None:
+    """Shared media queue idle hook; respect persistent runtime settings."""
+    if not await runtime_enabled(db) or await queue.head():
         return
+    jobs = db.news_owner_trial_jobs
     pending = await jobs.find_one({'stage': {'$in': ['queued', 'submitting', 'running']}})
     if pending and await client.supports_news():
         from news_prototype.news_queue import run_idle_once
