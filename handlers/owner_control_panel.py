@@ -5,6 +5,7 @@ import logging
 from types import SimpleNamespace
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID
@@ -42,6 +43,7 @@ async def home_content():
     builder.button(text='🎨 Рисование', callback_data='owner_panel:images')
     builder.button(text='🌐 Картинки в поиске', callback_data='owner_panel:search')
     builder.button(text='🔐 Доступ к группам', callback_data='owner_panel:groups')
+    builder.button(text='🧰 Инструменты владельца', callback_data='owner_panel:tools')
     builder.button(text='🔄 Обновить', callback_data='owner_panel:home')
     builder.button(text='❌ Закрыть', callback_data='owner_panel:close')
     builder.adjust(1, 2, 1, 2)
@@ -59,6 +61,7 @@ async def image_content():
     builder = InlineKeyboardBuilder()
     builder.button(text=('✅ ' if active == 'legacy' else '') + 'Pollinations', callback_data='owner_panel:image_legacy')
     builder.button(text=('✅ ' if active == 'cloudflare' else '') + 'Cloudflare + OVHcloud', callback_data='owner_panel:image_cloudflare')
+    builder.button(text='🧪 Проверить сервисы', callback_data='owner_tools:image_probe')
     builder.button(text='⬅️ Пульт', callback_data='owner_panel:home')
     builder.adjust(1)
     return text, builder.as_markup()
@@ -74,6 +77,8 @@ async def search_content():
     builder = InlineKeyboardBuilder()
     builder.button(text='⏸ Выключить' if active else '▶️ Включить',
                    callback_data='owner_panel:search_off' if active else 'owner_panel:search_on')
+    builder.button(text='🧪 Проверить поиск', callback_data='owner_tools:search_probe')
+    builder.button(text='🔎 Проверить поиск по своему запросу', callback_data='owner_tools:search_query')
     builder.button(text='⬅️ Пульт', callback_data='owner_panel:home')
     builder.adjust(1)
     return text, builder.as_markup()
@@ -97,11 +102,13 @@ async def open_owner_panel(message):
 
 
 @router.callback_query(F.data.startswith('owner_panel:'))
-async def control_action(callback: types.CallbackQuery):
+async def control_action(callback: types.CallbackQuery, state: FSMContext = None):
     if not authorized(callback):
         await callback.answer('Пульт доступен только владельцу в личке.', show_alert=True)
         return
     action = (callback.data or '').partition(':')[2]
+    if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups'):
+        await state.clear()
     try:
         if action == 'close':
             await callback.answer()
@@ -119,6 +126,21 @@ async def control_action(callback: types.CallbackQuery):
             text, markup = await panel_content()
         elif action == 'home':
             text, markup = await home_content()
+        elif action == 'tools':
+            from handlers.owner_tools_panel import menu
+            text, markup = menu('🧰 ИНСТРУМЕНТЫ ВЛАДЕЛЬЦА\n\nВыбери раздел или действие:', [
+                ('⏰ Расписания отчётов групп', 'owner_tools:reports'),
+                ('📖 Редактор наследий', 'owner_tools:lore'),
+                ('❔ Справка по наследиям', 'owner_tools:lorehelp'),
+                ('📚 Все рецепты алхимии', 'owner_tools:recipes'),
+                ('🔎 Найти рецепт', 'owner_tools:recipe'),
+                ('🔄 Перезапустить квесты', 'owner_tools:regen'),
+                ('🌱 Обновить начальные наследия', 'owner_tools:seed'),
+                ('🎁 Выдать промопак игроку', 'owner_tools:pack'),
+                ('🧹 Очистить инвентарь игрока', 'owner_tools:clear'),
+                ('💰 Изменить очки игрока в группе', 'owner_tools:points'),
+                ('🗑 Удалить профиль алхимии', 'owner_tools:reset'),
+            ])
         elif action == 'images':
             text, markup = await image_content()
         elif action == 'search':

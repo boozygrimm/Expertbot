@@ -38,19 +38,25 @@ def _id(value: str) -> int:
     return int(value)
 
 
-async def show(message, draft_id: int, *, for_program: bool = False) -> None:
-    item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
+async def show(message, draft_id: int, *, for_program: bool = False, item: dict | None = None, panel_mode: bool = False) -> None:
+    panel_mode = panel_mode or getattr(message, 'panel_mode', False)
+    if item is None:
+        item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
     if not item:
         await message.answer('Черновик не найден.', parse_mode=None)
         return
     stage = item.get('stage')
     if stage == 'draft_ready':
         editable = owner_drafts.editable_message(draft_id, item['url'], item['script'])
-        await message.answer('Черновик непроверен: сверьте смысл, факты, шутки и строку с источником. '
-                             'Для правки скопируйте следующее сообщение, исправьте и отправьте его боту. '
-                             + ('После проверки соберите выпуск из нужных черновиков.' if for_program else
-                                'Для рендера подтвердите текущую версию отдельной командой.'), parse_mode=None)
-        await message.answer(editable, parse_mode=None, disable_web_page_preview=True)
+        if panel_mode:
+            await message.answer('Черновик непроверен: сверь смысл, факты, шутки и строку с источником. Действия доступны кнопками ниже.', parse_mode=None)
+            await message.answer(editable.split('\n', 1)[1], parse_mode=None, disable_web_page_preview=True)
+        else:
+            await message.answer('Черновик непроверен: сверьте смысл, факты, шутки и строку с источником. '
+                                 'Для правки скопируйте следующее сообщение, исправьте и отправьте его боту. '
+                                 + ('После проверки соберите выпуск из нужных черновиков.' if for_program else
+                                    'Для рендера подтвердите текущую версию отдельной командой.'), parse_mode=None)
+            await message.answer(editable, parse_mode=None, disable_web_page_preview=True)
         analysis = item.get('image_analysis')
         if analysis == 'analyzed':
             await message.answer('Распознавание картинки (может ошибаться, сверьте с оригиналом):\n'
@@ -65,17 +71,21 @@ async def show(message, draft_id: int, *, for_program: bool = False) -> None:
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Найдено {label}. Оно появится в ролике крупным планом. '
                                                'Проверьте содержимое и кадрирование перед публикацией. '
-                                               f'Убрать: /news_noimage {draft_id} {item["revision"]}', parse_mode=None)
+                                               + ('' if panel_mode else f'Убрать: /news_noimage {draft_id} {item["revision"]}'), parse_mode=None)
             regions = item['script'].get('image_regions')
             if regions:
                 from news_prototype.news_image_codec import review_preview
                 await message.answer_photo(types.BufferedInputFile(review_preview(image, regions), filename='focus.jpg'),
                                            caption='Рамки показывают области для увеличения. '
-                                                   'Если они выбраны неудачно, используйте обычное кадрирование: '
-                                                   f'/news_nofocus {draft_id} {item["revision"]}', parse_mode=None)
+                                                   + ('Для обычного кадрирования нажми кнопку ниже.' if panel_mode else
+                                                      'Если они выбраны неудачно, используйте обычное кадрирование: '
+                                                      f'/news_nofocus {draft_id} {item["revision"]}'), parse_mode=None)
         else:
             await message.answer('Картинка не найдена или недоступна — ролик будет без неё.', parse_mode=None)
-        if not for_program:
+        if panel_mode:
+            from handlers.owner_news_actions import card
+            await card(message, message.from_user.id, 'draft', item)
+        elif not for_program:
             await message.answer(f'/news_approve {draft_id} {item["revision"]}', parse_mode=None)
         return
     labels = {
@@ -90,7 +100,13 @@ async def show(message, draft_id: int, *, for_program: bool = False) -> None:
         'queued': 'Сценарий поставлен в очередь. Состояние видео: /news_trial_status.',
         'already_queued': 'Эта версия уже сохранялась; повторного рендера не запущено. /news_trial_status',
     }
-    await message.answer(labels.get(stage, 'Неизвестное состояние; нужна проверка.'), parse_mode=None)
+    if panel_mode and stage == 'needs_source':
+        await message.answer('Источник недоступен или текста мало. Пришли полный текст кнопкой ниже.', parse_mode=None)
+    else:
+        await message.answer(labels.get(stage, 'Неизвестное состояние; нужна проверка.'), parse_mode=None)
+    if panel_mode:
+        from handlers.owner_news_actions import card
+        await card(message, message.from_user.id, 'draft', item)
 
 
 @router.message(Command('news_prepare'))
@@ -143,9 +159,12 @@ async def prepare_urls(message: types.Message, urls: list[str], accent: str = ''
             await message.answer(f'Состояние черновика не подтверждено: /news_draft {draft_id}.', parse_mode=None)
         else:
             await show(message, draft_id, for_program=True)
-    await message.answer('Когда проверите все готовые черновики, соберите выпуск:\n/news_program '
-                         + ' '.join(str(draft_id) for draft_id in ids)
-                         + '\nЕсли источника не хватает, сначала пришлите текст через /news_source.', parse_mode=None)
+    if getattr(message, 'panel_mode', False):
+        await message.answer('Когда проверишь готовые черновики, собери выпуск кнопкой в панели новостей.', parse_mode=None)
+    else:
+        await message.answer('Когда проверите все готовые черновики, соберите выпуск:\n/news_program '
+                             + ' '.join(str(draft_id) for draft_id in ids)
+                             + '\nЕсли источника не хватает, сначала пришлите текст через /news_source.', parse_mode=None)
 
 
 @router.message(Command('news_prepare_many'))
@@ -499,8 +518,10 @@ async def approve_draft(message: types.Message) -> None:
     await message.answer(labels.get(result, 'Состояние не подтверждено. Проверьте /news_trial_status.'), parse_mode=None)
 
 
-async def show_program(message, program_id: int) -> None:
-    program = await owner_program.get(db.db, message.from_user.id, program_id)
+async def show_program(message, program_id: int, *, program: dict | None = None, panel_mode: bool = False) -> None:
+    panel_mode = panel_mode or getattr(message, 'panel_mode', False)
+    if program is None:
+        program = await owner_program.get(db.db, message.from_user.id, program_id)
     if not program:
         await message.answer('Выпуск не найден.', parse_mode=None)
         return
@@ -515,30 +536,38 @@ async def show_program(message, program_id: int) -> None:
         await message.answer(labels.get(stage, 'Неизвестное состояние выпуска.'), parse_mode=None)
         return
     await message.answer('Проверьте все сюжеты и картинки ниже. Если исправите один из черновиков, '
-                         'создайте выпуск заново командой /news_program с теми же номерами. '
-                         'Пока рендера нет.', parse_mode=None)
+                         + ('соберите выпуск заново в панели. ' if panel_mode else
+                            'создайте выпуск заново командой /news_program с теми же номерами. ')
+                         + 'Пока рендера нет.', parse_mode=None)
     for index, story in enumerate(program['stories'], 1):
         await message.answer(f'Сюжет {index} из {len(program["stories"])}', parse_mode=None)
-        await message.answer(owner_drafts.editable_message(story['draft_id'], story['url'], story['script']),
+        editable = owner_drafts.editable_message(story['draft_id'], story['url'], story['script'])
+        await message.answer(editable.split('\n', 1)[1] if panel_mode else editable,
                              parse_mode=None, disable_web_page_preview=True)
         image = story['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
             label = 'превью видео' if story.get('image_kind') == 'video_thumbnail' else 'картинка поста'
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
-                                       caption=f'Сюжет {index}: {label}. Убрать: '
-                                               f'/news_noimage {story["draft_id"]} {story["revision"]}', parse_mode=None)
+                                       caption=f'Сюжет {index}: {label}. ' + (
+                                           'Правки доступны в карточке черновика.' if panel_mode else
+                                           f'Убрать: /news_noimage {story["draft_id"]} {story["revision"]}'), parse_mode=None)
             regions = story['script'].get('image_regions')
             if regions:
                 from news_prototype.news_image_codec import review_preview
                 await message.answer_photo(types.BufferedInputFile(review_preview(image, regions), filename='focus.jpg'),
-                                           caption=f'Сюжет {index}: автоматически выбранные области. '
-                                                   f'Отменить: /news_nofocus {story["draft_id"]} {story["revision"]}',
+                                           caption=f'Сюжет {index}: автоматически выбранные области. ' + (
+                                               'Правки доступны в карточке черновика.' if panel_mode else
+                                               f'Отменить: /news_nofocus {story["draft_id"]} {story["revision"]}'),
                                            parse_mode=None)
         else:
             await message.answer('Этот сюжет будет без картинки.', parse_mode=None)
-    await message.answer(f'Если все сюжеты проверены, подтвердите один общий рендер:\n'
-                         f'/news_program_approve {program_id} {program["revision"]}', parse_mode=None)
+    if panel_mode:
+        from handlers.owner_news_actions import card
+        await card(message, message.from_user.id, 'program', program)
+    else:
+        await message.answer(f'Если все сюжеты проверены, подтвердите один общий рендер:\n'
+                             f'/news_program_approve {program_id} {program["revision"]}', parse_mode=None)
 
 
 @router.message(Command('news_program'))

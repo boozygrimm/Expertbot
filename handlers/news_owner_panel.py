@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID
@@ -68,8 +69,13 @@ async def panel_content():
     builder.button(text='📝 Выключить сценарии' if drafts_active else '📝 Включить сценарии',
                    callback_data='news_panel:modeoff' if drafts_active else 'news_panel:modeon')
     builder.button(text='📚 Собранные новости', callback_data='news_panel:list')
+    builder.button(text='🔎 Найти свежие новости сейчас', callback_data='news_panel:discover')
+    builder.button(text='🔗 Подготовить по ссылкам', callback_data='owner_tools:prepare')
     builder.button(text='📝 Черновики', callback_data='news_panel:drafts')
     builder.button(text='🎞 Выпуски', callback_data='news_panel:programs')
+    builder.button(text='📺 Собрать выпуск', callback_data='newsact:choose')
+    builder.button(text='📊 Статус видео', callback_data='owner_tools:trial_status')
+    builder.button(text='✍️ Свой сценарий', callback_data='owner_tools:trial')
     builder.button(text='🔄 Обновить', callback_data='news_panel:home')
     builder.button(text='⬅️ Общий пульт', callback_data='owner_panel:home')
     builder.adjust(1, 1, 1, 2, 2)
@@ -98,9 +104,10 @@ async def render_home(message):
     await edit_panel(message, text, markup)
 
 
-async def new_session(owner_id: int, message_id: int):
+async def new_session(owner_id: int, message_id: int, *, items=None):
     now = datetime.now(timezone.utc)
-    items = await owner_daily.recent_items(db.db, now)
+    if items is None:
+        items = await owner_daily.recent_items(db.db, now)
     token = secrets.token_hex(8)
     session = {'_id': token, 'owner_id': owner_id, 'message_id': message_id,
                'created_at': now, 'items': items, 'selected': [], 'stage': 'open', 'translations': {}}
@@ -177,12 +184,14 @@ async def render_page(message, session, page):
 
 
 @router.callback_query(F.data.startswith('news_panel:'))
-async def news_panel_action(callback: types.CallbackQuery):
+async def news_panel_action(callback: types.CallbackQuery, state: FSMContext = None):
     if not authorized(callback):
         await callback.answer('Панель доступна только владельцу в личке.', show_alert=True)
         return
     parts = (callback.data or '').split(':')
     action = parts[1] if len(parts) > 1 else ''
+    if state and action in ('home', 'new', 'close', 'list', 'drafts', 'programs', 'discover'):
+        await state.clear()
     try:
         if action == 'new':
             await callback.answer()
@@ -213,6 +222,17 @@ async def news_panel_action(callback: types.CallbackQuery):
             await callback.answer('Сценарии включены' if action == 'modeon' else 'Сценарии выключены')
             await render_home(callback.message)
             return
+        if action == 'discover':
+            if not await owner_trial.drafts_enabled(db.db):
+                return await callback.answer('Включи подготовку сценариев в панели новостей.', show_alert=True)
+            await callback.answer('Проверяю источники')
+            await edit_panel(callback.message, 'Проверяю источники. Сценарии и видео не создаются.', None)
+            items, failed = await owner_discovery.collect()
+            if failed:
+                await callback.message.answer('Не удалось проверить: ' + ', '.join(failed) + '.', parse_mode=None)
+            session = await new_session(callback.from_user.id, callback.message.message_id, items=items)
+            await render_page(callback.message, session, 0)
+            return
         if action == 'list':
             await callback.answer('Открываю новости')
             session = await new_session(callback.from_user.id, callback.message.message_id)
@@ -221,7 +241,13 @@ async def news_panel_action(callback: types.CallbackQuery):
         if action in ('drafts', 'programs'):
             collection = db.db.news_owner_drafts if action == 'drafts' else db.db.news_owner_programs
             id_field = 'draft_id' if action == 'drafts' else 'program_id'
-            entries = await collection.find({'owner_id': callback.from_user.id}).sort('created_at', -1).limit(5).to_list(length=5)
+            if len(parts) > 3 or (len(parts) == 3 and (not parts[2].isdigit() or len(parts[2]) > 5)):
+                raise ValueError('Неверная страница')
+            page = int(parts[2]) if len(parts) == 3 else 0
+            entries = await collection.find({'owner_id': callback.from_user.id}).sort(
+                [('created_at', -1), ('_id', -1)]).skip(page * 5).limit(6).to_list(length=6)
+            has_next = len(entries) > 5
+            entries = entries[:5]
             label = 'Черновики' if action == 'drafts' else 'Выпуски'
             builder = InlineKeyboardBuilder()
             stage_labels = {'draft_ready': 'готов к проверке', 'ready_for_review': 'готов к проверке',
@@ -232,23 +258,31 @@ async def news_panel_action(callback: types.CallbackQuery):
                 number = entry[id_field]
                 state = stage_labels.get(entry.get('stage'), entry.get('stage', 'неизвестно'))
                 builder.button(text=f'№{number} · {state}', callback_data=f'news_panel:view_{action}:{number}')
+            if page:
+                builder.button(text='⬅️ Назад', callback_data=f'news_panel:{action}:{page - 1}')
+            if has_next:
+                builder.button(text='Дальше ➡️', callback_data=f'news_panel:{action}:{page + 1}')
             builder.button(text='🏠 Панель', callback_data='news_panel:home')
             builder.adjust(1)
             await callback.answer()
-            await edit_panel(callback.message, f'{label}: последние {len(entries)}.' if entries else f'{label}: пока пусто.',
+            await edit_panel(callback.message, f'{label}: страница {page + 1}.' if entries else f'{label}: на этой странице пусто.',
                              builder.as_markup())
             return
         if action in ('view_drafts', 'view_programs'):
             if len(parts) != 3 or not parts[2].isdigit() or len(parts[2]) > 15 or int(parts[2]) <= 0:
                 raise ValueError('Неверный номер')
             from handlers import news_owner_drafts
-            owner_message = SimpleNamespace(from_user=callback.from_user, message_id=callback.message.message_id,
+            owner_message = SimpleNamespace(from_user=callback.from_user, chat=callback.message.chat, message_id=callback.message.message_id,
                                             answer=callback.message.answer, answer_photo=callback.message.answer_photo)
             await callback.answer('Открываю')
             if action == 'view_drafts':
-                await news_owner_drafts.show(owner_message, int(parts[2]))
+                from news_prototype import owner_drafts
+                item = await owner_drafts.get(db.db, callback.from_user.id, int(parts[2]))
+                await news_owner_drafts.show(owner_message, int(parts[2]), item=item, panel_mode=True)
             else:
-                await news_owner_drafts.show_program(owner_message, int(parts[2]))
+                from news_prototype import owner_program
+                item = await owner_program.get(db.db, callback.from_user.id, int(parts[2]))
+                await news_owner_drafts.show_program(owner_message, int(parts[2]), program=item, panel_mode=True)
             return
         if len(parts) < 3:
             raise ValueError('Неверная кнопка')
@@ -338,8 +372,8 @@ async def news_panel_action(callback: types.CallbackQuery):
                 return
             await callback.answer('Готовлю сценарии')
             await edit_panel(callback.message, 'Готовлю сценарии. Рендер ещё не запущен.', None)
-            owner_message = SimpleNamespace(from_user=callback.from_user, message_id=callback.message.message_id,
-                                            answer=callback.message.answer)
+            from handlers.owner_tools_panel import proxy
+            owner_message = proxy(callback.message, callback.from_user)
             await news_owner_drafts.prepare_urls(owner_message, urls)
             await db.db.news_owner_panel_sessions.update_one({'_id': session['_id'], 'stage': 'preparing'},
                                                              {'$set': {'stage': 'prepared'}})
