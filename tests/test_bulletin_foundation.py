@@ -24,6 +24,13 @@ def response(stories):
 
 
 class BulletinEditorTests(unittest.TestCase):
+    def test_prompt_distinguishes_bender_jokes_from_facts(self):
+        prompt, _ = editor.prompt_for(inputs(2))
+        self.assertIn('в шутках — нагло, ехидно', prompt)
+        self.assertIn('факты сообщает ясно, без насмешки', prompt)
+        self.assertIn('если шутка неуместна, обойдись без неё', prompt)
+        self.assertIn('шутки и предположения не выдавай за факты', prompt)
+
     def test_twenty_selected_news_keep_order_and_use_both_presenters(self):
         stories = inputs(20)
         # Simulate actual MongoDB round trip for batch draft IDs.

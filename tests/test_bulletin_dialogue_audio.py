@@ -36,7 +36,8 @@ def test_request_carries_one_complete_news_and_approved_voice_pair():
     assert len(body['contents'][0]['parts'])==2
     assert [x['speechMetadata']['speaker'] for x in body['contents'][0]['parts']]==['Bender','Sensei']
     assert body['contents'][0]['parts'][0]['speechMetadata']['style'] == t.VOICES['Бендер'][2]
-    assert 'дерзко и насмешливо' in body['contents'][0]['parts'][0]['speechMetadata']['style']
+    assert 'На шутках и подколах' in body['contents'][0]['parts'][0]['speechMetadata']['style']
+    assert 'без насмешки' in body['contents'][0]['parts'][0]['speechMetadata']['style']
     assert body['contents'][0]['parts'][1]['speechMetadata']['style'] == 'По-русски спокойно, тепло и доброжелательно.'
     voices=body['generationConfig']['speechConfig']['multiSpeakerVoiceConfig']['speakerVoiceConfigs']
     assert [x['voiceConfig']['prebuiltVoiceConfig']['voiceName'] for x in voices]==['Algenib','Puck']
