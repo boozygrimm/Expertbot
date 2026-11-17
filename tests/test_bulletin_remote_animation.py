@@ -5,6 +5,23 @@ from news_prototype import (bender_trial, bulletin_layered_video, bulletin_remot
                             bulletin_timing, bulletin_wide_screen, combined_trial)
 
 
+def test_screen_turns_on_and_off_after_power_clicks():
+    assert animation.screen_level(.5, .65, 5) == 0
+    assert animation.screen_level(1.4, .65, 5) == pytest.approx(1)
+    assert animation.screen_level(4.9, .65, 5) == pytest.approx(1)
+    assert animation.screen_level(5.3, .65, 5) < 1
+    assert animation.screen_level(5.7, .65, 5) == 0
+
+
+def test_screen_dimming_does_not_dim_presenters():
+    bright = bulletin_wide_screen.compose(screen_level=1)
+    dark = bulletin_wide_screen.compose(screen_level=0)
+    assert bright.getpixel((430, 140)) != dark.getpixel((430, 140))
+    assert bright.getpixel((250, 215)) == dark.getpixel((250, 215))
+    assert bright.getpixel((600, 210)) == dark.getpixel((600, 210))
+    with pytest.raises(ValueError): bulletin_wide_screen.compose(screen_level=1.1)
+
+
 def test_press_is_timed_to_click_and_stops_between_events():
     at = 5.0
     assert animation.press_amount(4.8, [at]) == 0

@@ -5,6 +5,7 @@ finished animation rigs. This module is not connected to the deployed renderer.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
@@ -25,8 +26,17 @@ def _speaker_layer(path: Path) -> Image.Image:
         return original.copy()
 
 
-def compose(image_b64: str | None = None, *, speaker_layers=None) -> Image.Image:
-    """Show the screen behind both separate cutouts, without starting media."""
+@lru_cache(maxsize=1)
+def _screen_mask() -> Image.Image:
+    mask = Image.new('L', SIZE)
+    ImageDraw.Draw(mask).rounded_rectangle(SCREEN, radius=7, fill=255)
+    return mask
+
+
+def compose(image_b64: str | None = None, *, speaker_layers=None, screen_level: float = 1.0) -> Image.Image:
+    """Composite the screen before presenters so dimming never covers them."""
+    if not 0 <= screen_level <= 1:
+        raise ValueError('Неверная яркость экрана')
     image = bulletin_concept_screen.base_frame().convert('RGBA')
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(FRAME, radius=12, fill=(11, 22, 32), outline=(88, 105, 116), width=5)
@@ -41,6 +51,9 @@ def compose(image_b64: str | None = None, *, speaker_layers=None) -> Image.Image
             fitted = ImageOps.contain(source, (width, height), Image.Resampling.LANCZOS)
             panel.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
         image.paste(panel, (x0 + 4, y0 + 4))
+    if screen_level < 1:
+        dimmed = Image.blend(Image.new('RGBA', SIZE, (3, 8, 15, 255)), image, screen_level)
+        image = Image.composite(dimmed, image, _screen_mask())
     layers = speaker_layers if speaker_layers is not None else tuple(_speaker_layer(path) for path in LAYERS)
     if not isinstance(layers, (tuple, list)) or len(layers) != 2:
         raise ValueError('Нужны два слоя ведущих')

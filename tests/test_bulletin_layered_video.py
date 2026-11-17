@@ -68,6 +68,25 @@ class BulletinLayeredVideoTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 video.write_sound(audio, result, frames, clicks=[rate // 2])
 
+    def test_power_clicks_are_outside_dialogue_without_changing_speech(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            part = root / 'turn.wav'; make_segment(part)
+            audio = root / 'audio.wav'; podcast_audio_trial.assemble_wav([part], audio)
+            rate, original = podcast_video_trial.read_wav(audio)
+            frames = bender_trial.FPS
+            power = video.power_click_positions(frames, rate)
+            effect = video.remote_click(rate)
+            output = root / 'padded.wav'
+            video.write_sound(audio, output, frames, power_clicks=power)
+            _, padded = podcast_video_trial.read_wav(output)
+            start = combined_trial.INTRO_FRAMES * (rate // bender_trial.FPS)
+            self.assertEqual(padded[start:start + len(original)], original)
+            self.assertEqual(padded[power[0]:power[0] + len(effect)], effect)
+            self.assertEqual(padded[power[1]:power[1] + len(effect)], effect)
+            with self.assertRaises(ValueError):
+                video.write_sound(audio, output, frames, power_clicks=[start + rate // 2])
+
     def test_clicks_only_between_stories_with_room_for_effect(self):
         intro = combined_trial.INTRO_FRAMES / bender_trial.FPS
         windows = [bulletin_timing.SectionWindow(i + 1, intro + i * 1.35, intro + i * 1.35 + 1)

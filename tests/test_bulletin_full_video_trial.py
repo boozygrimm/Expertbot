@@ -69,6 +69,16 @@ def test_real_synthetic_render_uses_existing_sound_and_pictures():
             with Image.open(image) as frame:
                 r, _, b = frame.convert('RGB').getpixel((450, 140))
                 assert r > b + 60 if expected == 'red' else b > r + 60
+        # Power animation is visible before and after the complete dialogue.
+        screenshots = []
+        for when in (.1, 1.4, 9.3):
+            target = root / f'power-{when}.png'
+            subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-ss', str(when), '-i', str(output),
+                            '-frames:v', '1', str(target)], check=True)
+            with Image.open(target) as frame:
+                screenshots.append(frame.convert('RGB').getpixel((450, 140)))
+        assert sum(screenshots[1]) > sum(screenshots[0]) + 30
+        assert sum(screenshots[1]) > sum(screenshots[2]) + 30
         # The first switch occurs at 5.10 s with the click/press just before it.
         before, pressed = root / 'before.png', root / 'pressed.png'
         for when, target in [(4.7, before), (5.02, pressed)]:

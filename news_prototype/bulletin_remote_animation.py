@@ -18,6 +18,13 @@ def _smooth(x: float) -> float:
     return x * x * (3 - 2 * x)
 
 
+def screen_level(t: float, on_click: float, off_click: float) -> float:
+    """Fade up after power-on and fade down after power-off."""
+    on = _smooth((t - on_click - .08) / .55)
+    off = 1 - _smooth((t - off_click - .08) / .50)
+    return min(on, off)
+
+
 def press_amount(t: float, click_times: list[float]) -> float:
     """Finger reaches the button at the onset of the sound, then lifts."""
     amount = 0.0
