@@ -39,6 +39,45 @@ class BulletinLayeredVideoTests(unittest.TestCase):
                                            combined_trial.TAIL_FRAMES) * rate // bender_trial.FPS)
             with self.assertRaises(ValueError): video.write_sound(audio, output, 1)
 
+    def test_click_only_in_verified_gap_without_changing_speech(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first, second = root / 'first.wav', root / 'second.wav'
+            make_segment(first); make_segment(second)
+            audio = root / 'joined.wav'
+            podcast_audio_trial.assemble_wav([first, second], audio)
+            rate, original = podcast_video_trial.read_wav(audio)
+            windows, _ = bulletin_timing.section_windows([(1, first), (2, second)])
+            positions = video.click_positions(windows, rate)
+            self.assertEqual(len(positions), 1)
+            position = positions[0]
+            effect = video.remote_click(rate)
+            self.assertGreater(max(map(abs, effect)), 0)
+            self.assertLessEqual(max(map(abs, effect)), 3500)
+            self.assertTrue(rate <= position < position + len(effect) <= round(rate * 1.35))
+            result = root / 'padded.wav'
+            frames = (len(original) * bender_trial.FPS + rate - 1) // rate
+            video.write_sound(audio, result, frames, clicks=positions)
+            _, padded = podcast_video_trial.read_wav(result)
+            intro = combined_trial.INTRO_FRAMES * (rate // bender_trial.FPS)
+            dialogue = padded[intro:intro + len(original)]
+            self.assertEqual(dialogue[:position], original[:position])
+            self.assertEqual(dialogue[position:position + len(effect)], effect)
+            self.assertEqual(dialogue[position + len(effect):], original[position + len(effect):])
+            self.assertEqual(podcast_video_trial.read_wav(audio)[1], original)
+            with self.assertRaises(ValueError):
+                video.write_sound(audio, result, frames, clicks=[rate // 2])
+
+    def test_clicks_only_between_stories_with_room_for_effect(self):
+        intro = combined_trial.INTRO_FRAMES / bender_trial.FPS
+        windows = [bulletin_timing.SectionWindow(i + 1, intro + i * 1.35, intro + i * 1.35 + 1)
+                   for i in range(20)]
+        self.assertEqual(len(video.click_positions(windows, 24000)), 19)
+        short_gap = [bulletin_timing.SectionWindow(1, intro, intro + 1),
+                     bulletin_timing.SectionWindow(2, intro + 1.02, intro + 2)]
+        self.assertEqual(video.click_positions(short_gap, 24000), [])
+        self.assertEqual(video.click_positions(windows[:1], 24000), [])
+
     def test_render_rejects_mismatched_sections_before_creating_output(self):
         data = payload()['sections']
         windows = [bulletin_timing.SectionWindow(11, 1, 2), bulletin_timing.SectionWindow(10, 2, 3)]
