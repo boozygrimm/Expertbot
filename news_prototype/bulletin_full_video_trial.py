@@ -14,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import urllib.error
 import urllib.request
 
 from news_prototype import (bender_trial, bulletin_contract, bulletin_duo_content_probe,
@@ -139,6 +140,10 @@ def send_video_once(video: Path, folder: Path, env: dict) -> str:
         with urllib.request.build_opener(NoRedirect()).open(request, timeout=120) as response:
             result = json.loads(response.read(65537))
         return 'Telegram подтвердил отправку видео.' if result.get('ok') is True else 'Отправка не подтверждена; проверь личку.'
+    except urllib.error.HTTPError as exc:
+        return f'Telegram вернул HTTP {exc.code}. Отправка не подтверждена; проверь личку перед повтором.'
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 'Отправка не подтверждена: ошибка соединения или таймаут; проверь личку перед повтором.'
     except Exception:
         return 'Отправка не подтверждена; проверь личку перед повтором.'
 
