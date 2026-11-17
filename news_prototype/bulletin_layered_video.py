@@ -111,7 +111,8 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
     @lru_cache(maxsize=24)
     def frame_bytes(index: int | None, state: tuple[bool, bool, bool], brightness: int) -> bytes:
         image = sections[index].get('image_b64') if index is not None else None
-        return bulletin_wide_screen.compose(image, speaker_layers=layers[state], screen_level=brightness / 12).tobytes()
+        frame = bulletin_wide_screen.compose(image, speaker_layers=layers[state])
+        return bulletin_remote_animation.apply_television(frame, brightness / 12).tobytes()
 
     fps = bender_trial.FPS
     rate = podcast_video_trial.RATE

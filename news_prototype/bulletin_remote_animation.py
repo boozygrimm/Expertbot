@@ -37,6 +37,42 @@ def press_amount(t: float, click_times: list[float]) -> float:
 
 
 @lru_cache(maxsize=1)
+def television_mask() -> Image.Image:
+    """Outer TV picture area, excluding its foreground remote and hand."""
+    scale = 4
+    mask = Image.new('L', (SIZE[0] * scale, SIZE[1] * scale))
+    draw = ImageDraw.Draw(mask)
+    def polygon(points, fill):
+        draw.polygon([(x * scale, y * scale) for x, y in points], fill=fill)
+    polygon([(141, 79), (190, 68), (280, 60), (423, 56), (586, 57), (704, 63),
+             (763, 74), (790, 87), (803, 110), (810, 146), (813, 200),
+             (813, 354), (807, 414), (795, 445), (768, 460), (675, 470),
+             (530, 475), (321, 475), (197, 469), (148, 459), (127, 445),
+             (116, 414), (111, 360), (110, 198), (114, 139), (122, 99)], 255)
+    # Protect the remote, its finger and arm, which lie in front of the TV.
+    polygon([(691, 409), (696, 399), (708, 393), (726, 392), (731, 389),
+             (741, 389), (745, 398), (751, 397), (758, 393), (766, 391),
+             (776, 393), (786, 398), (796, 404), (806, 411), (819, 421),
+             (833, 432), (851, 447), (872, 465), (900, 490), (960, 540),
+             (811, 540), (811, 482), (789, 470), (775, 465), (765, 478),
+             (737, 478), (727, 469), (719, 466), (714, 456), (707, 452),
+             (703, 443), (698, 438), (693, 429)], 0)
+    return mask.resize(SIZE, Image.Resampling.LANCZOS).filter(ImageFilter.GaussianBlur(.35))
+
+
+def apply_television(frame: Image.Image, level: float) -> Image.Image:
+    """Dim the outer television picture while leaving its frame and remote lit."""
+    if frame.size != SIZE or not 0 <= level <= 1:
+        raise ValueError('Неверный кадр или яркость телевизора')
+    if level >= 1:
+        return frame
+    original = frame.convert('RGB')
+    dark = Image.new('RGB', SIZE, (3, 8, 15))
+    dimmed = Image.blend(dark, original, level)
+    return Image.composite(dimmed, original, television_mask())
+
+
+@lru_cache(maxsize=1)
 def finger_layer() -> Image.Image:
     """Cut out the first knuckle and tip of the foreground mechanical finger."""
     base = bulletin_concept_screen.base_frame().convert('RGBA')

@@ -13,13 +13,16 @@ def test_screen_turns_on_and_off_after_power_clicks():
     assert animation.screen_level(5.7, .65, 5) == 0
 
 
-def test_screen_dimming_does_not_dim_presenters():
-    bright = bulletin_wide_screen.compose(screen_level=1)
-    dark = bulletin_wide_screen.compose(screen_level=0)
-    assert bright.getpixel((430, 140)) != dark.getpixel((430, 140))
-    assert bright.getpixel((250, 215)) == dark.getpixel((250, 215))
-    assert bright.getpixel((600, 210)) == dark.getpixel((600, 210))
-    with pytest.raises(ValueError): bulletin_wide_screen.compose(screen_level=1.1)
+def test_outer_tv_dimming_hides_studio_but_preserves_remote_and_frame():
+    bright = bulletin_wide_screen.compose()
+    dark = animation.apply_television(bright, 0)
+    for point in ((430, 140), (270, 225), (600, 210), (400, 390)):
+        assert dark.getpixel(point) == (3, 8, 15)
+        assert bright.getpixel(point) != dark.getpixel(point)
+    for point in ((735, 394), (750, 405), (775, 425), (890, 200), (20, 20)):
+        assert bright.getpixel(point) == dark.getpixel(point)
+    assert animation.apply_television(bright, 1).tobytes() == bright.tobytes()
+    with pytest.raises(ValueError): animation.apply_television(bright, 1.1)
 
 
 def test_press_is_timed_to_click_and_stops_between_events():
