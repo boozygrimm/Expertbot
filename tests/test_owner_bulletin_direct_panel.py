@@ -1,0 +1,255 @@
+import asyncio
+import os
+import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
+os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
+from mongomock_motor import AsyncMongoMockClient
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools
+from news_prototype import owner_bulletin, owner_daily, owner_trial, article_fetch, news_image_fetch
+from tests.test_bulletin_foundation import response
+from tests.test_owner_drafts import SOURCE
+
+
+class DirectBulletinPanelTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = AsyncMongoMockClient().test
+        fake = SimpleNamespace(db=self.db)
+        for module in (panel, tools):
+            p = patch.object(module, 'db', fake); p.start(); self.addCleanup(p.stop)
+        p = patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)); p.start(); self.addCleanup(p.stop)
+        self.user = SimpleNamespace(id=tools.ADMIN_ID)
+        self.message = SimpleNamespace(chat=SimpleNamespace(type='private', id=self.user.id), message_id=321,
+            from_user=self.user, answer=AsyncMock(return_value=SimpleNamespace(message_id=777)),
+            answer_photo=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock(), reply=AsyncMock())
+        self.callback = SimpleNamespace(from_user=self.user, message=self.message, data='', answer=AsyncMock())
+        self.state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
+
+    async def click(self, data):
+        self.callback.data = data
+        await panel.callback_action(self.callback, self.state)
+
+    async def choose(self, count):
+        items = [{'title':f'Новость {n}', 'url':f'https://example.com/news/{n}'} for n in range(count)]
+        with patch.object(owner_daily, 'recent_items', AsyncMock(return_value=items)):
+            await self.click('nb:daily')
+        session = await self.db.owner_bulletin_selections.find_one({'mode':'direct'})
+        token = session['_id']
+        for number in range(1, count + 1): await self.click(f'nb:sel:{token}:{number}')
+        await self.click(f'nb:prepare:{token}')
+        return await self.db.owner_panel_confirmations.find_one({'action':'collect_bulletin_sources'})
+
+    async def test_5_10_20_direct_two_explicit_confirmations_one_editor(self):
+        for count in (5, 10, 20):
+            with self.subTest(count=count):
+                for name in ('owner_bulletin_selections','owner_panel_confirmations','news_owner_bulletins'):
+                    await self.db[name].delete_many({})
+                confirm = await self.choose(count)
+                self.assertEqual(len(confirm['data']['choices']), count)
+                self.callback.data = 'owner_tools:run:' + confirm['_id']
+                fetch = AsyncMock(return_value={'summary': SOURCE})
+                editor = AsyncMock(side_effect=lambda stories: response(stories))
+                with patch.object(article_fetch, 'fetch_article', fetch), \
+                     patch.object(news_image_fetch, 'fetch_thumbnail', AsyncMock()), \
+                     patch.object(panel, 'make_bulletin', editor):
+                    editor.assert_not_awaited(); fetch.assert_not_awaited()
+                    await asyncio.gather(tools.action(self.callback, self.state, None),
+                                         tools.action(self.callback, self.state, None))
+                    self.assertEqual(fetch.await_count, count)
+                    editor.assert_not_awaited()
+                    item = await owner_bulletin.get(self.db, self.user.id, 321)
+                    self.assertEqual(item['stage'], 'new')
+                    await self.click('nb:editor:321')
+                    editor.assert_not_awaited()
+                    next_confirm = await self.db.owner_panel_confirmations.find_one({'action':'run_bulletin_editor'})
+                    self.callback.data = 'owner_tools:run:' + next_confirm['_id']
+                    await asyncio.gather(tools.action(self.callback, self.state, None),
+                                         tools.action(self.callback, self.state, None))
+                    editor.assert_awaited_once()
+                item = await owner_bulletin.get(self.db, self.user.id, 321)
+                self.assertEqual(item['stage'], 'ready_for_review')
+                self.assertEqual(len(item['sections']), count)
+                self.assertEqual(await self.db.news_owner_drafts.count_documents({}), 0)
+                self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+                self.assertEqual(await self.db.news_owner_programs.count_documents({}), 0)
+                self.message.answer.reset_mock()
+
+    async def test_unavailable_source_requires_manual_text_then_editor_confirmation(self):
+        confirm = await self.choose(2)
+        async def fetch(url):
+            if url.endswith('/0'): raise OSError('unavailable')
+            return {'summary': SOURCE}
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        editor = AsyncMock(side_effect=lambda stories: response(stories))
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(side_effect=fetch)), \
+             patch.object(panel, 'make_bulletin', editor):
+            await tools.action(self.callback, self.state, None)
+            item = await owner_bulletin.get(self.db, self.user.id, 321)
+            self.assertEqual(item['stage'], 'source_missing')
+            self.assertEqual(item['missing_ids'], [1]); editor.assert_not_awaited()
+            await self.click('nb:editor:321')
+            self.assertEqual(await self.db.owner_panel_confirmations.count_documents({'action':'run_bulletin_editor'}), 0)
+            await self.click('nb:source:321:1')
+            self.state.get_data.return_value = self.state.update_data.await_args.kwargs
+            self.message.text = SOURCE
+            await tools.receive_input(self.message, self.state)
+            item = await owner_bulletin.get(self.db, self.user.id, 321)
+            self.assertEqual(item['stage'], 'new'); editor.assert_not_awaited()
+            self.assertNotIn('image_b64', item['stories'][0])
+            await self.click('nb:editor:321')
+            confirm = await self.db.owner_panel_confirmations.find_one({'action':'run_bulletin_editor'})
+            self.callback.data = 'owner_tools:run:' + confirm['_id']
+            await tools.action(self.callback, self.state, None)
+            editor.assert_awaited_once()
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_cancellation_and_revision_change_prevent_paid_request(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:cancel:' + confirm['_id']
+        await tools.action(self.callback, self.state, None)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock()) as fetch:
+            await tools.action(self.callback, self.state, None)
+            fetch.assert_not_awaited()
+        self.assertEqual(await self.db.news_owner_bulletins.count_documents({}), 0)
+
+    async def test_editor_failure_is_not_retried_and_stale_confirmation_is_blocked(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        await self.click('nb:editor:321')
+        old_confirm = await self.db.owner_panel_confirmations.find_one({'action':'run_bulletin_editor'})
+        await self.db.news_owner_bulletins.update_one({'bulletin_id':321}, {'$set': {'source_revision':'0' * 64}})
+        self.callback.data = 'owner_tools:run:' + old_confirm['_id']
+        with patch.object(panel, 'make_bulletin', AsyncMock()) as editor:
+            await tools.action(self.callback, self.state, None)
+            editor.assert_not_awaited()
+        item = await owner_bulletin.get(self.db, self.user.id, 321)
+        await self.db.news_owner_bulletins.update_one({'bulletin_id':321},
+            {'$set': {'source_revision': owner_bulletin.revision(item['stories'], [])}})
+        await self.click('nb:editor:321')
+        new_confirm = await self.db.owner_panel_confirmations.find_one({'action':'run_bulletin_editor', 'stage':'ready'})
+        self.callback.data = 'owner_tools:run:' + new_confirm['_id']
+        with patch.object(panel, 'make_bulletin', AsyncMock(side_effect=TimeoutError())) as editor:
+            await tools.action(self.callback, self.state, None)
+            await tools.action(self.callback, self.state, None)
+            editor.assert_awaited_once()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'editor_failed')
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_real_dispatcher_direct_selection_does_not_create_individual_drafts(self):
+        import subprocess, sys
+        script = r'''
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from aiogram import Bot
+from aiogram.types import Update, Message
+from aiogram.methods import SendMessage, SendPhoto
+from mongomock_motor import AsyncMongoMockClient
+from app_setup import configure_dispatcher
+from config import ADMIN_ID
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, news_owner_panel, alc_build, alc_intro
+from news_prototype import owner_daily, owner_trial, article_fetch
+from tests.test_bulletin_foundation import response
+from tests.test_owner_drafts import SOURCE
+from bender_queue import VideoQueue
+from news_prototype import owner_bulletin_admission, review_delivery
+from news_prototype.news_worker_client import NewsWorkerClient
+from video_prototype import worker, news_jobs
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+import tempfile, threading
+
+async def run():
+    database = AsyncMongoMockClient().test
+    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    bot = Bot('123456:TESTTOKEN'); sent = []; sequence = 500
+    async def request(bot_arg, method, **kwargs):
+        nonlocal sequence
+        sent.append(method)
+        if isinstance(method, (SendMessage, SendPhoto)):
+            sequence += 1
+            return Message.model_validate({'message_id':sequence, 'date':1760000000,
+                 'chat':{'id':ADMIN_ID, 'type':'private'},
+                 'from':{'id':123456, 'is_bot':True, 'first_name':'Bot'}, 'text':'response'})
+        return True
+    dp = configure_dispatcher()
+    items = [{'title':f'Новость {n}', 'url':f'https://example.com/{n}'} for n in range(5)]
+    with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
+         patch.object(news_owner_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
+         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
+         patch.object(owner_trial, 'runtime_enabled', AsyncMock(return_value=True)), \
+         patch.object(owner_daily, 'recent_items', AsyncMock(return_value=items)), \
+         patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary':SOURCE})) as fetch, \
+         patch.object(panel, 'make_bulletin', AsyncMock(side_effect=lambda s: response(s))) as editor, \
+         patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
+        user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}
+        chat = {'id':ADMIN_ID, 'type':'private'}
+        async def cb(i, data, message_id=321):
+            update = Update.model_validate({'update_id':i, 'callback_query':{
+                'id':str(i), 'chat_instance':'owner', 'from':user, 'data':data,
+                'message':{'message_id':message_id, 'date':1760000000, 'chat':chat,
+                           'from':{'id':123456,'is_bot':True,'first_name':'Bot'}, 'text':'Panel'}}})
+            await asyncio.wait_for(dp.feed_update(bot, update), 5)
+        await cb(1, 'nb:daily')
+        session = await database.owner_bulletin_selections.find_one({'mode':'direct'}); token = session['_id']
+        for n in range(1,6): await cb(n + 1, f'nb:sel:{token}:{n}')
+        await cb(7, f'nb:prepare:{token}')
+        assert fetch.await_count == editor.await_count == 0
+        first = await database.owner_panel_confirmations.find_one({'action':'collect_bulletin_sources'})
+        await cb(8, 'owner_tools:run:' + first['_id'], 322)
+        assert fetch.await_count == 5 and editor.await_count == 0
+        await cb(9, 'nb:editor:322')
+        second = await database.owner_panel_confirmations.find_one({'action':'run_bulletin_editor'})
+        await cb(10, 'owner_tools:run:' + second['_id'], 323)
+        await cb(11, 'owner_tools:run:' + second['_id'], 323)
+        assert editor.await_count == 1
+        assert await database.news_owner_bulletins.count_documents({'stage':'ready_for_review'}) == 1
+        assert await database.news_owner_drafts.count_documents({}) == 0
+        assert await database.news_owner_trial_jobs.count_documents({}) == 0
+        assert any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
+        card = await database.owner_bulletin_actions.find_one({'action':'render'})
+        await cb(12, 'nb:render:' + card['_id'], card['message_id'])
+        confirmation = await database.owner_panel_confirmations.find_one({'action':'render_bulletin'})
+        assert await database.news_owner_trial_jobs.count_documents({}) == 0
+        await cb(13, 'owner_tools:run:' + confirmation['_id'], 999)
+        await cb(14, 'owner_tools:run:' + confirmation['_id'], 999)
+        assert await database.news_owner_trial_jobs.count_documents({}) == 1
+        item = await database.news_owner_bulletins.find_one({})
+        assert item['stage'] == 'queued'
+        with tempfile.TemporaryDirectory() as tmp:
+            def fake_render(job, folder):
+                work=folder/'work'; work.mkdir()
+                (work/'video.mp4').write_bytes(b'fake video')
+                (work/'status.json').write_text('{"stage":"ready_for_review"}')
+            shared=worker.JobStore(lambda *args:'file')
+            news=news_jobs.NewsJobs(shared,Path(tmp)/'worker',fake_render,run_bulletin=fake_render)
+            server=ThreadingHTTPServer(('127.0.0.1',0),worker.handler_for(shared,'secret',news))
+            thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+            try:
+                client=NewsWorkerClient(f'http://127.0.0.1:{server.server_port}','secret')
+                queue=VideoQueue(database.media,owner='test'); await queue.ensure(); await queue.acquire()
+                for _ in range(100):
+                    await owner_trial.dispatch_once(queue,database,client)
+                    job=await database.news_owner_trial_jobs.find_one({})
+                    if job['stage']=='ready_for_review': break
+                    await asyncio.sleep(.01)
+                assert job['stage']=='ready_for_review', job
+                delivery=SimpleNamespace(send_video=AsyncMock(return_value=SimpleNamespace(message_id=77)))
+                assert await review_delivery.run_once(database.news_owner_trial_jobs,
+                    database.news_owner_trial_candidates,client,delivery,ADMIN_ID)=='review_sent'
+                assert delivery.send_video.await_args.args[0]==ADMIN_ID
+                assert (await owner_bulletin_admission.status(database,ADMIN_ID,item['bulletin_id']))[0]=='review_sent'
+                assert len(news.states)==0
+            finally:
+                server.shutdown(); server.server_close(); thread.join()
+    await bot.session.close()
+asyncio.run(run())
+'''
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)

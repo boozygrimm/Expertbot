@@ -334,6 +334,8 @@ def handler_for(store, secret, news=None):
                     capabilities.extend(['news-story-v1', 'news-story-image-v1', 'news-image-focus-v1'])
                     if news.run_program is not None:
                         capabilities.append('news-program-v1')
+                    if getattr(news, 'run_bulletin', None) is not None:
+                        capabilities.append('news-bulletin-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:
@@ -394,22 +396,25 @@ def handler_for(store, secret, news=None):
             if not self.authorized():
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
-            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests', '/news-programs')):
+            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests', '/news-programs', '/news-bulletins')):
                 return self.respond(404, {'error': 'not_found'})
             try:
                 length = int(self.headers.get('Content-Length', '0'))
             except ValueError:
                 return self.respond(400, {'error': 'invalid_length'})
             # An optional sanitized thumbnail is bounded separately by its codec.
-            limit = (2_000_000 if path == '/news-programs' else
+            limit = (5_100_000 if path == '/news-bulletins' else 2_000_000 if path == '/news-programs' else
                      600_000 if path == '/news-jobs' else 100_000 if path == '/news-digests' else MAX_BODY)
             if not 0 < length <= limit:
                 return self.respond(413, {'error': 'invalid_length'})
-            if path in ('/news-jobs', '/news-digests', '/news-programs'):
-                from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest, validate_program
+            if path in ('/news-jobs', '/news-digests', '/news-programs', '/news-bulletins'):
+                from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest, validate_program, validate_bulletin
                 try:
                     data = json.loads(self.rfile.read(length).decode('utf-8'))
-                    if path == '/news-digests':
+                    if path == '/news-bulletins':
+                        request_id, bulletin = validate_bulletin(data)
+                        job, created = news.submit_bulletin(request_id, bulletin)
+                    elif path == '/news-digests':
                         request_id, inputs = validate_digest(data)
                         job, created = news.submit_digest(request_id, inputs)
                     elif path == '/news-programs':
@@ -482,10 +487,12 @@ def main():
         if str(HERE.parent) not in sys.path:
             sys.path.insert(0, str(HERE.parent))
         from news_prototype import story_pipeline  # noqa: F401
-        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner, program_runner
+        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner, program_runner, bulletin_runner, bulletin_assets_ready
         news_root = args.output_dir.parent / 'news-jobs'
         news = NewsJobs(store, news_root, news_runner(HERE.parent), digest_runner(HERE.parent, news_root),
-                        program_runner(HERE.parent))
+                        program_runner(HERE.parent), bulletin_runner(HERE.parent) if bulletin_assets_ready() else None)
+        if news.run_bulletin is None:
+            print('Вестник недоступен: исходные слои или шрифт не прошли проверку.', flush=True)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret, news))
     store.schedule_cleanup()
     print(f'Воркер запущен на {args.bind}:{args.port}; один запрос за раз', flush=True)

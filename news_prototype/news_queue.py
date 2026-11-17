@@ -48,6 +48,34 @@ async def enqueue_program(collection, candidate_id: str, scripts: list[dict]) ->
     return False
 
 
+async def enqueue_bulletin(collection, candidate_id: str, bulletin: dict) -> bool:
+    """Idempotent versioned job; admission is a separate owner-only step."""
+    from video_prototype.news_jobs import validate_bulletin
+    if not isinstance(candidate_id, str) or not candidate_id or len(candidate_id) > 256:
+        raise ValueError('Неверный ID вестника')
+    request_id = str(uuid.uuid5(NAMESPACE, candidate_id))
+    _, bulletin = validate_bulletin({'request_id': request_id, 'bulletin': bulletin})
+    doc = {'kind': 'bulletin', 'candidate_id': candidate_id, 'request_id': request_id,
+           'bulletin': bulletin, 'stage': 'queued', 'created_at': datetime.now(timezone.utc)}
+    result = await collection.update_one({'_id': request_id}, {'$setOnInsert': doc}, upsert=True)
+    if result.upserted_id is not None:
+        return True
+    existing = await collection.find_one({'_id': request_id})
+    if not existing or any(existing.get(k) != doc[k] for k in ('kind', 'candidate_id', 'request_id', 'bulletin')):
+        raise ValueError('Для этого вестника уже сохранён другой сценарий')
+    return False
+
+
+def _worker_stage(job, state):
+    if not isinstance(state, dict):
+        return 'uncertain'
+    mapping = {'running': 'running', 'ready': 'ready_for_review',
+               'failed': 'failed', 'interrupted': 'interrupted'}
+    if job.get('kind') == 'bulletin':
+        mapping['audio_too_long'] = 'audio_too_long'
+    return mapping.get(state.get('status'), 'uncertain')
+
+
 READY_STORY_STAGES = ('ready_for_review', 'fetching_review', 'sending_review', 'review_sent',
                       'review_uncertain', 'review_too_large', 'review_download_failed')
 
@@ -117,20 +145,27 @@ async def run_idle_once(queue, collection, client) -> None:
         if state is None:
             await _advance(collection, pending, stage, 'uncertain')
         else:
-            next_stage = {'running': 'running', 'ready': 'ready_for_review',
-                          'failed': 'failed', 'interrupted': 'interrupted'}.get(state.get('status'), 'uncertain')
+            next_stage = _worker_stage(pending, state)
             await _advance(collection, pending, stage, next_stage)
         return
     job = await collection.find_one({'stage': 'queued'}, sort=[('created_at', 1)])
     if not job or await queue.head():
         return
+    if job.get('kind', 'story') not in ('story', 'digest', 'program', 'bulletin'):
+        return  # never interpret an unknown protocol as an ordinary story
+    if job.get('kind') == 'bulletin':
+        try:
+            if not await client.supports_bulletins():
+                return
+        except (AttributeError, NewsWorkerError):
+            return
     if job.get('kind') == 'program':
         try:
             if not await client.supports_programs():
                 return
         except (AttributeError, NewsWorkerError):
             return
-    if job.get('kind') not in ('digest', 'program') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
+    if job.get('kind') not in ('digest', 'program', 'bulletin') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
         try:
             if not await client.supports_images():
                 return
@@ -154,7 +189,9 @@ async def run_idle_once(queue, collection, client) -> None:
         await _advance(collection, job, 'submitting', 'queued')
         return
     try:
-        if job.get('kind') == 'digest':
+        if job.get('kind') == 'bulletin':
+            state = await client.submit_bulletin(job['request_id'], job['bulletin'])
+        elif job.get('kind') == 'digest':
             state = await client.submit_digest(job['request_id'], job['inputs'])
         elif job.get('kind') == 'program':
             state = await client.submit_program(job['request_id'], job['scripts'])
@@ -169,6 +206,5 @@ async def run_idle_once(queue, collection, client) -> None:
     except (NewsUncertain, NewsWorkerError):
         await _advance(collection, job, 'submitting', 'uncertain')
         return
-    next_stage = {'running': 'running', 'ready': 'ready_for_review',
-                  'failed': 'failed', 'interrupted': 'interrupted'}.get(state.get('status'), 'uncertain')
+    next_stage = _worker_stage(job, state)
     await _advance(collection, job, 'submitting', next_stage)

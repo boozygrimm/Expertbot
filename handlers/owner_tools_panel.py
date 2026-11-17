@@ -163,6 +163,39 @@ async def receive_input(message: types.Message, state: FSMContext):
             await new_confirmation(message, message.from_user.id, 'trial',
                 'Поставить этот проверенный сценарий на рендер? Видео придёт в личку, публикации не будет.',
                 content=content)
+        elif action == 'bulletin_source':
+            if not await owner_trial.drafts_enabled(db.db):
+                await state.clear()
+                return await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+            from handlers import owner_bulletin_panel
+            from news_prototype import owner_bulletin, owner_bulletin_sources
+            result = await owner_bulletin_sources.provide_source(db.db, message.from_user.id, data['number'],
+                data['section_id'], data['source_revision'], text)
+            await state.clear()
+            if result in ('new', 'source_missing'):
+                item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+                await message.answer('Текст сохранён; редактор пока не запускался.', parse_mode=None)
+                await owner_bulletin_panel.show_sources(message, item)
+            else:
+                await message.answer('Источник изменился. Открой вестник заново.', parse_mode=None)
+        elif action == 'bulletin_edit':
+            if not await owner_trial.drafts_enabled(db.db):
+                await state.clear()
+                return await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+            from handlers import owner_bulletin_panel
+            from news_prototype import owner_bulletin
+            owner_bulletin.parse_section_edit(text)
+            result = await owner_bulletin.change_section(db.db, message.from_user.id, data['number'],
+                data['revision'], data['section_id'], text=text)
+            await state.clear()
+            if result in ('saved', 'unchanged'):
+                item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+                await message.answer('Изменения сохранены; проверь новую версию. Остальные новости открой из списка вестников.' if result == 'saved' else
+                                     'Изменений нет.', parse_mode=None)
+                section = next(s for s in item['sections'] if s['id'] == data['section_id'])
+                await owner_bulletin_panel.show_section(message, message.from_user.id, item, section)
+            else:
+                await message.answer('Версия или источник изменились. Открой вестник заново.', parse_mode=None)
         elif action in ('news_source', 'news_edit'):
             if not await owner_trial.drafts_enabled(db.db):
                 await state.clear()
@@ -601,6 +634,19 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 from handlers.news_owner_trial import next_trial
                 message.text = '/news_trial_next ' + data['finished_id']
                 await next_trial(message)
+            elif name == 'collect_bulletin_sources':
+                from handlers import owner_bulletin_panel
+                await owner_bulletin_panel.collect_selected(message, callback.from_user.id, data)
+            elif name == 'run_bulletin_editor':
+                from handlers import owner_bulletin_panel
+                await owner_bulletin_panel.run_editor(message, callback.from_user.id, data)
+            elif name in ('render_bulletin', 'shorten_bulletin'):
+                from handlers import owner_bulletin_panel
+                fn = owner_bulletin_panel.render_confirmed if name == 'render_bulletin' else owner_bulletin_panel.shorten_confirmed
+                await fn(message, callback.from_user.id, data)
+            elif name == 'prepare_bulletin':
+                from handlers import owner_bulletin_panel
+                await owner_bulletin_panel.prepare_selected(message, callback.from_user.id, data)
             elif name == 'build_program':
                 from news_prototype import owner_program
                 from handlers import news_owner_drafts, owner_news_actions
