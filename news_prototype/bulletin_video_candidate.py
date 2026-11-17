@@ -70,8 +70,8 @@ async def _current_story(db, owner_id: int, bulletin_id: int, revision: str, sec
     return {'url': canonical, 'summary': story['summary']}
 
 
-def _check_file(candidate: Candidate) -> None:
-    """Rehash a bounded regular file; reject final-component symlinks.
+def _check_file(candidate: Candidate, *, read_bytes: bool = False) -> bytes | None:
+    """Rehash a bounded regular file; optionally return exactly the checked bytes.
 
     The caller controls the parent directory. This is a point-in-time check,
     not a lock or a guarantee against later modification before use.
@@ -87,6 +87,7 @@ def _check_file(candidate: Candidate) -> None:
                 raise ValueError
             digest = hashlib.sha256()
             size = 0
+            chunks = [] if read_bytes else None
             while True:
                 block = file.read(65536)
                 if not block:
@@ -95,11 +96,14 @@ def _check_file(candidate: Candidate) -> None:
                 if size > source.MAX_VIDEO:
                     raise ValueError
                 digest.update(block)
+                if chunks is not None:
+                    chunks.append(block)
             after = os.fstat(file.fileno())
             if (size != candidate.size or digest.hexdigest() != candidate.video_sha256
                     or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
                     != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
                 raise ValueError
+            return b''.join(chunks) if chunks is not None else None
     except (OSError, ValueError):
         raise ValueError('Файл видео отсутствует или изменился') from None
 

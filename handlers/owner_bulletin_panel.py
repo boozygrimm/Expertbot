@@ -101,8 +101,8 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     source = next((story for story in item.get('stories', []) if story.get('draft_id') == section['id']), None)
     video_status = source.get('telegram_video_status') if source else None
     if video_status == 'available':
-        await message.answer('В этом посте обнаружено видео. Пока оно не загружено и не проверено; '
-                             'текущий рендер его не использует. Проверь источник отдельно.', parse_mode=None)
+        await message.answer('В этом посте обнаружено видео. Его можно отдельно получить для проверки. '
+                             'Текущий рендер его не использует; права на видео и звук проверь отдельно.', parse_mode=None)
     elif video_status == 'ambiguous':
         await message.answer('Видео поста найдено неоднозначно; оно не используется. '
                              'Проверь источник отдельно.', parse_mode=None)
@@ -112,6 +112,8 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         'expires_at': datetime.now(timezone.utc) + timedelta(days=2)})
     b = InlineKeyboardBuilder()
     b.button(text='✏️ Исправить эту новость', callback_data=f'nb:edit:{token}')
+    if video_status == 'available' and item.get('mode') == 'direct':
+        b.button(text='📼 Проверить исходное видео', callback_data=f'nb:video:{token}')
     if section.get('image_b64'):
         b.button(text='🖼 Убрать эту картинку', callback_data=f'nb:noimage:{token}')
     b.button(text='📋 Все вестники', callback_data='nb:list')
@@ -207,6 +209,29 @@ async def render_confirmed(message, owner_id: int, data: dict):
         'approval_uncertain': 'Не удалось подтвердить сохранение. Проверь состояние вестника и слота; не запускай повторно вслепую.',
     }
     await message.answer(labels.get(result, 'Состояние не подтверждено; проверь вестник.'), parse_mode=None)
+
+
+async def video_review_confirmed(message, owner_id: int, data: dict, bot):
+    """Only the one-use owner confirmation may start the preview delivery."""
+    from news_prototype import owner_bulletin_video_review
+    if owner_id != tools.ADMIN_ID or not tools.authorized(message.from_user, message.chat):
+        return await message.answer('Доступно только владельцу в личке.', parse_mode=None)
+
+    async def send(owner, checked_bytes, caption):
+        result = await bot.send_video(owner, types.BufferedInputFile(checked_bytes, filename='source.mp4'),
+                                      caption=caption, parse_mode=None)
+        return result.message_id
+
+    result = await owner_bulletin_video_review.deliver(db.db, owner_id, data['number'], data['revision'],
+                                                       data['section_id'], send)
+    labels = {
+        'sent': 'Исходное видео отправлено в личку для проверки. Оно не добавлено в выпуск и не считается одобренным.',
+        'stale': 'Версия или источник изменились. Открой вестник заново; видео не отправлено.',
+        'already_started': 'Для этой версии и новости проверка уже запускалась. Проверь личку; не повторяй вслепую.',
+        'failed': 'Не удалось подготовить видео. Автоматического повтора нет; проверь источник и состояние.',
+        'uncertain': 'Отправка не подтверждена. Проверь личку; не повторяй вслепую.',
+    }
+    await message.answer(labels.get(result, 'Результат не подтверждён; проверь личку.'), parse_mode=None)
 
 
 async def shorten_confirmed(message, owner_id: int, data: dict):
@@ -420,6 +445,22 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             return await tools.new_confirmation(callback.message, owner, confirmation, prompt,
                 number=card['bulletin_id'], revision=card['revision'])
+        if action == 'video' and len(parts) == 3:
+            card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
+                'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Карточка устарела. Открой вестник заново.', show_alert=True)
+            from news_prototype import bulletin_video_candidate
+            try:
+                await bulletin_video_candidate._current_story(db.db, owner, card['bulletin_id'],
+                                                               card['revision'], card['section_id'])
+            except (KeyError, TypeError, ValueError):
+                return await callback.answer('Источник или версия изменились. Открой вестник заново.', show_alert=True)
+            await callback.answer()
+            return await tools.new_confirmation(callback.message, owner, 'review_bulletin_video',
+                'Скачать видео из точного публичного поста и один раз отправить тебе в личку для просмотра? '
+                'Проверь изображение, звук и права. Это не добавит видео в выпуск и не запустит озвучку или рендер.',
+                number=card['bulletin_id'], revision=card['revision'], section_id=card['section_id'])
         if action in ('edit', 'noimage') and len(parts) == 3:
             card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
                 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
