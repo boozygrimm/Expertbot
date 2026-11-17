@@ -148,6 +148,32 @@ async def deliver_news_review():
         logging.warning('Не удалось передать новостной сюжет на просмотр: %s', type(exc).__name__)
 
 
+async def collect_owner_daily_news():
+    try:
+        from database import db
+        from news_prototype import owner_daily, news_scheduler
+        if owner_daily.enabled():
+            async def work():
+                await owner_daily.poll(db.db)
+            await news_scheduler._locked(db.db.news_owner_daily_locks, 'collector', work)
+    except Exception as exc:
+        logging.warning('Не удалось собрать новости владельца: %s', type(exc).__name__)
+
+
+async def deliver_owner_daily_news():
+    try:
+        from database import db
+        from ai_providers import fire_gemini_key
+        from models import GEMINI_CHAT_MODEL
+        from news_prototype import owner_daily, news_scheduler
+        if owner_daily.enabled():
+            async def work():
+                await owner_daily.send_due(db.db, bot, ADMIN_ID, fire_gemini_key(), GEMINI_CHAT_MODEL)
+            await news_scheduler._locked(db.db.news_owner_daily_locks, 'delivery', work)
+    except Exception as exc:
+        logging.warning('Не удалось подготовить ежедневную подборку: %s', type(exc).__name__)
+
+
 async def deliver_owner_news_trial():
     try:
         from database import db
@@ -180,6 +206,13 @@ def create_scheduler() -> AsyncIOScheduler:
         from news_prototype.owner_trial import enabled as owner_trial_enabled
         if owner_trial_enabled():
             scheduler.add_job(deliver_owner_news_trial, 'interval', minutes=1, max_instances=1, coalesce=True)
+    if os.getenv('NEWS_OWNER_DAILY_ENABLED', '').strip() == '1':
+        from news_prototype.owner_daily import enabled as owner_daily_enabled
+        if owner_daily_enabled():
+            scheduler.add_job(collect_owner_daily_news, 'interval', minutes=30, max_instances=1,
+                              coalesce=True, next_run_time=get_msk_now())
+            scheduler.add_job(deliver_owner_daily_news, 'cron', minute='*', timezone=MSK, max_instances=1,
+                              coalesce=True, next_run_time=get_msk_now())
     if os.getenv('NEWS_COLLECTION_ENABLED', '').strip() == '1':
         scheduler.add_job(poll_news_sources, 'interval', minutes=30, max_instances=1, coalesce=True)
     if os.getenv('NEWS_EDITOR_ENABLED', '').strip() == '1':

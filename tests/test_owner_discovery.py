@@ -42,7 +42,7 @@ class DiscoveryTests(unittest.TestCase):
             news_sources.parse_feed(data, 'openai', since=SINCE, now=NOW)
         self.assertEqual(news_sources.parse_feed(data, 'openai', since=SINCE, now=NOW, max_items=1000), [])
         with self.assertRaises(news_sources.FeedError):
-            news_sources.parse_feed(data, 'openai', since=SINCE, now=NOW, max_items=1001)
+            news_sources.parse_feed(data, 'openai', since=SINCE, now=NOW, max_items=5001)
 
     def test_channel_bound_and_invalid_dates(self):
         with self.assertRaises(ValueError): discovery.parse_channel(b'a' * (discovery.MAX_BYTES + 1), since=SINCE, now=NOW)

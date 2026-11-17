@@ -8,9 +8,11 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+import html
 import json
+import logging
 import re
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import aiohttp
 from news_prototype import article_fetch, news_sources
@@ -19,10 +21,15 @@ SOURCES = {
     'telegram': ('Crypto Sensei', 'https://t.me/s/SenseiDurova'),
     **{key: news_sources.FEEDS[key] for key in ('openai', 'huggingface', 'cointelegraph', 'decrypt')},
 }
+logger = logging.getLogger(__name__)
 MAX_SOURCE_ITEMS = 4
 MAX_RESULTS = 20
 MAX_BYTES = 2_000_000
 VOID = frozenset(('area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'))
+
+
+class DiscoveryFetchError(ValueError):
+    """Controlled diagnostics, never a provider response body."""
 
 
 class ChannelParser(HTMLParser):
@@ -101,11 +108,20 @@ def parse_channel(data: bytes, *, since: datetime, now: datetime) -> list[dict]:
     return result
 
 
+def canonical_url(value: str) -> str:
+    """Remove common tracking fields so the same link is not collected twice."""
+    url = article_fetch.validate_url(html.unescape(value))
+    parts = urlsplit(url)
+    pairs = [(key, val) for key, val in parse_qsl(parts.query, keep_blank_values=True)
+             if not key.casefold().startswith('utm_') and key.casefold() not in ('gclid', 'fbclid')]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(pairs), ''))
+
+
 def _clean_feed(items: list[dict], now: datetime) -> list[dict]:
     results = []
     for item in items:
         try:
-            url = article_fetch.validate_url(item['url'])
+            url = canonical_url(item['url'])
             date = news_sources.parse_date(item['published_at'])
             title = re.sub(r'\s+', ' ', item['title']).strip()[:180]
             if len(url) <= 500 and title and date and date <= now:
@@ -126,21 +142,27 @@ async def _fetch(session, url: str) -> bytes:
             if response.status in (301, 302, 303, 307, 308):
                 destination = article_fetch.validate_url(urljoin(current, response.headers.get('Location', '')))
                 if urlsplit(destination).hostname != host:
-                    raise ValueError('Другой адрес источника')
+                    raise DiscoveryFetchError('перенаправление на другой хост')
                 current = destination
                 continue
-            if response.status != 200 or response.headers.get('Content-Encoding', 'identity').lower() not in ('', 'identity'):
-                raise ValueError('Источник недоступен')
+            if response.status != 200:
+                raise DiscoveryFetchError(f'HTTP {response.status}')
+            if response.headers.get('Content-Encoding', 'identity').lower() not in ('', 'identity'):
+                raise DiscoveryFetchError('неподдерживаемое сжатие')
             data = bytearray()
             async for chunk in response.content.iter_chunked(16384):
                 data.extend(chunk)
                 if len(data) > MAX_BYTES:
-                    raise ValueError('Слишком большой источник')
+                    raise DiscoveryFetchError('лента больше двух мегабайт')
             return bytes(data)
-    raise ValueError('Слишком много перенаправлений')
+    raise DiscoveryFetchError('слишком много перенаправлений')
 
 
-async def collect(*, now: datetime | None = None) -> tuple[list[dict], list[str]]:
+async def collect(*, now: datetime | None = None, per_source_limit: int = MAX_SOURCE_ITEMS,
+                  max_results: int = MAX_RESULTS) -> tuple[list[dict], list[str]]:
+    if (type(per_source_limit) is not int or not 1 <= per_source_limit <= 100
+            or type(max_results) is not int or not 1 <= max_results <= 500):
+        raise ValueError('Неверный размер подборки')
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError('Нужно время с часовым поясом')
@@ -157,21 +179,25 @@ async def collect(*, now: datetime | None = None) -> tuple[list[dict], list[str]
                 data = await _fetch(session, SOURCES[source_id][1])
                 if source_id == 'telegram':
                     return parse_channel(data, since=since, now=now)
-                return _clean_feed(news_sources.parse_feed(data, source_id, since=since, now=now, max_items=1000), now)
+                return _clean_feed(news_sources.parse_feed(data, source_id, since=since, now=now, max_items=5000), now)
             results = await asyncio.gather(*(one(key) for key in SOURCES), return_exceptions=True)
     finally:
         await resolver.close()
     combined, failed, seen = [], [], set()
     for (source_id, (name, _)), result in zip(SOURCES.items(), results):
         if isinstance(result, BaseException):
+            # FeedError uses only controlled parser messages; other exceptions may
+            # contain URLs or response data, so log only their type.
+            reason = str(result) if isinstance(result, (news_sources.FeedError, DiscoveryFetchError)) else type(result).__name__
+            logger.warning('Источник новостей %s недоступен: %s', name, reason)
             failed.append(name)
             continue
-        for item in sorted(result, key=lambda x: x['published_at'], reverse=True)[:MAX_SOURCE_ITEMS]:
+        for item in sorted(result, key=lambda x: x['published_at'], reverse=True)[:per_source_limit]:
             if item['url'] not in seen:
                 combined.append(item)
                 seen.add(item['url'])
     combined.sort(key=lambda x: x['published_at'], reverse=True)
-    return combined[:MAX_RESULTS], failed
+    return combined[:max_results], failed
 
 
 async def translate_titles(items: list[dict], key: str, model: str) -> list[str] | None:
