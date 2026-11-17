@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import uuid
 from news_prototype import owner_drafts, owner_trial
 
 
@@ -18,6 +19,31 @@ def revision(stories: list[dict]) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+async def eligible_draft(db, owner_id: int, item: dict | None) -> bool:
+    """Allow ready drafts or exact single-story jobs with confirmed delivery."""
+    if not item or item.get('owner_id') != owner_id:
+        return False
+    if item.get('stage') == 'draft_ready':
+        return True
+    if item.get('stage') not in ('queued', 'already_queued'):
+        return False
+    try:
+        url, script, candidate_id = owner_trial.single_candidate(owner_id, item['url'], item['script'])
+        if item.get('revision') != owner_drafts.revision(url, script):
+            return False
+        request_id = str(uuid.uuid5(owner_trial.NAMESPACE, candidate_id))
+        candidate = await db.news_owner_trial_candidates.find_one({'_id': candidate_id, 'owner_id': owner_id})
+        if not candidate or candidate.get('url') != url or candidate.get('script') != script:
+            return False
+        job = await db.news_owner_trial_jobs.find_one({'_id': request_id, 'request_id': request_id,
+            'candidate_id': candidate_id, 'stage': 'review_sent'})
+        message_id = job.get('review_message_id') if job else None
+        return bool(job and job.get('kind', 'story') == 'story' and job.get('script') == script and
+                    type(message_id) is int and message_id > 0)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 async def create(db, owner_id: int, program_id: int, draft_ids: list[int]) -> bool:
     program_key = key(owner_id, program_id)
     if not isinstance(draft_ids, list) or not 2 <= len(draft_ids) <= 4 or len(set(draft_ids)) != len(draft_ids):
@@ -25,7 +51,7 @@ async def create(db, owner_id: int, program_id: int, draft_ids: list[int]) -> bo
     stories = []
     for draft_id in draft_ids:
         item = await owner_drafts.get(db, owner_id, draft_id)
-        if not item or item.get('stage') != 'draft_ready':
+        if not await eligible_draft(db, owner_id, item):
             raise ValueError('Нужны готовые к проверке черновики')
         script = item['script']
         if item.get('revision') != owner_drafts.revision(item['url'], script):
@@ -63,7 +89,7 @@ async def approve(db, owner_id: int, program_id: int, expected: str) -> str:
         return 'stale'
     for story in program['stories']:
         draft = await owner_drafts.get(db, owner_id, story['draft_id'])
-        if not draft or draft.get('stage') != 'draft_ready' or draft.get('revision') != story['revision']:
+        if not await eligible_draft(db, owner_id, draft) or draft.get('revision') != story['revision']:
             return 'stale_draft'
     stage, finished_id = await owner_trial.status_info(db)
     if stage not in ('not_queued', 'review_sent') or (stage == 'review_sent' and not finished_id):

@@ -96,7 +96,8 @@ class ArticleParser(HTMLParser):
             return
         if tag == 'meta':
             name = (attrs.get('property') or attrs.get('name') or '').lower()
-            if name in ('og:title', 'og:description', 'description') and attrs.get('content'):
+            if name in ('og:title', 'og:description', 'description', 'og:image', 'og:image:url',
+                        'og:image:secure_url', 'twitter:image', 'twitter:image:src') and attrs.get('content'):
                 self.meta.setdefault(name, attrs['content'])
         elif tag == 'title':
             self.in_title += 1
@@ -137,7 +138,7 @@ class ArticleParser(HTMLParser):
             self.buffer.append(data)
 
 
-def extract_article(data: bytes, charset: str | None = None) -> tuple[str, str]:
+def extract_article_info(data: bytes, charset: str | None = None) -> tuple[str, str, str | None]:
     if len(data) > MAX_BYTES:
         raise ArticleError('Страница слишком большая')
     try:
@@ -155,6 +156,13 @@ def extract_article(data: bytes, charset: str | None = None) -> tuple[str, str]:
     body = '\n'.join(unique)[:MAX_TEXT]
     if len(body.strip()) < 80:
         raise ArticleError('Не найден достаточно полный текст страницы')
+    image = next((parser.meta.get(key) for key in ('og:image:secure_url', 'og:image',
+                  'og:image:url', 'twitter:image', 'twitter:image:src') if parser.meta.get(key)), None)
+    return title, body, image
+
+
+def extract_article(data: bytes, charset: str | None = None) -> tuple[str, str]:
+    title, body, _ = extract_article_info(data, charset)
     return title, body
 
 
@@ -200,8 +208,13 @@ async def fetch_article(url: str) -> dict:
                     if telegram:
                         title, body, media = extract_post_info(bytes(data), post, response.charset)
                     else:
-                        title, body = extract_article(bytes(data), response.charset)
+                        title, body, image = extract_article_info(bytes(data), response.charset)
                         media = None
+                        if image:
+                            try:
+                                media = {'url': validate_url(urljoin(current, image)), 'kind': 'article_image'}
+                            except (ArticleError, ValueError):
+                                pass
                     result = {'title': title, 'summary': body, 'resolved_url': current}
                     if media:
                         result['media'] = media

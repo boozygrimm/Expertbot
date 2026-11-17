@@ -49,6 +49,47 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await owner_program.create(self.db, 123, 50, [10,11]))
         return await owner_program.get(self.db, 123, 50)
 
+    async def test_delivered_single_draft_can_be_combined_but_not_before_delivery(self):
+        drafts = [await self.ready(i) for i in (10, 11, 12, 13)]
+        self.assertEqual(await owner_drafts.approve(self.db, 123, 13, drafts[-1]['revision']), 'queued')
+        delivered_draft = await owner_drafts.get(self.db, 123, 13)
+        job = await self.db.news_owner_trial_jobs.find_one({})
+        self.assertFalse(await owner_program.eligible_draft(self.db, 123, delivered_draft))
+        with self.assertRaises(ValueError):
+            await owner_program.create(self.db, 123, 50, [10, 11, 12, 13])
+        for state in ('running', 'failed', 'uncertain', 'review_uncertain'):
+            await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']}, {'$set': {'stage': state}})
+            self.assertFalse(await owner_program.eligible_draft(self.db, 123, delivered_draft))
+        await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']},
+            {'$set': {'stage': 'review_sent', 'review_message_id': 99}})
+        self.assertTrue(await owner_program.eligible_draft(self.db, 123, delivered_draft))
+        self.assertFalse(await owner_program.eligible_draft(self.db, 124, delivered_draft))
+        self.assertTrue(await owner_program.create(self.db, 123, 50, [10, 11, 12, 13]))
+        program = await owner_program.get(self.db, 123, 50)
+        self.assertEqual(len(program['stories']), 4)
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
+        self.assertEqual(await owner_program.approve(self.db, 123, 50, program['revision']), 'queued')
+        job = await self.db.news_owner_trial_jobs.find_one({'kind': 'program'})
+        self.assertEqual(len(job['scripts']), 4)
+        self.assertEqual(await owner_program.approve(self.db, 123, 50, program['revision']), 'already_queued')
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 2)
+
+    async def test_delivered_draft_rechecked_and_never_accepts_mismatch(self):
+        await self.ready(10)
+        item = await self.ready(11)
+        await owner_drafts.approve(self.db, 123, 11, item['revision'])
+        job = await self.db.news_owner_trial_jobs.find_one({})
+        await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']},
+            {'$set': {'stage': 'review_sent', 'review_message_id': 5}})
+        await owner_program.create(self.db, 123, 50, [10, 11])
+        program = await owner_program.get(self.db, 123, 50)
+        for changes in ({'review_message_id': None}, {'candidate_id': 'other'}, {'kind': 'program'}):
+            await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']}, {'$set': changes})
+            self.assertEqual(await owner_program.approve(self.db, 123, 50, program['revision']), 'stale_draft')
+            await self.db.news_owner_trial_jobs.replace_one({'_id': job['_id']},
+                job | {'stage': 'review_sent', 'review_message_id': 5})
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
+
     def test_batch_parsing_and_child_ids(self):
         urls, accent = owner_drafts.prepare_many_input('/news_prepare_many\nhttps://t.me/A/1\nhttps://t.me/B/2\nАкцент: суть')
         self.assertEqual(urls, ['https://t.me/A/1', 'https://t.me/B/2']); self.assertEqual(accent, 'суть')

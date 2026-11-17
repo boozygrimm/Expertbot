@@ -609,7 +609,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 else:
                     for number in data['draft_ids']:
                         draft = await owner_drafts.get(db.db, callback.from_user.id, number)
-                        if not draft or draft.get('stage') != 'draft_ready' or draft.get('revision') != data['revisions'].get(str(number)):
+                        if not await owner_program.eligible_draft(db.db, callback.from_user.id, draft) or draft.get('revision') != data['revisions'].get(str(number)):
                             await message.answer('Один из выбранных черновиков изменился. Проверь его и выбери заново.', parse_mode=None)
                             break
                     else:

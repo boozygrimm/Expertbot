@@ -204,11 +204,15 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
         return 'needs_source'
     image_b64 = None
     media = article.get('media')
-    if fetch_image and isinstance(media, dict) and media.get('kind') in ('photo', 'video_thumbnail'):
+    if fetch_image and isinstance(media, dict) and media.get('kind') in ('photo', 'video_thumbnail', 'article_image'):
         try:
             # Revalidate even when the fetch callback is injected.
             from news_prototype.telegram_post import media_url
-            image_b64 = await fetch_image(media_url(media.get('url')))
+            if media['kind'] == 'article_image':
+                from news_prototype.article_fetch import validate_url
+                image_b64 = await fetch_image(validate_url(media.get('url')), article=True)
+            else:
+                image_b64 = await fetch_image(media_url(media.get('url')))
             from news_prototype.news_image_codec import decode_thumbnail
             decode_thumbnail(image_b64)
             additions['image_kind'] = media['kind']
