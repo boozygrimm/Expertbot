@@ -203,8 +203,9 @@ class StartupLogicTests(unittest.IsolatedAsyncioTestCase):
     def test_create_scheduler_registers_expected_jobs(self):
         scheduler = create_scheduler()
         jobs = scheduler.get_jobs()
-        self.assertEqual(len(jobs), 8)
         job_ids = {job.func_ref.rsplit(":", 1)[-1] for job in jobs if job.func_ref}
+        self.assertIn("collect_owner_daily_news", job_ids)
+        self.assertIn("deliver_owner_daily_news", job_ids)
         self.assertIn("check_cron_time", job_ids)
         self.assertIn("check_alchemy_stamina", job_ids)
         self.assertIn("process_random_fort_events", job_ids)

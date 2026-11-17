@@ -10,6 +10,19 @@ from database import db
 from handlers.bender_clip import process_queued_video, video_queue
 from handlers.response_choice import run_choice_cleanup
 
+async def run_news_idle(queue):
+    """Share the existing media queue; runtime settings can change without restart."""
+    from news_prototype import owner_trial
+    from news_prototype.news_worker_client import NewsWorkerClient
+    if await owner_trial.runtime_enabled(db.db):
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        await owner_trial.dispatch_once(queue, db.db.news_owner_trial_jobs, client)
+    elif os.getenv('NEWS_RENDER_QUEUE_ENABLED', '').strip() == '1':
+        from news_prototype.news_queue import run_idle_once
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        await run_idle_once(queue, db.db.news_render_jobs, client)
+
+
 async def main():
     logging.getLogger('apscheduler').setLevel(logging.WARNING)
     logging.basicConfig(level=logging.INFO)
@@ -28,30 +41,9 @@ async def main():
     
     logging.info(f"--- Бот запущен на порту {port} ---")
     
-    news_idle = None
-    if os.getenv('NEWS_RENDER_QUEUE_ENABLED', '').strip() == '1':
-        # The hook runs only when ordinary user-media requests are absent.
-        try:
-            from news_prototype.news_queue import run_idle_once
-            from news_prototype.news_worker_client import NewsWorkerClient
-            client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-            async def news_idle(queue):
-                await run_idle_once(queue, db.db.news_render_jobs, client)
-        except (ValueError, ImportError):
-            logging.warning('Очередь новостей отключена: не готовы настройки или зависимости')
-    if os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1':
-        try:
-            from news_prototype.owner_trial import enabled as owner_trial_enabled
-            if owner_trial_enabled():
-                from news_prototype.owner_trial import dispatch_once
-                from news_prototype.news_worker_client import NewsWorkerClient
-                trial_client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-                async def news_idle(queue):
-                    await dispatch_once(queue, db.db.news_owner_trial_jobs, trial_client)
-        except (ValueError, ImportError):
-            logging.warning('Очередь изолированной пробы отключена: не готовы настройки или зависимости')
+    # Ordinary user media stays first; the idle hook checks persistent settings.
     queue_task = asyncio.create_task(video_queue.run(
-        lambda queue, item: process_queued_video(queue, bot, item), idle_process=news_idle))
+        lambda queue, item: process_queued_video(queue, bot, item), idle_process=run_news_idle))
     cleanup_task = asyncio.create_task(run_choice_cleanup(bot))
     try:
         await bot.delete_webhook(drop_pending_updates=True)

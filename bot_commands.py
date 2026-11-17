@@ -17,6 +17,7 @@ ADMIN_PRIVATE_COMMAND_SPECS = [
     ("regen_quests", "Перезапуск квестов"),
     ("lore_edit", "Редактор Наследия"),
     ("lore_help", "Справка по лору"),
+    ("panel", "Панель управления"),
 ]
 
 GROUP_COMMAND_SPECS = [

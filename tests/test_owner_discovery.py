@@ -131,7 +131,7 @@ class AsyncDiscoveryTests(unittest.IsolatedAsyncioTestCase):
                               text='/news_pick 51 2 1', message_id=52, answer=AsyncMock())
         fetch = AsyncMock(return_value={'summary': SOURCE})
         editor = AsyncMock(return_value=DRAFT)
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch.object(handler.article_fetch, 'fetch_article', fetch), \
              patch.object(handler, 'make_draft', editor), \
@@ -153,7 +153,7 @@ class AsyncDiscoveryTests(unittest.IsolatedAsyncioTestCase):
                  {'source':'OpenAI', 'title':'AI update', 'url':'https://openai.com/example', 'published_at':NOW.isoformat()}]
         msg = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                               text='/news_discover', message_id=51, answer=AsyncMock())
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch.object(discovery, 'collect', new=AsyncMock(return_value=(items, ['Decrypt']))), \
              patch.object(discovery, 'translate_titles', new=AsyncMock(return_value=['Новость один','ИИ обновление'])):
@@ -164,14 +164,14 @@ class AsyncDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         pick_msg = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                    text='/news_pick 51 2 1', message_id=52, answer=AsyncMock())
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch.object(handler, 'prepare_urls', new_callable=AsyncMock) as prepare:
             await handler.pick(pick_msg)
         self.assertEqual(prepare.await_args.args[1], ['https://openai.com/example', 'https://t.me/SenseiDurova/1'])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         pick_msg.from_user.id = 999
-        with patch.object(handler, 'ADMIN_ID', 999), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 999), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch.object(handler, 'prepare_urls', new_callable=AsyncMock) as prepare:
             await handler.pick(pick_msg)

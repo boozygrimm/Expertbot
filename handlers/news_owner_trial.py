@@ -23,7 +23,7 @@ def authorized(message):
 async def submit_trial(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not owner_trial.enabled():
+    if not await owner_trial.runtime_enabled(db.db):
         await message.answer('Изолированная проба выключена или конфликтует с настройками новостей.')
         return
     try:
@@ -48,7 +48,7 @@ async def submit_trial(message: types.Message) -> None:
 async def trial_status(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not owner_trial.enabled():
+    if not await owner_trial.runtime_enabled(db.db):
         await message.answer('Изолированная проба выключена или конфликтует с настройками новостей.')
         return
     try:
@@ -97,7 +97,7 @@ async def trial_status(message: types.Message) -> None:
 async def next_trial(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not owner_trial.enabled():
+    if not await owner_trial.runtime_enabled(db.db):
         await message.answer('Изолированная проба выключена или конфликтует с настройками новостей.')
         return
     parts = (message.text or '').split()
