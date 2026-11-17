@@ -18,7 +18,8 @@ import urllib.error
 import urllib.request
 import wave
 
-from news_prototype import bulletin_contract, bulletin_timing, podcast_audio_trial, podcast_video_trial
+from news_prototype import (bulletin_contract, bulletin_timing, bulletin_video_timing_plan,
+                            podcast_audio_trial, podcast_video_trial)
 from video_prototype import gemini_tts
 
 API = gemini_tts.API
@@ -129,12 +130,25 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
         rate, samples = podcast_video_trial.read_wav(normalized)
         if rate != podcast_audio_trial.RATE or not any(samples):
             raise ValueError('Пустая или повреждённая новость')
+        if bulletin.get('video', {}).get('section_id') == section['id']:
+            # Add silence *after* the whole news, never cut into a spoken
+            # sentence. The picture/fullscreen transition is placed here.
+            # Raw WAV remains untouched; normalized speech bytes are preserved.
+            with wave.open(str(normalized), 'rb') as inp:
+                params, pcm = inp.getparams(), inp.readframes(inp.getnframes())
+            with wave.open(str(normalized), 'wb') as out:
+                out.setparams(params)
+                out.writeframes(pcm + bytes(rate))  # 0.5 s of mono s16 silence
         parts.append((section['id'], normalized))
         try:
             # Once completed audio and fixed intro/tail already exceed the
             # entire budget, more requests cannot make it shorter. Keep the
             # available recordings intact and stop without rendering.
-            bulletin_timing.section_windows(parts)
+            max_seconds = bulletin_timing.MAX_SECONDS
+            if 'video' in bulletin:
+                insert = bulletin_video_timing_plan.Insert(bulletin['video']['section_id'], 1, 240)
+                max_seconds -= (insert.before_frames + insert.clip_frames + insert.hold_frames + insert.after_frames) / bulletin_video_timing_plan.FPS
+            bulletin_timing.section_windows(parts, max_seconds=max_seconds)
         except bulletin_timing.BulletinTooLong:
             podcast_audio_trial.assemble_wav([path for _, path in parts], folder / 'dialogue.wav')
             raise

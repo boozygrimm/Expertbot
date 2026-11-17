@@ -100,9 +100,14 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         await message.answer('Картинки нет: на экране будет нейтральный фон.', parse_mode=None)
     source = next((story for story in item.get('stories', []) if story.get('draft_id') == section['id']), None)
     video_status = source.get('telegram_video_status') if source else None
-    if video_status == 'available':
-        await message.answer('В этом посте обнаружено видео. Его можно отдельно получить для проверки. '
-                             'Текущий рендер его не использует; права на видео и звук проверь отдельно.', parse_mode=None)
+    if section.get('video'):
+        await message.answer('Видео выбрано для этой версии. Оно появится на экране студии, затем примерно на 10 секунд '
+                             'развернётся со своим звуком после законченной новости. Проверь права на видео и звук.', parse_mode=None)
+    elif video_status == 'available':
+        hint = ('Сначала посмотри исходник, затем отдельно подтверди его использование и права на видео и звук.'
+                if item.get('mode') == 'direct' else 'Выбор видео доступен только при прямом выборе новостей.')
+        await message.answer('В этом посте обнаружено видео. Эта версия его не использует. ' + hint +
+                             ' Иначе останется картинка или нейтральный экран.', parse_mode=None)
     elif video_status == 'ambiguous':
         await message.answer('Видео поста найдено неоднозначно; оно не используется. '
                              'Проверь источник отдельно.', parse_mode=None)
@@ -113,7 +118,15 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     b = InlineKeyboardBuilder()
     b.button(text='✏️ Исправить эту новость', callback_data=f'nb:edit:{token}')
     if video_status == 'available' and item.get('mode') == 'direct':
-        b.button(text='📼 Проверить исходное видео', callback_data=f'nb:video:{token}')
+        from news_prototype import owner_bulletin_video_review
+        if section.get('video'):
+            b.button(text='❌ Убрать видео из вестника', callback_data=f'nb:novideo:{token}')
+        else:
+            b.button(text='📼 Проверить исходное видео', callback_data=f'nb:video:{token}')
+            review_id = owner_bulletin_video_review.identity(owner_id, item['bulletin_id'], item['revision'], section['id'])
+            reviewed = await db.db.news_owner_bulletin_video_reviews.find_one({'_id': review_id, 'stage': 'sent'})
+            if reviewed:
+                b.button(text='✅ Выбрать просмотренное видео', callback_data=f'nb:usevideo:{token}')
     if section.get('image_b64'):
         b.button(text='🖼 Убрать эту картинку', callback_data=f'nb:noimage:{token}')
     b.button(text='📋 Все вестники', callback_data='nb:list')
@@ -232,6 +245,21 @@ async def video_review_confirmed(message, owner_id: int, data: dict, bot):
         'uncertain': 'Отправка не подтверждена. Проверь личку; не повторяй вслепую.',
     }
     await message.answer(labels.get(result, 'Результат не подтверждён; проверь личку.'), parse_mode=None)
+
+
+async def use_video_confirmed(message, owner_id: int, data: dict):
+    from news_prototype import owner_bulletin_video_review
+    if owner_id != tools.ADMIN_ID or not tools.authorized(message.from_user, message.chat):
+        return await message.answer('Доступно только владельцу в личке.', parse_mode=None)
+    result = await owner_bulletin_video_review.approve_for_bulletin(
+        db.db, owner_id, data['number'], data['revision'], data['section_id'])
+    if result == 'selected':
+        item = await owner_bulletin.get(db.db, owner_id, data['number'])
+        await message.answer('Видео выбрано. Сценарий стал новой версией: проверь выпуск заново. '
+                             'Рендер не запускался; он потребует отдельного подтверждения.', parse_mode=None)
+        return await show_review(message, owner_id, item)
+    return await message.answer('Видео не выбрано: исходник не был подтверждён или версия изменилась. '
+                                'В одном выпуске пока поддерживается одно видео. Открой вестник заново.', parse_mode=None)
 
 
 async def shorten_confirmed(message, owner_id: int, data: dict):
@@ -436,6 +464,11 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                           'В готовом видео нужно проверить голоса и полноту речи; анимация говорящих приблизительная. '
                           'Если выпуск превысит пять минут, он не будет обрезан или автоматически повторён. '
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
+                selected_video = next((s for s in item['sections'] if s.get('video')), None)
+                if selected_video:
+                    prompt += (f' В выпуске выбрано видео новости №{selected_video["id"]}: студия, '
+                               'затем около 10 секунд на весь экран со звуком, без реплик поверх. '
+                               'Если источник изменился или недоступен, выпуск не соберётся.')
                 confirmation = 'render_bulletin'
             else:
                 stage, _ = await owner_bulletin_admission.status(db.db, owner, item['bulletin_id'])
@@ -447,6 +480,27 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             return await tools.new_confirmation(callback.message, owner, confirmation, prompt,
                 number=card['bulletin_id'], revision=card['revision'])
+        if action in ('usevideo', 'novideo') and len(parts) == 3:
+            card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
+                'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Карточка устарела.', show_alert=True)
+            from news_prototype import owner_bulletin_video_review
+            if action == 'novideo':
+                result = await owner_bulletin_video_review.remove_from_bulletin(
+                    db.db, owner, card['bulletin_id'], card['revision'], card['section_id'])
+                await callback.answer('Видео убрано.' if result == 'removed' else 'Версия устарела.', show_alert=result != 'removed')
+                if result == 'removed':
+                    item = await owner_bulletin.get(db.db, owner, card['bulletin_id'])
+                    await show_review(callback.message, owner, item)
+                return
+            await callback.answer()
+            return await tools.new_confirmation(callback.message, owner, 'use_bulletin_video',
+                'Ты просмотрел исходное видео и проверил права на его изображение и звук для этого выпуска? '
+                'Подтверждение выбирает именно просмотренный файл по хешу. В студии он будет за ведущими, '
+                'после новости развернётся примерно на 10 секунд со звуком; реплик поверх пока нет. '
+                'Озвучка и рендер сейчас не запускаются и требуют отдельного подтверждения.',
+                number=card['bulletin_id'], revision=card['revision'], section_id=card['section_id'])
         if action == 'video' and len(parts) == 3:
             card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
                 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
@@ -477,11 +531,11 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             if action == 'edit':
                 editable = owner_bulletin.editable_section(section)
                 await tools.ask(callback, state, 'bulletin_edit', 'Скопируй следующую карточку, исправь и отправь одним сообщением. '
-                    'Источник менять нельзя; исправленные реплики потребуется проверить.',
+                    'Источник менять нельзя; исправленные реплики потребуется проверить. При изменении выбранное видео придётся проверить и выбрать заново.',
                     number=card['bulletin_id'], section_id=card['section_id'], revision=card['revision'])
                 return await callback.message.answer(editable, parse_mode=None)
             result = await owner_bulletin.change_section(db.db, owner, card['bulletin_id'], card['revision'], card['section_id'], remove_image=True)
-            await callback.answer('Картинка убрана. Для остальных новостей открой вестник заново.' if result == 'saved' else 'Версия устарела. Открой вестник заново.', show_alert=result != 'saved')
+            await callback.answer('Картинка убрана. При изменении версии выбранное видео сброшено; открой вестник заново.' if result == 'saved' else 'Версия устарела. Открой вестник заново.', show_alert=result != 'saved')
             if result == 'saved':
                 updated = await owner_bulletin.get(db.db, owner, card['bulletin_id'])
                 await show_section(callback.message, owner, updated, next(s for s in updated['sections'] if s['id'] == card['section_id']))

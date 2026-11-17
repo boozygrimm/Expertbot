@@ -336,6 +336,8 @@ def handler_for(store, secret, news=None):
                         capabilities.append('news-program-v1')
                     if getattr(news, 'run_bulletin', None) is not None:
                         capabilities.append('news-bulletin-v1')
+                        if shutil.which('ffprobe'):
+                            capabilities.append('news-bulletin-video-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:

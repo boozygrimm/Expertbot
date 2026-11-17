@@ -1,14 +1,15 @@
 """Validated, bounded worker-side bulletin payload (experimental)."""
 from __future__ import annotations
 
-from news_prototype import bulletin_limits
+import re
+from news_prototype import bulletin_limits, telegram_public_source
 from news_prototype.story_audio import validate_script
 
 MAX_TURNS = bulletin_limits.MAX_TURNS
 
 
 def validate_bulletin(data: object) -> dict:
-    if not isinstance(data, dict) or set(data) != {'sections'} or not isinstance(data['sections'], list):
+    if not isinstance(data, dict) or set(data) not in ({'sections'}, {'sections', 'video'}) or not isinstance(data['sections'], list):
         raise ValueError('Неверная задача вестника')
     if not bulletin_limits.MIN_STORIES <= len(data['sections']) <= bulletin_limits.MAX_STORIES:
         raise ValueError('Нужно от двух до двадцати новостей')
@@ -36,4 +37,19 @@ def validate_bulletin(data: object) -> dict:
         sections.append({'id': int(number), **checked})
     if speakers != bulletin_limits.SPEAKERS or chars > bulletin_limits.MAX_SPOKEN_CHARS or turns_count > MAX_TURNS:
         raise ValueError('Неверный состав или длина вестника')
-    return {'sections': sections}
+    result = {'sections': sections}
+    if 'video' in data:
+        video = data['video']
+        if (not isinstance(video, dict) or set(video) != {'section_id', 'post_url', 'caption_sha256', 'video_sha256'}
+                or not bulletin_limits.number(video.get('section_id')) or video['section_id'] not in ids
+                or any(not isinstance(video.get(k), str) or not re.fullmatch(r'[0-9a-f]{64}', video[k])
+                       for k in ('caption_sha256', 'video_sha256'))):
+            raise ValueError('Неверное утверждённое видео')
+        try:
+            canonical, _ = telegram_public_source.canonical_post(video['post_url'])
+            if canonical != video['post_url']:
+                raise ValueError
+        except (telegram_public_source.SourceError, ValueError):
+            raise ValueError('Неверный источник видео') from None
+        result['video'] = dict(video)
+    return result

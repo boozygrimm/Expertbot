@@ -147,3 +147,37 @@ class OwnerVideoReviewTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await review.deliver(self.db, self.owner, self.number, self.rev, 1, send), 'failed')
         send.assert_not_awaited()
         self.assertEqual((await self.db.news_owner_bulletin_video_reviews.find_one({}))['stage'], 'failed')
+
+    async def test_selection_requires_sent_preview_and_explicit_confirmation(self):
+        fake = SimpleNamespace(db=self.db)
+        user = SimpleNamespace(id=self.owner)
+        message = SimpleNamespace(chat=SimpleNamespace(id=self.owner, type='private'), message_id=321,
+            from_user=user, answer=AsyncMock(return_value=SimpleNamespace(message_id=999)),
+            answer_photo=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
+        callback = SimpleNamespace(from_user=user, message=message, answer=AsyncMock(), data='')
+        state = SimpleNamespace()
+        with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
+             patch.object(candidate, 'acquire', side_effect=self.acquire):
+            await panel.show_section(message, self.owner, self.item, self.item['sections'][0])
+            markup = message.answer.await_args.kwargs['reply_markup']
+            assert not any('nb:usevideo:' in b.callback_data for row in markup.inline_keyboard for b in row)
+            assert await review.deliver(self.db, self.owner, self.number, self.rev, 1, AsyncMock(return_value=101)) == 'sent'
+            await panel.show_section(message, self.owner, self.item, self.item['sections'][0])
+            # Obtain the exact button token rather than relying on random ID ordering.
+            markup = message.answer.await_args.kwargs['reply_markup']
+            use = next(b.callback_data for row in markup.inline_keyboard for b in row if b.callback_data.startswith('nb:usevideo:'))
+            callback.data = use; message.message_id = 999
+            await panel.callback_action(callback, state)
+            confirmation = await self.db.owner_panel_confirmations.find_one({'action': 'use_bulletin_video'})
+            assert confirmation and confirmation['data']['revision'] == self.rev
+            # Merely opening a confirmation did not alter the draft.
+            assert (await owner_bulletin.get(self.db, self.owner, self.number))['revision'] == self.rev
+            callback.data = 'owner_tools:run:' + confirmation['_id']
+            await tools.action(callback, state, None)
+            updated = await owner_bulletin.get(self.db, self.owner, self.number)
+            assert updated['revision'] != self.rev
+            assert updated['sections'][0]['video']['video_sha256'] == hashlib.sha256(self.video).hexdigest()
+            assert await self.db.news_owner_trial_jobs.count_documents({}) == 0
+            assert await review.remove_from_bulletin(self.db, self.owner, self.number, updated['revision'], 1) == 'removed'
+            removed = await owner_bulletin.get(self.db, self.owner, self.number)
+            assert 'video' not in await owner_bulletin.approved_payload(self.db, self.owner, self.number, removed['revision'])

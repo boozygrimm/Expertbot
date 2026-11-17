@@ -1,9 +1,10 @@
 """Build a real bulletin with one local video using already prepared dialogue.
 
 No network, TTS, approval, queue, bot or publication. A caller must supply the
-reviewed media, WAV files and an editorially checked pause. The regular image-
-only worker remains unchanged. Output is created only if the entire release,
-including the insert and intro/tail, fits in five minutes without cutting speech.
+reviewed media, WAV files and a safe insertion position. The bulletin worker
+can also call it after owner approval, inserting after a complete news item.
+Output is created only if the entire release, including the insert and intro/tail,
+fits in five minutes without cutting speech.
 """
 from __future__ import annotations
 

@@ -157,6 +157,8 @@ async def run_idle_once(queue, collection, client) -> None:
         try:
             if not await client.supports_bulletins():
                 return
+            if 'video' in job.get('bulletin', {}) and not await client.supports_bulletin_video():
+                return
         except (AttributeError, NewsWorkerError):
             return
     if job.get('kind') == 'program':

@@ -144,7 +144,17 @@ def _payload_from_sections(sections: list[dict]) -> dict:
         if 'image_b64' in section:
             clean['image_b64'] = section['image_b64']
         result.append(clean)
-    return bulletin_contract.validate_bulletin({'sections': result})
+    videos = [section['video'] for section in sections if 'video' in section]
+    if len(videos) > 1:
+        raise ValueError('В выпуске поддерживается одно видео')
+    payload = {'sections': result}
+    if videos:
+        if not isinstance(videos[0], dict):
+            raise ValueError('Неверное видео')
+        payload['video'] = videos[0]
+        if not any(section['id'] == videos[0].get('section_id') and 'video' in section for section in sections):
+            raise ValueError('Видео привязано к другой новости')
+    return bulletin_contract.validate_bulletin(payload)
 
 
 def parse_section_edit(text: str) -> dict:
@@ -190,6 +200,10 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
     if not await _sources_current(db, owner_id, item):
         return 'stale_source'
     sections = copy.deepcopy(item['sections'])
+    # A media approval is specific to the entire reviewed version. Any edit
+    # invalidates it; the owner must inspect/approve the new version again.
+    for part in sections:
+        part.pop('video', None)
     section = next((part for part in sections if part['id'] == section_id), None)
     if section is None:
         raise ValueError('Новость не найдена')

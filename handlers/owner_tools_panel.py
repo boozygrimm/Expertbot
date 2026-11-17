@@ -643,6 +643,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             elif name == 'review_bulletin_video':
                 from handlers import owner_bulletin_panel
                 await owner_bulletin_panel.video_review_confirmed(message, callback.from_user.id, data, bot)
+            elif name == 'use_bulletin_video':
+                from handlers import owner_bulletin_panel
+                await owner_bulletin_panel.use_video_confirmed(message, callback.from_user.id, data)
             elif name in ('render_bulletin', 'shorten_bulletin'):
                 from handlers import owner_bulletin_panel
                 fn = owner_bulletin_panel.render_confirmed if name == 'render_bulletin' else owner_bulletin_panel.shorten_confirmed

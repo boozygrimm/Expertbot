@@ -6,14 +6,51 @@ publishes automatically. Individual TTS requests use the existing key rotation.
 """
 from __future__ import annotations
 
+import hashlib
+import shutil
 import subprocess
+import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from news_prototype import (bulletin_contract, bulletin_dialogue_audio, bulletin_full_video_trial,
-                            bulletin_layered_video, bulletin_timing, story_pipeline)
+                            bulletin_layered_video, bulletin_timing, bulletin_video_pipeline,
+                            combined_trial, story_pipeline, telegram_public_source)
+
+
+def _acquire_reviewed_video(video: dict, parent: Path, ffmpeg: str) -> tuple[Path, str]:
+    """Redownload only the exact reviewed public post; reject changed bytes.
+
+    No signed URL or local path comes from the request. Media is downloaded
+    before TTS, privately, into a fresh directory, and never silently replaced
+    by different material. An approved hash is not itself proof of rights.
+    """
+    ffprobe = shutil.which('ffprobe')
+    if not ffprobe:
+        raise ValueError('Для видео нужен ffprobe')
+    post = telegram_public_source.fetch_post(video['post_url'])
+    if (post.url != video['post_url'] or not post.caption_complete or post.video_status != 'available'
+            or hashlib.sha256(post.caption.encode('utf-8')).hexdigest() != video['caption_sha256']):
+        raise ValueError('Пост изменился после проверки')
+    media = telegram_public_source.download_video(post, parent / 'source', ffmpeg=ffmpeg, ffprobe=ffprobe)
+    if media.sha256 != video['video_sha256']:
+        raise ValueError('Видео изменилось после проверки')
+    return media.path, ffprobe
 
 
 def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
     bulletin = bulletin_contract.validate_bulletin(data)
+    folder = Path(folder)
+    if folder.exists() or folder.is_symlink():
+        raise FileExistsError('Папка выпуска уже существует')
+    with ExitStack() as stack:
+        source = None
+        if 'video' in bulletin:
+            private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='bulletin-source-', dir=folder.parent)))
+            source = _acquire_reviewed_video(bulletin['video'], private, ffmpeg)
+        return _run(bulletin, folder, ffmpeg, keys, source)
+
+
+def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], source: tuple[Path, str] | None) -> Path:
     sections = bulletin['sections']
     # One joint Algenib/Puck recording per news item, as in the owner-approved
     # full-bulletin trial. Reuse the same key rotation; no per-turn TTS calls.
@@ -35,9 +72,19 @@ def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
         # Full-section WAVs do not contain reliable speaker boundaries. The
         # approved preview's heuristic animates only unambiguous estimates;
         # speech and both presenters remain intact even without a split.
-        timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
         story_pipeline._state(folder, 'rendering')
-        bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
+        if source is None:
+            timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
+            bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
+        else:
+            # prepare appended half a second of silence to the *end* of the
+            # chosen story. Cut centrally in that added silence, never inside a
+            # sentence, then continue to the next news after the clip.
+            target = next(w for w in windows if w.section_id == bulletin['video']['section_id'])
+            intro = combined_trial.INTRO_FRAMES / combined_trial.bender.FPS
+            cut_frame = round((target.end - intro - .25) * combined_trial.bender.FPS)
+            bulletin_video_pipeline.render(bulletin, audio, parts, source[0], temporary, ffmpeg, source[1],
+                                           section_id=target.section_id, cut_frame=cut_frame)
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(temporary),
                         '-f', 'null', '-'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         temporary.replace(output)
