@@ -18,7 +18,7 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-async def card(message, owner_id: int, kind: str, item: dict):
+async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bool = False):
     """Store the reviewed revision server-side (it cannot fit in callback_data)."""
     if kind == 'draft':
         number = item['draft_id']
@@ -46,7 +46,10 @@ async def card(message, owner_id: int, kind: str, item: dict):
             b.button(text='🔍 Убрать увеличенные области', callback_data=f'newsact:nofocus:{token}')
         if item.get('script', {}).get('image_b64'):
             b.button(text='🖼 Убрать картинку', callback_data=f'newsact:noimage:{token}')
-        b.button(text='🎬 Подтвердить рендер сюжета', callback_data=f'newsact:approve:{token}')
+        if for_program:
+            b.button(text='📺 Собрать выпуск', callback_data='newsact:choose')
+        else:
+            b.button(text='🎬 Подтвердить рендер сюжета', callback_data=f'newsact:approve:{token}')
     else:
         b.button(text='🎬 Подтвердить рендер выпуска', callback_data=f'newsact:approve:{token}')
     b.button(text='📰 Панель новостей', callback_data='news_panel:home')
@@ -84,8 +87,8 @@ async def selection(message, session):
     end.adjust(1)
     b.attach(end)
     text = (f'📺 Выбор сюжетов · страница {page + 1}/{pages}\n'
-            f'Выбрано {len(selected)} из 4. Показаны до 100 последних готовых черновиков. Нужны 2–4 проверенных сюжета. '
-            'Создание выпуска не запускает рендер.')
+            f'Выбрано {len(selected)} из 4. Показаны готовые и подтверждённо доставленные черновики среди 100 последних. Нужны 2–4 проверенных сюжета. '
+            'Создание выпуска не запускает рендер. При подтверждении все сюжеты будут созданы заново с расходом квоты.')
     await message.edit_text(text, reply_markup=b.as_markup(), parse_mode=None)
 
 
@@ -100,9 +103,11 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             if not await owner_trial.drafts_enabled(db.db):
                 return await callback.answer('Включи подготовку сценариев.', show_alert=True)
             docs = await db.db.news_owner_drafts.find({'owner_id': callback.from_user.id,
-                'stage': 'draft_ready'}).sort('created_at', -1).limit(100).to_list(length=100)
+                'stage': {'$in': ['draft_ready', 'queued', 'already_queued']}}).sort('created_at', -1).limit(100).to_list(length=100)
+            docs = [d for d in docs if await owner_program.eligible_draft(db.db, callback.from_user.id, d)]
             items = [{'number': d['draft_id'], 'revision': d['revision'],
-                      'label': (d.get('script') or {}).get('ticker', '') or f'Черновик №{d["draft_id"]}'} for d in docs]
+                      'label': ('[уже отправлен] ' if d.get('stage') != 'draft_ready' else '') +
+                      ((d.get('script') or {}).get('ticker', '') or f'Черновик №{d["draft_id"]}')} for d in docs]
             token = secrets.token_hex(8)
             now = datetime.now(timezone.utc)
             await db.db.owner_news_selections.delete_many({'expires_at': {'$lt': now}})
@@ -194,7 +199,9 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             await tools.new_confirmation(callback.message, callback.from_user.id, 'approve_' + kind,
                 'Запустить рендер проверенного ' + ('сюжета' if kind == 'draft' else 'выпуска') +
-                f' №{number}? Готовое видео придёт в личку, публикации не будет.', number=number, revision=rev)
+                f' №{number}? Готовое видео придёт в личку, публикации не будет.' +
+                (' Все сюжеты выпуска будут созданы заново, расходуется квота озвучки.' if kind == 'program' else ''),
+                number=number, revision=rev)
             return
         await callback.answer('Неизвестное действие.', show_alert=True)
     except Exception as exc:

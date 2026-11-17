@@ -106,7 +106,8 @@ def parse_message(message: str) -> tuple[str, dict]:
     return url, validate_script({'turns': turns, 'ticker': ticker})
 
 
-async def admit(db, owner_id: int, url: str, script: dict) -> str:
+def single_candidate(owner_id: int, url: str, script: dict) -> tuple[str, dict, str]:
+    """Canonical identity shared by admission and delivered-draft verification."""
     if type(owner_id) is not int or owner_id <= 0:
         raise ValueError('Неверный владелец')
     try:
@@ -119,7 +120,11 @@ async def admit(db, owner_id: int, url: str, script: dict) -> str:
     canonical = json.dumps({'owner_id': owner_id, 'url': url, 'script': script},
                            ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
     digest = hashlib.sha256(canonical).hexdigest()
-    candidate_id = 'owner-trial:' + digest
+    return url, script, 'owner-trial:' + digest
+
+
+async def admit(db, owner_id: int, url: str, script: dict) -> str:
+    url, script, candidate_id = single_candidate(owner_id, url, script)
     doc = {'owner_id': owner_id, 'source_id': 'owner_trial', 'url': url,
            'title': 'Пробный сюжет по сценарию владельца', 'verification': 'needs_review', 'script': script}
     await db.news_owner_trial_gate.update_one({'_id': 'slot'},

@@ -53,6 +53,20 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('изменилось', self.callback.answer.await_args.args[0])
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 1)
 
+    async def test_multi_story_preview_offers_program_not_single_render(self):
+        item = await self.ready(12)
+        self.message.from_user = self.user
+        self.message.panel_mode = True
+        await news_owner_drafts.show(self.message, 12, item=item, for_program=True)
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        self.assertTrue(any(button.callback_data == 'newsact:choose' for button in buttons))
+        self.assertFalse(any('рендер сюжета' in button.text for button in buttons))
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+        await news_owner_drafts.show(self.message, 12, item=item, for_program=False)
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        self.assertTrue(any('рендер сюжета' in button.text for row in markup.inline_keyboard for button in row))
+
     async def test_edit_mode_uses_captured_revision_and_validation(self):
         item = await self.ready(12)
         await news.card(self.message, news.ADMIN_ID, 'draft', item)
@@ -91,6 +105,31 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         program = await owner_program.get(self.db, news.ADMIN_ID, 321)
         self.assertEqual(program['stage'], 'ready_for_review')
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_selection_includes_only_confirmed_delivered_draft(self):
+        await self.ready(10)
+        item = await self.ready(11)
+        await owner_drafts.approve(self.db, news.ADMIN_ID, 11, item['revision'])
+        await self.action('newsact:choose')
+        session = await self.db.owner_news_selections.find_one({'stage': 'open'})
+        self.assertEqual([entry['number'] for entry in session['items']], [10])
+        job = await self.db.news_owner_trial_jobs.find_one({})
+        await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']},
+            {'$set': {'stage': 'review_sent', 'review_message_id': 55}})
+        await self.action('newsact:choose')
+        session = await self.db.owner_news_selections.find_one({'stage': 'open', 'items.number': 11})
+        self.assertEqual({entry['number'] for entry in session['items']}, {10, 11})
+        self.assertIn('уже отправлен', next(x['label'] for x in session['items'] if x['number'] == 11))
+        token = session['_id']
+        await self.action(f'newsact:select:{token}:10')
+        await self.action(f'newsact:select:{token}:11')
+        await self.action(f'newsact:build:{token}')
+        conf = await self.db.owner_panel_confirmations.find_one({})
+        self.callback.data = 'owner_tools:run:' + conf['_id']
+        with patch.object(news_owner_drafts, 'show_program', AsyncMock()):
+            await tools.action(self.callback, self.state, None)
+        self.assertEqual(len((await owner_program.get(self.db, news.ADMIN_ID, 321))['stories']), 2)
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
 
     async def test_changed_draft_or_expired_selection_cannot_build(self):
         item = await self.ready(10); await self.ready(11)

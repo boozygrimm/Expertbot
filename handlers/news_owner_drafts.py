@@ -67,7 +67,7 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         image = item['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
-            label = 'кадр-превью видео' if item.get('image_kind') == 'video_thumbnail' else 'изображение поста'
+            label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи'}.get(item.get('image_kind'), 'изображение поста')
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Найдено {label}. Оно появится в ролике крупным планом. '
                                                'Проверьте содержимое и кадрирование перед публикацией. '
@@ -84,7 +84,7 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
             await message.answer('Картинка не найдена или недоступна — ролик будет без неё.', parse_mode=None)
         if panel_mode:
             from handlers.owner_news_actions import card
-            await card(message, message.from_user.id, 'draft', item)
+            await card(message, message.from_user.id, 'draft', item, for_program=for_program)
         elif not for_program:
             await message.answer(f'/news_approve {draft_id} {item["revision"]}', parse_mode=None)
         return
@@ -538,7 +538,7 @@ async def show_program(message, program_id: int, *, program: dict | None = None,
     await message.answer('Проверьте все сюжеты и картинки ниже. Если исправите один из черновиков, '
                          + ('соберите выпуск заново в панели. ' if panel_mode else
                             'создайте выпуск заново командой /news_program с теми же номерами. ')
-                         + 'Пока рендера нет.', parse_mode=None)
+                         + 'Пока рендера нет. После подтверждения все сюжеты будут созданы заново; расходуется квота озвучки.', parse_mode=None)
     for index, story in enumerate(program['stories'], 1):
         await message.answer(f'Сюжет {index} из {len(program["stories"])}', parse_mode=None)
         editable = owner_drafts.editable_message(story['draft_id'], story['url'], story['script'])
@@ -547,7 +547,7 @@ async def show_program(message, program_id: int, *, program: dict | None = None,
         image = story['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
-            label = 'превью видео' if story.get('image_kind') == 'video_thumbnail' else 'картинка поста'
+            label = {'video_thumbnail': 'превью видео', 'article_image': 'изображение из метаданных статьи'}.get(story.get('image_kind'), 'картинка поста')
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Сюжет {index}: {label}. ' + (
                                            'Правки доступны в карточке черновика.' if panel_mode else
