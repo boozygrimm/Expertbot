@@ -96,11 +96,12 @@ def configure_dispatcher() -> Dispatcher:
         if owner_trial_enabled():
             from handlers import news_owner_trial
             dp.include_router(news_owner_trial.router)
-            if os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1':
-                from handlers import news_owner_drafts
-                dp.include_router(news_owner_drafts.router)
         else:
             logging.warning('Изолированная новостная проба выключена из-за конфликтующих флагов')
+    # Daily collection is controlled in the owner's private chat and does not
+    # depend on the separate, opt-in video workflow.
+    from handlers import news_owner_drafts
+    dp.include_router(news_owner_drafts.router)
     if os.getenv("NEWS_INTAKE_ENABLED", "").strip() == "1":
         # Candidate intake only; no automatic rendering or publishing.
         from handlers import news_intake
@@ -152,9 +153,10 @@ async def collect_owner_daily_news():
     try:
         from database import db
         from news_prototype import owner_daily, news_scheduler
-        if owner_daily.enabled():
+        if await owner_daily.enabled(db.db):
             async def work():
-                await owner_daily.poll(db.db)
+                if await owner_daily.enabled(db.db):
+                    await owner_daily.poll(db.db)
             await news_scheduler._locked(db.db.news_owner_daily_locks, 'collector', work)
     except Exception as exc:
         logging.warning('Не удалось собрать новости владельца: %s', type(exc).__name__)
@@ -166,9 +168,11 @@ async def deliver_owner_daily_news():
         from ai_providers import fire_gemini_key
         from models import GEMINI_CHAT_MODEL
         from news_prototype import owner_daily, news_scheduler
-        if owner_daily.enabled():
+        if await owner_daily.enabled(db.db):
             async def work():
-                await owner_daily.send_due(db.db, bot, ADMIN_ID, fire_gemini_key(), GEMINI_CHAT_MODEL)
+                if await owner_daily.enabled(db.db):
+                    await owner_daily.send_due(db.db, bot, ADMIN_ID, fire_gemini_key(), GEMINI_CHAT_MODEL,
+                                               check_enabled=True)
             await news_scheduler._locked(db.db.news_owner_daily_locks, 'delivery', work)
     except Exception as exc:
         logging.warning('Не удалось подготовить ежедневную подборку: %s', type(exc).__name__)
@@ -206,13 +210,11 @@ def create_scheduler() -> AsyncIOScheduler:
         from news_prototype.owner_trial import enabled as owner_trial_enabled
         if owner_trial_enabled():
             scheduler.add_job(deliver_owner_news_trial, 'interval', minutes=1, max_instances=1, coalesce=True)
-    if os.getenv('NEWS_OWNER_DAILY_ENABLED', '').strip() == '1':
-        from news_prototype.owner_daily import enabled as owner_daily_enabled
-        if owner_daily_enabled():
-            scheduler.add_job(collect_owner_daily_news, 'interval', minutes=30, max_instances=1,
-                              coalesce=True, next_run_time=get_msk_now())
-            scheduler.add_job(deliver_owner_daily_news, 'cron', minute='*', timezone=MSK, max_instances=1,
-                              coalesce=True, next_run_time=get_msk_now())
+    # Jobs stay registered so the owner can switch collection on without a restart.
+    scheduler.add_job(collect_owner_daily_news, 'interval', minutes=30, max_instances=1,
+                      coalesce=True, next_run_time=get_msk_now())
+    scheduler.add_job(deliver_owner_daily_news, 'cron', minute='*', timezone=MSK, max_instances=1,
+                      coalesce=True, next_run_time=get_msk_now())
     if os.getenv('NEWS_COLLECTION_ENABLED', '').strip() == '1':
         scheduler.add_job(poll_news_sources, 'interval', minutes=30, max_instances=1, coalesce=True)
     if os.getenv('NEWS_EDITOR_ENABLED', '').strip() == '1':

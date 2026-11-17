@@ -234,15 +234,36 @@ async def discover(message: types.Message) -> None:
         await message.answer('Не удалось получить подборку. Попробуйте позже.', parse_mode=None)
 
 
+@router.message(Command('news_daily_on', 'news_daily_off'))
+async def daily_toggle(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    from news_prototype import owner_daily
+    command = (message.text or '').split()[0].split('@')[0].lower()
+    turn_on = command == '/news_daily_on'
+    try:
+        await owner_daily.set_enabled(db.db, turn_on)
+        if turn_on:
+            await message.answer('Сбор включён. Начинаю проверять источники; подборка — в 03:00 МСК. '
+                                 'Состояние: /news_daily_status', parse_mode=None)
+            from app_setup import collect_owner_daily_news
+            await collect_owner_daily_news()
+        else:
+            await message.answer('Сбор и ежедневная отправка выключены. Включить: /news_daily_on', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось изменить состояние сбора: %s', type(exc).__name__)
+        await message.answer('Не удалось изменить состояние сбора. Попробуйте позже.', parse_mode=None)
+
+
 @router.message(Command('news_daily_status'))
 async def daily_status(message: types.Message) -> None:
     if not authorized(message):
         return
     from news_prototype import owner_daily
-    if not owner_daily.enabled():
-        await message.answer('Ежедневный сбор новостей выключен.', parse_mode=None)
-        return
     try:
+        if not await owner_daily.enabled(db.db):
+            await message.answer('Ежедневный сбор новостей выключен. Включить: /news_daily_on', parse_mode=None)
+            return
         from datetime import datetime, timedelta, timezone
         now = datetime.now(timezone.utc)
         state = await db.db.news_owner_daily_state.find_one({'_id': 'last_poll'})
@@ -264,7 +285,9 @@ async def daily_status(message: types.Message) -> None:
             labels = {'preparing': 'готовится', 'ready': 'ожидает отправки', 'sending': 'отправка не подтверждена',
                       'uncertain': 'отправка не подтверждена', 'sent': 'доставлена'}
             text += f'\nПоследняя подборка ({last["day"]}): {labels.get(last.get("stage"), "неизвестно")}.'
-        text += '\nПосмотреть накопленное: /news_collected'
+        text += '\nПосмотреть накопленное: /news_collected\nВыключить сбор: /news_daily_off'
+        if not enabled():
+            text += '\nПодготовка сценариев сейчас выключена; сбору это не мешает.'
         await message.answer(text, parse_mode=None)
     except Exception as exc:
         logger.warning('Не удалось получить статус сбора: %s', type(exc).__name__)
@@ -276,10 +299,10 @@ async def collected(message: types.Message) -> None:
     if not authorized(message):
         return
     from news_prototype import owner_daily
-    if not owner_daily.enabled():
-        await message.answer('Ежедневный сбор новостей выключен.', parse_mode=None)
-        return
     try:
+        if not await owner_daily.enabled(db.db):
+            await message.answer('Ежедневный сбор новостей выключен. Включить: /news_daily_on', parse_mode=None)
+            return
         from ai_providers import fire_gemini_key
         from models import GEMINI_CHAT_MODEL
         text = await owner_daily.preview(db.db, message.from_user.id, message.message_id,

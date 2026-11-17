@@ -24,13 +24,22 @@ class DailyTests(unittest.IsolatedAsyncioTestCase):
         self.fetch = AsyncMock(return_value=(ITEMS, ['Decrypt']))
         self.translate = AsyncMock(return_value=['Новости ИИ', 'Новая модель ИИ'])
 
-    async def test_enabled_only_with_separate_flag_and_existing_owner_mode(self):
-        flags = {'NEWS_OWNER_DAILY_ENABLED':'1', 'NEWS_OWNER_DRAFT_ENABLED':'1', 'NEWS_OWNER_TRIAL_ENABLED':'1',
-                 **{name:'0' for name in owner_trial.OTHER_FLAGS}}
-        with patch.dict(os.environ, flags, clear=False):
-            self.assertTrue(owner_daily.enabled())
-            with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED':'0'}): self.assertFalse(owner_daily.enabled())
-            with patch.dict(os.environ, {'NEWS_COLLECTION_ENABLED':'1'}): self.assertFalse(owner_daily.enabled())
+    async def test_chat_setting_overrides_legacy_environment_default(self):
+        with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '0', 'NEWS_OWNER_TRIAL_ENABLED': '0',
+                                     'NEWS_OWNER_DRAFT_ENABLED': '0', 'NEWS_COLLECTION_ENABLED': '1'}):
+            self.assertFalse(await owner_daily.enabled(self.db))
+            await owner_daily.set_enabled(self.db, True)
+            self.assertTrue(await owner_daily.enabled(self.db))
+            with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '1'}):
+                await owner_daily.set_enabled(self.db, False)
+                self.assertFalse(await owner_daily.enabled(self.db))
+        fresh = AsyncMongoMockClient().test
+        old_flags = {'NEWS_OWNER_DAILY_ENABLED': '1', 'NEWS_OWNER_TRIAL_ENABLED': '1',
+                     'NEWS_OWNER_DRAFT_ENABLED': '1', **{name: '0' for name in owner_trial.OTHER_FLAGS}}
+        with patch.dict(os.environ, old_flags):
+            self.assertTrue(await owner_daily.enabled(fresh))
+            with patch.dict(os.environ, {'NEWS_OWNER_DRAFT_ENABLED': '0'}):
+                self.assertFalse(await owner_daily.enabled(fresh))
 
     async def test_poll_deduplicates_tracking_urls_and_keeps_status(self):
         self.assertEqual(await owner_daily.poll(self.db, now=DAY, fetch=self.fetch), (2, ['Decrypt']))
@@ -84,6 +93,22 @@ class DailyTests(unittest.IsolatedAsyncioTestCase):
         text = self.bot.send_message.await_args.args[1]
         self.assertNotIn('После трёх', text)
         self.assertEqual(await self.db.news_owner_daily_deliveries.count_documents({}), 1)
+
+    async def test_turning_off_during_preparation_prevents_send(self):
+        await owner_daily.set_enabled(self.db, True)
+        await owner_daily.initialize(self.db, 123, DAY - timedelta(minutes=1))
+        async def stop_during_fetch(**kwargs):
+            await owner_daily.set_enabled(self.db, False)
+            return ITEMS, []
+        result = await owner_daily.send_due(self.db, self.bot, 123, 'key', 'model', now=DAY,
+                                            fetch=stop_during_fetch, translate=self.translate, check_enabled=True)
+        self.assertEqual(result, 'disabled')
+        self.bot.send_message.assert_not_awaited()
+        await owner_daily.set_enabled(self.db, True)
+        result = await owner_daily.send_due(self.db, self.bot, 123, 'key', 'model', now=DAY,
+                                            fetch=self.fetch, translate=self.translate, check_enabled=True)
+        self.assertEqual(result, 'sent')
+        self.bot.send_message.assert_awaited_once()
 
     async def test_uncertain_send_does_not_repeat(self):
         await owner_daily.initialize(self.db, 123, DAY-timedelta(minutes=1))
@@ -143,7 +168,7 @@ class DailyIntegrationTests(unittest.IsolatedAsyncioTestCase):
         return {'NEWS_OWNER_DAILY_ENABLED': '1', 'NEWS_OWNER_DRAFT_ENABLED': '1',
                 'NEWS_OWNER_TRIAL_ENABLED': '1', **{name: '0' for name in owner_trial.OTHER_FLAGS}}
 
-    async def test_scheduler_is_opt_in_and_registers_immediate_collection(self):
+    async def test_scheduler_registers_jobs_even_when_daily_is_off(self):
         import app_setup
         with patch.dict(os.environ, self.flags(), clear=False):
             scheduler = app_setup.create_scheduler()
@@ -157,8 +182,34 @@ class DailyIntegrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(jobs['deliver_owner_daily_news'].next_run_time)
         with patch.dict(os.environ, {**self.flags(), 'NEWS_OWNER_DAILY_ENABLED': '0'}, clear=False):
             names = {job.func.__name__ for job in app_setup.create_scheduler().get_jobs()}
-            self.assertNotIn('collect_owner_daily_news', names)
-            self.assertNotIn('deliver_owner_daily_news', names)
+            self.assertIn('collect_owner_daily_news', names)
+            self.assertIn('deliver_owner_daily_news', names)
+
+    async def test_daily_commands_registered_without_news_flags(self):
+        import json
+        import subprocess
+        import sys
+        env = os.environ.copy()
+        for name in ('NEWS_OWNER_DAILY_ENABLED', 'NEWS_OWNER_DRAFT_ENABLED', 'NEWS_OWNER_TRIAL_ENABLED',
+                     *owner_trial.OTHER_FLAGS):
+            env.pop(name, None)
+        script = '''
+import json
+from aiogram.filters import Command
+from app_setup import configure_dispatcher
+root = configure_dispatcher()
+names = set()
+for router in root.sub_routers:
+    for handler in router.message.handlers:
+        for item in handler.filters or []:
+            if isinstance(item.callback, Command):
+                names.update(c for c in item.callback.commands if isinstance(c, str))
+print(json.dumps(sorted(names)))
+'''
+        result = subprocess.run([sys.executable, '-c', script], env=env, text=True,
+                                capture_output=True, check=True, timeout=30)
+        names = set(json.loads(result.stdout))
+        self.assertTrue({'news_daily_on', 'news_daily_off', 'news_daily_status', 'news_collected'} <= names)
 
     async def test_handlers_private_owner_only_and_preview_is_pickable(self):
         from handlers import news_owner_drafts as handlers
@@ -186,6 +237,55 @@ class DailyIntegrationTests(unittest.IsolatedAsyncioTestCase):
             await handlers.collected(message)
             await handlers.daily_status(message)
             message.answer.assert_not_awaited()
+
+    async def test_chat_toggle_is_private_persistent_and_polls_immediately(self):
+        from handlers import news_owner_drafts as handlers
+        import app_setup
+        db = AsyncMongoMockClient().test
+        message = SimpleNamespace(from_user=SimpleNamespace(id=handlers.ADMIN_ID), chat=SimpleNamespace(type='private'),
+                                  text='/news_daily_on', answer=AsyncMock())
+        with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '0', 'NEWS_OWNER_TRIAL_ENABLED': '0',
+                                     'NEWS_OWNER_DRAFT_ENABLED': '0'}), \
+             patch.object(handlers, 'db', SimpleNamespace(db=db)), \
+             patch.object(app_setup, 'collect_owner_daily_news', AsyncMock()) as collect:
+            await handlers.daily_toggle(message)
+            self.assertTrue(await owner_daily.enabled(db))
+            collect.assert_awaited_once()
+            await handlers.daily_status(message)
+            self.assertIn('Сбор включён', message.answer.await_args.args[0])
+            self.assertIn('Подготовка сценариев сейчас выключена', message.answer.await_args.args[0])
+            message.text = '/news_daily_off'
+            await handlers.daily_toggle(message)
+            self.assertFalse(await owner_daily.enabled(db))
+            with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '1'}):
+                self.assertFalse(await owner_daily.enabled(db))
+            message.from_user.id += 1
+            message.text = '/news_daily_on'
+            await handlers.daily_toggle(message)
+            self.assertFalse(await owner_daily.enabled(db))
+            collect.assert_awaited_once()
+            message.from_user.id -= 1
+            message.chat.type = 'group'
+            await handlers.daily_toggle(message)
+            self.assertFalse(await owner_daily.enabled(db))
+
+    async def test_jobs_do_not_fetch_or_send_when_off(self):
+        import app_setup
+        import database
+        db = AsyncMongoMockClient().test
+        with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '0'}), \
+             patch.object(database, 'db', SimpleNamespace(db=db)), \
+             patch.object(owner_daily, 'poll', AsyncMock()) as poll, \
+             patch.object(owner_daily, 'send_due', AsyncMock()) as send:
+            await app_setup.collect_owner_daily_news()
+            await app_setup.deliver_owner_daily_news()
+            poll.assert_not_awaited()
+            send.assert_not_awaited()
+            await owner_daily.set_enabled(db, True)
+            await app_setup.collect_owner_daily_news()
+            await app_setup.deliver_owner_daily_news()
+            poll.assert_awaited_once()
+            send.assert_awaited_once()
 
     async def test_briefing_limits_and_marks_omissions(self):
         items = [{'source': 'OpenAI', 'title': '📰' * 150, 'url': f'https://example.com/{i}?x=' + 'x' * 400,

@@ -16,10 +16,22 @@ KEEP_DAYS = 7
 BATCH_BASE = 5_000_000_000_000
 
 
-def enabled() -> bool:
+async def enabled(db) -> bool:
+    """Telegram setting takes precedence; retain the old flag as a default."""
+    settings = await db.news_owner_daily_state.find_one({'_id': 'settings'})
+    if settings and isinstance(settings.get('enabled'), bool):
+        return settings['enabled']
+    # Preserve the old opt-in rules until the owner explicitly changes the setting.
     return (os.getenv('NEWS_OWNER_DAILY_ENABLED', '').strip() == '1'
             and os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1'
             and owner_trial.enabled())
+
+
+async def set_enabled(db, value: bool) -> None:
+    if type(value) is not bool:
+        raise ValueError('Неверное состояние сбора')
+    await db.news_owner_daily_state.update_one({'_id': 'settings'},
+                                               {'$set': {'enabled': value}}, upsert=True)
 
 
 def now_utc(now: datetime | None = None) -> datetime:
@@ -162,7 +174,7 @@ async def preview(db, owner_id: int, owner_batch: int, key: str, model: str, *, 
 
 
 async def send_due(db, bot, owner_id: int, key: str, model: str, *, now: datetime | None = None,
-                   fetch=None, translate=None) -> str:
+                   fetch=None, translate=None, check_enabled: bool = False) -> str:
     """Called under a cross-process lease. Resumes preparation, never uncertain sends."""
     if type(owner_id) is not int or owner_id <= 0:
         raise ValueError('Неверный владелец')
@@ -206,6 +218,9 @@ async def send_due(db, bot, owner_id: int, key: str, model: str, *, now: datetim
         record = await db.news_owner_daily_deliveries.find_one({'_id': ident})
     if record.get('stage') != 'ready':
         return record.get('stage', 'unknown')
+    # The owner may have switched collection off while sources were fetched.
+    if check_enabled and not await enabled(db):
+        return 'disabled'
     claim = await db.news_owner_daily_deliveries.update_one({'_id': ident, 'stage': 'ready'},
         {'$set': {'stage': 'sending', 'attempted_at': now}})
     if not claim.modified_count:
