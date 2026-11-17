@@ -6,7 +6,7 @@ Coordinates apply only to the selected 960x540 studio image.
 from __future__ import annotations
 
 from functools import lru_cache
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 from news_prototype import bulletin_concept_screen
 
@@ -16,13 +16,6 @@ SIZE = bulletin_concept_screen.SIZE
 def _smooth(x: float) -> float:
     x = max(0., min(1., x))
     return x * x * (3 - 2 * x)
-
-
-def screen_level(t: float, on_click: float, off_click: float) -> float:
-    """Fade up after power-on and fade down after power-off."""
-    on = _smooth((t - on_click - .13) / .50)
-    off = 1 - _smooth((t - off_click - .10) / .53)
-    return min(on, off)
 
 
 def press_amount(t: float, click_times: list[float]) -> float:
@@ -68,46 +61,19 @@ def unlit_screen() -> Image.Image:
     return image
 
 
-def apply_television(frame: Image.Image, level: float) -> Image.Image:
-    """Dim the outer television picture while leaving its frame and remote lit."""
-    if frame.size != SIZE or not 0 <= level <= 1:
-        raise ValueError('Неверный кадр или яркость телевизора')
-    if level >= 1:
-        return frame
-    original = frame.convert('RGB')
-    dimmed = Image.blend(unlit_screen(), original, level)
-    return Image.composite(dimmed, original, television_mask())
-
-
-def power_effect(frame: Image.Image, t: float, on_click: float, off_click: float,
-                 click_times: list[float]) -> Image.Image:
-    """Adapt the old CRT flash and remote-button glow to the new TV mask."""
-    if frame.size != SIZE:
-        raise ValueError('Неверный размер кадра')
-    flash = max(max(0., 1 - abs(t - center) / span)
-                for center, span in ((on_click + .21, .11), (off_click + .54, .12)))
+def transition_glow(frame: Image.Image, t: float, click_times: list[float]) -> Image.Image:
+    """Keep the button indicator for between-news presses."""
     pulse = max((max(0., 1 - abs(t - at) / .16) for at in click_times), default=0.)
-    if flash <= 0 and pulse <= 0:
+    if pulse <= 0:
         return frame
-    result = frame.convert('RGBA')
-    if flash > 0:
-        line = Image.new('RGBA', SIZE)
-        draw = ImageDraw.Draw(line)
-        draw.rounded_rectangle((155, 269, 802, 273), radius=2,
-                               fill=(168, 224, 255, round(155 * flash)))
-        # Clip to the glass and exclude the foreground remote.
-        line.putalpha(ImageChops.multiply(line.getchannel('A'), television_mask()))
-        result = Image.alpha_composite(result, line)
-    if pulse > 0:
-        glow = Image.new('RGBA', SIZE)
-        draw = ImageDraw.Draw(glow)
-        x, y = 735, 394
-        radius = 3 + round(3 * pulse)
-        draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=(255, 50, 25, round(125 * pulse)))
-        glow = glow.filter(ImageFilter.GaussianBlur(3))
-        ImageDraw.Draw(glow).ellipse((x-2, y-2, x+2, y+2), fill=(255, 180, 110, round(230 * pulse)))
-        result = Image.alpha_composite(result, glow)
-    return result.convert('RGB')
+    glow = Image.new('RGBA', SIZE)
+    draw = ImageDraw.Draw(glow)
+    x, y = 735, 394
+    radius = 3 + round(3 * pulse)
+    draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=(255, 50, 25, round(125 * pulse)))
+    glow = glow.filter(ImageFilter.GaussianBlur(3))
+    ImageDraw.Draw(glow).ellipse((x-2, y-2, x+2, y+2), fill=(255, 180, 110, round(230 * pulse)))
+    return Image.alpha_composite(frame.convert('RGBA'), glow).convert('RGB')
 
 
 @lru_cache(maxsize=1)

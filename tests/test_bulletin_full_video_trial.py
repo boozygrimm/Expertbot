@@ -12,7 +12,7 @@ import imageio_ffmpeg
 from PIL import Image
 import pytest
 
-from news_prototype import bulletin_full_video_trial as trial, podcast_audio_trial, podcast_video_trial
+from news_prototype import bulletin_full_video_trial as trial, combined_trial, podcast_audio_trial, podcast_video_trial
 from tests.test_bulletin_pipeline import payload as picture_payload
 
 
@@ -54,10 +54,16 @@ def test_real_synthetic_render_uses_existing_sound_and_pictures():
         before = (audio_dir / 'dialogue.wav').read_bytes()
         with patch.object(trial.bulletin_preflight, 'check', return_value=[]), \
              patch.object(trial.bulletin_duo_content_probe, 'read_worker_env', return_value={}), \
-             patch.object(trial, 'send_video_once', return_value='sent') as send:
+             patch.object(trial, 'send_video_once', return_value='sent') as send, \
+             patch.object(combined_trial, 'display', wraps=combined_trial.display) as old_display, \
+             patch.object(combined_trial, 'write_sound', wraps=combined_trial.write_sound) as old_sound:
             output = trial.run(job, base, ffmpeg)
             assert output.is_file()
             send.assert_called_once()
+            old_sound.assert_called_once()
+            times = [call.args[3] for call in old_display.call_args_list]
+            assert any(.95 < t < 1.2 for t in times)
+            assert any(t > 8.7 for t in times)
             assert (audio_dir / 'dialogue.wav').read_bytes() == before
             with pytest.raises(FileExistsError):
                 trial.run(job, base, ffmpeg)

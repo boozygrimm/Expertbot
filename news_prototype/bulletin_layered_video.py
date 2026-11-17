@@ -61,37 +61,22 @@ def remote_click(rate: int) -> array:
     return result
 
 
-def power_click_positions(dialogue_frames: int, rate: int) -> tuple[int, int]:
-    """Absolute PCM positions in the intro and after the frame-aligned speech."""
-    fps = bender_trial.FPS
-    return round(.85 * rate), round(((combined_trial.INTRO_FRAMES + dialogue_frames) / fps + .5) * rate)
-
-
-def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequence[int] = (),
-                power_clicks: Sequence[int] = ()) -> None:
-    """Pad PCM and place clicks only over verified silence, never over speech."""
-    rate, samples = podcast_video_trial.read_wav(audio)
-    fps = bender_trial.FPS
-    if rate % fps or len(samples) > dialogue_frames * (rate // fps):
-        raise ValueError('Диалог длиннее таймлайна')
+def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequence[int] = ()) -> None:
+    """Use the original power-click audio, adding transitions only in silence."""
+    rate, speech = podcast_video_trial.read_wav(audio)
+    with tempfile.TemporaryDirectory(prefix='bulletin-legacy-sound-') as tmp:
+        legacy = Path(tmp) / 'legacy.wav'
+        combined_trial.write_sound(audio, legacy, dialogue_frames)
+        legacy_rate, padded = podcast_video_trial.read_wav(legacy)
+    start = combined_trial.INTRO_FRAMES * (rate // bender_trial.FPS)
+    if legacy_rate != rate or padded[start:start + len(speech)] != speech:
+        raise ValueError('Исходный эффект изменил речь')
     effect = remote_click(rate)
     for position in clicks:
         if (not isinstance(position, int) or isinstance(position, bool) or position < 0
-                or position + len(effect) > len(samples) or any(samples[position:position + len(effect)])):
-            raise ValueError('Щелчок пересекается с аудио или находится вне диалога')
-    frame_samples = rate // fps
-    padded = array('h', [0]) * ((combined_trial.INTRO_FRAMES + dialogue_frames + combined_trial.TAIL_FRAMES) * frame_samples)
-    start = combined_trial.INTRO_FRAMES * frame_samples
-    padded[start:start + len(samples)] = samples
-    for position in clicks:
+                or position + len(effect) > len(speech) or any(speech[position:position + len(effect)])):
+            raise ValueError('Щелчок пересекается с речью или находится вне диалога')
         padded[start + position:start + position + len(effect)] = effect
-    for position in power_clicks:
-        if (not isinstance(position, int) or isinstance(position, bool) or position < 0
-                or position + len(effect) > len(padded)
-                or not (position + len(effect) <= start or position >= start + len(samples))
-                or any(padded[position:position + len(effect)])):
-            raise ValueError('Щелчок включения пересекается со звуком')
-        padded[position:position + len(effect)] = effect
     bender_trial.write_wav(output, padded, rate)
 
 
@@ -108,21 +93,21 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
     layers = bulletin_animation.frames()
     tickers = [desk_ticker.prepare(section['ticker']) for section in sections]
 
-    @lru_cache(maxsize=24)
-    def frame_bytes(index: int | None, state: tuple[bool, bool, bool], brightness: int) -> bytes:
+    @lru_cache(maxsize=8)
+    def frame_bytes(index: int | None, state: tuple[bool, bool, bool]) -> bytes:
         image = sections[index].get('image_b64') if index is not None else None
-        frame = bulletin_wide_screen.compose(image, speaker_layers=layers[state])
-        return bulletin_remote_animation.apply_television(frame, brightness / 12).tobytes()
+        return bulletin_wide_screen.compose(image, speaker_layers=layers[state]).tobytes()
 
     fps = bender_trial.FPS
     rate = podcast_video_trial.RATE
     clicks = click_positions(windows, rate)
-    power_clicks = power_click_positions(len(active), rate)
-    on_time, off_time = (position / rate + .002 for position in power_clicks)
-    click_times = [on_time, *[(combined_trial.INTRO_FRAMES / fps) + position / rate + .002 for position in clicks], off_time]
+    transition_times = [(combined_trial.INTRO_FRAMES / fps) + position / rate + .002 for position in clicks]
+    off_time, _ = combined_trial.timing(len(active))
+    screen_mask = bulletin_remote_animation.television_mask()
+    off_screen = bulletin_remote_animation.unlit_screen()
     with tempfile.TemporaryDirectory(prefix='bulletin-layered-') as tmp:
         sound = Path(tmp) / 'sound.wav'
-        write_sound(audio, sound, len(active), clicks=clicks, power_clicks=power_clicks)
+        write_sound(audio, sound, len(active), clicks=clicks)
         command = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
                    '-f', 'rawvideo', '-pixel_format', 'rgb24', '-video_size', '960x540',
                    '-framerate', str(fps), '-i', 'pipe:0', '-i', str(sound),
@@ -142,19 +127,25 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                 # Retain the last picture during the closing animation.
                 if index is None and t >= windows[-1].end:
                     index = len(sections) - 1
-                brightness = round(12 * bulletin_remote_animation.screen_level(t, on_time, off_time))
-                data = frame_bytes(index, state, brightness)
-                amount = bulletin_remote_animation.press_amount(t, click_times)
-                effect_active = (abs(t - on_time - .21) < .11 or abs(t - off_time - .54) < .12
-                                 or any(abs(t - at) < .16 for at in click_times))
-                if index is not None or amount > 0 or effect_active:
+                data = frame_bytes(index, state)
+                # The old animation used frame start rather than midpoint for its effects.
+                effect_t = n / fps
+                power_active = (effect_t < 1.48 or effect_t >= off_time + .1
+                                or abs(effect_t - combined_trial.ON_PRESS) < .16
+                                or abs(effect_t - off_time) < .16)
+                amount = max(combined_trial.finger_amount(effect_t, (combined_trial.ON_PRESS, off_time)),
+                             bulletin_remote_animation.press_amount(t, transition_times))
+                transition_active = any(abs(t - at) < .16 for at in transition_times)
+                if index is not None or amount > 0 or power_active or transition_active:
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
                     if index is not None and t < windows[-1].end:
                         frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
+                    if power_active:
+                        frame = combined_trial.display(frame, screen_mask, off_screen, effect_t, off_time)
                     if amount > 0:
                         frame = bulletin_remote_animation.apply(frame, amount)
-                    if effect_active:
-                        frame = bulletin_remote_animation.power_effect(frame, t, on_time, off_time, click_times)
+                    if transition_active:
+                        frame = bulletin_remote_animation.transition_glow(frame, t, transition_times)
                     data = frame.tobytes()
                 process.stdin.write(data)
             process.stdin.close()

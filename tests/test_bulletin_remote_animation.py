@@ -5,39 +5,32 @@ from news_prototype import (bender_trial, bulletin_layered_video, bulletin_remot
                             bulletin_timing, bulletin_wide_screen, combined_trial)
 
 
-def test_screen_turns_on_and_off_after_power_clicks():
-    assert animation.screen_level(.5, .65, 5) == 0
-    assert animation.screen_level(1.4, .65, 5) == pytest.approx(1)
-    assert animation.screen_level(4.9, .65, 5) == pytest.approx(1)
-    assert animation.screen_level(5.3, .65, 5) < 1
-    assert animation.screen_level(5.7, .65, 5) == 0
-
-
 def test_outer_tv_dimming_hides_studio_but_preserves_remote_and_frame():
     bright = bulletin_wide_screen.compose()
-    dark = animation.apply_television(bright, 0)
+    dark = combined_trial.display(bright, animation.television_mask(), animation.unlit_screen(), .1, 8.)
     for point in ((430, 140), (270, 225), (600, 210), (400, 390)):
         assert dark.getpixel(point) == animation.unlit_screen().getpixel(point)
         assert bright.getpixel(point) != dark.getpixel(point)
     for point in ((735, 394), (750, 405), (775, 425), (890, 200), (20, 20)):
         assert bright.getpixel(point) == dark.getpixel(point)
-    assert animation.apply_television(bright, 1).tobytes() == bright.tobytes()
-    with pytest.raises(ValueError): animation.apply_television(bright, 1.1)
+    assert combined_trial.display(bright, animation.television_mask(), animation.unlit_screen(), 3., 8.).tobytes() == bright.tobytes()
 
 
 def test_crt_flash_and_button_glow_match_power_events_without_touching_frame():
-    original = animation.apply_television(bulletin_wide_screen.compose(), 0)
-    on, off = .85, 8.
-    on_flash = animation.power_effect(original, on + .21, on, off, [on, off])
-    off_flash = animation.power_effect(original, off + .54, on, off, [on, off])
+    frame = bulletin_wide_screen.compose()
+    mask, glass = animation.television_mask(), animation.unlit_screen()
+    original = combined_trial.display(frame, mask, glass, .1, 8.)
+    on, off = combined_trial.ON_PRESS, 8.
+    on_flash = combined_trial.display(frame, mask, glass, on + .21, off)
+    off_flash = combined_trial.display(frame, mask, glass, off + .54, off)
     assert sum(on_flash.getpixel((400, 271))) > sum(original.getpixel((400, 271))) + 100
     assert sum(off_flash.getpixel((400, 271))) > sum(original.getpixel((400, 271))) + 100
     assert on_flash.getpixel((20, 20)) == original.getpixel((20, 20))
     assert on_flash.getpixel((735, 394)) == original.getpixel((735, 394))
-    glow = animation.power_effect(original, on, on, off, [on, off])
+    glow = combined_trial.display(frame, mask, glass, on, off)
     assert glow.getpixel((735, 394)) != original.getpixel((735, 394))
-    idle = animation.power_effect(original, 3., on, off, [on, off])
-    assert idle.tobytes() == original.tobytes()
+    idle = combined_trial.display(frame, mask, glass, 3., off)
+    assert idle.tobytes() == frame.tobytes()
 
 
 def test_press_is_timed_to_click_and_stops_between_events():
