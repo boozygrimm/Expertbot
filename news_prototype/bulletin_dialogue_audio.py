@@ -1,4 +1,4 @@
-"""Experimental one-request-per-news dialogue audio; not yet used by worker.
+"""One-request-per-news two-speaker audio for the versioned bulletin worker.
 
 The speaker audio is generated jointly within each news item, using the existing
 Gemini key rotation. Each full item remains a separate checked WAV, allowing
@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 import wave
 
-from news_prototype import bulletin_contract, podcast_audio_trial, podcast_video_trial
+from news_prototype import bulletin_contract, bulletin_timing, podcast_audio_trial, podcast_video_trial
 from video_prototype import gemini_tts
 
 API = gemini_tts.API
@@ -130,6 +130,14 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
         if rate != podcast_audio_trial.RATE or not any(samples):
             raise ValueError('Пустая или повреждённая новость')
         parts.append((section['id'], normalized))
+        try:
+            # Once completed audio and fixed intro/tail already exceed the
+            # entire budget, more requests cannot make it shorter. Keep the
+            # available recordings intact and stop without rendering.
+            bulletin_timing.section_windows(parts)
+        except bulletin_timing.BulletinTooLong:
+            podcast_audio_trial.assemble_wav([path for _, path in parts], folder / 'dialogue.wav')
+            raise
     dialogue = folder / 'dialogue.wav'
     podcast_audio_trial.assemble_wav([path for _, path in parts], dialogue)
     return dialogue, parts

@@ -431,7 +431,9 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                     await owner_bulletin.approved_payload(db.db, owner, item['bulletin_id'], item['revision'])
                 except (ValueError, KeyError, TypeError):
                     return await callback.answer('Источники или версия изменились. Открой вестник заново.', show_alert=True)
-                prompt = ('Поставить проверенную версию вестника на озвучку и рендер? Озвучка расходует квоту Gemini. '
+                prompt = ('Поставить проверенную версию вестника на озвучку и рендер? '
+                          'Каждая новость озвучивается целиком двухголосым запросом Gemini, это расходует квоту. '
+                          'В готовом видео нужно проверить голоса и полноту речи; анимация говорящих приблизительная. '
                           'Если выпуск превысит пять минут, он не будет обрезан или автоматически повторён. '
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
                 confirmation = 'render_bulletin'

@@ -61,4 +61,6 @@ def test_too_long_never_delivers_and_does_not_retry():
             send.assert_not_called()
             with pytest.raises(FileExistsError):
                 trial.run(job, folder, imageio_ffmpeg.get_ffmpeg_exe())
-            assert tts.call_count == 2
+            # The duration guard is now checked after every completed item.
+            assert tts.call_count == 1
+            assert not (folder / 'audio' / '2-normalized.wav').exists()

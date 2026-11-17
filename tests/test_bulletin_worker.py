@@ -144,7 +144,7 @@ assert 'GEMINI_KEYS' not in os.environ
 def blocked(*args, **kwargs): raise AssertionError('network disabled in local test')
 socket.socket.connect = blocked
 from video_prototype import gemini_tts
-def synthesize(text, target, keys, start_index):
+def synthesize(text, target, keys, start_index, **kwargs):
     with wave.open(str(target), 'wb') as wav:
         wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
         wav.writeframes(array('h', [3000 if i % 6000 < 3000 else 0 for i in range(24000)]).tobytes())
@@ -174,7 +174,7 @@ from array import array
 def blocked(*args, **kwargs): raise AssertionError('network disabled')
 socket.socket.connect = blocked
 from video_prototype import gemini_tts
-def synthesize(text, target, keys, start_index):
+def synthesize(text, target, keys, start_index, **kwargs):
     with wave.open(str(target), 'wb') as wav:
         wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
         wav.writeframes((array('h', [3000]*3000 + [0]*3000) * 200).tobytes())

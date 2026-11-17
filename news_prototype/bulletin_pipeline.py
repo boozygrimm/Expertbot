@@ -1,32 +1,41 @@
 """Isolated experimental renderer for one compact, approved bulletin.
 
 Used by the experimental versioned worker endpoint after owner confirmation.
-Requires a new output directory and never retries speech, truncates a story or
-publishes automatically.
+Requires a new output directory; never restarts a job, truncates a story or
+publishes automatically. Individual TTS requests use the existing key rotation.
 """
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from news_prototype import (bulletin_contract, bulletin_layered_video, bulletin_timing,
-                            podcast_video_trial,
-                            story_audio, story_pipeline, story_video)
+from news_prototype import (bulletin_contract, bulletin_dialogue_audio, bulletin_full_video_trial,
+                            bulletin_layered_video, bulletin_timing, story_pipeline)
 
 
 def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
     bulletin = bulletin_contract.validate_bulletin(data)
     sections = bulletin['sections']
-    turns = [turn for section in sections for turn in section['turns']]
-    # Reuse existing TTS and audio timeline as one uninterrupted speech track.
-    story_audio.prepare({'turns': turns, 'ticker': sections[0]['ticker']}, folder, ffmpeg, keys)
+    # One joint Algenib/Puck recording per news item, as in the owner-approved
+    # full-bulletin trial. Reuse the same key rotation; no per-turn TTS calls.
+    # prepare creates an exclusive work directory and retains partial audio on
+    # failure; this path never resumes or silently repeats a previous job.
+    try:
+        audio, parts = bulletin_dialogue_audio.prepare(bulletin, folder, ffmpeg, keys)
+    except bulletin_timing.BulletinTooLong:
+        # The exclusive work folder now contains every completed recording,
+        # but no video or subsequent TTS request is started.
+        story_pipeline._state(folder, 'audio_too_long')
+        raise
     story_pipeline._state(folder, 'audio_ready')
-    section_ids = [section['id'] for section in sections for _ in section['turns']]
-    parts = [(section_id, folder / f'{index}-normalized.wav') for index, section_id in enumerate(section_ids, 1)]
     temporary, output = folder / 'video.partial.mp4', folder / 'video.mp4'
     try:
+        if [number for number, _ in parts] != [section['id'] for section in sections]:
+            raise ValueError('Порядок записей и новостей не совпадает')
         windows, _ = bulletin_timing.section_windows(parts)
-        audio, timed_parts, _ = story_video.load_story(folder)
-        timeline = podcast_video_trial.dialogue_timeline_from_parts(audio, timed_parts)
+        # Full-section WAVs do not contain reliable speaker boundaries. The
+        # approved preview's heuristic animates only unambiguous estimates;
+        # speech and both presenters remain intact even without a split.
+        timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
         story_pipeline._state(folder, 'rendering')
         bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(temporary),

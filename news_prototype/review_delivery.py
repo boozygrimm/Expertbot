@@ -62,7 +62,8 @@ async def run_once(jobs, candidates, client, bot, admin_id: int) -> str:
                 if job.get('kind') == 'digest':
                     review_caption = 'Дайджест из готовых сюжетов. Проверь факты и монтаж перед публикацией.'
                 elif job.get('kind') == 'bulletin':
-                    review_caption = 'Новостной вестник. Проверь факты, изображения и монтаж перед публикацией.'
+                    review_caption = ('Новостной вестник. Прослушай обе роли и полноту речи, проверь факты, '
+                                      'изображения и монтаж. Смена говорящих в анимации приблизительная.')
                 elif job.get('kind') == 'program':
                     review_caption = 'Выпуск из проверенных сюжетов. Проверь видео и монтаж перед публикацией.'
                 else:
