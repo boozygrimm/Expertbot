@@ -142,6 +142,40 @@ def service_keys() -> list[str]:
     return list(dict.fromkeys(x.strip() for x in raw.split(',') if x.strip()))
 
 
+def worker_keys() -> list[str]:
+    """Read the same key source used by the running worker, without printing it."""
+    try:
+        result = subprocess.run(['systemctl', 'show', 'bender-video.service', '-p', 'MainPID', '--value'],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                check=True, timeout=5)
+        pid = int(result.stdout.decode().strip())
+        if pid <= 0:
+            raise ValueError
+        env = (Path('/proc') / str(pid) / 'environ').read_bytes().split(b'\0')
+        raw = next((x.partition(b'=')[2].decode('utf-8').strip()
+                    for x in env if x.startswith(b'GEMINI_TTS_KEYS=')), '')
+    except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+        raise ProbeError('Не удалось проверить настройки работающего воркера') from None
+    if not raw:
+        try:
+            raw = Path('/data/video-prototype/gemini-tts-keys.txt').read_text(encoding='utf-8').strip()
+        except (OSError, UnicodeError):
+            raw = ''
+    return list(dict.fromkeys(x.strip() for x in raw.split(',') if x.strip()))
+
+
+def alternate_key() -> str:
+    # Reconstruct which key the previous probe selected, assuming settings and
+    # shell environment have not changed. Never expose the keys or their hashes.
+    previous, configured = service_keys(), worker_keys()
+    if not previous:
+        raise ProbeError('Не удалось определить ключ прежней пробы')
+    candidate = next((key for key in configured if key != previous[0]), None)
+    if not candidate:
+        raise ProbeError('Не найден другой ключ в настройках воркера')
+    return candidate
+
+
 def post_once(key: str, body: dict) -> tuple[bytes, float]:
     request = urllib.request.Request(API, data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key,
@@ -174,10 +208,10 @@ def post_once(key: str, body: dict) -> tuple[bytes, float]:
         raise ProbeError('Ошибка связи с Gemini; результат запроса может быть неизвестен') from None
 
 
-def run(job: Path, output: Path) -> tuple[Path, float]:
+def run(job: Path, output: Path, *, keys_override: list[str] | None = None) -> tuple[Path, float]:
     turns = dialogue_from_job(job)
     body = request_body(turns)
-    keys = service_keys()
+    keys = service_keys() if keys_override is None else keys_override
     if not keys:
         raise ProbeError('Не найдены существующие ключи TTS')
     output = Path(output)
@@ -200,9 +234,15 @@ def main() -> int:
     # Exactly the reviewed bulletin and dedicated private probe directory;
     # no arbitrary destination, bot or queue operations are exposed here.
     job = Path('/data/video-prototype/news-jobs/fe65e362-28b2-51bd-b626-0e33388b165c')
-    out = Path('/data/video-prototype/bulletin-duo-probe-fe65e362')
+    first = Path('/data/video-prototype/bulletin-duo-probe-fe65e362')
+    out = Path('/data/video-prototype/bulletin-duo-probe-fe65e362-2')
     try:
-        path, duration = run(job, out)
+        if (first.is_symlink() or not first.is_dir() or
+                not (first / 'request-started').is_file() or
+                (first / 'duo.wav').exists()):
+            raise ProbeError('Предыдущая проба имеет неожиданное состояние')
+        # Exactly one other worker key, no automatic rotation or retry.
+        path, duration = run(job, out, keys_override=[alternate_key()])
     except FileExistsError:
         print('Папка или файл пробы уже существуют; состояние не подтверждено. Не повторяйте вслепую.')
         return 1

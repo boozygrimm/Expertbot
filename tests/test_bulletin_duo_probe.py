@@ -105,3 +105,39 @@ class DuoTests(unittest.TestCase):
         with patch.object(p,'service_keys',return_value=['key']), patch.object(p,'post_once') as post:
             with self.assertRaises(p.ProbeError): p.run(self.job,self.job/'probe')
             post.assert_not_called()
+
+class SecondProbeTests(unittest.TestCase):
+    def test_selects_different_key_from_worker_configuration_without_printing(self):
+        with patch.object(p, 'service_keys', return_value=['private-a', 'private-b']), \
+             patch.object(p, 'worker_keys', return_value=['private-a', 'private-b', 'private-c']):
+            self.assertEqual(p.alternate_key(), 'private-b')
+        with patch.object(p, 'service_keys', return_value=['private-a']), \
+             patch.object(p, 'worker_keys', return_value=['private-c', 'private-a']):
+            self.assertEqual(p.alternate_key(), 'private-c')
+        with patch.object(p, 'service_keys', return_value=['private-a']), \
+             patch.object(p, 'worker_keys', return_value=['private-a']):
+            with self.assertRaises(p.ProbeError) as exc:
+                p.alternate_key()
+            self.assertNotIn('private-a', str(exc.exception))
+
+    def test_worker_key_environment_takes_priority_over_file_and_shell(self):
+        proc = Mock(); proc.stdout = b'1234\n'
+        original_bytes = Path.read_bytes
+        def read_bytes(path):
+            if str(path) == '/proc/1234/environ':
+                return b'OTHER=x\0GEMINI_TTS_KEYS=private-a,private-b\0'
+            return original_bytes(path)
+        with patch.object(p.subprocess, 'run', return_value=proc), \
+             patch.object(Path, 'read_bytes', read_bytes), \
+             patch.object(Path, 'read_text', side_effect=AssertionError('wrong source')), \
+             patch.dict(p.os.environ, {'GEMINI_TTS_KEYS':'shell-key'}):
+            self.assertEqual(p.worker_keys(), ['private-a','private-b'])
+
+    def test_second_attempt_makes_only_one_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); job=root/str(uuid.uuid4()); job.mkdir()
+            (job/'request.json').write_text(json.dumps({'bulletin':sample()},ensure_ascii=False),encoding='utf8')
+            with patch.object(p,'post_once',return_value=(audio(),.1)) as call:
+                p.run(job,root/'probe2',keys_override=['private-b'])
+            call.assert_called_once()
+            self.assertEqual(call.call_args.args[0], 'private-b')
