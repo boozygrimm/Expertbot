@@ -123,12 +123,13 @@ def request_one(key, text, timeout):
         raise TTSFailure('некорректный формат ответа Gemini') from None
 
 
-def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET):
+def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET, request_fn=None):
     """Rotate initial key, then try other keys once until the deadline for starting attempts."""
     if not keys:
         raise TTSFailure('нет ключей Gemini')
     if budget <= 0:
         raise TTSFailure('нет времени на Gemini')
+    request = request_one if request_fn is None else request_fn
     ordered = keys[start_index % len(keys):] + keys[:start_index % len(keys)]
     deadline = time.monotonic() + budget
     for key in ordered:
@@ -136,7 +137,7 @@ def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET):
         if remaining <= 0:
             break
         try:
-            data, duration = request_one(key, text, min(REQUEST_TIMEOUT, remaining))
+            data, duration = request(key, text, min(REQUEST_TIMEOUT, remaining))
             # A fresh clip directory is used per job; only publish validated WAV.
             temp = Path(output).with_suffix('.wav.tmp')
             temp.write_bytes(data)
