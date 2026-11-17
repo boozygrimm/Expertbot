@@ -2,8 +2,8 @@
 
 This does not resume or mutate the failed job, queue, worker, or database. It
 makes one multi-speaker request per news item using existing key rotation and
-sends the combined audio to the owner once. The owner must review the speech
-and mark speaker boundaries before a separate video stage can be attempted.
+sends the combined audio to the owner once. A separate preview video stage may
+estimate speaker boundaries; these estimates and spoken content need review.
 """
 from __future__ import annotations
 
