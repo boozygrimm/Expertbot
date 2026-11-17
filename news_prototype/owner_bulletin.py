@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-from news_prototype import bulletin_contract, bulletin_editor, owner_drafts, owner_program
+from news_prototype import bulletin_contract, bulletin_editor, bulletin_limits, owner_drafts, owner_program
 
 
 def _key(owner_id: int, number: int) -> str:
@@ -152,8 +152,12 @@ def _payload_from_sections(sections: list[dict]) -> dict:
         if not isinstance(videos[0], dict):
             raise ValueError('Неверное видео')
         payload['video'] = videos[0]
-        if not any(section['id'] == videos[0].get('section_id') and 'video' in section for section in sections):
+        selected = next((section for section in sections if section['id'] == videos[0].get('section_id')
+                         and 'video' in section), None)
+        if selected is None:
             raise ValueError('Видео привязано к другой новости')
+        if videos[0].get('remarks') != selected.get('video_remarks'):
+            raise ValueError('Реплики видео не совпадают с проверенным сценарием')
     return bulletin_contract.validate_bulletin(payload)
 
 
@@ -176,6 +180,59 @@ def parse_section_edit(text: str) -> dict:
     if not 1 <= len(turns) <= 8:
         raise ValueError('Нужно от одной до восьми реплик')
     return {'ticker': title.strip(), 'turns': turns}
+
+
+def parse_video_remarks(text: str) -> list[dict] | None:
+    """Parse two reviewed overlay comments; a single dash removes them."""
+    if not isinstance(text, str) or len(text) > 500:
+        raise ValueError('Нужны две короткие реплики')
+    if text.strip() == '-':
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    turns = []
+    for line in lines:
+        speaker, sep, content = line.partition(':')
+        if not sep:
+            raise ValueError('Начни каждую реплику с имени ведущего и двоеточия')
+        turns.append({'speaker': speaker.strip(), 'text': content.strip()})
+    return bulletin_contract.validate_video_remarks(turns)
+
+
+async def change_video_remarks(db, owner_id: int, number: int, expected: str, section_id: int, text: str) -> str:
+    """Save only one pair of owner-reviewed comments, invalidating media approval."""
+    import copy
+    remarks = parse_video_remarks(text)
+    item = await get(db, owner_id, number)
+    if (not item or item.get('mode') != 'direct' or item.get('stage') != 'ready_for_review'
+            or item.get('revision') != expected or revision(item['stories'], item['sections']) != expected
+            or not await _sources_current(db, owner_id, item)):
+        return 'stale'
+    story = next((s for s in item['stories'] if s['draft_id'] == section_id), None)
+    sections = copy.deepcopy(item['sections'])
+    section = next((s for s in sections if s['id'] == section_id), None)
+    if not section or not story or story.get('telegram_video_status') != 'available':
+        return 'stale'
+    if section.get('video_remarks') == remarks and not any(s.get('video') for s in sections):
+        return 'unchanged'
+    for part in sections:
+        part.pop('video', None)
+        part.pop('video_remarks', None)
+    if remarks is not None:
+        section['video_remarks'] = remarks
+    # Enforce the full text budget even before media is selected.
+    payload = _payload_from_sections(sections)
+    spoken = sum(len(turn['text']) for s in payload['sections'] for turn in s['turns'])
+    count = sum(len(s['turns']) for s in payload['sections'])
+    if remarks and (spoken + sum(len(t['text']) for t in remarks) > bulletin_limits.MAX_SPOKEN_CHARS
+                    or count + len(remarks) > bulletin_contract.MAX_TURNS):
+        raise ValueError('Выпуск с этими репликами слишком длинный')
+    new_rev = revision(item['stories'], sections)
+    if new_rev == expected:
+        return 'unchanged'
+    changed = await db.news_owner_bulletins.update_one({'_id': _key(owner_id, number), 'owner_id': owner_id,
+        'stage': 'ready_for_review', 'revision': expected}, {'$set': {
+            'sections': sections, 'revision': new_rev, 'verification': 'needs_review'}})
+    return 'saved' if changed.modified_count else 'stale'
 
 
 def editable_section(section: dict) -> str:

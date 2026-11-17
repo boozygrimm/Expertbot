@@ -91,6 +91,10 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
             lines.append('Изменено владельцем — проверь факт и формулировку по источнику.')
         else:
             lines.append('Комментарий/шутка — не факт.')
+    if section.get('video_remarks'):
+        lines.append('\nРеплики поверх видео (только если видео будет выбрано):')
+        lines.extend(f'{turn["speaker"]}: {turn["text"]}' for turn in section['video_remarks'])
+        lines.append('Комментарий, не проверенный факт; проверь смысл и соответствие видео.')
     for part in _chunks('\n'.join(lines)):
         await message.answer(part, parse_mode=None, disable_web_page_preview=True)
     if section.get('image_b64'):
@@ -119,6 +123,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     b.button(text='✏️ Исправить эту новость', callback_data=f'nb:edit:{token}')
     if video_status == 'available' and item.get('mode') == 'direct':
         from news_prototype import owner_bulletin_video_review
+        b.button(text='🎙 Реплики поверх видео', callback_data=f'nb:remarks:{token}')
         if section.get('video'):
             b.button(text='❌ Убрать видео из вестника', callback_data=f'nb:novideo:{token}')
         else:
@@ -466,8 +471,10 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
                 selected_video = next((s for s in item['sections'] if s.get('video')), None)
                 if selected_video:
+                    extra = ('Поверх видео прозвучат две показанные реплики: их совместная озвучка потребует дополнительного запроса Gemini. '
+                             if selected_video['video'].get('remarks') else 'Без реплик поверх видео. ')
                     prompt += (f' В выпуске выбрано видео новости №{selected_video["id"]}: студия, '
-                               'затем около 10 секунд на весь экран со звуком, без реплик поверх. '
+                               'затем около 10 секунд на весь экран со звуком. ' + extra +
                                'Если источник изменился или недоступен, выпуск не соберётся.')
                 confirmation = 'render_bulletin'
             else:
@@ -480,6 +487,22 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             return await tools.new_confirmation(callback.message, owner, confirmation, prompt,
                 number=card['bulletin_id'], revision=card['revision'])
+        if action == 'remarks' and len(parts) == 3:
+            card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
+                'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Карточка устарела.', show_alert=True)
+            item = await owner_bulletin.get(db.db, owner, card['bulletin_id'])
+            if (not item or item.get('stage') != 'ready_for_review' or item.get('revision') != card['revision']
+                    or not await owner_trial.drafts_enabled(db.db)):
+                return await callback.answer('Версия изменилась или подготовка выключена.', show_alert=True)
+            await tools.ask(callback, state, 'bulletin_video_remarks',
+                'Пришли две короткие реплики разных ведущих, каждую с новой строки: '
+                '«Бендер: ...» и «Киберсенсей: ...». Вместе не более 160 символов. '
+                'Отправь один дефис, чтобы убрать реплики. Если видео уже выбрано, его выбор сбросится: '
+                'потребуется снова просмотреть и подтвердить источник и права.',
+                number=card['bulletin_id'], section_id=card['section_id'], revision=card['revision'])
+            return
         if action in ('usevideo', 'novideo') and len(parts) == 3:
             card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
                 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
@@ -498,7 +521,8 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             return await tools.new_confirmation(callback.message, owner, 'use_bulletin_video',
                 'Ты просмотрел исходное видео и проверил права на его изображение и звук для этого выпуска? '
                 'Подтверждение выбирает именно просмотренный файл по хешу. В студии он будет за ведущими, '
-                'после новости развернётся примерно на 10 секунд со звуком; реплик поверх пока нет. '
+                'после новости развернётся примерно на 10 секунд со звуком. Если в сценарии есть '
+                'реплики поверх видео, они будут озвучены отдельным совместным запросом. '
                 'Озвучка и рендер сейчас не запускаются и требуют отдельного подтверждения.',
                 number=card['bulletin_id'], revision=card['revision'], section_id=card['section_id'])
         if action == 'video' and len(parts) == 3:

@@ -6,6 +6,20 @@ from news_prototype import bulletin_limits, telegram_public_source
 from news_prototype.story_audio import validate_script
 
 MAX_TURNS = bulletin_limits.MAX_TURNS
+MAX_REMARK_CHARS = 160
+
+
+def validate_video_remarks(value: object) -> list[dict]:
+    """Two short, separately reviewed lines, one per presenter."""
+    if (not isinstance(value, list) or len(value) != 2 or
+            any(not isinstance(t, dict) or set(t) != {'speaker', 'text'} for t in value)):
+        raise ValueError('Нужны две короткие реплики для видео')
+    checked = validate_script({'turns': value})['turns']
+    if ({t['speaker'] for t in checked} != bulletin_limits.SPEAKERS or
+            any(len(t['text']) > 120 or any(ord(c) < 32 or ord(c) == 127 for c in t['text']) for t in checked) or
+            sum(len(t['text']) for t in checked) > MAX_REMARK_CHARS):
+        raise ValueError('Реплики для видео слишком длинные или неверные')
+    return checked
 
 
 def validate_bulletin(data: object) -> dict:
@@ -40,7 +54,8 @@ def validate_bulletin(data: object) -> dict:
     result = {'sections': sections}
     if 'video' in data:
         video = data['video']
-        if (not isinstance(video, dict) or set(video) != {'section_id', 'post_url', 'caption_sha256', 'video_sha256'}
+        fields = {'section_id', 'post_url', 'caption_sha256', 'video_sha256'}
+        if (not isinstance(video, dict) or set(video) not in (fields, fields | {'remarks'})
                 or not bulletin_limits.number(video.get('section_id')) or video['section_id'] not in ids
                 or any(not isinstance(video.get(k), str) or not re.fullmatch(r'[0-9a-f]{64}', video[k])
                        for k in ('caption_sha256', 'video_sha256'))):
@@ -52,4 +67,9 @@ def validate_bulletin(data: object) -> dict:
         except (telegram_public_source.SourceError, ValueError):
             raise ValueError('Неверный источник видео') from None
         result['video'] = dict(video)
+        if 'remarks' in video:
+            remarks = validate_video_remarks(video['remarks'])
+            if chars + sum(len(t['text']) for t in remarks) > bulletin_limits.MAX_SPOKEN_CHARS or turns_count + len(remarks) > MAX_TURNS:
+                raise ValueError('Сценарий вместе с репликами к видео слишком длинный')
+            result['video']['remarks'] = remarks
     return result

@@ -181,3 +181,31 @@ class OwnerVideoReviewTests(unittest.IsolatedAsyncioTestCase):
             assert await review.remove_from_bulletin(self.db, self.owner, self.number, updated['revision'], 1) == 'removed'
             removed = await owner_bulletin.get(self.db, self.owner, self.number)
             assert 'video' not in await owner_bulletin.approved_payload(self.db, self.owner, self.number, removed['revision'])
+
+    async def test_owner_edits_comments_through_card_without_starting_job(self):
+        from news_prototype import owner_trial
+        fake = SimpleNamespace(db=self.db)
+        user = SimpleNamespace(id=self.owner)
+        message = SimpleNamespace(chat=SimpleNamespace(id=self.owner, type='private'), message_id=321,
+            from_user=user, answer=AsyncMock(return_value=SimpleNamespace(message_id=999)), answer_photo=AsyncMock())
+        callback = SimpleNamespace(from_user=user, message=message, answer=AsyncMock(), data='')
+        state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
+        with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
+             patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+            await panel.show_section(message, self.owner, self.item, self.item['sections'][0])
+            markup = message.answer.await_args.kwargs['reply_markup']
+            callback.data = next(b.callback_data for row in markup.inline_keyboard for b in row
+                                 if b.callback_data.startswith('nb:remarks:'))
+            message.message_id = 999
+            await panel.callback_action(callback, state)
+            args = state.update_data.await_args.kwargs
+            assert args['action'] == 'bulletin_video_remarks' and args['revision'] == self.rev
+            state.get_data.return_value = args
+            message.text = 'Бендер: Смотрим!\nКиберсенсей: Давай.'
+            await tools.receive_input(message, state)
+            updated = await owner_bulletin.get(self.db, self.owner, self.number)
+            assert updated['sections'][0]['video_remarks'] == [
+                {'speaker': 'Бендер', 'text': 'Смотрим!'}, {'speaker': 'Киберсенсей', 'text': 'Давай.'}]
+            assert updated['revision'] != self.rev
+            assert await self.db.news_owner_trial_jobs.count_documents({}) == 0
+            assert any('Реплики поверх видео' in call.args[0] for call in message.answer.await_args_list)

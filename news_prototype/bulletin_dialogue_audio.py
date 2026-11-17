@@ -108,6 +108,31 @@ def request_one(key: str, body: dict, timeout: float):
         raise gemini_tts.TTSFailure('ошибка связи с Gemini') from None
 
 
+def prepare_remarks(turns: list[dict], folder: Path, ffmpeg: str, keys: list[str]) -> Path:
+    """One joint TTS request for approved overlay remarks; preserve both WAVs."""
+    turns = bulletin_contract.validate_video_remarks(turns)
+    if not keys:
+        raise ValueError('Нет ключей Gemini')
+    folder = Path(folder)
+    folder.mkdir(mode=0o700, parents=False, exist_ok=False)
+    raw, normalized = folder / 'remarks-raw.wav', folder / 'remarks.wav'
+    body = request_body({'turns': turns})
+    def send(key, _unused, timeout):
+        return request_one(key, body, timeout)
+    gemini_tts.synthesize('', raw, keys, request_fn=send)
+    subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw), '-ac', '1',
+                    '-ar', str(podcast_audio_trial.RATE), '-c:a', 'pcm_s16le', str(normalized)],
+                   env=podcast_audio_trial.normalized_env(), check=True, timeout=120,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rate, samples = podcast_video_trial.read_wav(normalized)
+    if rate != podcast_audio_trial.RATE or not any(samples):
+        raise ValueError('Пустая или повреждённая озвучка реплик видео')
+    # No truncation or retry: retain the WAV if TTS produced unexpectedly long speech.
+    if len(samples) > rate * 28:
+        raise ValueError('Озвучка реплик видео слишком длинная')
+    return normalized
+
+
 def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Path, list[tuple[int, Path]]]:
     """Create one audio per item; a key error never automatically replays a job."""
     bulletin = bulletin_contract.validate_bulletin(data)

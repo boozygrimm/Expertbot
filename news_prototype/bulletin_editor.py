@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from news_prototype.article_fetch import ArticleError, validate_url
+from news_prototype.bulletin_contract import validate_video_remarks
 from news_prototype.bulletin_limits import MIN_STORIES, MAX_STORIES, MAX_SPOKEN_CHARS, MAX_TURNS, SPEAKERS, number as _number
 
 MAX_SOURCE_CHARS = 4000
@@ -43,7 +44,14 @@ SYSTEM = '''Ты редактор короткого русского новос
 "turns":[{"speaker":"Бендер","text":"реплика","kind":"fact",
 "evidence":"дословная цитата из этой новости"},{"speaker":"Киберсенсей",
 "text":"короткая шутка","kind":"comment","evidence":""}]}]}.
-Не произноси ссылки. Разделы должны точно соответствовать числу и порядку новостей.'''
+Не произноси ссылки. Разделы должны точно соответствовать числу и порядку новостей.
+Для одной новости с video_candidate=true при уместности можно добавить в этот
+раздел поле video_remarks: ровно две короткие реплики разных ведущих в формате
+[{"speaker":"Бендер","text":"..."},{"speaker":"Киберсенсей","text":"..."}].
+Они прозвучат поверх видео после новости, если владелец его отдельно выберет.
+Всего не более 160 символов в двух репликах; они входят в общий предел текста.
+Ты не видел видео: не утверждай, что именно в нём показано или слышно, и не
+выдумывай новые факты. Если комментарии неуместны, поле не добавляй.'''
 
 
 
@@ -72,7 +80,8 @@ def material_for(stories: list[dict]) -> list[dict]:
             raise ValueError('Неверный текст источника')
         if len(summary.strip()) < 80:
             raise ValueError('Недостаточно текста источника')
-        result.append({'id': number, 'url': url, 'title': title, 'text': summary[:MAX_SOURCE_CHARS]})
+        result.append({'id': number, 'url': url, 'title': title, 'text': summary[:MAX_SOURCE_CHARS],
+                       'video_candidate': story.get('telegram_video_status') == 'available'})
     return result
 
 
@@ -101,7 +110,7 @@ def parse_draft(raw: str, stories: list[dict]) -> dict:
     sections = data.get('sections')
     if data.get('decision') != 'draft' or not isinstance(sections, list) or len(sections) != len(sources):
         raise ValueError('Не все новости включены в вестник')
-    result, speakers, spoken, turns_count = [], set(), 0, 0
+    result, speakers, spoken, turns_count, video_remarks_count = [], set(), 0, 0, 0
     for section, source in zip(sections, sources):
         if not isinstance(section, dict) or type(section.get('id')) is not int or section['id'] != source['id']:
             raise ValueError('Изменён порядок или номер новости')
@@ -142,10 +151,19 @@ def parse_draft(raw: str, stories: list[dict]) -> dict:
             '\n' + turn['speaker'] + ': ' + ' '.join(turn['text'].splitlines()) for turn in checked)
         if len(editable.encode('utf-16-le')) // 2 > 3800:
             raise ValueError('Раздел слишком длинный для редактирования в Telegram')
-        result.append({'id': source['id'], 'url': source['url'], 'ticker': ticker.strip(), 'turns': checked})
+        entry = {'id': source['id'], 'url': source['url'], 'ticker': ticker.strip(), 'turns': checked}
+        if 'video_remarks' in section:
+            if not source['video_candidate'] or video_remarks_count:
+                raise ValueError('Реплики допустимы только для одного найденного видео')
+            remarks = validate_video_remarks(section['video_remarks'])
+            video_remarks_count += 1
+            turns_count += len(remarks)
+            spoken += sum(len(t['text']) for t in remarks)
+            entry['video_remarks'] = remarks
+        result.append(entry)
     if speakers != SPEAKERS:
         raise ValueError('В выпуске нужны оба ведущих')
-    if spoken > MAX_SPOKEN_CHARS:
+    if spoken > MAX_SPOKEN_CHARS or turns_count > MAX_TURNS:
         raise ValueError('Сценарий слишком длинный: нужно сократить до пяти минут')
     return {'decision': 'draft', 'sections': result, 'spoken_characters': spoken,
             'verification': 'needs_review'}

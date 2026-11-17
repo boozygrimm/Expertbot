@@ -115,6 +115,8 @@ async def approve_for_bulletin(db, owner_id: int, number: int, revision: str, se
         section = next(part for part in sections if part['id'] == section_id)
         section['video'] = {'section_id': section_id, 'post_url': story['url'],
                             'caption_sha256': review['caption_sha256'], 'video_sha256': review['video_sha256']}
+        if 'video_remarks' in section:
+            section['video']['remarks'] = section['video_remarks']
         owner_bulletin._payload_from_sections(sections)
         new_revision = owner_bulletin.revision(item['stories'], sections)
         changed = await db.news_owner_bulletins.update_one({'_id': owner_bulletin._key(owner_id, number),

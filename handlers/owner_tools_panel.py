@@ -178,6 +178,23 @@ async def receive_input(message: types.Message, state: FSMContext):
                 await owner_bulletin_panel.show_sources(message, item)
             else:
                 await message.answer('Источник изменился. Открой вестник заново.', parse_mode=None)
+        elif action == 'bulletin_video_remarks':
+            if not await owner_trial.drafts_enabled(db.db):
+                await state.clear()
+                return await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+            from handlers import owner_bulletin_panel
+            from news_prototype import owner_bulletin
+            result = await owner_bulletin.change_video_remarks(db.db, message.from_user.id, data['number'],
+                data['revision'], data['section_id'], text)
+            await state.clear()
+            if result in ('saved', 'unchanged'):
+                item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+                await message.answer('Реплики сохранены; проверь новую версию и выбери видео заново.' if result == 'saved'
+                                     else 'Изменений нет.', parse_mode=None)
+                section = next(s for s in item['sections'] if s['id'] == data['section_id'])
+                await owner_bulletin_panel.show_section(message, message.from_user.id, item, section)
+            else:
+                await message.answer('Версия или источник изменились. Открой вестник заново.', parse_mode=None)
         elif action == 'bulletin_edit':
             if not await owner_trial.drafts_enabled(db.db):
                 await state.clear()
