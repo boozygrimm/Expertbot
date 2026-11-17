@@ -18,8 +18,8 @@ import subprocess
 import tempfile
 
 from PIL import Image
-from news_prototype import (bender_trial, bulletin_animation, bulletin_wide_screen, combined_trial, desk_ticker,
-                            podcast_video_trial)
+from news_prototype import (bender_trial, bulletin_animation, bulletin_remote_animation, bulletin_wide_screen,
+                            combined_trial, desk_ticker, podcast_video_trial)
 
 
 def section_index(windows, timestamp: float) -> int | None:
@@ -100,9 +100,12 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
         return bulletin_wide_screen.compose(image, speaker_layers=layers[state]).tobytes()
 
     fps = bender_trial.FPS
+    rate = podcast_video_trial.RATE
+    clicks = click_positions(windows, rate)
+    click_times = [(combined_trial.INTRO_FRAMES / fps) + position / rate + .002 for position in clicks]
     with tempfile.TemporaryDirectory(prefix='bulletin-layered-') as tmp:
         sound = Path(tmp) / 'sound.wav'
-        write_sound(audio, sound, len(active), clicks=click_positions(windows, podcast_video_trial.RATE))
+        write_sound(audio, sound, len(active), clicks=clicks)
         command = [ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
                    '-f', 'rawvideo', '-pixel_format', 'rgb24', '-video_size', '960x540',
                    '-framerate', str(fps), '-i', 'pipe:0', '-i', str(sound),
@@ -120,9 +123,14 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                          speaker == 'Киберсенсей' and speaking)
                 index = section_index(windows, t)
                 data = frame_bytes(index, state)
-                if index is not None:
+                amount = bulletin_remote_animation.press_amount(t, click_times)
+                if index is not None or amount > 0:
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
-                    data = desk_ticker.apply(frame, tickers[index], t - windows[index].start).tobytes()
+                    if index is not None:
+                        frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
+                    if amount > 0:
+                        frame = bulletin_remote_animation.apply(frame, amount)
+                    data = frame.tobytes()
                 process.stdin.write(data)
             process.stdin.close()
             if process.wait() != 0:

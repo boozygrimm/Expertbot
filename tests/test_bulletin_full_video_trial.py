@@ -69,6 +69,15 @@ def test_real_synthetic_render_uses_existing_sound_and_pictures():
             with Image.open(image) as frame:
                 r, _, b = frame.convert('RGB').getpixel((450, 140))
                 assert r > b + 60 if expected == 'red' else b > r + 60
+        # The first switch occurs at 5.10 s with the click/press just before it.
+        before, pressed = root / 'before.png', root / 'pressed.png'
+        for when, target in [(4.7, before), (5.02, pressed)]:
+            subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-ss', str(when), '-i', str(output),
+                            '-frames:v', '1', str(target)], check=True)
+        from PIL import ImageChops
+        with Image.open(before) as a, Image.open(pressed) as b:
+            diff = ImageChops.difference(a.convert('RGB'), b.convert('RGB')).crop((720, 385, 760, 415))
+            assert diff.getbbox() is not None
 
 
 def test_timeline_closes_mouths_for_ambiguous_section_and_rejects_changed_audio():
