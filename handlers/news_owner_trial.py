@@ -69,17 +69,21 @@ async def trial_status(message: types.Message) -> None:
               'review_download_failed':'Не удалось получить видео; нужна ручная проверка.',
               'uncertain':'Приём воркером не подтверждён; нужна ручная проверка.',
               'interrupted':'Воркер прерван; нужна ручная проверка.',
-              'failed':'Подготовка не удалась; нужна ручная проверка.'}
+              'failed':'Подготовка не удалась; нужна ручная проверка.',
+              'audio_too_long':'Вестник длиннее пяти минут: открой его в списке вестников и сократи сценарий.'}
     text = labels.get(stage, 'Неизвестное состояние; нужна ручная проверка.')
     if stage == 'queued':
         try:
             job = await db.db.news_owner_trial_jobs.find_one({'stage': 'queued', '$or': [
-                {'script.image_b64': {'$exists': True}}, {'kind': 'program'}]})
+                {'script.image_b64': {'$exists': True}}, {'kind': 'program'}, {'kind': 'bulletin'}]})
             if job:
                 import os
                 from news_prototype.news_worker_client import NewsWorkerClient
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-                if job.get('kind') == 'program':
+                if job.get('kind') == 'bulletin':
+                    if not await client.supports_bulletins():
+                        text += '\nВоркер не подтверждает поддержку вестников; задача остаётся в очереди.'
+                elif job.get('kind') == 'program':
                     if not await client.supports_programs():
                         text += '\nВоркер сейчас не подтверждает поддержку выпусков; задача остаётся в очереди.'
                 elif not await client.supports_images():

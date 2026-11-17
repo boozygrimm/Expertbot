@@ -70,6 +70,9 @@ class NewsWorkerClient:
     async def supports_programs(self) -> bool:
         return await self._supports('news-program-v1')
 
+    async def supports_bulletins(self) -> bool:
+        return await self._supports('news-bulletin-v1')
+
     async def supports_image_focus(self) -> bool:
         return await self._supports('news-image-focus-v1')
 
@@ -82,7 +85,7 @@ class NewsWorkerClient:
                 if resp.status != 200:
                     raise NewsUncertain('Не удалось проверить задачу')
                 data = await read_json(resp)
-                if not isinstance(data, dict) or data.get('request_id') != request_id or data.get('status') not in ('running','ready','failed','interrupted'):
+                if not isinstance(data, dict) or data.get('request_id') != request_id or data.get('status') not in ('running','ready','failed','interrupted','audio_too_long'):
                     raise NewsUncertain('Не удалось проверить задачу')
                 return data
         except (aiohttp.ClientError, TimeoutError, ValueError):
@@ -104,6 +107,11 @@ class NewsWorkerClient:
         from video_prototype.news_jobs import validate_program
         _, scripts = validate_program({'request_id': request_id, 'scripts': scripts})
         return await self._submit('/news-programs', request_id, {'request_id': request_id, 'scripts': scripts})
+
+    async def submit_bulletin(self, request_id: str, bulletin: dict) -> dict:
+        from video_prototype.news_jobs import validate_bulletin
+        request_id, bulletin = validate_bulletin({'request_id': request_id, 'bulletin': bulletin})
+        return await self._submit('/news-bulletins', request_id, {'request_id': request_id, 'bulletin': bulletin})
 
     async def submit_digest(self, request_id: str, inputs: list[str]) -> dict:
         valid_id(request_id)
@@ -130,7 +138,7 @@ class NewsWorkerClient:
                     if resp.status not in (200, 202):
                         raise NewsUncertain('Нет подтверждения приёма задачи')
                     data = await read_json(resp)
-                    if not isinstance(data, dict) or data.get('request_id') != request_id or data.get('status') not in ('running','ready','failed','interrupted'):
+                    if not isinstance(data, dict) or data.get('request_id') != request_id or data.get('status') not in ('running','ready','failed','interrupted','audio_too_long'):
                         raise NewsUncertain('Нет подтверждения приёма задачи')
                     return data
             except (aiohttp.ClientError, TimeoutError, ValueError, NewsUncertain):

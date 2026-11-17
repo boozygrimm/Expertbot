@@ -45,6 +45,8 @@ def validate_request(value: object) -> tuple[str, dict]:
 
 MAX_PROGRAM_STORIES = 4
 MAX_PROGRAM_BYTES = 2_000_000
+# 20 thumbnails (each at most 240k base64 chars) plus bounded JSON/text.
+MAX_BULLETIN_BYTES = 5_100_000
 
 
 def validate_program(value: object) -> tuple[str, list[dict]]:
@@ -62,6 +64,14 @@ def validate_program(value: object) -> tuple[str, list[dict]]:
     return request_id, checked
 
 
+def validate_bulletin(value: object) -> tuple[str, dict]:
+    if not isinstance(value, dict) or set(value) != {'request_id', 'bulletin'}:
+        raise ValueError('Неверная задача вестника')
+    request_id = validate_id(value['request_id'])
+    from news_prototype.bulletin_contract import validate_bulletin as validate_payload
+    return request_id, validate_payload(value['bulletin'])
+
+
 def validate_digest(value: object) -> tuple[str, list[str]]:
     if not isinstance(value, dict) or set(value) != {'request_id', 'inputs'}:
         raise ValueError('Неверная задача дайджеста')
@@ -76,9 +86,10 @@ def validate_digest(value: object) -> tuple[str, list[str]]:
 
 
 class NewsJobs:
-    def __init__(self, shared, root: Path, run_job, run_digest=None, run_program=None):
+    def __init__(self, shared, root: Path, run_job, run_digest=None, run_program=None, run_bulletin=None):
         self.shared, self.root, self.run_job, self.run_digest = shared, Path(root), run_job, run_digest
         self.run_program = run_program
+        self.run_bulletin = run_bulletin
         self.states = {}
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.root.is_symlink() or not self.root.is_dir():
@@ -101,8 +112,8 @@ class NewsJobs:
                     continue
                 if folder.is_symlink() or not folder.is_dir():
                     return True
-                failure = folder / 'failed'
-                if not failure.is_symlink() and failure.is_file():
+                markers = (folder / 'failed', folder / 'audio_too_long')
+                if any(not marker.is_symlink() and marker.is_file() for marker in markers):
                     continue
                 work = folder / 'work'
                 marker = work / 'status.json'
@@ -128,9 +139,10 @@ class NewsJobs:
                 return {'request_id': request_id, 'status': state}
         if folder.is_symlink() or not folder.is_dir():
             return None
-        failure = folder / 'failed'
-        if failure.is_file() and not failure.is_symlink():
-            return {'request_id': request_id, 'status': 'failed'}
+        for marker, state in (('failed', 'failed'), ('audio_too_long', 'audio_too_long')):
+            path = folder / marker
+            if path.is_file() and not path.is_symlink():
+                return {'request_id': request_id, 'status': state}
         work = folder / 'work'
         if work.is_symlink() or not work.is_dir():
             return {'request_id': request_id, 'status': 'interrupted'}
@@ -160,6 +172,12 @@ class NewsJobs:
         if self.run_program is None:
             raise ValueError('Выпуск недоступен')
         return self._submit(request_id, {'scripts': scripts}, self.run_program)
+
+    def submit_bulletin(self, request_id: str, bulletin: dict) -> tuple[dict, bool]:
+        request_id, bulletin = validate_bulletin({'request_id': request_id, 'bulletin': bulletin})
+        if self.run_bulletin is None:
+            raise ValueError('Вестник недоступен')
+        return self._submit(request_id, {'bulletin': bulletin}, self.run_bulletin)
 
     def submit_digest(self, request_id: str, inputs: list[str]) -> tuple[dict, bool]:
         request_id, inputs = validate_digest({'request_id': request_id, 'inputs': inputs})
@@ -193,7 +211,7 @@ class NewsJobs:
                     raise NewsConflict('Идентификатор уже используется')
                 request = folder / 'request.json'
                 try:
-                    if request.is_symlink() or request.stat().st_size > MAX_PROGRAM_BYTES or request.read_bytes() != canonical:
+                    if request.is_symlink() or request.stat().st_size > MAX_BULLETIN_BYTES or request.read_bytes() != canonical:
                         raise NewsConflict('Идентификатор уже используется')
                 except OSError:
                     raise NewsConflict('Результат предыдущего запуска неизвестен') from None
@@ -236,9 +254,21 @@ class NewsJobs:
             print(f'Новостная задача {request_id}: ошибка {type(exc).__name__}', flush=True)
             result = 'failed'
             try:
-                marker = folder / 'failed.tmp'
-                marker.write_text('failed', encoding='utf-8')
-                marker.replace(folder / 'failed')
+                # Only the bulletin runner can report the duration guard, and
+                # only once the child has actually exited. A crash while it is
+                # still running remains interrupted and blocks new jobs.
+                status_file = folder / 'work' / 'status.json'
+                if (job_runner is self.run_bulletin and not (folder / 'work').is_symlink()
+                        and not status_file.is_symlink()
+                        and status_file.stat().st_size <= 4096
+                        and json.loads(status_file.read_text(encoding='utf-8')).get('stage') == 'audio_too_long'):
+                    result = 'audio_too_long'
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
+            try:
+                marker = folder / (result + '.tmp')
+                marker.write_text(result, encoding='utf-8')
+                marker.replace(folder / result)
             except OSError:
                 pass
         with self.shared.lock:
@@ -296,6 +326,40 @@ def program_runner(repo_root: Path):
                                      start_new_session=True)
         if process.returncode:
             raise RuntimeError('Не удалось создать выпуск')
+    return run
+
+
+def bulletin_assets_ready() -> bool:
+    """Fail closed: never advertise a scene the installed worker cannot load."""
+    try:
+        from news_prototype import bulletin_animation, bulletin_wide_screen, desk_ticker, bulletin_job
+        # Check the actual child entry point as well as scene assets before
+        # advertising the protocol, without using TTS or reading credentials.
+        if not callable(bulletin_job.run):
+            return False
+        layers = bulletin_animation.frames()[(False, False, False)]
+        bulletin_wide_screen.compose(speaker_layers=layers)
+        desk_ticker.prepare('ПРОВЕРКА')
+        return True
+    except Exception:
+        return False
+
+
+def bulletin_runner(repo_root: Path):
+    """Run one versioned bulletin in the shared slot, without delivery."""
+    repo_root = Path(repo_root)
+    def run(request_id: str, folder: Path) -> None:
+        env = os.environ.copy()
+        for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
+                     'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
+            env.pop(name, None)
+        command = [sys.executable, '-u', '-m', 'news_prototype.bulletin_job',
+                   '--request', str(folder / 'request.json'), '--output-dir', str(folder / 'work')]
+        with (folder / 'worker.log').open('ab') as log:
+            process = subprocess.run(command, cwd=repo_root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+        if process.returncode:
+            raise RuntimeError('Не удалось создать вестник')
     return run
 
 
