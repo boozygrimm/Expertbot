@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import asyncio
 import logging
 import secrets
 from types import SimpleNamespace
@@ -17,6 +18,8 @@ from news_prototype import owner_drafts, owner_trial
 
 router = Router()
 logger = logging.getLogger(__name__)
+# Only one owner private chat uses these forms; serialize opening/cancelling them.
+_input_lock = asyncio.Lock()
 
 
 class OwnerInput(StatesGroup):
@@ -57,11 +60,13 @@ async def new_confirmation(message, owner_id: int, action: str, text: str, **dat
 
 
 async def ask(callback, state: FSMContext, action: str, prompt: str, **data):
-    await state.clear()
-    await state.set_state(OwnerInput.waiting)
-    await state.update_data(action=action, **data)
+    token = secrets.token_hex(8)
+    async with _input_lock:
+        await state.clear()
+        await state.set_state(OwnerInput.waiting)
+        await state.update_data(action=action, input_token=token, **data)
     builder = InlineKeyboardBuilder()
-    builder.button(text='❌ Отменить ввод', callback_data='owner_tools:cancel_input')
+    builder.button(text='❌ Отменить ввод', callback_data=f'owner_tools:cancel_input:{token}')
     await callback.answer()
     await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None)
 
@@ -261,9 +266,22 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
     op = parts[1] if len(parts) > 1 else ''
     try:
         if op == 'cancel_input':
-            await state.clear()
-            await callback.answer('Ввод отменён')
-            await callback.message.edit_text('Ввод отменён. Пульт: /panel', parse_mode=None)
+            if len(parts) not in (2, 3) or (len(parts) == 3 and
+                    (len(parts[2]) != 16 or any(c not in '0123456789abcdef' for c in parts[2]))):
+                return await callback.answer('Некорректная кнопка.', show_alert=True)
+            async with _input_lock:
+                current = await state.get_state()
+                data = await state.get_data()
+                # Old deployed prompts have no token. They may cancel only an
+                # equally old owner-input state, never a newer form or cron/lore.
+                matches = (current == OwnerInput.waiting.state and
+                           (data.get('input_token') == parts[2] if len(parts) == 3
+                            else not data.get('input_token')))
+                if matches:
+                    await state.clear()
+            await callback.answer('Ввод отменён' if matches else 'Этот ввод уже завершён')
+            await callback.message.edit_text('Ввод отменён. Пульт: /panel' if matches else
+                                             'Этот ввод уже завершён. Пульт: /panel', parse_mode=None)
             return
         if op == 'prepare':
             if not await owner_trial.drafts_enabled(db.db):
@@ -463,8 +481,37 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready',
                      'expires_at': {'$gt': datetime.now(timezone.utc)}}
             if op == 'cancel':
-                changed = await db.db.owner_panel_confirmations.update_one(query, {'$set': {'stage': 'cancelled'}})
-                await callback.answer('Отменено' if changed.modified_count else 'Кнопка устарела')
+                # Cancellation must also close an expired confirmation.  The CAS
+                # still competes atomically with run's ready -> running claim.
+                cancel_query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready'}
+                changed = await db.db.owner_panel_confirmations.update_one(cancel_query, {'$set': {'stage': 'cancelled'}})
+                record = None if changed.modified_count else await db.db.owner_panel_confirmations.find_one(
+                    {'_id': token, 'owner_id': callback.from_user.id})
+                if record and record.get('stage') in ('running', 'done'):
+                    # Do not delete or edit this message while run might be using
+                    # it; cancellation cannot stop an already claimed operation.
+                    await callback.answer('Действие уже обрабатывается или обработано. Отменить его кнопкой нельзя.', show_alert=True)
+                    return
+                cancelled = bool(changed.modified_count or (record and record.get('stage') == 'cancelled'))
+                try:
+                    await callback.answer('Отменено' if cancelled else 'Подтверждение уже недоступно')
+                except Exception as exc:
+                    # An expired callback acknowledgement must not prevent the
+                    # now-cancelled message from being closed.
+                    logger.debug('Не удалось подтвердить отмену кнопки: %s', type(exc).__name__)
+                try:
+                    await callback.message.delete()
+                except Exception as exc:
+                    logger.debug('Не удалось удалить отменённое подтверждение: %s', type(exc).__name__)
+                    # If Telegram refuses deletion, replace the buttons with a
+                    # neutral status; an absent record may have been processed.
+                    text = ('Отменено. Действие не запущено.' if cancelled else
+                            'Подтверждение недоступно. Если действие уже запускалось, проверь его результат.')
+                    try:
+                        await callback.message.edit_text(text, reply_markup=None, parse_mode=None)
+                    except Exception as edit_exc:
+                        # It may already have been deleted by a duplicate click.
+                        logger.debug('Не удалось закрыть подтверждение: %s', type(edit_exc).__name__)
                 return
             from pymongo import ReturnDocument
             record = await db.db.owner_panel_confirmations.find_one_and_update(
