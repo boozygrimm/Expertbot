@@ -39,13 +39,22 @@ def test_request_carries_one_complete_news_and_approved_voice_pair():
     assert 'На шутках и подколах' in body['contents'][0]['parts'][0]['speechMetadata']['style']
     assert 'без насмешки' in body['contents'][0]['parts'][0]['speechMetadata']['style']
     sensei_style = body['contents'][0]['parts'][1]['speechMetadata']['style']
-    assert sensei_style == t.VOICES['Киберсенсей'][2]
+    assert sensei_style.startswith(t.VOICES['Киберсенсей'][2])
+    assert 'Перед этой репликой сделай короткую естественную паузу' in sensei_style
     assert 'интерес и удивление' in sensei_style
     assert 'серьёзность и сочувствие' in sensei_style
     assert 'Не переигрывай' in sensei_style
     voices=body['generationConfig']['speechConfig']['multiSpeakerVoiceConfig']['speakerVoiceConfigs']
     assert [x['voiceConfig']['prebuiltVoiceConfig']['voiceName'] for x in voices]==['Algenib','Puck']
     assert 'Новость 2' not in json.dumps(body,ensure_ascii=False)
+
+
+def test_pause_requested_only_on_speaker_change_without_modifying_text():
+    turns = [{'speaker':'Бендер','text':'Один.'}, {'speaker':'Бендер','text':'Два.'},
+             {'speaker':'Киберсенсей','text':'Три.'}, {'speaker':'Бендер','text':'Четыре.'}]
+    parts = t.request_body({'turns': turns})['contents'][0]['parts']
+    assert [part['text'] for part in parts] == [turn['text'] for turn in turns]
+    assert ['Перед этой репликой сделай' in part['speechMetadata']['style'] for part in parts] == [False, False, True, True]
 
 
 def test_audio_validation_accepts_long_item_without_truncation_and_rejects_bad_data():

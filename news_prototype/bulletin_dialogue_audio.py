@@ -33,9 +33,13 @@ VOICES = {
 
 def request_body(section: dict) -> dict:
     parts = []
+    previous_speaker = None
     for turn in section['turns']:
         name, _, style = VOICES[turn['speaker']]
+        if previous_speaker is not None and previous_speaker != turn['speaker']:
+            style += ' Перед этой репликой сделай короткую естественную паузу после предыдущего ведущего.'
         parts.append({'text': turn['text'], 'speechMetadata': {'speaker': name, 'style': style}})
+        previous_speaker = turn['speaker']
     return {'contents': [{'role': 'user', 'parts': parts}],
             'generationConfig': {'responseModalities': ['AUDIO'],
                 'speechConfig': {'multiSpeakerVoiceConfig': {'speakerVoiceConfigs': [
@@ -120,7 +124,8 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
         gemini_tts.synthesize('', raw, keys, start_index=index-1, request_fn=send)
         subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw),
                         '-ac', '1', '-ar', str(podcast_audio_trial.RATE), '-c:a', 'pcm_s16le', str(normalized)],
-                       env=podcast_audio_trial.normalized_env(), check=True)
+                        env=podcast_audio_trial.normalized_env(), check=True, timeout=120,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         rate, samples = podcast_video_trial.read_wav(normalized)
         if rate != podcast_audio_trial.RATE or not any(samples):
             raise ValueError('Пустая или повреждённая новость')
