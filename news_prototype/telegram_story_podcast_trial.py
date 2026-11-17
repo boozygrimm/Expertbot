@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import threading
 
-from PIL import Image
+from PIL import Image, ImageOps
 from news_prototype import (bender_trial, bulletin_animation, bulletin_contract,
     bulletin_dialogue_audio, bulletin_duo_content_probe, bulletin_full_video_trial,
     bulletin_layered_video, bulletin_preflight, bulletin_remote_animation,
@@ -176,11 +176,13 @@ def hedgehog_frame(nod: int, blink: int):
     return hedgehog_motion.overlay(gesture_assets()[1], nod / 24, blink / 8)
 
 
-def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscreen=None, clicks=()):
+def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscreen=None, clicks=(),
+           continuous_video=False):
     """Show video in studio; optionally replace the outer TV picture for a clip.
 
     fullscreen is a pair of frame indices relative to the start of the audio.
     clicks are exact sample offsets in the supplied audio, and must lie in silence.
+    continuous_video keeps one video stream across the two screen sizes.
     """
     audio, active, states = timeline
     if not active or len(active) != len(states):
@@ -196,6 +198,7 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscre
     if count / fps > 300:
         raise ValueError('Ролик превышает пять минут')
     width, height = bulletin_video_insert_trial.PANEL_SIZE
+    decode_width, decode_height = (704, 396) if continuous_video else (width, height)
     env = podcast_audio_trial.normalized_env()
     layers = bulletin_animation.frames()
     transparent = Image.new('RGBA', bulletin_wide_screen.SIZE)
@@ -213,9 +216,10 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscre
         decoder = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
                    '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-stream_loop', '-1', '-i', str(source),
                    '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
-                   f'scale={width}:{height}:force_original_aspect_ratio=decrease,'
-                   f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x12355e,'
-                   f'fps={fps}',
+                   f'scale={decode_width}:{decode_height}:force_original_aspect_ratio=decrease,'
+                   f'pad={decode_width}:{decode_height}:(ow-iw)/2:(oh-ih)/2:color='
+                   f'{"black" if continuous_video else "0x12355e"},'
+                   f'fps={fps}{":start_time=0" if continuous_video else ""}',
                    '-frames:v', str(len(active)), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
         encoder = [ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pixel_format', 'rgb24',
                    '-video_size', '960x540', '-framerate', str(fps), '-i', 'pipe:0', '-i', str(sound),
@@ -224,7 +228,7 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscre
         dec = subprocess.Popen(decoder, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
         full = None
         try:
-            if fullscreen is not None:
+            if fullscreen is not None and not continuous_video:
                 # Preserve the original aspect ratio, filling the outer TV as
                 # far as possible without cropping away source video content.
                 full_cmd = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
@@ -257,13 +261,20 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscre
             for n in range(count):
                 local = n - combined_trial.INTRO_FRAMES
                 if n == 0 or 1 <= local < len(active):
-                    last_data = dec.stdout.read(width * height * 3)
+                    last_data = dec.stdout.read(decode_width * decode_height * 3)
                 data = last_data
-                if data is None or len(data) != width * height * 3:
+                if data is None or len(data) != decode_width * decode_height * 3:
                     raise ValueError('Неполный кадр источника')
+                video_frame = Image.frombytes('RGB', (decode_width, decode_height), data)
+                if continuous_video:
+                    fitted = ImageOps.contain(video_frame, (width, height), Image.Resampling.LANCZOS)
+                    panel = Image.new('RGB', (width, height), (18, 53, 94))
+                    panel.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
+                else:
+                    panel = video_frame
                 frame = background.copy()
                 x0, y0, _, _ = bulletin_wide_screen.SCREEN
-                frame.paste(Image.frombytes('RGB', (width, height), data), (x0 + 4, y0 + 4))
+                frame.paste(panel, (x0 + 4, y0 + 4))
                 speaker, speaking = (active[local], states[local]) if 0 <= local < len(active) else (None, False)
                 state = (speaker == 'Бендер' and speaking, bulletin_animation.is_blink(n / fps),
                          speaker == 'Киберсенсей' and speaking)
@@ -284,12 +295,16 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscre
                 if 0 <= local < len(active):
                     frame = desk_ticker.apply(frame, ticker, local / fps)
                 if fullscreen is not None and fullscreen[0] <= local < fullscreen[1]:
-                    assert full is not None and full.stdout is not None
-                    pixels = full.stdout.read(704 * 419 * 3)
-                    if len(pixels) != 704 * 419 * 3:
-                        raise ValueError('Неполный кадр полноэкранного видео')
                     screen = Image.new('RGB', bulletin_wide_screen.SIZE)
-                    screen.paste(Image.frombytes('RGB', (704, 419), pixels), (110, 56))
+                    if continuous_video:
+                        # The exact same decoded frame used for the studio panel.
+                        screen.paste(video_frame, (110, 56 + (419 - decode_height) // 2))
+                    else:
+                        assert full is not None and full.stdout is not None
+                        pixels = full.stdout.read(704 * 419 * 3)
+                        if len(pixels) != 704 * 419 * 3:
+                            raise ValueError('Неполный кадр полноэкранного видео')
+                        screen.paste(Image.frombytes('RGB', (704, 419), pixels), (110, 56))
                     frame = Image.composite(screen, frame, mask)
                 if t < 1.48 or t >= off_time + .1 or abs(t - combined_trial.ON_PRESS) < .16 or abs(t - off_time) < .16:
                     frame = combined_trial.display(frame, mask, off, t, off_time)

@@ -127,7 +127,7 @@ def mix_with_ducking(source: array, voice: array, offset: int) -> array:
 
 
 def assemble(dialogue: Path, source_audio: Path, comments: Path, output: Path,
-             *, cut_frame: int, source_duration: float, data: dict):
+             *, cut_frame: int, source_duration: float, data: dict, continuous_video: bool = False):
     (old_audio, active, states), _, _ = story.build_timeline(dialogue, data, 0)
     _, speech = podcast_video_trial.read_wav(old_audio)
     _, source = podcast_video_trial.read_wav(source_audio)
@@ -149,9 +149,28 @@ def assemble(dialogue: Path, source_audio: Path, comments: Path, output: Path,
     if total > 300:
         raise bulletin_timing.BulletinTooLong(f'Выпуск с вставкой занимает {total:.1f} с; максимум 300 с')
     clip_samples = clip_frames * per_frame
-    source_part = array('h', [0]) * clip_samples
-    count = min(len(source), clip_samples)
-    source_part[:count] = source[:count]
+    if continuous_video:
+        # Use the source position at the fullscreen transition, not time zero.
+        # The studio video loops at the video's duration. If audio ends first,
+        # keep silence until that loop point instead of restarting it early.
+        if not math.isfinite(source_duration) or source_duration <= 0:
+            raise ValueError('Неверная длительность источника')
+        period = round(source_duration * RATE)
+        if period <= 0:
+            raise ValueError('Неверная длительность источника')
+        source_cycle = array('h', [0]) * period
+        count = min(len(source), period)
+        source_cycle[:count] = source[:count]
+        position = (start * per_frame) % period
+        source_part = array('h')
+        while len(source_part) < clip_samples:
+            count = min(period - position, clip_samples - len(source_part))
+            source_part.extend(source_cycle[position:position + count])
+            position = 0
+    else:
+        source_part = array('h', [0]) * clip_samples
+        count = min(len(source), clip_samples)
+        source_part[:count] = source[:count]
     mixed = mix_with_ducking(source_part, remarks, voice_offset)
     result = array('h', [0]) * (total_frames * per_frame)
     cut = cut_frame * per_frame
