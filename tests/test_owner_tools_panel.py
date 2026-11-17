@@ -164,7 +164,7 @@ asyncio.run(run())
         self.assertEqual(len(entries), 1)
         self.assertEqual((entries[0]['chat_id'], entries[0]['user_id'], entries[0]['score']), (-100, 42, -15))
 
-    async def test_points_rejects_unknown_player_and_invalid_sums(self):
+    async def test_points_unknown_player_needs_name_and_invalid_sums_are_rejected(self):
         self.message.from_user = self.user
         self.state.get_data.return_value = {'action':'points', 'chat_id':-100, 'chat_title':'A'}
         await self.db.economy.insert_one({'chat_id':-200, 'user_id':42, 'user_name':'Игрок'})
@@ -224,7 +224,7 @@ asyncio.run(run())
         self.cb.data = 'owner_tools:pointsgroup:-123'
         with patch.object(admin_cron, 'get_known_groups', AsyncMock(return_value={-123:'Группа A'})):
             await tools.action(self.cb, self.state, None)
-        self.assertEqual(self.state.update_data.await_args.kwargs['chat_id'], -123)
+        self.assertIn('Группа A', self.message.answer.await_args.args[0])
         self.state.update_data.reset_mock()
         with patch.object(admin_cron, 'get_known_groups', AsyncMock(return_value={-456:'Группа B'})):
             await tools.action(self.cb, self.state, None)
@@ -246,3 +246,109 @@ asyncio.run(run())
         conf = await self.db.owner_panel_confirmations.find_one({'action':'reset'})
         self.assertEqual(conf['data']['player_id'], 42)
         self.assertEqual(await self.db.alchemy_players.count_documents({}), 1)
+
+    async def test_image_generation_prompt_and_explicit_confirmation(self):
+        from handlers import image_gen
+        self.message.from_user = self.user
+        self.message.text = 'Рыжий кот в космосе'
+        self.state.get_data.return_value = {'action':'draw'}
+        with patch.object(image_gen, 'process_image_request', AsyncMock()) as draw:
+            await tools.receive_input(self.message, self.state)
+            draw.assert_not_awaited()
+            conf = await self.db.owner_panel_confirmations.find_one({'action':'draw'})
+            self.assertIn('попытки', self.message.answer.await_args.args[0])
+            self.cb.data = 'owner_tools:run:' + conf['_id']
+            await tools.action(self.cb, self.state, None)
+            await tools.action(self.cb, self.state, None)
+            draw.assert_awaited_once()
+            self.assertEqual(draw.await_args.args[1], 'Рыжий кот в космосе')
+            self.assertEqual(draw.await_args.args[0].chat.id, tools.ADMIN_ID)
+            self.assertEqual(draw.await_args.args[0].from_user.id, tools.ADMIN_ID)
+
+    async def test_owner_can_open_base_and_help_via_buttons(self):
+        from handlers import alc_base
+        self.cb.data = 'owner_tools:base'
+        with patch.object(alc_base, 'cmd_base', AsyncMock()) as base:
+            await tools.action(self.cb, self.state, None)
+            self.assertEqual(base.await_args.args[0].from_user.id, tools.ADMIN_ID)
+        self.cb.data = 'owner_tools:help'
+        await tools.action(self.cb, self.state, None)
+        from handlers.ex_logic import HELP_TEXT
+        self.assertEqual(self.message.answer.await_args.args[0], HELP_TEXT)
+
+    async def test_points_player_buttons_keep_exact_group_and_user(self):
+        from handlers import admin_cron
+        await self.db.economy.insert_one({'chat_id':-123, 'user_id':42, 'user_name':'Alice', 'score':10})
+        await self.db.economy.insert_one({'chat_id':-999, 'user_id':43, 'user_name':'Bob', 'score':10})
+        with patch.object(admin_cron, 'get_known_groups', AsyncMock(return_value={-123:'Группа A'})):
+            self.cb.data = 'owner_tools:pointsgroup:-123'
+            await tools.action(self.cb, self.state, None)
+            buttons = [b for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+            self.assertTrue(any('Alice' in b.text for b in buttons))
+            self.assertFalse(any('Bob' in b.text for b in buttons))
+            self.cb.data = next(b.callback_data for b in buttons if 'Alice' in b.text)
+            await tools.action(self.cb, self.state, None)
+            data = self.state.update_data.await_args.kwargs
+            self.assertEqual((data['chat_id'], data['player_id']), (-123, 42))
+            self.message.from_user = self.user
+            self.message.text = '100'
+            self.state.get_data.return_value = data
+            await tools.receive_input(self.message, self.state)
+            conf = await self.db.owner_panel_confirmations.find_one({'action':'points'})
+            self.assertEqual((conf['data']['chat_id'], conf['data']['player_id'], conf['data']['amount']), (-123,42,100))
+            self.cb.data = 'owner_tools:run:' + conf['_id']
+            await tools.action(self.cb, self.state, None)
+        row = await self.db.economy.find_one({'game_type':'promo'})
+        self.assertEqual((row['chat_id'], row['user_id'], row['score']), (-123,42,100))
+
+    async def test_can_grant_new_player_only_after_explicit_confirmation(self):
+        self.message.from_user = self.user
+        self.message.text = '88 75'
+        self.state.get_data.return_value = {'action':'points', 'chat_id':-123, 'chat_title':'Группа A'}
+        await tools.receive_input(self.message, self.state)
+        self.assertEqual(self.state.update_data.await_args.kwargs['action'], 'points_new_name')
+        self.assertEqual(await self.db.economy.count_documents({}), 0)
+        self.message.text = 'Новичок'
+        self.state.get_data.return_value = {'action':'points_new_name', 'chat_id':-123,
+                                           'chat_title':'Группа A', 'player_id':88, 'amount':75}
+        await tools.receive_input(self.message, self.state)
+        conf = await self.db.owner_panel_confirmations.find_one({'action':'points'})
+        self.assertTrue(conf['data']['allow_new'])
+        self.assertIn('Группа A', self.message.answer.await_args.args[0])
+        self.assertEqual(await self.db.economy.count_documents({}), 0)
+        self.cb.data = 'owner_tools:run:' + conf['_id']
+        await tools.action(self.cb, self.state, None)
+        row = await self.db.economy.find_one({})
+        self.assertEqual((row['chat_id'], row['user_id'], row['user_name'], row['score']), (-123,88,'Новичок',75))
+
+    async def test_pack_can_create_new_profile_only_after_confirmation(self):
+        from handlers import alc_core
+        self.message.from_user = self.user
+        self.message.text = '88'
+        self.state.get_data.return_value = {'action':'pack', 'size':'s'}
+        await tools.receive_input(self.message, self.state)
+        self.assertEqual(self.state.update_data.await_args.kwargs['action'], 'pack_new_name')
+        self.assertEqual(await self.db.alchemy_players.count_documents({}), 0)
+        self.message.text = 'Новичок'
+        self.state.get_data.return_value = {'action':'pack_new_name', 'player_id':88, 'size':'s'}
+        await tools.receive_input(self.message, self.state)
+        conf = await self.db.owner_panel_confirmations.find_one({'action':'pack'})
+        self.assertTrue(conf['data']['allow_create'])
+        self.cb.data = 'owner_tools:run:' + conf['_id']
+        with patch.object(alc_core, 'admin_promo', AsyncMock()) as promo:
+            await tools.action(self.cb, self.state, None)
+            self.assertEqual(promo.await_args.args[0].reply_to_message.from_user.id, 88)
+            self.assertEqual(promo.await_args.args[0].reply_to_message.from_user.first_name, 'Новичок')
+
+    async def test_open_lore_warns_before_legacy_deletion(self):
+        from handlers import alc_heritage
+        await self.db.alchemy_lore.insert_one({'id':'forge_legacy', 'name':'старое наследие'})
+        self.cb.data = 'owner_tools:lore'
+        with patch.object(alc_heritage, 'lore_edit', AsyncMock()) as lore:
+            await tools.action(self.cb, self.state, None)
+            lore.assert_not_awaited()
+            self.assertIn('удалит', self.message.answer.await_args.args[0])
+            conf = await self.db.owner_panel_confirmations.find_one({'action':'lore_open'})
+            self.cb.data = 'owner_tools:run:' + conf['_id']
+            await tools.action(self.cb, self.state, None)
+            lore.assert_awaited_once()

@@ -62,7 +62,7 @@ async def panel_content():
         labels = {'preparing': 'готовится', 'ready': 'ожидает отправки', 'sending': 'отправка не подтверждена',
                   'uncertain': 'отправка не подтверждена', 'sent': 'доставлена'}
         lines.append(f'Последняя подборка ({last["day"]}): {labels.get(last.get("stage"), "неизвестно")}.')
-    lines += ['', 'Новости — кандидаты, а не готовый сценарий. Рендер и публикация сами не запускаются.']
+    lines += ['', 'Ежедневная подборка — кандидаты, а не готовый сценарий. Сбор сам не запускает сценарии, рендер или публикацию.']
     builder = InlineKeyboardBuilder()
     builder.button(text='⏸ Выключить сбор' if active else '▶️ Включить сбор',
                    callback_data='news_panel:off' if active else 'news_panel:on')
@@ -76,6 +76,7 @@ async def panel_content():
     builder.button(text='📺 Собрать выпуск', callback_data='newsact:choose')
     builder.button(text='📊 Статус видео', callback_data='owner_tools:trial_status')
     builder.button(text='✍️ Свой сценарий', callback_data='owner_tools:trial')
+    builder.button(text='🗂 Дополнительный старый режим', callback_data='legacynews:home')
     builder.button(text='🔄 Обновить', callback_data='news_panel:home')
     builder.button(text='⬅️ Общий пульт', callback_data='owner_panel:home')
     builder.adjust(1, 1, 1, 2, 2)

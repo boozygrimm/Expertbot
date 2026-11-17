@@ -113,6 +113,38 @@ async def receive_input(message: types.Message, state: FSMContext):
             await state.clear()
             from handlers import news_owner_drafts
             await getattr(news_owner_drafts, handler_name)(proxy(message, message.from_user, text=content))
+        elif action == 'legacy_news':
+            from handlers import owner_legacy_news, news_intake
+            from news_prototype.manual_news import make_candidate
+            if not owner_legacy_news.enabled():
+                await state.clear()
+                return await message.answer('Дополнительный режим выключен.', parse_mode=None)
+            reply = getattr(message, 'reply_to_message', None)
+            reply_user = getattr(reply, 'from_user', None) if reply else None
+            reply_text = (getattr(reply, 'text', None) or getattr(reply, 'caption', None)) if reply and not getattr(reply_user, 'is_bot', False) else None
+            if reply and not reply_text and not getattr(reply_user, 'is_bot', False):
+                raise ValueError('В ответе нужен текст новости')
+            command_text = '/news ' + text
+            body, accent, url = news_intake.parse_input(command_text, reply_text)
+            candidate = make_candidate(user_id=message.from_user.id, admin_id=ADMIN_ID, chat_type='private',
+                message_id=message.message_id, text=body, accent=accent, url=url)
+            summary = ' '.join((candidate['text'] or candidate['url']).split())[:300]
+            source_preview = candidate['url'][:500] if candidate['text'] and candidate['url'] else ''
+            accent_preview = ' '.join(candidate['accent'].split())[:200]
+            await state.clear()
+            await new_confirmation(message, message.from_user.id, 'legacy_news',
+                'Сохранить непроверенный материал?\n' + summary +
+                (('\nИсточник: ' + source_preview) if source_preview else '') +
+                (('\nАкцент: ' + accent_preview) if accent_preview else '') +
+                '\n\n' + owner_legacy_news.mode_notice(),
+                command_text=command_text, reply_text=reply_text, original_message_id=message.message_id,
+                mode_flags=owner_legacy_news.flag_snapshot())
+        elif action == 'draw':
+            if len(text) > 500:
+                raise ValueError('Слишком длинный запрос')
+            await state.clear()
+            await new_confirmation(message, message.from_user.id, 'draw',
+                f'Нарисовать по запросу «{text}»? Будут действовать обычные бесплатные попытки и стоимость в очках.', query=text)
         elif action == 'search_query':
             if len(text) > 500:
                 raise ValueError('Слишком длинный запрос')
@@ -152,7 +184,11 @@ async def receive_input(message: types.Message, state: FSMContext):
             player_id = int(text)
             player = await db.db.alchemy_players.find_one({'user_id': player_id})
             if not player:
-                await message.answer('Профиль с таким ID не найден. Проверь ID или отмени ввод.', parse_mode=None)
+                if action == 'pack':
+                    await state.update_data(action='pack_new_name', player_id=player_id, size=data['size'])
+                    await message.answer('Профиль не найден. Если это новый игрок, пришли его имя; иначе отмени ввод. Перед созданием и выдачей будет подтверждение.', parse_mode=None)
+                else:
+                    await message.answer('Профиль с таким ID не найден. Проверь ID или отмени ввод.', parse_mode=None)
                 return
             name = str(player.get('user_name') or 'Игрок')[:100]
             await state.clear()
@@ -160,8 +196,15 @@ async def receive_input(message: types.Message, state: FSMContext):
                     if action == 'pack' else f'Очистить весь инвентарь игрока {name} (ID {player_id})? Это необратимо.')
             await new_confirmation(message, message.from_user.id, action, desc,
                                    player_id=player_id, player_name=name, size=data.get('size'))
-        elif action == 'points':
-            parts = text.split()
+        elif action == 'pack_new_name':
+            if len(text) > 100 or '\n' in text:
+                raise ValueError('Нужно имя игрока одной строкой')
+            await state.clear()
+            await new_confirmation(message, message.from_user.id, 'pack',
+                f'Создать профиль игрока {text} (ID {data["player_id"]}) и выдать промопак {data["size"].upper()}? Проверь ID.',
+                player_id=data['player_id'], player_name=text, size=data['size'], allow_create=True)
+        elif action in ('points', 'points_amount'):
+            parts = text.split() if action == 'points' else [str(data['player_id']), text]
             if len(parts) != 2 or not parts[0].isascii() or not parts[0].isdigit() or len(parts[0]) > 15:
                 raise ValueError('Нужны ID и сумма')
             player_id = int(parts[0])
@@ -172,13 +215,21 @@ async def receive_input(message: types.Message, state: FSMContext):
                 raise ValueError('Недопустимая сумма')
             player = await db.db.economy.find_one({'chat_id': data['chat_id'], 'user_id': player_id})
             if not player:
-                await message.answer('Игрок с этим ID не найден в очках выбранной группы. Проверь ID или отмени ввод.', parse_mode=None)
+                await state.update_data(action='points_new_name', player_id=player_id, amount=amount)
+                await message.answer('У этого ID пока нет записей очков в выбранной группе. Если это нужный игрок, пришли его имя; иначе отмени ввод. Перед изменением будет подтверждение.', parse_mode=None)
                 return
             name = str(player.get('user_name') or 'Игрок')[:100]
             await state.clear()
             await new_confirmation(message, message.from_user.id, 'points',
                 f'Изменить очки на {amount:+d} игроку {name} (ID {player_id}) в группе «{data["chat_title"]}» (ID {data["chat_id"]})?',
                 chat_id=data['chat_id'], player_id=player_id, player_name=name, amount=amount)
+        elif action == 'points_new_name':
+            if len(text) > 100 or '\n' in text:
+                raise ValueError('Нужно имя игрока одной строкой')
+            await state.clear()
+            await new_confirmation(message, message.from_user.id, 'points',
+                f'Изменить очки на {data["amount"]:+d} новому игроку {text} (ID {data["player_id"]}) в группе «{data["chat_title"]}» (ID {data["chat_id"]})? Проверь ID и группу.',
+                chat_id=data['chat_id'], player_id=data['player_id'], player_name=text, amount=data['amount'], allow_new=True)
         elif action == 'reset':
             if not text.isdecimal() or not 1 <= len(text) <= 15 or int(text) < 1:
                 raise ValueError('Нужен ID игрока')
@@ -222,6 +273,21 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 'Пришли от одной до четырёх ссылок, каждую с новой строки. '
                 'При желании последней строкой напиши «Акцент: ...». '
                 'Подготовка расходует квоту Gemini. Рендер и публикация не начнутся.')
+            return
+        if op == 'draw':
+            await ask(callback, state, 'draw', 'Напиши, что нарисовать (до 500 символов). Действуют обычные бесплатные попытки и стоимость в очках; запрос потребуется подтвердить.')
+            return
+        if op == 'base':
+            await state.clear()
+            from handlers.alc_base import cmd_base
+            await callback.answer()
+            await cmd_base(proxy(callback.message, callback.from_user))
+            return
+        if op == 'help':
+            await state.clear()
+            from handlers.ex_logic import HELP_TEXT
+            await callback.answer()
+            await callback.message.answer(HELP_TEXT, parse_mode='Markdown')
             return
         if op == 'search_query':
             await ask(callback, state, 'search_query', 'Напиши поисковый запрос (до 500 символов). Проверка использует квоту поиска; перед запросом нужно подтверждение.')
@@ -299,8 +365,10 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             await callback.answer()
             await callback.message.answer('Выбери группу для изменения очков:' if groups else 'Доступные группы с историей не найдены.', reply_markup=b.as_markup(), parse_mode=None)
             return
-        if op == 'pointsgroup' and len(parts) == 3:
+        if op in ('pointsgroup', 'pointsinput', 'pointspick'):
             from handlers.admin_cron import get_known_groups
+            if len(parts) != (4 if op == 'pointspick' else 3):
+                raise ValueError('Неверная группа')
             try:
                 group_id = int(parts[2])
             except ValueError:
@@ -309,7 +377,44 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             if group_id not in groups or group_id >= 0:
                 return await callback.answer('Группа недоступна. Выбери её заново.', show_alert=True)
             title = str(groups[group_id])[:100]
-            await ask(callback, state, 'points', f'Группа «{title}». Пришли ID игрока и сумму через пробел, например: 123456789 100. Для списания укажи минус. Перед изменением будет подтверждение.', chat_id=group_id, chat_title=title)
+            if op == 'pointsgroup':
+                # A bounded recent scan avoids an expensive full collection grouping.
+                rows = await db.db.economy.find({'chat_id': group_id}, {'user_id': 1, 'user_name': 1}).sort(
+                    '_id', -1).limit(200).to_list(length=200)
+                seen = set()
+                b = InlineKeyboardBuilder()
+                for row in rows:
+                    player_id = row.get('user_id')
+                    if type(player_id) is not int or player_id < 1 or player_id in seen:
+                        continue
+                    seen.add(player_id)
+                    name = str(row.get('user_name') or 'Игрок')[:40]
+                    b.button(text=f'{name} · {player_id}', callback_data=f'owner_tools:pointspick:{group_id}:{player_id}')
+                    if len(seen) == 20:
+                        break
+                b.button(text='⌨️ Ввести ID вручную', callback_data=f'owner_tools:pointsinput:{group_id}')
+                b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
+                b.adjust(1)
+                await state.clear()
+                await callback.answer()
+                await callback.message.answer(f'Группа «{title}». Выбери игрока из недавних записей или введи ID вручную. '
+                    'Будут изменены только очки этой группы.', reply_markup=b.as_markup(), parse_mode=None)
+                return
+            if op == 'pointsinput':
+                await ask(callback, state, 'points', f'Группа «{title}». Пришли ID игрока и сумму через пробел, например: 123456789 100. '
+                          'Для списания укажи минус. Перед изменением будет подтверждение.', chat_id=group_id, chat_title=title)
+                return
+            value = parts[3]
+            if not value.isascii() or not value.isdigit() or not 1 <= len(value) <= 15 or int(value) < 1:
+                raise ValueError('Неверный игрок')
+            player_id = int(value)
+            player = await db.db.economy.find_one({'chat_id': group_id, 'user_id': player_id})
+            if not player:
+                return await callback.answer('Игрок не найден в этой группе.', show_alert=True)
+            name = str(player.get('user_name') or 'Игрок')[:100]
+            await ask(callback, state, 'points_amount', f'Группа «{title}», игрок {name} (ID {player_id}). '
+                      'Пришли сумму изменения, например 100 или -100. Перед изменением будет подтверждение.',
+                      chat_id=group_id, chat_title=title, player_id=player_id)
             return
         if op == 'reset':
             await profile_choice(callback, state, 'reset')
@@ -321,8 +426,15 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             return
         if op == 'lore':
             from handlers.alc_heritage import lore_edit
-            await callback.answer()
-            await lore_edit(proxy(callback.message, callback.from_user), SimpleNamespace(args=''), state)
+            # The legacy editor seeds defaults on open and deletes this old ID.
+            # Do not hide that potentially destructive migration behind a menu button.
+            if await db.db.alchemy_lore.find_one({'id': 'forge_legacy'}):
+                await callback.answer()
+                await new_confirmation(callback.message, callback.from_user.id, 'lore_open',
+                    'Открытие редактора удалит старую запись наследия forge_legacy. Продолжить?')
+            else:
+                await callback.answer()
+                await lore_edit(proxy(callback.message, callback.from_user), SimpleNamespace(args=''), state)
             return
         if op == 'lorehelp':
             from handlers.alc_heritage import lore_help
@@ -336,7 +448,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             return
         prompts = {
             'regen': 'Перегенерировать квесты для всех игроков? Это изменит их текущие задания.',
-            'seed': 'Обновить стартовые наследия из файла?',
+            'seed': 'Обновить стартовые наследия из файла? Старая запись forge_legacy, если она существует, будет удалена.',
             'image_probe': 'Проверить Cloudflare и OVHcloud? Это реальные запросы, они расходуют квоту.',
             'search_probe': 'Проверить поиск картинки? Это реальный запрос, который может расходовать квоту.',
         }
@@ -367,6 +479,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             if name == 'regen':
                 from handlers.alc_quests import admin_regen_quests
                 await admin_regen_quests(message)
+            elif name == 'lore_open':
+                from handlers.alc_heritage import lore_edit
+                await lore_edit(message, SimpleNamespace(args=''), state)
             elif name == 'seed':
                 from handlers.alc_heritage import lore_edit
                 await lore_edit(message, SimpleNamespace(args='seed'), state)
@@ -376,7 +491,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             elif name in ('pack', 'clear'):
                 from handlers import alc_core
                 player = await db.db.alchemy_players.find_one({'user_id': data['player_id']})
-                if not player:
+                if not player and not (name == 'pack' and data.get('allow_create')):
                     await message.answer('Профиль игрока больше не найден.', parse_mode=None)
                 else:
                     target = SimpleNamespace(id=data['player_id'], first_name=data['player_name'], is_bot=False)
@@ -386,7 +501,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     else:
                         await alc_core.admin_clear_inv(message)
             elif name == 'points':
-                if not await db.db.economy.find_one({'chat_id': data['chat_id'], 'user_id': data['player_id']}):
+                if not data.get('allow_new') and not await db.db.economy.find_one({'chat_id': data['chat_id'], 'user_id': data['player_id']}):
                     await message.answer('Игрок больше не найден в выбранной группе.', parse_mode=None)
                 else:
                     # One-use confirmation ID also makes the ledger insertion idempotent.
@@ -394,12 +509,32 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                         'chat_id': data['chat_id'], 'user_id': data['player_id'], 'user_name': data['player_name'],
                         'score': data['amount'], 'date': get_msk_now()})
                     await message.answer(f'Очки изменены на {data["amount"]:+d} для игрока {data["player_id"]} в группе {data["chat_id"]}.', parse_mode=None)
+            elif name == 'draw':
+                from handlers.image_gen import process_image_request
+                await process_image_request(message, data['query'])
             elif name == 'image_probe':
                 from handlers.image_gen import cmd_image_probe
                 await cmd_image_probe(message)
             elif name == 'search_probe':
                 from handlers.web_search import cmd_search_image_probe
                 await cmd_search_image_probe(message, SimpleNamespace(args=data.get('query')))
+            elif name == 'legacy_news':
+                from handlers import owner_legacy_news, news_intake
+                if not owner_legacy_news.enabled() or owner_legacy_news.flag_snapshot() != data['mode_flags']:
+                    await message.answer('Настройки старого режима изменились. Материал не сохранён; открой раздел и проверь настройки заново.', parse_mode=None)
+                else:
+                    message.message_id = data['original_message_id']
+                    message.text = data['command_text']
+                    message.reply_to_message = (SimpleNamespace(text=data['reply_text'], caption=None)
+                                                if data['reply_text'] is not None else None)
+                    await news_intake.add_news(message)
+            elif name == 'legacy_digest':
+                from handlers import owner_legacy_news, news_intake
+                if not owner_legacy_news.enabled() or not owner_legacy_news.queue_enabled():
+                    await message.answer('Дополнительный режим или его очередь выключены. Дайджест не поставлен в очередь.', parse_mode=None)
+                else:
+                    message.text = '/news_digest ' + ' '.join(data['ids'])
+                    await news_intake.create_digest(message)
             elif name in ('noimage', 'nofocus'):
                 from handlers import news_owner_drafts
                 message.text = f'/news_{name} {data["number"]} {data["revision"]}'
