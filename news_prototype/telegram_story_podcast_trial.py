@@ -1,7 +1,7 @@
 """One-off owner preview of the approved Telegram story; not a worker pipeline.
 
 One joint two-speaker TTS request uses the existing key rotation. The complete
-source video plays once without source audio. Turn boundaries are pause
+source video plays and repeats without source audio. Turn boundaries are pause
 heuristics, not diarization; spoken words must be checked by the owner.
 """
 from __future__ import annotations
@@ -177,7 +177,7 @@ def hedgehog_frame(nod: int, blink: int):
 
 
 def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
-    """Show the complete video once, add dialogue and all studio animations."""
+    """Show the complete video, repeat as needed, and add studio animations."""
     audio, active, states = timeline
     if not active or len(active) != len(states):
         raise ValueError('Неверный таймлайн')
@@ -198,14 +198,14 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
     with tempfile.TemporaryDirectory(prefix='telegram-podcast-') as tmp:
         sound = Path(tmp) / 'sound.wav'
         bulletin_layered_video.write_sound(audio, sound, len(active))
-        # Audio from the original is never mapped; hold the last video frame if
-        # the dialogue is longer. Video starts after the TV has switched on.
+        # Play the complete source first, then loop it while the dialogue lasts.
+        # The source audio is never mapped. The TV turns on before playback.
         decoder = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
-                   '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-i', str(source),
+                   '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-stream_loop', '-1', '-i', str(source),
                    '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
                    f'scale={width}:{height}:force_original_aspect_ratio=decrease,'
                    f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x12355e,'
-                   f'fps={fps},tpad=stop_mode=clone:stop_duration=300',
+                   f'fps={fps}',
                    '-frames:v', str(len(active)), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
         encoder = [ffmpeg, '-nostdin', '-v', 'error', '-y', '-f', 'rawvideo', '-pixel_format', 'rgb24',
                    '-video_size', '960x540', '-framerate', str(fps), '-i', 'pipe:0', '-i', str(sound),
