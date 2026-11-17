@@ -2,12 +2,12 @@ import asyncio
 import html
 import logging
 import re
-import os
 
 import aiohttp
 from aiogram import Router, types
 from aiogram.filters import Command, CommandObject
 from config import ADMIN_ID
+from owner_preferences import current as get_owner_preferences
 from ddgs import DDGS
 from ai_logic import generate_with_retry
 from bender_style import BENDER_TONE
@@ -337,5 +337,5 @@ async def cmd_search_image_probe(message: types.Message, command: CommandObject)
         except Exception as exc:
             logger.warning('Проба картинки поиска не удалась: %s', type(exc).__name__)
             await message.answer('❌ Не удалось выполнить проверку поиска.')
-        mode = 'включены' if os.getenv('SEARCH_IMAGES', '').strip().lower() == 'enabled' else 'выключены'
+        mode = 'включены' if (await get_owner_preferences())['search_images'] else 'выключены'
         await message.answer(f'Проверка завершена. Картинки в обычном поиске: {mode}.')

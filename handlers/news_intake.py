@@ -74,10 +74,14 @@ async def add_news(message: types.Message) -> None:
         result = await db.db.news_candidates.update_one({'_id': key}, {'$setOnInsert': candidate}, upsert=True)
     except Exception as exc:
         logger.warning('Не удалось подтвердить сохранение новости: %s', type(exc).__name__)
-        await message.answer('Не удалось подтвердить сохранение. Проверь /news_list перед повтором.')
+        await message.answer('Не удалось подтвердить сохранение. Проверь ручные новости в панели перед повтором.'
+                             if getattr(message, 'panel_mode', False) else
+                             'Не удалось подтвердить сохранение. Проверь /news_list перед повтором.')
         return
     if result.upserted_id is None:
-        await message.answer('Эта новость уже сохранена. Состояние можно проверить в /news_list.')
+        await message.answer('Эта новость уже сохранена. Проверь её состояние в панели.'
+                             if getattr(message, 'panel_mode', False) else
+                             'Эта новость уже сохранена. Состояние можно проверить в /news_list.')
     else:
         await message.answer('Новость и акцент сохранены как непроверенный материал. '
                              'Дальнейшая подготовка зависит от включённых этапов. Публикации нет.')
@@ -157,12 +161,16 @@ async def create_digest(message: types.Message) -> None:
         inputs = await resolve_story_codes(db.db.news_render_jobs, parts[1:])
         created = await enqueue_digest(db.db.news_render_jobs, user.id, message.message_id, inputs)
     except ValueError:
-        await message.answer('Нужны как минимум два разных кода готовых сюжетов из /news_ready. '
+        await message.answer('Готовность одного из сюжетов изменилась. Открой список и выбери заново.'
+                             if getattr(message, 'panel_mode', False) else
+                             'Нужны как минимум два разных кода готовых сюжетов из /news_ready. '
                              'Если код неоднозначен, нужен полный ID.')
         return
     except Exception as exc:
         logger.warning('Не удалось подтвердить запрос дайджеста: %s', type(exc).__name__)
-        await message.answer('Не удалось подтвердить запись. Не повторяй вслепую: проверь /news_digest_status.')
+        await message.answer('Не удалось подтвердить запись. Не повторяй вслепую: проверь статус дайджестов в панели.'
+                             if getattr(message, 'panel_mode', False) else
+                             'Не удалось подтвердить запись. Не повторяй вслепую: проверь /news_digest_status.')
         return
     await message.answer(('Дайджест поставлен в очередь в указанном порядке. ' if created else 'Этот запрос уже сохранён. ')
                          + 'Он не будет опубликован. Доставка владельцу зависит от настроек.')

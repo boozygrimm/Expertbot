@@ -95,6 +95,9 @@ async def cmd_set_daily(message: types.Message, bot, state: FSMContext):
 # --- INLINE: НАЗНАЧЕНИЕ РАСПИСАНИЯ ---
 @router.callback_query(F.data == "cron_menu_set")
 async def cb_cron_menu_set(callback: types.CallbackQuery, bot):
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
     await callback.answer("Сканирую базу чатов...", show_alert=False)
     groups = await get_known_groups(bot)
     
@@ -116,7 +119,15 @@ async def cb_cron_menu_set(callback: types.CallbackQuery, bot):
 
 @router.callback_query(F.data.startswith("c_set:"))
 async def cb_cron_select_set(callback: types.CallbackQuery, state: FSMContext):
-    chat_id = int(callback.data.split(":")[1])
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
+    try:
+        chat_id = int(callback.data.split(":")[1])
+        if chat_id >= 0:
+            raise ValueError
+    except (ValueError, IndexError):
+        return await callback.answer("Некорректная группа.", show_alert=True)
     await state.update_data(target_chat_id=chat_id)
     
     await callback.message.edit_text(
@@ -127,12 +138,18 @@ async def cb_cron_select_set(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(CronAdminState.waiting_for_time_set)
 async def process_time_set(message: types.Message, bot, state: FSMContext):
-    time_str = message.text.strip()
+    if not (message.from_user and message.from_user.id == ADMIN_ID and message.chat.type == "private"
+            and message.chat.id == ADMIN_ID):
+        return
+    time_str = (message.text or "").strip()
     if not re.match(r"^([01]\d|2[0-3]):([0-5]\d)$", time_str):
         return await message.answer("❌ Неверный формат. Используйте ЧЧ:ММ. Попробуйте еще раз:")
         
     data = await state.get_data()
-    target_chat_id = data['target_chat_id']
+    target_chat_id = data.get('target_chat_id')
+    if not isinstance(target_chat_id, int) or target_chat_id >= 0:
+        await state.clear()
+        return await message.answer("Сначала выбери группу в меню расписаний.")
     
     chat_title = str(target_chat_id)
     try:
@@ -153,6 +170,9 @@ async def process_time_set(message: types.Message, bot, state: FSMContext):
 # --- INLINE: ОТКЛЮЧЕНИЕ РАСПИСАНИЯ ---
 @router.callback_query(F.data == "cron_menu_stop")
 async def cb_cron_menu_stop(callback: types.CallbackQuery, bot):
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
     # Ищем только те чаты, где УЖЕ есть активное расписание
     cursor = db.settings.find({"setting": "daily_report", "is_active": True})
     active_reports = await cursor.to_list(length=100)
@@ -182,7 +202,15 @@ async def cb_cron_menu_stop(callback: types.CallbackQuery, bot):
 
 @router.callback_query(F.data.startswith("c_stop:"))
 async def cb_cron_select_stop(callback: types.CallbackQuery, bot):
-    chat_id = int(callback.data.split(":")[1])
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
+    try:
+        chat_id = int(callback.data.split(":")[1])
+        if chat_id >= 0:
+            raise ValueError
+    except (ValueError, IndexError):
+        return await callback.answer("Некорректная группа.", show_alert=True)
     
     await db.settings.update_one(
         {"setting": "daily_report", "chat_id": chat_id},
@@ -201,6 +229,9 @@ async def cb_cron_select_stop(callback: types.CallbackQuery, bot):
 # --- СТАТУС И ВОЗВРАТ ---
 @router.callback_query(F.data == "cron_status")
 async def cb_cron_status(callback: types.CallbackQuery, bot):
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
     cursor = db.settings.find({"setting": "daily_report", "is_active": True})
     active_reports = await cursor.to_list(length=100)
     
@@ -226,6 +257,9 @@ async def cb_cron_status(callback: types.CallbackQuery, bot):
 
 @router.callback_query(F.data == "cron_back")
 async def cb_cron_back(callback: types.CallbackQuery, state: FSMContext):
+    if not (callback.from_user and callback.from_user.id == ADMIN_ID and callback.message
+            and callback.message.chat.type == "private" and callback.message.chat.id == ADMIN_ID):
+        return await callback.answer("Доступно только владельцу в личке.", show_alert=True)
     await state.clear()
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Назначить расписание", callback_data="cron_menu_set")

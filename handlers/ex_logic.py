@@ -1,6 +1,5 @@
 import re
 import html
-import os
 import random
 import time
 import asyncio
@@ -27,6 +26,7 @@ from handlers.response_choice import offer_response_choice
 from handlers.photo_context import has_request_photo, add_photo_context
 from handlers.recent_context import add_recent_context
 from handlers.voice_context import add_voice_reply_context
+from owner_preferences import current as get_owner_preferences
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -571,7 +571,7 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
         status_msg = await message.reply(f"🌐 Ищу информацию по запросу: «{clean_query}»...")
         try:
             image = None
-            if os.getenv('SEARCH_IMAGES', '').strip().lower() == 'enabled':
+            if (await get_owner_preferences())['search_images']:
                 result, image = await smart_web_search_with_image(clean_query)
             else:
                 result = await smart_web_search(clean_query)

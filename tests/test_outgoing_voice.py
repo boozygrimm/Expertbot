@@ -506,7 +506,7 @@ class VoiceEndToEndTests(unittest.IsolatedAsyncioTestCase):
                  patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=(intent, 'пример'))), \
                  patch.object(ex_logic, 'handle_music_request', new_callable=AsyncMock) as music, \
                  patch.object(ex_logic, 'process_image_request', new_callable=AsyncMock) as image, \
-                 patch.dict(os.environ, {'SEARCH_IMAGES': ''}), \
+                 patch.object(ex_logic, 'get_owner_preferences', AsyncMock(return_value={'search_images': False})), \
                  patch.object(ex_logic, 'smart_web_search', new=AsyncMock(return_value='answer')) as search, \
                  patch.object(ex_logic, 'send_persona_selection', new_callable=AsyncMock) as gossip, \
                  patch.object(ex_logic, 'start_game', new_callable=AsyncMock) as pole:

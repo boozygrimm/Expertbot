@@ -13,6 +13,9 @@ from tests.test_search_api import mocked_session
 
 class SearchImageTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        from owner_preferences import legacy_defaults
+        p = patch.object(web_search, "get_owner_preferences", AsyncMock(side_effect=legacy_defaults))
+        p.start(); self.addCleanup(p.stop)
         self.results = [{'title': 'Марс', 'body': 'Планета', 'href': 'https://example.org/mars', 'date': ''}]
         self.candidates = [{'url': 'https://images.example.org/mars.jpg', 'description': 'Поверхность Марса'}]
 
@@ -118,6 +121,11 @@ class SearchImageTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ImageDeliveryTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from owner_preferences import legacy_defaults
+        p = patch.object(ex_logic, "get_owner_preferences", AsyncMock(side_effect=legacy_defaults))
+        p.start(); self.addCleanup(p.stop)
+
     async def test_search_failed_photo_keeps_full_text_and_does_not_retry(self):
         status = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock())
         message = SimpleNamespace(text='Экс, найди Марс', chat=SimpleNamespace(id=-1001, type='supergroup'),
@@ -136,6 +144,30 @@ class ImageDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Бендер: Марс!', message.reply_photo.await_args.kwargs['caption'])
         message.reply_photo.assert_awaited_once()
         old.assert_not_awaited()
+
+    async def test_saved_search_setting_drives_real_search_flow(self):
+        from mongomock_motor import AsyncMongoMockClient
+        import owner_preferences
+        database = AsyncMongoMockClient().test
+        await owner_preferences.set_search_images(database.settings, True)
+        async def saved_preferences():
+            return await owner_preferences.get(database.settings)
+        status = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock())
+        message = SimpleNamespace(text='Экс, найди Марс', chat=SimpleNamespace(id=-1001, type='supergroup'),
+            from_user=SimpleNamespace(id=123), bot=SimpleNamespace(id=42), reply_to_message=None,
+            reply=AsyncMock(return_value=status), reply_photo=AsyncMock())
+        personas = SimpleNamespace(find=MagicMock(return_value=SimpleNamespace(to_list=AsyncMock(
+            return_value=[{'p_id':'bender', 'name':'Бендер'}]))))
+        with patch.dict(os.environ, {'SEARCH_IMAGES': ''}), \
+             patch.object(ex_logic, 'db', SimpleNamespace(personas=personas)), \
+             patch.object(ex_logic, 'get_owner_preferences', AsyncMock(side_effect=saved_preferences)), \
+             patch.object(ex_logic, 'analyze_intent', AsyncMock(return_value=('SEARCH', 'Марс'))), \
+             patch.object(ex_logic, 'is_feature_enabled', AsyncMock(return_value=True)), \
+             patch.object(ex_logic, 'smart_web_search_with_image', AsyncMock(return_value=('ответ', None))) as image_search, \
+             patch.object(ex_logic, 'smart_web_search', AsyncMock()) as plain_search:
+            await ex_logic.handle_ex_request(message)
+            image_search.assert_awaited_once()
+            plain_search.assert_not_awaited()
 
     async def test_photo_contains_short_answer_and_deletes_status(self):
         status = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock())
