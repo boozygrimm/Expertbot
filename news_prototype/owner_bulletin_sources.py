@@ -71,6 +71,13 @@ async def collect(db, owner_id: int, number: int, fetch, fetch_image) -> str:
                 if isinstance(title, str) and title.strip() and len(title) <= 300:
                     story['title'] = title.strip()
                 story['summary'] = summary
+                video_status = article.get('telegram_video_status')
+                if (isinstance(video_status, str) and video_status in ('available', 'none', 'ambiguous')
+                        and widget_for(choice['url']) is not None):
+                    # A discovery hint only: not a downloaded/approved video.
+                    # This field participates in source_revision and never
+                    # contains signed CDN URLs or video bytes.
+                    story['telegram_video_status'] = video_status
             except Exception:
                 return story
             media = article.get('media')

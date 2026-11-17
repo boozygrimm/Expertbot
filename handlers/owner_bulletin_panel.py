@@ -98,6 +98,14 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
             caption='Картинка для этой новости. Проверь, что она соответствует источнику.', parse_mode=None)
     else:
         await message.answer('Картинки нет: на экране будет нейтральный фон.', parse_mode=None)
+    source = next((story for story in item.get('stories', []) if story.get('draft_id') == section['id']), None)
+    video_status = source.get('telegram_video_status') if source else None
+    if video_status == 'available':
+        await message.answer('В этом посте обнаружено видео. Пока оно не загружено и не проверено; '
+                             'текущий рендер его не использует. Проверь источник отдельно.', parse_mode=None)
+    elif video_status == 'ambiguous':
+        await message.answer('Видео поста найдено неоднозначно; оно не используется. '
+                             'Проверь источник отдельно.', parse_mode=None)
     token = secrets.token_hex(8)
     await db.db.owner_bulletin_cards.insert_one({'_id': token, 'owner_id': owner_id,
         'bulletin_id': item['bulletin_id'], 'section_id': section['id'], 'revision': item['revision'],

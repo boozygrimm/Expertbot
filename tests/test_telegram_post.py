@@ -133,3 +133,43 @@ class TelegramPostTests(unittest.IsolatedAsyncioTestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class TelegramVideoDiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_exact_widget_reports_video_hint_without_exposing_or_downloading_media(self):
+        from tests.test_telegram_public_source import page
+        data = page()
+        class Content:
+            async def iter_chunked(self, _): yield data
+        class Response:
+            status=200; headers={}; content_type='text/html'; content_length=len(data); charset='utf-8'; content=Content()
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+        class Session:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects): return Response()
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=Session()):
+            result = await article_fetch.fetch_article('https://t.me/ExampleNews/102')
+        self.assertEqual(result['telegram_video_status'], 'available')
+        self.assertNotIn('token=opaque', repr(result))
+        self.assertNotIn('video_url', result)
+        self.assertIn('Здесь подпись новости', result['summary'])
+
+    async def test_neighbour_video_does_not_mark_target_video(self):
+        from tests.test_telegram_public_source import page, VIDEO
+        data = page().replace(
+            ('<a class="tgme_widget_message_video_player" href="https://t.me/ExampleNews/102"><video src="' + VIDEO + '"></video></a>').encode(), b'')
+        class Content:
+            async def iter_chunked(self, _): yield data
+        class Response:
+            status=200; headers={}; content_type='text/html'; content_length=len(data); charset='utf-8'; content=Content()
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+        class Session:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects): return Response()
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=Session()):
+            result = await article_fetch.fetch_article('https://t.me/ExampleNews/102')
+        self.assertEqual(result['telegram_video_status'], 'none')

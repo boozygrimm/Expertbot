@@ -300,3 +300,21 @@ asyncio.run(run())
             self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 99))['stage'], 'ready_for_review')
             self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
             self.assertTrue(any('Сократи реплики' in c.args[0] for c in self.message.answer.await_args_list))
+
+
+class BulletinVideoHintReviewTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shows_video_hint_without_claiming_it_will_be_rendered(self):
+        database = AsyncMongoMockClient().test
+        message = SimpleNamespace(answer=AsyncMock(return_value=SimpleNamespace(message_id=50)),
+                                  answer_photo=AsyncMock(), answer_video=AsyncMock())
+        section = {'id': 1, 'url': 'https://t.me/ExampleNews/102', 'ticker': 'Новость',
+                   'turns': [{'speaker': 'Бендер', 'text': 'Факт', 'kind': 'fact', 'evidence': 'Цитата'}]}
+        item = {'sections': [section], 'stories': [{'draft_id': 1, 'telegram_video_status': 'available'}],
+                'bulletin_id': 10, 'revision': 'a' * 64}
+        with patch.object(panel, 'db', SimpleNamespace(db=database)):
+            await panel.show_section(message, 123, item, section)
+        messages = [call.args[0] for call in message.answer.await_args_list]
+        self.assertTrue(any('обнаружено видео' in text and 'не использует' in text for text in messages))
+        self.assertTrue(any('нейтральный фон' in text for text in messages))
+        message.answer_video.assert_not_awaited()
+        self.assertEqual(await database.news_owner_trial_jobs.count_documents({}), 0)

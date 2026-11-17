@@ -110,3 +110,41 @@ class SourceCollectionTests(unittest.IsolatedAsyncioTestCase):
         editor = AsyncMock()
         self.assertEqual(await owner_bulletin.prepare(self.db, self.owner, self.number, editor), 'stale')
         editor.assert_not_awaited()
+
+
+class TelegramVideoSourceReviewTests(unittest.IsolatedAsyncioTestCase):
+    async def test_video_status_is_bound_to_source_revision_but_never_sneaks_into_v1_render(self):
+        db = AsyncMongoMockClient().test
+        picked = [{'url': 'https://t.me/ExampleNews/102', 'title': 'Пост'},
+                  {'url': 'https://example.com/story/2', 'title': 'Сайт'}]
+        await sources.create(db, 123, 77, picked)
+        async def fetch(url):
+            return {'summary': SOURCE, 'telegram_video_status': 'available',
+                    'video_url': 'https://cdn4.telesco.pe/file/secret'}
+        await sources.collect(db, 123, 77, fetch, AsyncMock())
+        item = await owner_bulletin.get(db, 123, 77)
+        self.assertEqual(item['stories'][0]['telegram_video_status'], 'available')
+        self.assertNotIn('telegram_video_status', item['stories'][1])
+        self.assertNotIn('video_url', repr(item))
+        self.assertTrue(await owner_bulletin._sources_current(db, 123, item))
+        await owner_bulletin.prepare(db, 123, 77, AsyncMock(side_effect=lambda stories: response(stories)))
+        reviewed = await owner_bulletin.get(db, 123, 77)
+        payload = await owner_bulletin.approved_payload(db, 123, 77, reviewed['revision'])
+        self.assertNotIn('telegram_video_status', repr(payload))
+        self.assertNotIn('video_url', repr(payload))
+        tampered = reviewed['stories']
+        tampered[0]['telegram_video_status'] = 'none'
+        await db.news_owner_bulletins.update_one({'_id': reviewed['_id']}, {'$set': {'stories': tampered}})
+        with self.assertRaises(ValueError):
+            await owner_bulletin.approved_payload(db, 123, 77, reviewed['revision'])
+
+    async def test_unknown_or_forged_hint_does_not_add_video(self):
+        db = AsyncMongoMockClient().test
+        picked = [{'url': 'https://t.me/ExampleNews/102', 'title': 'Пост'},
+                  {'url': 'https://example.com/story/2', 'title': 'Сайт'}]
+        await sources.create(db, 123, 78, picked)
+        async def fetch(url):
+            return {'summary': SOURCE, 'telegram_video_status': {'bogus': True}}
+        await sources.collect(db, 123, 78, fetch, AsyncMock())
+        item = await owner_bulletin.get(db, 123, 78)
+        self.assertTrue(all('telegram_video_status' not in story for story in item['stories']))
