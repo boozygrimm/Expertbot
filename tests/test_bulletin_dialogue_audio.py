@@ -38,7 +38,11 @@ def test_request_carries_one_complete_news_and_approved_voice_pair():
     assert body['contents'][0]['parts'][0]['speechMetadata']['style'] == t.VOICES['Бендер'][2]
     assert 'На шутках и подколах' in body['contents'][0]['parts'][0]['speechMetadata']['style']
     assert 'без насмешки' in body['contents'][0]['parts'][0]['speechMetadata']['style']
-    assert body['contents'][0]['parts'][1]['speechMetadata']['style'] == 'По-русски спокойно, тепло и доброжелательно.'
+    sensei_style = body['contents'][0]['parts'][1]['speechMetadata']['style']
+    assert sensei_style == t.VOICES['Киберсенсей'][2]
+    assert 'интерес и удивление' in sensei_style
+    assert 'серьёзность и сочувствие' in sensei_style
+    assert 'Не переигрывай' in sensei_style
     voices=body['generationConfig']['speechConfig']['multiSpeakerVoiceConfig']['speakerVoiceConfigs']
     assert [x['voiceConfig']['prebuiltVoiceConfig']['voiceName'] for x in voices]==['Algenib','Puck']
     assert 'Новость 2' not in json.dumps(body,ensure_ascii=False)
