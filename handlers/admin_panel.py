@@ -490,7 +490,7 @@ class FeatureAccessMiddleware(BaseMiddleware):
 async def open_feature_panel(message: types.Message, bot, state: FSMContext):
     if message.chat.type == "private" and message.from_user and message.from_user.id == ADMIN_ID:
         await state.clear()
-        from handlers.news_owner_panel import open_owner_panel
+        from handlers.owner_control_panel import open_owner_panel
         return await open_owner_panel(message)
     if message.chat.type not in {"group", "supergroup"}:
         return await message.reply("ℹ️ Эту панель нужно открывать прямо в группе, которую настраиваешь.")

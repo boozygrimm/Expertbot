@@ -93,10 +93,11 @@ def configure_dispatcher() -> Dispatcher:
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
     # Owner-only handlers are always registered; persistent settings gate their
     # actions so the owner can change modes without restarting the bot.
-    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel
+    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel, owner_control_panel
     dp.include_router(news_owner_trial.router)
     dp.include_router(news_owner_drafts.router)
     dp.include_router(news_owner_panel.router)
+    dp.include_router(owner_control_panel.router)
     if os.getenv("NEWS_INTAKE_ENABLED", "").strip() == "1":
         # Candidate intake only; no automatic rendering or publishing.
         from handlers import news_intake

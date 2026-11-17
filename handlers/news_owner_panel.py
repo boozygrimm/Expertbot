@@ -71,7 +71,7 @@ async def panel_content():
     builder.button(text='📝 Черновики', callback_data='news_panel:drafts')
     builder.button(text='🎞 Выпуски', callback_data='news_panel:programs')
     builder.button(text='🔄 Обновить', callback_data='news_panel:home')
-    builder.button(text='❌ Закрыть', callback_data='news_panel:close')
+    builder.button(text='⬅️ Общий пульт', callback_data='owner_panel:home')
     builder.adjust(1, 1, 1, 2, 2)
     return '\n'.join(lines), builder.as_markup()
 

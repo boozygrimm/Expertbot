@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
 os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
 from mongomock_motor import AsyncMongoMockClient
-from handlers import admin_panel, news_owner_panel as panel, news_owner_drafts
+from handlers import admin_panel, news_owner_panel as panel, news_owner_drafts, owner_control_panel
 from news_prototype import owner_daily, owner_discovery, owner_trial
 
 
@@ -17,6 +17,9 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         self.db_patch = patch.object(panel, 'db', SimpleNamespace(db=self.db))
         self.db_patch.start()
         self.addCleanup(self.db_patch.stop)
+        control_db = patch.object(owner_control_panel, 'db', SimpleNamespace(db=self.db, settings=self.db.settings))
+        control_db.start()
+        self.addCleanup(control_db.stop)
         self.env = patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED':'0', 'NEWS_OWNER_TRIAL_ENABLED':'0',
                                            'NEWS_OWNER_DRAFT_ENABLED':'0'}, clear=False)
         self.env.start()
@@ -34,9 +37,9 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         state = SimpleNamespace(clear=AsyncMock())
         private = SimpleNamespace(chat=SimpleNamespace(type='private'), from_user=self.owner, answer=AsyncMock())
         await admin_panel.open_feature_panel(private, None, state)
-        self.assertIn('ПАНЕЛЬ НОВОСТЕЙ', private.answer.await_args.args[0])
+        self.assertIn('ПУЛЬТ ВЛАДЕЛЬЦА', private.answer.await_args.args[0])
         buttons = private.answer.await_args.kwargs['reply_markup'].inline_keyboard
-        self.assertIn('Включить сбор', buttons[0][0].text)
+        self.assertEqual(buttons[0][0].text, '📰 Новости')
         private.from_user = SimpleNamespace(id=panel.ADMIN_ID+1)
         private.reply = AsyncMock()
         await admin_panel.open_feature_panel(private, None, state)

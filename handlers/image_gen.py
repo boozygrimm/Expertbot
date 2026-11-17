@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import re
 import urllib.parse
 
@@ -13,6 +12,7 @@ from database import db
 from config import ADMIN_ID, get_msk_now
 from ai_logic import generate_fast_image_prompt
 from handlers import image_providers
+from owner_preferences import current as get_owner_preferences
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -52,9 +52,8 @@ async def fetch_image_pollinations(prompt: str):
 
 
 async def generate_image(prompt: str):
-    # Activation is explicit. Empty or unknown values keep the old service;
-    # simply configuring Cloudflare credentials must not switch production.
-    if os.getenv('IMAGE_PROVIDER_MODE', '').strip().lower() == 'cloudflare':
+    # The panel setting wins; until migration the environment is the default.
+    if (await get_owner_preferences())['image_provider'] == 'cloudflare':
         return await image_providers.generate_image(prompt)
     return await fetch_image_pollinations(prompt)
 
@@ -186,7 +185,7 @@ async def cmd_image_probe(message: types.Message):
         await message.answer("Проверка картинок уже выполняется, дождись результата.")
         return
     async with _probe_lock:
-        mode = 'Cloudflare + OVHcloud' if os.getenv('IMAGE_PROVIDER_MODE', '').strip().lower() == 'cloudflare' else 'Pollinations (прежний)'
+        mode = 'Cloudflare + OVHcloud' if (await get_owner_preferences())['image_provider'] == 'cloudflare' else 'Pollinations (прежний)'
         await message.answer(
             f"Проверяю Cloudflare и OVHcloud с сервера бота. Текущий режим: {mode}. "
             "Тест использует квоты сервисов, но не списывает очки или попытки бота."

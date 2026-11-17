@@ -237,6 +237,11 @@ class ProviderHttpTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RolloutTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        from owner_preferences import legacy_defaults
+        p = patch.object(image_gen, "get_owner_preferences", AsyncMock(side_effect=legacy_defaults))
+        p.start(); self.addCleanup(p.stop)
+
     async def test_default_or_unknown_mode_keeps_pollinations(self):
         for mode in ('', 'legacy', 'typo'):
             with self.subTest(mode=mode), patch.dict(os.environ, {'IMAGE_PROVIDER_MODE': mode}), \
@@ -257,6 +262,9 @@ class RolloutTests(unittest.IsolatedAsyncioTestCase):
 
 class ProbeTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        from owner_preferences import legacy_defaults
+        p = patch.object(image_gen, "get_owner_preferences", AsyncMock(side_effect=legacy_defaults))
+        p.start(); self.addCleanup(p.stop)
         self.id_patch = patch.object(image_gen, 'ADMIN_ID', 123)
         self.lock_patch = patch.object(image_gen, '_probe_lock', asyncio.Lock())
         self.id_patch.start()

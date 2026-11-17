@@ -346,6 +346,7 @@ class RoutingTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(ex_logic, 'db', SimpleNamespace(personas=personas)), \
                      patch.object(ex_logic, 'analyze_intent', new=AsyncMock(return_value=(intent, 'пример'))), \
                      patch.object(ex_logic, 'is_feature_enabled', new=AsyncMock(return_value=True)), \
+                     patch.object(ex_logic, 'get_owner_preferences', AsyncMock(return_value={'search_images': False})), \
                      patch.object(ex_logic, 'offer_response_choice', new_callable=AsyncMock) as offer, \
                      patch.object(ex_logic, target, new=AsyncMock(return_value='Результат')) as action:
                     await ex_logic.handle_ex_request(message)
