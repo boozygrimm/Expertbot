@@ -16,7 +16,7 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
         self.dbpatch.start(); self.addCleanup(self.dbpatch.stop)
         self.user = SimpleNamespace(id=tools.ADMIN_ID)
         self.message = SimpleNamespace(chat=SimpleNamespace(type='private', id=tools.ADMIN_ID), message_id=23,
-            answer=AsyncMock(), reply=AsyncMock(), answer_photo=AsyncMock(), edit_text=AsyncMock())
+            answer=AsyncMock(), reply=AsyncMock(), answer_photo=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
         self.cb = SimpleNamespace(from_user=self.user, message=self.message, data='', answer=AsyncMock())
         self.state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
 
@@ -352,3 +352,192 @@ asyncio.run(run())
             self.cb.data = 'owner_tools:run:' + conf['_id']
             await tools.action(self.cb, self.state, None)
             lore.assert_awaited_once()
+
+    async def test_probe_cancel_closes_confirmation_and_never_runs(self):
+        from handlers import image_gen
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        confirm = markup.inline_keyboard[0][0].callback_data
+        cancel = markup.inline_keyboard[1][0].callback_data
+        self.cb.data = cancel
+        with patch.object(image_gen, 'cmd_image_probe', AsyncMock()) as probe:
+            await tools.action(self.cb, self.state, None)
+            self.message.delete.assert_awaited_once()
+            self.assertEqual(self.cb.answer.await_args.args[0], 'Отменено')
+            self.cb.data = confirm
+            await tools.action(self.cb, self.state, None)
+            probe.assert_not_awaited()
+        record = await self.db.owner_panel_confirmations.find_one({})
+        self.assertEqual(record['stage'], 'cancelled')
+
+    async def test_cancel_expired_or_missing_confirmation_still_closes(self):
+        from datetime import datetime, timedelta, timezone
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        cancel = markup.inline_keyboard[1][0].callback_data
+        token = cancel.split(':')[-1]
+        await self.db.owner_panel_confirmations.update_one({'_id': token},
+            {'$set': {'expires_at': datetime.now(timezone.utc) - timedelta(seconds=1)}})
+        self.cb.data = cancel
+        await tools.action(self.cb, self.state, None)
+        self.assertEqual((await self.db.owner_panel_confirmations.find_one({'_id':token}))['stage'], 'cancelled')
+        self.message.delete.assert_awaited_once()
+        self.assertEqual(self.cb.answer.await_args.args[0], 'Отменено')
+        # A duplicate callback and a cleaned-up token should both dismiss the UI.
+        await tools.action(self.cb, self.state, None)
+        self.assertEqual(self.cb.answer.await_args.args[0], 'Отменено')
+        await self.db.owner_panel_confirmations.delete_one({'_id':token})
+        await tools.action(self.cb, self.state, None)
+        self.assertIn('недоступно', self.cb.answer.await_args.args[0])
+        self.assertEqual(self.message.delete.await_count, 3)
+
+    async def test_cancel_falls_back_to_removing_buttons_when_delete_fails(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        self.message.delete.side_effect = RuntimeError('cannot delete')
+        await tools.action(self.cb, self.state, None)
+        self.assertEqual(self.message.edit_text.await_args.args[0], 'Отменено. Действие не запущено.')
+        self.assertIsNone(self.message.edit_text.await_args.kwargs['reply_markup'])
+        self.assertEqual((await self.db.owner_panel_confirmations.find_one({}))['stage'], 'cancelled')
+
+    async def test_cancel_after_claim_does_not_hide_or_stop_running_action(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        token = self.cb.data.split(':')[-1]
+        for stage in ('running', 'done'):
+            await self.db.owner_panel_confirmations.update_one({'_id':token}, {'$set': {'stage':stage}})
+            self.message.delete.reset_mock(); self.message.edit_text.reset_mock()
+            await tools.action(self.cb, self.state, None)
+            self.assertTrue(self.cb.answer.await_args.kwargs['show_alert'])
+            self.assertIn('нельзя', self.cb.answer.await_args.args[0])
+            self.message.delete.assert_not_awaited()
+            self.message.edit_text.assert_not_awaited()
+            self.assertEqual((await self.db.owner_panel_confirmations.find_one({'_id':token}))['stage'], stage)
+
+    async def test_cancel_is_owner_private_only(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID+1)
+        await tools.action(self.cb, self.state, None)
+        self.cb.from_user = self.user
+        self.message.chat.type = 'group'
+        await tools.action(self.cb, self.state, None)
+        self.message.delete.assert_not_awaited()
+        self.assertEqual((await self.db.owner_panel_confirmations.find_one({}))['stage'], 'ready')
+
+    async def test_cancel_during_claim_does_not_break_running_request(self):
+        import asyncio
+        from handlers import image_gen
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        entered, proceed = asyncio.Event(), asyncio.Event()
+        async def run_ack(*args, **kwargs):
+            entered.set()
+            await proceed.wait()
+        run_callback = SimpleNamespace(from_user=self.user, message=self.message,
+                                       data=markup.inline_keyboard[0][0].callback_data, answer=AsyncMock(side_effect=run_ack))
+        cancel_callback = SimpleNamespace(from_user=self.user, message=self.message,
+                                          data=markup.inline_keyboard[1][0].callback_data, answer=AsyncMock())
+        with patch.object(image_gen, 'cmd_image_probe', AsyncMock()) as probe:
+            task = asyncio.create_task(tools.action(run_callback, self.state, None))
+            await asyncio.wait_for(entered.wait(), 2)
+            try:
+                await tools.action(cancel_callback, self.state, None)
+                self.message.delete.assert_not_awaited()
+                self.assertTrue(cancel_callback.answer.await_args.kwargs['show_alert'])
+            finally:
+                proceed.set()
+                await asyncio.wait_for(task, 2)
+            probe.assert_awaited_once()
+            self.message.edit_text.assert_awaited_once()
+
+    async def test_real_dispatcher_probe_cancel_removes_message(self):
+        import subprocess, sys
+        script = r'''
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from aiogram import Bot
+from aiogram.methods import SendMessage, DeleteMessage, AnswerCallbackQuery
+from aiogram.types import Update
+from mongomock_motor import AsyncMongoMockClient
+from config import ADMIN_ID
+from app_setup import configure_dispatcher
+from handlers import owner_tools_panel, image_gen, alc_build, alc_intro
+
+async def run():
+    database = AsyncMongoMockClient().test
+    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    bot = Bot('123456:TESTTOKEN')
+    calls = []
+    async def request(bot_arg, method, **kwargs):
+        calls.append(method)
+        return True
+    dp = configure_dispatcher()
+    with patch.object(owner_tools_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
+         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(image_gen, 'cmd_image_probe', AsyncMock()) as probe, \
+         patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
+        user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}
+        chat = {'id':ADMIN_ID, 'type':'private'}
+        async def click(i, data, message_id):
+            update = Update.model_validate({'update_id':i, 'callback_query':{
+                'id':str(i), 'chat_instance':'owner', 'from':user, 'data':data,
+                'message':{'message_id':message_id, 'date':1760000000, 'chat':chat,
+                           'from':{'id':123456,'is_bot':True,'first_name':'Bot'}, 'text':'Panel'}}})
+            await asyncio.wait_for(dp.feed_update(bot, update), 5)
+        await click(1, 'owner_tools:image_probe', 22)
+        prompt = next(m for m in calls if isinstance(m, SendMessage) and 'Cloudflare и OVHcloud' in m.text)
+        confirm = prompt.reply_markup.inline_keyboard[0][0].callback_data
+        cancel = prompt.reply_markup.inline_keyboard[1][0].callback_data
+        await click(2, cancel, 23)
+        assert any(isinstance(m, DeleteMessage) and m.message_id == 23 for m in calls), calls
+        assert any(isinstance(m, AnswerCallbackQuery) and m.text == 'Отменено' for m in calls), calls
+        await click(3, confirm, 23)
+        assert probe.await_count == 0
+        assert (await database.owner_panel_confirmations.find_one({}))['stage'] == 'cancelled'
+    await bot.session.close()
+asyncio.run(run())
+'''
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_duplicate_cancel_when_message_already_deleted_is_quiet(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        await tools.action(self.cb, self.state, None)
+        self.message.answer.reset_mock()
+        self.message.delete.side_effect = RuntimeError('already deleted')
+        self.message.edit_text.side_effect = RuntimeError('already deleted')
+        await tools.action(self.cb, self.state, None)
+        self.assertEqual(self.cb.answer.await_args.args[0], 'Отменено')
+        self.message.answer.assert_not_awaited()
+        self.assertEqual((await self.db.owner_panel_confirmations.find_one({}))['stage'], 'cancelled')
+
+    async def test_cancel_closes_even_when_callback_answer_fails(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        self.cb.answer.side_effect = RuntimeError('callback expired')
+        await tools.action(self.cb, self.state, None)
+        self.message.delete.assert_awaited_once()
+        self.assertEqual((await self.db.owner_panel_confirmations.find_one({}))['stage'], 'cancelled')
+
+    async def test_cancel_db_failure_does_not_claim_success_or_remove_button(self):
+        self.cb.data = 'owner_tools:image_probe'
+        await tools.action(self.cb, self.state, None)
+        self.cb.data = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[1][0].callback_data
+        collection = self.db.owner_panel_confirmations
+        with patch.object(collection, 'update_one', AsyncMock(side_effect=OSError('database unavailable'))), \
+             patch.object(tools.db.db, 'owner_panel_confirmations', collection):
+            await tools.action(self.cb, self.state, None)
+        self.assertTrue(self.cb.answer.await_args.kwargs['show_alert'])
+        self.message.delete.assert_not_awaited()
+        self.assertEqual((await collection.find_one({}))['stage'], 'ready')

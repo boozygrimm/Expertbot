@@ -463,8 +463,37 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready',
                      'expires_at': {'$gt': datetime.now(timezone.utc)}}
             if op == 'cancel':
-                changed = await db.db.owner_panel_confirmations.update_one(query, {'$set': {'stage': 'cancelled'}})
-                await callback.answer('Отменено' if changed.modified_count else 'Кнопка устарела')
+                # Cancellation must also close an expired confirmation.  The CAS
+                # still competes atomically with run's ready -> running claim.
+                cancel_query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready'}
+                changed = await db.db.owner_panel_confirmations.update_one(cancel_query, {'$set': {'stage': 'cancelled'}})
+                record = None if changed.modified_count else await db.db.owner_panel_confirmations.find_one(
+                    {'_id': token, 'owner_id': callback.from_user.id})
+                if record and record.get('stage') in ('running', 'done'):
+                    # Do not delete or edit this message while run might be using
+                    # it; cancellation cannot stop an already claimed operation.
+                    await callback.answer('Действие уже обрабатывается или обработано. Отменить его кнопкой нельзя.', show_alert=True)
+                    return
+                cancelled = bool(changed.modified_count or (record and record.get('stage') == 'cancelled'))
+                try:
+                    await callback.answer('Отменено' if cancelled else 'Подтверждение уже недоступно')
+                except Exception as exc:
+                    # An expired callback acknowledgement must not prevent the
+                    # now-cancelled message from being closed.
+                    logger.debug('Не удалось подтвердить отмену кнопки: %s', type(exc).__name__)
+                try:
+                    await callback.message.delete()
+                except Exception as exc:
+                    logger.debug('Не удалось удалить отменённое подтверждение: %s', type(exc).__name__)
+                    # If Telegram refuses deletion, replace the buttons with a
+                    # neutral status; an absent record may have been processed.
+                    text = ('Отменено. Действие не запущено.' if cancelled else
+                            'Подтверждение недоступно. Если действие уже запускалось, проверь его результат.')
+                    try:
+                        await callback.message.edit_text(text, reply_markup=None, parse_mode=None)
+                    except Exception as edit_exc:
+                        # It may already have been deleted by a duplicate click.
+                        logger.debug('Не удалось закрыть подтверждение: %s', type(edit_exc).__name__)
                 return
             from pymongo import ReturnDocument
             record = await db.db.owner_panel_confirmations.find_one_and_update(
