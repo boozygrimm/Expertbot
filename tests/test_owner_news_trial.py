@@ -174,11 +174,51 @@ class OwnerTrialTests(unittest.IsolatedAsyncioTestCase):
         queue=VideoQueue(self.db.media); await queue.ensure(); await queue.acquire()
         client=SimpleNamespace(supports_news=AsyncMock(return_value=True),submit=AsyncMock())
         await queue.enqueue({'id':'ordinary'})
-        await owner_trial.dispatch_once(queue,self.db.news_owner_trial_jobs,client)
+        await owner_trial.dispatch_once(queue,self.db,client)
         client.supports_news.assert_not_awaited(); client.submit.assert_not_awaited()
         await queue.remove('ordinary'); client.supports_news.return_value=False
-        await owner_trial.dispatch_once(queue,self.db.news_owner_trial_jobs,client)
+        await owner_trial.dispatch_once(queue,self.db,client)
         self.assertEqual(await owner_trial.status(self.db),'queued'); client.submit.assert_not_awaited()
+        await queue.release()
+
+    async def test_persistent_mode_dispatches_existing_queue_without_env_flag(self):
+        import main
+        from news_prototype import news_worker_client
+        url, script = owner_trial.parse_message(TEXT)
+        await owner_trial.admit(self.db, 123, url, script)
+        queue = VideoQueue(self.db.media)
+        await queue.ensure()
+        await queue.acquire()
+        client = SimpleNamespace(supports_news=AsyncMock(return_value=True),
+                                 submit=AsyncMock(return_value={'status': 'running'}),
+                                 status=AsyncMock(return_value={'status': 'ready'}))
+        with patch.dict(os.environ, {'NEWS_OWNER_TRIAL_ENABLED': '0'}), \
+             patch.object(main, 'db', SimpleNamespace(db=self.db)), \
+             patch.object(news_worker_client, 'NewsWorkerClient', return_value=client):
+            # No environment opt-in and no persistent opt-in: no dispatch.
+            await main.run_news_idle(queue)
+            client.submit.assert_not_awaited()
+            await owner_trial.set_owner_mode(self.db, True)
+            # User videos still take priority; incompatible modes remain blocked.
+            await queue.enqueue({'id': 'ordinary'})
+            await main.run_news_idle(queue)
+            client.submit.assert_not_awaited()
+            await queue.remove('ordinary')
+            with patch.dict(os.environ, {'NEWS_RENDER_QUEUE_ENABLED': '1'}):
+                await owner_trial.dispatch_once(queue, self.db, client)
+                client.submit.assert_not_awaited()
+            await main.run_news_idle(queue)
+            self.assertEqual(await owner_trial.status(self.db), 'running')
+            client.submit.assert_awaited_once()
+            await main.run_news_idle(queue)
+            self.assertEqual(await owner_trial.status(self.db), 'ready_for_review')
+            client.submit.assert_awaited_once()
+            # Turning off via the panel blocks dispatch despite the legacy env flag.
+            await self.db.news_owner_trial_jobs.update_one({}, {'$set': {'stage': 'queued'}})
+            await owner_trial.set_owner_mode(self.db, False)
+            with patch.dict(os.environ, {'NEWS_OWNER_TRIAL_ENABLED': '1'}):
+                await owner_trial.dispatch_once(queue, self.db, client)
+            client.submit.assert_awaited_once()
         await queue.release()
 
     async def test_uncertain_worker_and_delivery_do_not_repeat(self):
@@ -186,9 +226,9 @@ class OwnerTrialTests(unittest.IsolatedAsyncioTestCase):
         url,script=owner_trial.parse_message(TEXT); await owner_trial.admit(self.db,123,url,script)
         queue=VideoQueue(self.db.media); await queue.ensure(); await queue.acquire()
         client=SimpleNamespace(supports_news=AsyncMock(return_value=True), submit=AsyncMock(side_effect=NewsUncertain()))
-        await owner_trial.dispatch_once(queue,self.db.news_owner_trial_jobs,client)
+        await owner_trial.dispatch_once(queue,self.db,client)
         self.assertEqual(await owner_trial.status(self.db),'uncertain')
-        await owner_trial.dispatch_once(queue,self.db.news_owner_trial_jobs,client)
+        await owner_trial.dispatch_once(queue,self.db,client)
         self.assertEqual(client.submit.await_count,1)
         self.assertEqual(await owner_trial.admit(self.db,123,url,script),'already_queued')
         await self.db.news_owner_trial_jobs.update_one({}, {'$set': {'stage':'ready_for_review'}})
@@ -223,7 +263,7 @@ class OwnerTrialTests(unittest.IsolatedAsyncioTestCase):
                 queue=VideoQueue(self.db.media); await queue.ensure(); await queue.acquire()
                 client=NewsWorkerClient(f'http://127.0.0.1:{server.server_port}','secret')
                 for _ in range(100):
-                    await owner_trial.dispatch_once(queue,self.db.news_owner_trial_jobs,client)
+                    await owner_trial.dispatch_once(queue,self.db,client)
                     if await owner_trial.status(self.db)=='ready_for_review': break
                     await asyncio.sleep(.01)
                 self.assertEqual(await owner_trial.status(self.db),'ready_for_review')
@@ -247,7 +287,7 @@ class OwnerTrialTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     await owner_trial.admit(self.db, 123, url, script)
                 for _ in range(100):
-                    await owner_trial.dispatch_once(queue, self.db.news_owner_trial_jobs, client)
+                    await owner_trial.dispatch_once(queue, self.db, client)
                     if await owner_trial.status(self.db) == 'ready_for_review': break
                     await asyncio.sleep(.01)
                 self.assertEqual(await owner_trial.status(self.db), 'ready_for_review')

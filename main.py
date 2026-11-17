@@ -16,7 +16,7 @@ async def run_news_idle(queue):
     from news_prototype.news_worker_client import NewsWorkerClient
     if await owner_trial.runtime_enabled(db.db):
         client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-        await owner_trial.dispatch_once(queue, db.db.news_owner_trial_jobs, client)
+        await owner_trial.dispatch_once(queue, db.db, client)
     elif os.getenv('NEWS_RENDER_QUEUE_ENABLED', '').strip() == '1':
         from news_prototype.news_queue import run_idle_once
         client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))

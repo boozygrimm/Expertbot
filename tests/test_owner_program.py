@@ -221,7 +221,7 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await owner_program.approve(self.db, 123, 50, program['revision']), 'queued')
                 queue = VideoQueue(self.db.media); await queue.ensure(); await queue.acquire()
                 for _ in range(100):
-                    await owner_trial.dispatch_once(queue, self.db.news_owner_trial_jobs, client)
+                    await owner_trial.dispatch_once(queue, self.db, client)
                     if await owner_trial.status(self.db) == 'ready_for_review': break
                     await asyncio.sleep(.01)
                 self.assertEqual(await owner_trial.status(self.db), 'ready_for_review')
