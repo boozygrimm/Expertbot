@@ -122,7 +122,7 @@ def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime,
     else:
         raise FeedError('Неподдерживаемый формат ленты')
     # Never silently advance the source cursor past entries we did not inspect.
-    if type(max_items) is not int or not 1 <= max_items <= 1000 or len(items) > max_items:
+    if type(max_items) is not int or not 1 <= max_items <= 5000 or len(items) > max_items:
         raise FeedError('Слишком много записей в ленте')
     name, _ = FEEDS[source_id]
     result, seen = [], set()
