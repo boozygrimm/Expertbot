@@ -16,8 +16,9 @@ import math
 import random
 import subprocess
 import tempfile
+import threading
 
-from PIL import Image
+from PIL import Image, ImageOps
 from news_prototype import (bender_trial, bulletin_animation, bulletin_remote_animation, bulletin_wide_screen,
                             combined_trial, desk_ticker, podcast_video_trial)
 
@@ -81,8 +82,14 @@ def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequ
 
 
 def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
-           timeline: tuple) -> None:
-    """Render one continuous timeline. Caller validates sections and duration."""
+           timeline: tuple, video: dict | None = None, extra_clicks: Sequence[int] = ()) -> None:
+    """Render a bulletin; optional local video uses one continuous decoder.
+
+    The caller supplies already reviewed local media and a prepared timeline.
+    No source download, TTS, delivery or publication occurs here. ``video``
+    identifies one section, its starting frame and its fullscreen frame range;
+    all positions are absolute in the output including the intro.
+    """
     if len(sections) != len(windows) or not sections:
         raise ValueError('Разделы и таймлайн не совпадают')
     audio, active, states = timeline
@@ -100,11 +107,34 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
 
     fps = bender_trial.FPS
     rate = podcast_video_trial.RATE
-    clicks = click_positions(windows, rate)
+    clicks = sorted(click_positions(windows, rate) + list(extra_clicks))
     transition_times = [(combined_trial.INTRO_FRAMES / fps) + position / rate + .002 for position in clicks]
     off_time, _ = combined_trial.timing(len(active))
     screen_mask = bulletin_remote_animation.television_mask()
     off_screen = bulletin_remote_animation.unlit_screen()
+    total_frames = combined_trial.INTRO_FRAMES + len(active) + combined_trial.TAIL_FRAMES
+    video_frames = set()
+    video_index = None
+    if video is not None:
+        if (not isinstance(video, dict) or set(video) != {'section_id', 'path', 'start', 'fullscreen'}
+                or video['section_id'] not in [s['id'] for s in sections]
+                or type(video['start']) is not int or not isinstance(video['fullscreen'], tuple)
+                or len(video['fullscreen']) != 2 or any(type(x) is not int for x in video['fullscreen'])):
+            raise ValueError('Неверная видеовставка')
+        source = Path(video['path'])
+        if source.is_symlink() or not source.is_file() or output.exists() or output.is_symlink():
+            raise ValueError('Недопустимый источник или результат')
+        if total_frames > 300 * fps:
+            raise ValueError('Выпуск превышает пять минут')
+        video_index = next(i for i, s in enumerate(sections) if s['id'] == video['section_id'])
+        video_frames = {n for n in range(combined_trial.INTRO_FRAMES, combined_trial.INTRO_FRAMES + len(active))
+                        if n >= video['start'] and section_index(windows, (n + .5) / fps) == video_index}
+        first, last = video['fullscreen']
+        if (not video_frames or video['start'] != min(video_frames) or not 0 <= first < last <= total_frames
+                or any(n not in video_frames for n in range(first, last))):
+            raise ValueError('Видеовставка выходит за границы новости')
+        transparent = Image.new('RGBA', bulletin_wide_screen.SIZE)
+        video_background = bulletin_wide_screen.compose(speaker_layers=(transparent, transparent)).convert('RGBA')
     with tempfile.TemporaryDirectory(prefix='bulletin-layered-') as tmp:
         sound = Path(tmp) / 'sound.wav'
         write_sound(audio, sound, len(active), clicks=clicks)
@@ -113,10 +143,34 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                    '-framerate', str(fps), '-i', 'pipe:0', '-i', str(sound),
                    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
                    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', str(output)]
-        process = subprocess.Popen(command, stdin=subprocess.PIPE)
+        decoder = None
+        if video is not None:
+            from news_prototype.telegram_public_source import media_env
+            decoder_cmd = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+                           '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-stream_loop', '-1',
+                           '-i', str(source), '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
+                           f'scale=704:396:force_original_aspect_ratio=decrease,'
+                           f'pad=704:396:(ow-iw)/2:(oh-ih)/2:color=black,fps={fps}:start_time=0',
+                           '-frames:v', str(len(video_frames)), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
+            decoder = subprocess.Popen(decoder_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=media_env())
+        try:
+            process = subprocess.Popen(command, stdin=subprocess.PIPE,
+                                       env=media_env() if video is not None else None)
+        except BaseException:
+            if decoder is not None:
+                decoder.kill(); decoder.wait()
+            raise
+        def stop_stalled():
+            for proc in (decoder, process):
+                if proc is not None and proc.poll() is None:
+                    try: proc.kill()
+                    except OSError: pass
+        watchdog = threading.Timer(1800, stop_stalled)
+        watchdog.daemon = True
+        watchdog.start()
         try:
             assert process.stdin is not None
-            for n in range(combined_trial.INTRO_FRAMES + len(active) + combined_trial.TAIL_FRAMES):
+            for n in range(total_frames):
                 t = (n + .5) / fps
                 local = n - combined_trial.INTRO_FRAMES
                 speaker, speaking = (active[local], states[local]) if 0 <= local < len(active) else (None, False)
@@ -127,7 +181,24 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                 # Retain the last picture during the closing animation.
                 if index is None and t >= windows[-1].end:
                     index = len(sections) - 1
-                data = frame_bytes(index, state)
+                video_frame = None
+                if n in video_frames:
+                    assert decoder is not None and decoder.stdout is not None
+                    pixels = decoder.stdout.read(704 * 396 * 3)
+                    if len(pixels) != 704 * 396 * 3:
+                        raise ValueError('Неполный кадр исходного видео')
+                    video_frame = Image.frombytes('RGB', (704, 396), pixels)
+                    fitted = ImageOps.contain(video_frame, (456, 212), Image.Resampling.LANCZOS)
+                    panel = Image.new('RGB', (456, 212), (18, 53, 94))
+                    panel.paste(fitted, ((456 - fitted.width) // 2, (212 - fitted.height) // 2))
+                    scene = video_background.copy()
+                    x0, y0, _, _ = bulletin_wide_screen.SCREEN
+                    scene.paste(panel, (x0 + 4, y0 + 4))
+                    for layer in layers[state]:
+                        scene.alpha_composite(layer)
+                    data = scene.convert('RGB').tobytes()
+                else:
+                    data = frame_bytes(index, state)
                 # The old animation used frame start rather than midpoint for its effects.
                 effect_t = n / fps
                 power_active = (effect_t < 1.48 or effect_t >= off_time + .1
@@ -140,6 +211,10 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
                     if index is not None and t < windows[-1].end:
                         frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
+                    if video_frame is not None and video['fullscreen'][0] <= n < video['fullscreen'][1]:
+                        screen = Image.new('RGB', bulletin_wide_screen.SIZE)
+                        screen.paste(video_frame, (110, 56 + (419 - 396) // 2))
+                        frame = Image.composite(screen, frame, screen_mask)
                     if power_active:
                         frame = combined_trial.display(frame, screen_mask, off_screen, effect_t, off_time)
                     if amount > 0:
@@ -149,10 +224,19 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                     data = frame.tobytes()
                 process.stdin.write(data)
             process.stdin.close()
-            if process.wait() != 0:
+            if decoder is not None:
+                decoder.stdout.close()
+                if decoder.wait(timeout=60) != 0:
+                    raise RuntimeError('Не удалось декодировать видео источника')
+            if process.wait(timeout=120) != 0:
                 raise RuntimeError('Не удалось создать видео')
         except BaseException:
+            stop_stalled()
             if process.stdin and not process.stdin.closed:
                 process.stdin.close()
+            if decoder is not None:
+                decoder.wait()
             process.wait()
             raise
+        finally:
+            watchdog.cancel()
