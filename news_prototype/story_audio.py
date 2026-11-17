@@ -56,18 +56,7 @@ def validate_script(data: object) -> dict:
 
 def prepare(script: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
     """Create new private work directory and leave all results on failure."""
-    return _prepare(script, folder, ffmpeg, keys, ())
-
-
-def _prepare(script: dict, folder: Path, ffmpeg: str, keys: list[str], reused_pairs: tuple) -> Path:
-    """Internal primitive; the caller must validate, reserve and authorize reuse.
-
-    No production route calls this with reused audio. This primitive itself does
-    not provide mutual exclusion, replay protection, or recovery authorization.
-    """
     script = validate_script(script)
-    if len(reused_pairs) > len(script['turns']):
-        raise ValueError('Слишком много сохранённых реплик')
     if not keys:
         raise ValueError('Нет ключей Gemini')
     folder.mkdir(mode=0o700, parents=False, exist_ok=False)
@@ -78,21 +67,12 @@ def _prepare(script: dict, folder: Path, ffmpeg: str, keys: list[str], reused_pa
         for index, turn in enumerate(script['turns'], start=1):
             raw = folder / f'{index}-raw.wav'
             normalized = folder / f'{index}-normalized.wav'
-            if index <= len(reused_pairs):
-                # Private copies, never overwrite the original job's files.
-                raw_bytes, normalized_bytes = reused_pairs[index - 1]
-                with raw.open('xb') as f:
-                    f.write(raw_bytes)
-                with normalized.open('xb') as f:
-                    f.write(normalized_bytes)
-                print(f'Использую сохранённую реплику {index} из {len(script["turns"])}.', flush=True)
-            else:
-                gemini_tts.VOICE, gemini_tts.STYLE = VOICES[turn['speaker']]
-                print(f'Озвучиваю реплику {index} из {len(script["turns"])}...', flush=True)
-                gemini_tts.synthesize(turn['text'], raw, keys, start_index=index-1)
-                subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw),
-                                '-ac', '1', '-ar', str(podcast.RATE), '-c:a', 'pcm_s16le', str(normalized)],
-                               env=podcast.normalized_env(), check=True)
+            gemini_tts.VOICE, gemini_tts.STYLE = VOICES[turn['speaker']]
+            print(f'Озвучиваю реплику {index} из {len(script["turns"])}...', flush=True)
+            gemini_tts.synthesize(turn['text'], raw, keys, start_index=index-1)
+            subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw),
+                            '-ac', '1', '-ar', str(podcast.RATE), '-c:a', 'pcm_s16le', str(normalized)],
+                           env=podcast.normalized_env(), check=True)
             rate, samples = video.read_wav(normalized)
             if not any(samples) or len(samples) / rate >= 60:
                 raise ValueError('Пустая, тихая или слишком длинная реплика')
