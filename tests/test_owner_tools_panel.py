@@ -18,7 +18,7 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
         self.message = SimpleNamespace(chat=SimpleNamespace(type='private', id=tools.ADMIN_ID), message_id=23,
             answer=AsyncMock(), reply=AsyncMock(), answer_photo=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
         self.cb = SimpleNamespace(from_user=self.user, message=self.message, data='', answer=AsyncMock())
-        self.state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
+        self.state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock(), get_state=AsyncMock())
 
     async def test_buttons_and_access(self):
         with patch.object(owner_control_panel, 'db', SimpleNamespace(db=self.db, settings=self.db.settings)):
@@ -136,7 +136,8 @@ async def run():
         await msg(2, 'https://t.me/example/123')
         assert prepare.await_count == 1 and prepare.await_args.args[0].message_id == 2
         await cb(3, 'owner_tools:prepare')
-        await cb(4, 'owner_tools:cancel_input')
+        prompt = [m for m in sent if isinstance(m, SendMessage) and 'четырёх ссылок' in m.text][-1]
+        await cb(4, prompt.reply_markup.inline_keyboard[0][0].callback_data)
         from aiogram.fsm.storage.base import StorageKey
         key = StorageKey(bot_id=bot.id, chat_id=ADMIN_ID, user_id=ADMIN_ID)
         assert await dp.storage.get_state(key) is None
@@ -541,3 +542,76 @@ asyncio.run(run())
         self.assertTrue(self.cb.answer.await_args.kwargs['show_alert'])
         self.message.delete.assert_not_awaited()
         self.assertEqual((await collection.find_one({}))['stage'], 'ready')
+
+    async def test_old_input_cancel_cannot_clear_new_or_unrelated_state(self):
+        from aiogram.fsm.context import FSMContext
+        from aiogram.fsm.storage.memory import MemoryStorage
+        from aiogram.fsm.storage.base import StorageKey
+        storage = MemoryStorage()
+        state = FSMContext(storage, StorageKey(bot_id=1, chat_id=tools.ADMIN_ID, user_id=tools.ADMIN_ID))
+        self.cb.data = 'owner_tools:recipe'
+        await tools.action(self.cb, state, None)
+        old_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
+        self.cb.data = 'owner_tools:search_query'
+        await tools.action(self.cb, state, None)
+        new_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
+        before = await state.get_data()
+        self.assertNotEqual(old_button, new_button)
+        self.cb.data = old_button
+        await tools.action(self.cb, state, None)
+        self.assertEqual(await state.get_state(), tools.OwnerInput.waiting.state)
+        self.assertEqual(await state.get_data(), before)
+        self.assertIn('уже завершён', self.cb.answer.await_args.args[0])
+        # A pre-upgrade generic button cannot clear a new tokenized form.
+        self.cb.data = 'owner_tools:cancel_input'
+        await tools.action(self.cb, state, None)
+        self.assertEqual(await state.get_data(), before)
+        self.cb.data = new_button
+        await tools.action(self.cb, state, None)
+        self.assertIsNone(await state.get_state())
+        await state.set_state(admin_cron.CronAdminState.waiting_for_time_set)
+        await state.update_data(target_chat_id=-42)
+        self.cb.data = old_button
+        await tools.action(self.cb, state, None)
+        self.assertEqual(await state.get_state(), admin_cron.CronAdminState.waiting_for_time_set.state)
+        self.assertEqual((await state.get_data())['target_chat_id'], -42)
+        await storage.close()
+
+    async def test_legacy_input_cancel_works_only_for_legacy_state(self):
+        self.state.get_state.return_value = tools.OwnerInput.waiting.state
+        self.state.get_data.return_value = {'action':'recipe'}
+        self.cb.data = 'owner_tools:cancel_input'
+        await tools.action(self.cb, self.state, None)
+        self.state.clear.assert_awaited_once()
+        self.assertEqual(self.cb.answer.await_args.args[0], 'Ввод отменён')
+
+    async def test_old_input_cancel_and_new_ask_are_serialized(self):
+        import asyncio
+        from aiogram.fsm.context import FSMContext
+        from aiogram.fsm.storage.memory import MemoryStorage
+        from aiogram.fsm.storage.base import StorageKey
+        storage = MemoryStorage()
+        state = FSMContext(storage, StorageKey(bot_id=1, chat_id=tools.ADMIN_ID, user_id=tools.ADMIN_ID))
+        self.cb.data = 'owner_tools:recipe'
+        await tools.action(self.cb, state, None)
+        old_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
+        entered, proceed = asyncio.Event(), asyncio.Event()
+        original_get_state = state.get_state
+        async def paused_get_state():
+            result = await original_get_state()
+            entered.set()
+            await proceed.wait()
+            return result
+        cancel_cb = SimpleNamespace(from_user=self.user, message=self.message, data=old_button, answer=AsyncMock())
+        new_cb = SimpleNamespace(from_user=self.user, message=self.message, data='owner_tools:search_query', answer=AsyncMock())
+        with patch.object(state, 'get_state', side_effect=paused_get_state):
+            cancel_task = asyncio.create_task(tools.action(cancel_cb, state, None))
+            await asyncio.wait_for(entered.wait(), 2)
+            ask_task = asyncio.create_task(tools.action(new_cb, state, None))
+            await asyncio.sleep(0)
+            self.assertFalse(ask_task.done())
+            proceed.set()
+            await asyncio.wait_for(asyncio.gather(cancel_task, ask_task), 2)
+        self.assertEqual(await state.get_state(), tools.OwnerInput.waiting.state)
+        self.assertEqual((await state.get_data())['action'], 'search_query')
+        await storage.close()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import asyncio
 import logging
 import secrets
 from types import SimpleNamespace
@@ -17,6 +18,8 @@ from news_prototype import owner_drafts, owner_trial
 
 router = Router()
 logger = logging.getLogger(__name__)
+# Only one owner private chat uses these forms; serialize opening/cancelling them.
+_input_lock = asyncio.Lock()
 
 
 class OwnerInput(StatesGroup):
@@ -57,11 +60,13 @@ async def new_confirmation(message, owner_id: int, action: str, text: str, **dat
 
 
 async def ask(callback, state: FSMContext, action: str, prompt: str, **data):
-    await state.clear()
-    await state.set_state(OwnerInput.waiting)
-    await state.update_data(action=action, **data)
+    token = secrets.token_hex(8)
+    async with _input_lock:
+        await state.clear()
+        await state.set_state(OwnerInput.waiting)
+        await state.update_data(action=action, input_token=token, **data)
     builder = InlineKeyboardBuilder()
-    builder.button(text='❌ Отменить ввод', callback_data='owner_tools:cancel_input')
+    builder.button(text='❌ Отменить ввод', callback_data=f'owner_tools:cancel_input:{token}')
     await callback.answer()
     await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None)
 
@@ -261,9 +266,22 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
     op = parts[1] if len(parts) > 1 else ''
     try:
         if op == 'cancel_input':
-            await state.clear()
-            await callback.answer('Ввод отменён')
-            await callback.message.edit_text('Ввод отменён. Пульт: /panel', parse_mode=None)
+            if len(parts) not in (2, 3) or (len(parts) == 3 and
+                    (len(parts[2]) != 16 or any(c not in '0123456789abcdef' for c in parts[2]))):
+                return await callback.answer('Некорректная кнопка.', show_alert=True)
+            async with _input_lock:
+                current = await state.get_state()
+                data = await state.get_data()
+                # Old deployed prompts have no token. They may cancel only an
+                # equally old owner-input state, never a newer form or cron/lore.
+                matches = (current == OwnerInput.waiting.state and
+                           (data.get('input_token') == parts[2] if len(parts) == 3
+                            else not data.get('input_token')))
+                if matches:
+                    await state.clear()
+            await callback.answer('Ввод отменён' if matches else 'Этот ввод уже завершён')
+            await callback.message.edit_text('Ввод отменён. Пульт: /panel' if matches else
+                                             'Этот ввод уже завершён. Пульт: /panel', parse_mode=None)
             return
         if op == 'prepare':
             if not await owner_trial.drafts_enabled(db.db):
