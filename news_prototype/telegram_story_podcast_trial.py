@@ -176,11 +176,19 @@ def hedgehog_frame(nod: int, blink: int):
     return hedgehog_motion.overlay(gesture_assets()[1], nod / 24, blink / 8)
 
 
-def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
-    """Show the complete video, repeat as needed, and add studio animations."""
+def render(source: Path, output: Path, ffmpeg: str, timeline: tuple, *, fullscreen=None, clicks=()):
+    """Show video in studio; optionally replace the outer TV picture for a clip.
+
+    fullscreen is a pair of frame indices relative to the start of the audio.
+    clicks are exact sample offsets in the supplied audio, and must lie in silence.
+    """
     audio, active, states = timeline
     if not active or len(active) != len(states):
         raise ValueError('Неверный таймлайн')
+    if fullscreen is not None and (not isinstance(fullscreen, tuple) or len(fullscreen) != 2
+            or any(not isinstance(x, int) or isinstance(x, bool) for x in fullscreen)
+            or not 0 <= fullscreen[0] < fullscreen[1] <= len(active)):
+        raise ValueError('Неверные границы видео на телевизоре')
     if source.is_symlink() or not source.is_file() or output.exists() or output.is_symlink():
         raise ValueError('Недопустимый источник или результат')
     fps = bender_trial.FPS
@@ -197,7 +205,9 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
     off_time, _ = combined_trial.timing(len(active))
     with tempfile.TemporaryDirectory(prefix='telegram-podcast-') as tmp:
         sound = Path(tmp) / 'sound.wav'
-        bulletin_layered_video.write_sound(audio, sound, len(active))
+        bulletin_layered_video.write_sound(audio, sound, len(active), clicks=clicks)
+        rate = podcast_audio_trial.RATE
+        transition_times = [(combined_trial.INTRO_FRAMES / fps) + pos / rate + .002 for pos in clicks]
         # Play the complete source first, then loop it while the dialogue lasts.
         # The source audio is never mapped. The TV turns on before playback.
         decoder = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
@@ -212,13 +222,30 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
                    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
                    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', str(output)]
         dec = subprocess.Popen(decoder, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+        full = None
         try:
+            if fullscreen is not None:
+                # Preserve the original aspect ratio, filling the outer TV as
+                # far as possible without cropping away source video content.
+                full_cmd = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
+                            '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-i', str(source),
+                            '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
+                            f'scale=704:419:force_original_aspect_ratio=decrease,'
+                            f'pad=704:419:(ow-iw)/2:(oh-ih)/2:color=black,'
+                            f'fps={fps}:start_time=0,tpad=stop_mode=clone:stop_duration=300',
+                            '-frames:v', str(fullscreen[1] - fullscreen[0]),
+                            '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
+                full = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
             enc = subprocess.Popen(encoder, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
         except BaseException:
-            dec.kill(); dec.wait()
+            for proc in (dec, full):
+                if proc is not None:
+                    proc.kill(); proc.wait()
             raise
         def stop():
-            for proc in (dec, enc):
+            for proc in (dec, full, enc):
+                if proc is None:
+                    continue
                 if proc.poll() is None:
                     try: proc.kill()
                     except OSError: pass
@@ -256,17 +283,36 @@ def render(source: Path, output: Path, ffmpeg: str, timeline: tuple):
                 t = n / fps
                 if 0 <= local < len(active):
                     frame = desk_ticker.apply(frame, ticker, local / fps)
+                if fullscreen is not None and fullscreen[0] <= local < fullscreen[1]:
+                    assert full is not None and full.stdout is not None
+                    pixels = full.stdout.read(704 * 419 * 3)
+                    if len(pixels) != 704 * 419 * 3:
+                        raise ValueError('Неполный кадр полноэкранного видео')
+                    screen = Image.new('RGB', bulletin_wide_screen.SIZE)
+                    screen.paste(Image.frombytes('RGB', (704, 419), pixels), (110, 56))
+                    frame = Image.composite(screen, frame, mask)
                 if t < 1.48 or t >= off_time + .1 or abs(t - combined_trial.ON_PRESS) < .16 or abs(t - off_time) < .16:
                     frame = combined_trial.display(frame, mask, off, t, off_time)
-                amount = combined_trial.finger_amount(t, (combined_trial.ON_PRESS, off_time))
+                amount = max(combined_trial.finger_amount(t, (combined_trial.ON_PRESS, off_time)),
+                             bulletin_remote_animation.press_amount(t, transition_times))
                 if amount > 0:
                     frame = bulletin_remote_animation.apply(frame, amount)
+                if any(abs(t - at) < .16 for at in transition_times):
+                    frame = bulletin_remote_animation.transition_glow(frame, t, transition_times)
                 enc.stdin.write(frame.tobytes())
-            dec.stdout.close(); enc.stdin.close()
-            if dec.wait(timeout=60) != 0 or enc.wait(timeout=120) != 0:
+            dec.stdout.close()
+            if full is not None:
+                full.stdout.close()
+            enc.stdin.close()
+            dec_status = dec.wait(timeout=60)
+            full_status = full.wait(timeout=60) if full is not None else 0
+            enc_status = enc.wait(timeout=120)
+            if dec_status or full_status or enc_status:
                 raise RuntimeError('Не удалось создать видео')
         except BaseException:
-            stop(); dec.wait(); enc.wait()
+            stop(); dec.wait()
+            if full is not None: full.wait()
+            enc.wait()
             raise
         finally:
             watchdog.cancel()
