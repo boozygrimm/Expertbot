@@ -56,21 +56,26 @@ class DuoTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case=str(case)[:50]), self.assertRaises(p.ProbeError): p.decode_audio(case)
 
-    def test_exactly_one_request_no_repeat_even_on_failure(self):
-        with patch.object(p,'service_keys',return_value=['secret','other']), \
-             patch.object(p,'post_once',side_effect=p.ProbeError('failure')) as post:
-            with self.assertRaises(p.ProbeError): p.run(self.job,self.out)
-            post.assert_called_once(); self.assertEqual(post.call_args.args[0], 'secret')
-            with self.assertRaises(FileExistsError): p.run(self.job,self.out)
-            post.assert_called_once()
-        self.assertTrue((self.out/'request-started').is_file()); self.assertFalse((self.out/'duo.wav').exists())
-
-    def test_success_saves_without_touching_original(self):
+    def test_rotation_tries_next_keys_and_preserves_original(self):
         before=(self.job/'request.json').read_bytes()
-        with patch.object(p,'service_keys',return_value=['fake']), patch.object(p,'post_once',return_value=(audio(),.1)) as call:
+        original=p.gemini_tts.request_one
+        with patch.object(p,'worker_keys',return_value=['key-a','key-b','key-c']), \
+             patch.object(p,'post_once',side_effect=[p.ProbeError('Gemini вернул HTTP 429'), (audio(), .1)]) as call:
             path,duration=p.run(self.job,self.out)
-        self.assertEqual(path.read_bytes(),audio()); self.assertEqual(duration,.1); call.assert_called_once()
+        self.assertEqual([c.args[0] for c in call.call_args_list],['key-a','key-b'])
+        self.assertEqual(path.read_bytes(),audio()); self.assertEqual(duration,.1)
+        self.assertIs(p.gemini_tts.request_one,original)
         self.assertEqual((self.job/'request.json').read_bytes(),before)
+        self.assertTrue((self.out/'request-started').is_file())
+
+    def test_failed_rotation_cannot_repeat_to_same_directory(self):
+        with patch.object(p,'worker_keys',return_value=['key-a','key-b']), \
+             patch.object(p,'post_once',side_effect=p.ProbeError('Gemini вернул HTTP 429')) as call:
+            with self.assertRaises(p.ProbeError): p.run(self.job,self.out)
+            self.assertEqual(call.call_count,2)
+            with self.assertRaises(FileExistsError): p.run(self.job,self.out)
+            self.assertEqual(call.call_count,2)
+        self.assertFalse((self.out/'duo.wav').exists())
 
     def test_post_uses_interactions_and_parses_complete_audio(self):
         class Response(io.BytesIO):
@@ -99,27 +104,14 @@ class DuoTests(unittest.TestCase):
             self.assertNotIn('SECRET',req.full_url)
 
     def test_no_keys_no_output_and_reject_original_directory(self):
-        with patch.object(p,'service_keys',return_value=[]), patch.object(p,'post_once') as post:
+        with patch.object(p,'worker_keys',return_value=[]), patch.object(p,'post_once') as post:
             with self.assertRaises(p.ProbeError): p.run(self.job,self.out)
             self.assertFalse(self.out.exists()); post.assert_not_called()
-        with patch.object(p,'service_keys',return_value=['key']), patch.object(p,'post_once') as post:
+        with patch.object(p,'worker_keys',return_value=['key']), patch.object(p,'post_once') as post:
             with self.assertRaises(p.ProbeError): p.run(self.job,self.job/'probe')
             post.assert_not_called()
 
 class SecondProbeTests(unittest.TestCase):
-    def test_selects_different_key_from_worker_configuration_without_printing(self):
-        with patch.object(p, 'service_keys', return_value=['private-a', 'private-b']), \
-             patch.object(p, 'worker_keys', return_value=['private-a', 'private-b', 'private-c']):
-            self.assertEqual(p.alternate_key(), 'private-b')
-        with patch.object(p, 'service_keys', return_value=['private-a']), \
-             patch.object(p, 'worker_keys', return_value=['private-c', 'private-a']):
-            self.assertEqual(p.alternate_key(), 'private-c')
-        with patch.object(p, 'service_keys', return_value=['private-a']), \
-             patch.object(p, 'worker_keys', return_value=['private-a']):
-            with self.assertRaises(p.ProbeError) as exc:
-                p.alternate_key()
-            self.assertNotIn('private-a', str(exc.exception))
-
     def test_worker_key_environment_takes_priority_over_file_and_shell(self):
         proc = Mock(); proc.stdout = b'1234\n'
         original_bytes = Path.read_bytes
@@ -132,12 +124,3 @@ class SecondProbeTests(unittest.TestCase):
              patch.object(Path, 'read_text', side_effect=AssertionError('wrong source')), \
              patch.dict(p.os.environ, {'GEMINI_TTS_KEYS':'shell-key'}):
             self.assertEqual(p.worker_keys(), ['private-a','private-b'])
-
-    def test_second_attempt_makes_only_one_request(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp); job=root/str(uuid.uuid4()); job.mkdir()
-            (job/'request.json').write_text(json.dumps({'bulletin':sample()},ensure_ascii=False),encoding='utf8')
-            with patch.object(p,'post_once',return_value=(audio(),.1)) as call:
-                p.run(job,root/'probe2',keys_override=['private-b'])
-            call.assert_called_once()
-            self.assertEqual(call.call_args.args[0], 'private-b')

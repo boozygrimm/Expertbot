@@ -2,8 +2,8 @@
 
 Explicit use only. Reads the first two turns of a saved bulletin request and
 sends only that text to Gemini; no image, database, queue, video, or Telegram
-access. One exclusive directory records that a request has been attempted;
-there is no key rotation or automatic retry, even after ambiguous outcomes.
+access. It reuses the existing Gemini TTS key-rotation and time-budget logic.
+One exclusive directory prevents an accidental repeat of the overall probe.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ import urllib.request
 import wave
 
 from video_prototype.news_jobs import MAX_BULLETIN_BYTES, validate_bulletin
+from video_prototype import gemini_tts
 
 MODEL = 'gemini-3.8-flash-tts'
 API = 'https://generativelanguage.googleapis.com/v1beta/interactions'
@@ -119,29 +120,6 @@ def decode_audio(data: object) -> tuple[bytes, float]:
         raise ProbeError('Ответ не содержит корректного завершённого WAV') from None
 
 
-def service_keys() -> list[str]:
-    """Use existing local settings without displaying them or starting a service."""
-    raw = os.environ.get('GEMINI_TTS_KEYS', '').strip()
-    if not raw:
-        try:
-            raw = Path('/data/video-prototype/gemini-tts-keys.txt').read_text(encoding='utf-8').strip()
-        except (OSError, UnicodeError):
-            pass
-    if not raw:
-        try:
-            result = subprocess.run(['systemctl', 'show', 'bender-video.service', '-p', 'MainPID', '--value'],
-                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                    check=True, timeout=5)
-            pid = int(result.stdout.decode().strip())
-            if pid > 0:
-                env = (Path('/proc') / str(pid) / 'environ').read_bytes().split(b'\0')
-                raw = next((x.partition(b'=')[2].decode('utf-8').strip()
-                            for x in env if x.startswith(b'GEMINI_TTS_KEYS=')), '')
-        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
-            pass
-    return list(dict.fromkeys(x.strip() for x in raw.split(',') if x.strip()))
-
-
 def worker_keys() -> list[str]:
     """Read the same key source used by the running worker, without printing it."""
     try:
@@ -164,25 +142,13 @@ def worker_keys() -> list[str]:
     return list(dict.fromkeys(x.strip() for x in raw.split(',') if x.strip()))
 
 
-def alternate_key() -> str:
-    # Reconstruct which key the previous probe selected, assuming settings and
-    # shell environment have not changed. Never expose the keys or their hashes.
-    previous, configured = service_keys(), worker_keys()
-    if not previous:
-        raise ProbeError('Не удалось определить ключ прежней пробы')
-    candidate = next((key for key in configured if key != previous[0]), None)
-    if not candidate:
-        raise ProbeError('Не найден другой ключ в настройках воркера')
-    return candidate
-
-
-def post_once(key: str, body: dict) -> tuple[bytes, float]:
+def post_once(key: str, body: dict, timeout: float = 25) -> tuple[bytes, float]:
     request = urllib.request.Request(API, data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key,
                  'Api-Revision': '2026-05-20'}, method='POST')
     try:
         opener = urllib.request.build_opener(NoRedirect())
-        with opener.open(request, timeout=90) as response:
+        with opener.open(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE + 1)
         if len(raw) > MAX_RESPONSE:
             raise ProbeError('Слишком большой ответ Gemini')
@@ -208,25 +174,41 @@ def post_once(key: str, body: dict) -> tuple[bytes, float]:
         raise ProbeError('Ошибка связи с Gemini; результат запроса может быть неизвестен') from None
 
 
-def run(job: Path, output: Path, *, keys_override: list[str] | None = None) -> tuple[Path, float]:
+def run(job: Path, output: Path) -> tuple[Path, float]:
     turns = dialogue_from_job(job)
     body = request_body(turns)
-    keys = service_keys() if keys_override is None else keys_override
+    keys = worker_keys()
     if not keys:
-        raise ProbeError('Не найдены существующие ключи TTS')
+        raise ProbeError('Не найдены существующие ключи TTS воркера')
     output = Path(output)
     if output.resolve().is_relative_to(Path(job).resolve()):
         raise ProbeError('Результат нельзя сохранять внутри задачи')
-    # One directory per probe: even an interrupted request cannot be repeated
-    # through this entry point without a deliberate manual decision.
     output.mkdir(mode=0o700, parents=False, exist_ok=False)
     with (output / 'request-started').open('xb') as marker:
-        marker.write(b'one request, no automatic retry\n')
+        marker.write(b'one owner-confirmed probe, using existing key rotation\n')
         marker.flush(); os.fsync(marker.fileno())
-    audio, duration = post_once(keys[0], body)
     path = output / 'duo.wav'
-    with path.open('xb') as file:
-        file.write(audio); file.flush(); os.fsync(file.fileno())
+
+    # This standalone process uses the existing rotation, budget, key order and
+    # safe logs. Adapt only the request call to the two-speaker API protocol;
+    # restore the local module reference on exit. This process is separate from
+    # the live worker, whose code, environment and state are never modified.
+    original = gemini_tts.request_one
+    def dialogue_request(key, _text, timeout):
+        try:
+            return post_once(key, body, timeout)
+        except ProbeError as exc:
+            raise gemini_tts.TTSFailure(str(exc)) from None
+    try:
+        gemini_tts.request_one = dialogue_request
+        gemini_tts.synthesize('', path, keys)
+    except gemini_tts.TTSFailure as exc:
+        raise ProbeError(str(exc)) from None
+    finally:
+        gemini_tts.request_one = original
+    # post_once already checked every decoded WAV before committing it.
+    with wave.open(str(path), 'rb') as result:
+        duration = result.getnframes() / result.getframerate()
     return path, duration
 
 
@@ -234,21 +216,15 @@ def main() -> int:
     # Exactly the reviewed bulletin and dedicated private probe directory;
     # no arbitrary destination, bot or queue operations are exposed here.
     job = Path('/data/video-prototype/news-jobs/fe65e362-28b2-51bd-b626-0e33388b165c')
-    first = Path('/data/video-prototype/bulletin-duo-probe-fe65e362')
-    out = Path('/data/video-prototype/bulletin-duo-probe-fe65e362-2')
+    out = Path('/data/video-prototype/bulletin-duo-probe-fe65e362-roulette')
     try:
-        if (first.is_symlink() or not first.is_dir() or
-                not (first / 'request-started').is_file() or
-                (first / 'duo.wav').exists()):
-            raise ProbeError('Предыдущая проба имеет неожиданное состояние')
-        # Exactly one other worker key, no automatic rotation or retry.
-        path, duration = run(job, out, keys_override=[alternate_key()])
+        path, duration = run(job, out)
     except FileExistsError:
         print('Папка или файл пробы уже существуют; состояние не подтверждено. Не повторяйте вслепую.')
         return 1
     except ProbeError as exc:
         print('Проба не подтверждена:', str(exc))
-        print('Автоматического повтора нет; не запускайте её повторно вслепую.')
+        print('Новый запуск не производится; не запускайте её повторно вслепую.')
         return 1
     except OSError:
         print('Ошибка доступа к файлам; результат запроса может быть неизвестен. Не повторяйте вслепую.')
