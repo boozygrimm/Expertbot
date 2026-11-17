@@ -33,7 +33,7 @@ def test_payload_has_two_annotated_parts_and_voice_assignment():
     parts=bulletin()['sections'][0]['turns']; body=p.body_for(parts)
     assert [x['speechMetadata']['speaker'] for x in body['contents'][0]['parts']]==['Bender','Sensei']
     voices=body['generationConfig']['speechConfig']['multiSpeakerVoiceConfig']['speakerVoiceConfigs']
-    assert [x['voiceConfig']['prebuiltVoiceConfig']['voiceName'] for x in voices]==['Algenib','Iapetus']
+    assert [x['voiceConfig']['prebuiltVoiceConfig']['voiceName'] for x in voices]==['Algenib','Puck']
     assert 'ticker' not in json.dumps(body)
 
 

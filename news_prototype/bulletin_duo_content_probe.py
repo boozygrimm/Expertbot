@@ -24,7 +24,7 @@ API = f'https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generate
 MAX_RESPONSE = 12 * 1024 * 1024
 VOICES = {
     'Бендер': ('Bender', 'Algenib', 'По-русски, выразительно, с лёгким сарказмом.'),
-    'Киберсенсей': ('Sensei', 'Iapetus', 'По-русски спокойно, тепло и доброжелательно.'),
+    'Киберсенсей': ('Sensei', 'Puck', 'По-русски спокойно, тепло и доброжелательно.'),
 }
 
 
@@ -176,7 +176,7 @@ def run(job: Path, folder: Path) -> tuple[Path, str]:
 
 def main():
     job = Path('/data/video-prototype/news-jobs/fe65e362-28b2-51bd-b626-0e33388b165c')
-    folder = Path('/data/video-prototype/bulletin-duo-content-probe-fe65e362')
+    folder = Path('/data/video-prototype/bulletin-duo-content-contrast-fe65e362')
     try:
         audio, delivery = run(job, folder)
         with wave.open(str(audio), 'rb') as f:
