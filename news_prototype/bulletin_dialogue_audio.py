@@ -133,8 +133,40 @@ def prepare_remarks(turns: list[dict], folder: Path, ffmpeg: str, keys: list[str
     return normalized
 
 
+def _synthesize_group(turns: list[dict], raw: Path, normalized: Path, ffmpeg: str,
+                      keys: list[str], start_index: int) -> None:
+    body = request_body({'turns': turns})
+    def send(key, _unused, timeout):
+        return request_one(key, body, timeout)
+    gemini_tts.synthesize('', raw, keys, start_index=start_index, request_fn=send)
+    subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw),
+                    '-ac', '1', '-ar', str(podcast_audio_trial.RATE), '-c:a', 'pcm_s16le', str(normalized)],
+                   env=podcast_audio_trial.normalized_env(), check=True, timeout=120,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    rate, samples = podcast_video_trial.read_wav(normalized)
+    if rate != podcast_audio_trial.RATE or not any(samples):
+        raise ValueError('Пустая или повреждённая новость')
+
+
+def _join_groups(before: Path, after: Path, result: Path) -> None:
+    """Keep both full recordings byte-for-byte with a half-second silent cut."""
+    buffers = []
+    for path in (before, after):
+        with wave.open(str(path), 'rb') as src:
+            if (src.getnchannels(), src.getsampwidth(), src.getframerate(), src.getcomptype()) != (1, 2, podcast_audio_trial.RATE, 'NONE'):
+                raise ValueError('Неверный формат озвучки')
+            count = src.getnframes()
+            data = src.readframes(count)
+            if count <= 0 or len(data) != count * 2:
+                raise ValueError('Пустая или повреждённая озвучка')
+            buffers.append(data)
+    with wave.open(str(result), 'wb') as out:
+        out.setnchannels(1); out.setsampwidth(2); out.setframerate(podcast_audio_trial.RATE)
+        out.writeframes(buffers[0] + bytes(podcast_audio_trial.RATE) + buffers[1])
+
+
 def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Path, list[tuple[int, Path]]]:
-    """Create one audio per item; a key error never automatically replays a job."""
+    """Joint audio per story, except two joint groups at an explicit video cut."""
     bulletin = bulletin_contract.validate_bulletin(data)
     if not keys:
         raise ValueError('Нет ключей Gemini')
@@ -143,27 +175,34 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
     parts = []
     for index, section in enumerate(bulletin['sections'], 1):
         print(f'Озвучиваю новость {index} из {len(bulletin["sections"])}...', flush=True)
-        body = request_body(section)
+        video = bulletin.get('video', {})
+        cut = video.get('cut_after') if video.get('section_id') == section['id'] else None
         raw, normalized = folder / f'{index}-raw.wav', folder / f'{index}-normalized.wav'
-        def send(key, _unused, timeout):
-            return request_one(key, body, timeout)
-        gemini_tts.synthesize('', raw, keys, start_index=index-1, request_fn=send)
-        subprocess.run([ffmpeg, '-nostdin', '-y', '-loglevel', 'error', '-i', str(raw),
-                        '-ac', '1', '-ar', str(podcast_audio_trial.RATE), '-c:a', 'pcm_s16le', str(normalized)],
-                        env=podcast_audio_trial.normalized_env(), check=True, timeout=120,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        rate, samples = podcast_video_trial.read_wav(normalized)
-        if rate != podcast_audio_trial.RATE or not any(samples):
-            raise ValueError('Пустая или повреждённая новость')
-        if bulletin.get('video', {}).get('section_id') == section['id']:
-            # Add silence *after* the whole news, never cut into a spoken
-            # sentence. The picture/fullscreen transition is placed here.
-            # Raw WAV remains untouched; normalized speech bytes are preserved.
-            with wave.open(str(normalized), 'rb') as inp:
-                params, pcm = inp.getparams(), inp.readframes(inp.getnframes())
-            with wave.open(str(normalized), 'wb') as out:
-                out.setparams(params)
-                out.writeframes(pcm + bytes(rate))  # 0.5 s of mono s16 silence
+        if cut is not None:
+            before, after = folder / f'{index}-before-normalized.wav', folder / f'{index}-after-normalized.wav'
+            _synthesize_group(section['turns'][:cut], raw, before, ffmpeg, keys, index - 1)
+            # Check the known lower bound before making the continuation request.
+            # Completed WAVs are retained on failure; never retry a job.
+            partial = parts + [(section['id'], before)]
+            try:
+                insert = bulletin_video_timing_plan.Insert(section['id'], 1, 240)
+                reserved = (insert.before_frames + insert.clip_frames + insert.hold_frames + insert.after_frames) / bulletin_video_timing_plan.FPS
+                bulletin_timing.section_windows(partial, max_seconds=bulletin_timing.MAX_SECONDS - reserved)
+            except bulletin_timing.BulletinTooLong:
+                podcast_audio_trial.assemble_wav([p for _, p in partial], folder / 'dialogue.wav')
+                raise
+            _synthesize_group(section['turns'][cut:], folder / f'{index}-after-raw.wav', after, ffmpeg, keys, index)
+            _join_groups(before, after, normalized)
+        else:
+            _synthesize_group(section['turns'], raw, normalized, ffmpeg, keys, index - 1)
+            if video.get('section_id') == section['id']:
+                # Legacy selection with no marked position: preserve all speech
+                # and place the cut after the entire story.
+                with wave.open(str(normalized), 'rb') as inp:
+                    params, pcm = inp.getparams(), inp.readframes(inp.getnframes())
+                with wave.open(str(normalized), 'wb') as out:
+                    out.setparams(params)
+                    out.writeframes(pcm + bytes(podcast_audio_trial.RATE))
         parts.append((section['id'], normalized))
         try:
             # Once completed audio and fixed intro/tail already exceed the

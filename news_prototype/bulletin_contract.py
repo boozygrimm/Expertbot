@@ -55,7 +55,8 @@ def validate_bulletin(data: object) -> dict:
     if 'video' in data:
         video = data['video']
         fields = {'section_id', 'post_url', 'caption_sha256', 'video_sha256'}
-        if (not isinstance(video, dict) or set(video) not in (fields, fields | {'remarks'})
+        if (not isinstance(video, dict) or set(video) not in
+                (fields, fields | {'remarks'}, fields | {'cut_after'}, fields | {'remarks', 'cut_after'})
                 or not bulletin_limits.number(video.get('section_id')) or video['section_id'] not in ids
                 or any(not isinstance(video.get(k), str) or not re.fullmatch(r'[0-9a-f]{64}', video[k])
                        for k in ('caption_sha256', 'video_sha256'))):
@@ -67,6 +68,11 @@ def validate_bulletin(data: object) -> dict:
         except (telegram_public_source.SourceError, ValueError):
             raise ValueError('Неверный источник видео') from None
         result['video'] = dict(video)
+        if 'cut_after' in video:
+            selected = next(s for s in sections if s['id'] == video['section_id'])
+            cut = video['cut_after']
+            if type(cut) is not int or not 1 <= cut < len(selected['turns']):
+                raise ValueError('Место видео должно быть между репликами одной новости')
         if 'remarks' in video:
             remarks = validate_video_remarks(video['remarks'])
             if chars + sum(len(t['text']) for t in remarks) > bulletin_limits.MAX_SPOKEN_CHARS or turns_count + len(remarks) > MAX_TURNS:

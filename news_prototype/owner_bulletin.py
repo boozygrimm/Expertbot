@@ -156,8 +156,9 @@ def _payload_from_sections(sections: list[dict]) -> dict:
                          and 'video' in section), None)
         if selected is None:
             raise ValueError('Видео привязано к другой новости')
-        if videos[0].get('remarks') != selected.get('video_remarks'):
-            raise ValueError('Реплики видео не совпадают с проверенным сценарием')
+        if (videos[0].get('remarks') != selected.get('video_remarks') or
+                videos[0].get('cut_after') != selected.get('video_cut_after')):
+            raise ValueError('Видео не совпадает с проверенным сценарием')
     return bulletin_contract.validate_bulletin(payload)
 
 
@@ -171,15 +172,25 @@ def parse_section_edit(text: str) -> dict:
     field, sep, title = lines[0].partition(':')
     if not sep or field.casefold() != 'строка' or not title.strip() or len(title.strip()) > 120:
         raise ValueError('Первая строка: Строка: заголовок')
-    turns = []
+    turns, cut = [], None
     for line in lines[1:]:
         speaker, sep, content = line.partition(':')
+        if sep and speaker.casefold() == 'видео после':
+            if cut is not None or not content.strip().isascii() or not content.strip().isdigit():
+                raise ValueError('Укажи место видео один раз: Видео после: номер')
+            cut = int(content.strip())
+            continue
         if not sep or speaker not in bulletin_editor.SPEAKERS or not content.strip():
             raise ValueError('Каждая реплика начинается с Бендер: или Киберсенсей:')
         turns.append({'speaker': speaker, 'text': content.strip()})
     if not 1 <= len(turns) <= 8:
         raise ValueError('Нужно от одной до восьми реплик')
-    return {'ticker': title.strip(), 'turns': turns}
+    if cut is not None and not 1 <= cut < len(turns):
+        raise ValueError('Место видео должно быть между репликами')
+    result = {'ticker': title.strip(), 'turns': turns}
+    if cut is not None:
+        result['video_cut_after'] = cut
+    return result
 
 
 def parse_video_remarks(text: str) -> list[dict] | None:
@@ -238,6 +249,8 @@ async def change_video_remarks(db, owner_id: int, number: int, expected: str, se
 def editable_section(section: dict) -> str:
     lines = ['Строка: ' + section['ticker']]
     lines.extend(turn['speaker'] + ': ' + ' '.join(turn['text'].splitlines()) for turn in section['turns'])
+    if 'video_cut_after' in section:
+        lines.append('Видео после: ' + str(section['video_cut_after']))
     text = '\n'.join(lines)
     if len(text.encode('utf-16-le')) // 2 > 3800:
         raise ValueError('Раздел слишком длинный для Telegram')
@@ -277,6 +290,14 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
             else:
                 checked.append({**turn, 'kind': 'owner_edit', 'evidence': ''})
         section['ticker'], section['turns'] = edited['ticker'], checked
+        cut = edited.get('video_cut_after')
+        if cut is not None:
+            story = next((s for s in item['stories'] if s['draft_id'] == section_id), None)
+            if item.get('mode') != 'direct' or not story or story.get('telegram_video_status') != 'available':
+                raise ValueError('Для этой новости нельзя выбрать видео')
+            section['video_cut_after'] = cut
+        else:
+            section.pop('video_cut_after', None)
     _payload_from_sections(sections)
     new_rev = revision(item['stories'], sections)
     if new_rev == expected:

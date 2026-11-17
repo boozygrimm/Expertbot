@@ -86,12 +86,23 @@ def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], source: tup
             timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
             bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
         else:
-            # prepare appended half a second of silence to the *end* of the
-            # chosen story. Cut centrally in that added silence, never inside a
-            # sentence, then continue to the next news after the clip.
             target = next(w for w in windows if w.section_id == bulletin['video']['section_id'])
             intro = combined_trial.INTRO_FRAMES / combined_trial.bender.FPS
-            cut_frame = round((target.end - intro - .25) * combined_trial.bender.FPS)
+            if 'cut_after' in bulletin['video']:
+                target_index = next(i for i, s in enumerate(sections, 1) if s['id'] == target.section_id)
+                rate, before = podcast_video_trial.read_wav(folder / f'{target_index}-before-normalized.wav')
+                _, after = podcast_video_trial.read_wav(folder / f'{target_index}-after-normalized.wav')
+                _, full = podcast_video_trial.read_wav(parts[target_index - 1][1])
+                silence_end = len(before) + rate // 2
+                if (full[:len(before)] != before or full[silence_end:] != after or not after
+                        or any(full[len(before):silence_end])):
+                    raise ValueError('Граница записей не совпадает со сценарием')
+                cut_time = target.start - intro + len(before) / rate + .25
+            else:
+                # Legacy snapshots put the clip after the complete story.
+                cut_time = target.end - intro - .25
+            # The cut is in our inserted silence, not estimated from speech.
+            cut_frame = round(cut_time * combined_trial.bender.FPS)
             bulletin_video_pipeline.render(bulletin, audio, parts, source[0], temporary, ffmpeg, source[1],
                                            section_id=target.section_id, cut_frame=cut_frame,
                                            clip_frames=clip_frames, remarks=remarks)

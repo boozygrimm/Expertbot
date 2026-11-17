@@ -79,6 +79,9 @@ class NewsWorkerClient:
     async def supports_bulletin_video_remarks(self) -> bool:
         return await self._supports('news-bulletin-video-remarks-v1')
 
+    async def supports_bulletin_video_cut(self) -> bool:
+        return await self._supports('news-bulletin-video-cut-v1')
+
     async def supports_image_focus(self) -> bool:
         return await self._supports('news-image-focus-v1')
 

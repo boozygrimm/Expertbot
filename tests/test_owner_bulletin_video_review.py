@@ -209,3 +209,30 @@ class OwnerVideoReviewTests(unittest.IsolatedAsyncioTestCase):
             assert updated['revision'] != self.rev
             assert await self.db.news_owner_trial_jobs.count_documents({}) == 0
             assert any('Реплики поверх видео' in call.args[0] for call in message.answer.await_args_list)
+
+    async def test_video_cut_is_shown_between_turns_and_editable_from_card(self):
+        from news_prototype import owner_trial
+        fake = SimpleNamespace(db=self.db)
+        user = SimpleNamespace(id=self.owner)
+        message = SimpleNamespace(chat=SimpleNamespace(id=self.owner, type='private'), message_id=999,
+            from_user=user, answer=AsyncMock(return_value=SimpleNamespace(message_id=999)), answer_photo=AsyncMock())
+        callback = SimpleNamespace(from_user=user, message=message, answer=AsyncMock(), data='')
+        state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
+        with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
+             patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+            await panel.show_section(message, self.owner, self.item, self.item['sections'][0])
+            markup = message.answer.await_args.kwargs['reply_markup']
+            callback.data = next(b.callback_data for row in markup.inline_keyboard for b in row
+                                 if b.callback_data.startswith('nb:edit:'))
+            await panel.callback_action(callback, state)
+            args = state.update_data.await_args.kwargs
+            assert args['revision'] == self.rev
+            state.get_data.return_value = args
+            message.text = 'Строка: Видео\nБендер: Подводка.\nКиберсенсей: Продолжение.\nВидео после: 1'
+            await tools.receive_input(message, state)
+            updated = await owner_bulletin.get(self.db, self.owner, self.number)
+            assert updated['sections'][0]['video_cut_after'] == 1
+            displayed = [call.args[0] for call in message.answer.await_args_list if call.args]
+            text = next(t for t in displayed if 'Здесь видеовставка' in t)
+            assert text.index('Подводка.') < text.index('Здесь видеовставка') < text.index('Продолжение.')
+            assert await self.db.news_owner_trial_jobs.count_documents({}) == 0

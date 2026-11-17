@@ -177,8 +177,8 @@ def test_contract_rejects_untrusted_video_identifiers():
             bulletin_contract.validate_bulletin(data)
 
 
-@pytest.mark.parametrize('has_remarks', [False, True])
-def test_actual_subprocess_worker_video_with_external_network_blocked(tmp_path, source_mp4, has_remarks):
+@pytest.mark.parametrize('has_remarks,has_cut', [(False, False), (True, False), (True, True)])
+def test_actual_subprocess_worker_video_with_external_network_blocked(tmp_path, source_mp4, has_remarks, has_cut):
     import json
     import os
     import uuid
@@ -193,6 +193,8 @@ def test_actual_subprocess_worker_video_with_external_network_blocked(tmp_path, 
     if has_remarks:
         data['video']['remarks'] = [{'speaker': 'Бендер', 'text': 'Смотрим!'},
                                     {'speaker': 'Киберсенсей', 'text': 'Давай.'}]
+    if has_cut:
+        data['video']['cut_after'] = 1
     job = str(uuid.uuid4())
     folder = tmp_path / job; folder.mkdir()
     (folder / 'request.json').write_text(json.dumps({'bulletin': data}, ensure_ascii=False))
@@ -231,8 +233,9 @@ source.inspect = lambda *args: (2., 320, 180, True)
         news_jobs.bulletin_runner(repo)(job, folder)
     assert json.loads((folder / 'work' / 'status.json').read_text())['stage'] == 'ready_for_review'
     assert (folder / 'work' / 'video.mp4').stat().st_size > 1000
-    assert (folder / 'worker.log').read_text().count('Gemini TTS готов') == (3 if has_remarks else 2)
+    assert (folder / 'worker.log').read_text().count('Gemini TTS готов') == 2 + int(has_remarks) + int(has_cut)
     assert (folder / 'work' / 'video-remarks' / 'remarks.wav').exists() == has_remarks
+    assert (folder / 'work' / '1-after-normalized.wav').exists() == has_cut
 
 
 def test_changed_video_bytes_refused_before_any_tts(tmp_path, source_mp4):

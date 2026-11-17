@@ -162,6 +162,8 @@ async def run_idle_once(queue, collection, client) -> None:
                 return
             if isinstance(video, dict) and 'remarks' in video and not await client.supports_bulletin_video_remarks():
                 return
+            if isinstance(video, dict) and 'cut_after' in video and not await client.supports_bulletin_video_cut():
+                return
         except (AttributeError, NewsWorkerError):
             return
     if job.get('kind') == 'program':

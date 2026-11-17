@@ -83,7 +83,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     position = next(i for i, part in enumerate(item['sections'], 1) if part['id'] == section['id'])
     lines = [f'📰 Новость {position}/{len(item["sections"])} · №{section["id"]}',
              'Источник: ' + section['url'], 'Строка: ' + section['ticker'], '']
-    for turn in section['turns']:
+    for index, turn in enumerate(section['turns'], 1):
         lines.append(f'{turn["speaker"]}: {turn["text"]}')
         if turn.get('kind') == 'fact':
             lines.append('Цитата источника для проверки: ' + turn['evidence'])
@@ -91,6 +91,8 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
             lines.append('Изменено владельцем — проверь факт и формулировку по источнику.')
         else:
             lines.append('Комментарий/шутка — не факт.')
+        if section.get('video_cut_after') == index:
+            lines.append('▶ Здесь видеовставка, если видео будет выбрано; затем новость продолжается.')
     if section.get('video_remarks'):
         lines.append('\nРеплики поверх видео (только если видео будет выбрано):')
         lines.extend(f'{turn["speaker"]}: {turn["text"]}' for turn in section['video_remarks'])
@@ -105,8 +107,10 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     source = next((story for story in item.get('stories', []) if story.get('draft_id') == section['id']), None)
     video_status = source.get('telegram_video_status') if source else None
     if section.get('video'):
+        place = ('между отмеченными репликами, затем новость продолжится' if section['video'].get('cut_after')
+                 else 'после законченной новости')
         await message.answer('Видео выбрано для этой версии. Оно появится на экране студии, затем примерно на 10 секунд '
-                             'развернётся со своим звуком после законченной новости. Проверь права на видео и звук.', parse_mode=None)
+                             f'развернётся со своим звуком {place}. Проверь права на видео и звук.', parse_mode=None)
     elif video_status == 'available':
         hint = ('Сначала посмотри исходник, затем отдельно подтверди его использование и права на видео и звук.'
                 if item.get('mode') == 'direct' else 'Выбор видео доступен только при прямом выборе новостей.')
@@ -465,7 +469,8 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 except (ValueError, KeyError, TypeError):
                     return await callback.answer('Источники или версия изменились. Открой вестник заново.', show_alert=True)
                 prompt = ('Поставить проверенную версию вестника на озвучку и рендер? '
-                          'Каждая новость озвучивается целиком двухголосым запросом Gemini, это расходует квоту. '
+                          'Новости озвучиваются двухголосыми запросами Gemini, это расходует квоту. '
+                          'Для видео внутри новости её части до и после вставки записываются отдельно. '
                           'В готовом видео нужно проверить голоса и полноту речи; анимация говорящих приблизительная. '
                           'Если выпуск превысит пять минут, он не будет обрезан или автоматически повторён. '
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
@@ -473,8 +478,10 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 if selected_video:
                     extra = ('Поверх видео прозвучат две показанные реплики: их совместная озвучка потребует дополнительного запроса Gemini. '
                              if selected_video['video'].get('remarks') else 'Без реплик поверх видео. ')
+                    place = ('между отмеченными репликами новости' if selected_video['video'].get('cut_after')
+                             else 'после всей новости')
                     prompt += (f' В выпуске выбрано видео новости №{selected_video["id"]}: студия, '
-                               'затем около 10 секунд на весь экран со звуком. ' + extra +
+                               f'затем около 10 секунд на весь экран со звуком {place}. ' + extra +
                                'Если источник изменился или недоступен, выпуск не соберётся.')
                 confirmation = 'render_bulletin'
             else:
@@ -521,7 +528,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             return await tools.new_confirmation(callback.message, owner, 'use_bulletin_video',
                 'Ты просмотрел исходное видео и проверил права на его изображение и звук для этого выпуска? '
                 'Подтверждение выбирает именно просмотренный файл по хешу. В студии он будет за ведущими, '
-                'после новости развернётся примерно на 10 секунд со звуком. Если в сценарии есть '
+                'развернётся примерно на 10 секунд со звуком в отмеченном месте или после новости. Если в сценарии есть '
                 'реплики поверх видео, они будут озвучены отдельным совместным запросом. '
                 'Озвучка и рендер сейчас не запускаются и требуют отдельного подтверждения.',
                 number=card['bulletin_id'], revision=card['revision'], section_id=card['section_id'])
@@ -555,7 +562,9 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             if action == 'edit':
                 editable = owner_bulletin.editable_section(section)
                 await tools.ask(callback, state, 'bulletin_edit', 'Скопируй следующую карточку, исправь и отправь одним сообщением. '
-                    'Источник менять нельзя; исправленные реплики потребуется проверить. При изменении выбранное видео придётся проверить и выбрать заново.',
+                    'Источник менять нельзя; исправленные реплики потребуется проверить. Для вставки между репликами '
+                    'добавь строку «Видео после: 1» (число — сколько реплик прозвучит до видео); '
+                    'чтобы вставить после всей новости, убери эту строку. При изменении выбранное видео потребуется проверить и выбрать заново.',
                     number=card['bulletin_id'], section_id=card['section_id'], revision=card['revision'])
                 return await callback.message.answer(editable, parse_mode=None)
             result = await owner_bulletin.change_section(db.db, owner, card['bulletin_id'], card['revision'], card['section_id'], remove_image=True)
