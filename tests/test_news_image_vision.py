@@ -154,7 +154,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                   text=f'/news_approve 10 {item["revision"]}', answer=AsyncMock())
         client = SimpleNamespace(supports_images=AsyncMock(return_value=True), supports_image_focus=AsyncMock(return_value=False))
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
             await handler.approve_draft(message)
@@ -172,7 +172,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                   text=f'/news_program_approve 50 {program["revision"]}', answer=AsyncMock())
         client = SimpleNamespace(supports_programs=AsyncMock(return_value=True), supports_image_focus=AsyncMock(return_value=False))
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
             await handler.approve_program(message)
@@ -193,7 +193,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                   text='/news_prepare_many\nhttps://t.me/A/1\nhttps://t.me/B/2',
                                   message_id=100, answer=AsyncMock())
-        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'enabled', return_value=True), \
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch.object(handler.owner_drafts, 'process_new', side_effect=process), \
              patch.object(handler, 'show', new_callable=AsyncMock) as show:

@@ -23,8 +23,55 @@ OTHER_FLAGS = ('NEWS_INTAKE_ENABLED', 'NEWS_COLLECTION_ENABLED', 'NEWS_EDITOR_EN
 
 
 def enabled() -> bool:
+    """Legacy environment-only default, kept for existing installations."""
     return (os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1'
-            and all(os.getenv(name, '').strip() != '1' for name in OTHER_FLAGS))
+            and not conflicting_news_mode())
+
+
+def conflicting_news_mode() -> bool:
+    return any(os.getenv(name, '').strip() == '1' for name in OTHER_FLAGS)
+
+
+async def runtime_settings(db) -> tuple[bool, bool]:
+    settings = await db.news_owner_daily_state.find_one({'_id': 'owner_mode'}) or {}
+    trial = settings.get('trial')
+    drafts = settings.get('drafts')
+    if type(trial) is not bool:
+        trial = os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1'
+    if type(drafts) is not bool:
+        drafts = os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1'
+    return trial and not conflicting_news_mode(), drafts
+
+
+async def runtime_enabled(db) -> bool:
+    trial, _ = await runtime_settings(db)
+    return trial
+
+
+async def drafts_enabled(db) -> bool:
+    trial, drafts = await runtime_settings(db)
+    return trial and drafts
+
+
+async def set_owner_mode(db, value: bool) -> None:
+    if type(value) is not bool:
+        raise ValueError('Неверный режим')
+    if value and conflicting_news_mode():
+        raise ValueError('Включён другой новостной режим')
+    await db.news_owner_daily_state.update_one({'_id': 'owner_mode'},
+        {'$set': {'trial': value, 'drafts': value}}, upsert=True)
+
+
+async def migrate_panel_defaults(db) -> None:
+    """Persist existing env defaults once, without changing their effective state."""
+    # Resolve the daily value before installing overrides of either setting.
+    from news_prototype import owner_daily
+    daily = await owner_daily.enabled(db)
+    await db.news_owner_daily_state.update_one({'_id': 'settings'},
+        {'$setOnInsert': {'enabled': daily}}, upsert=True)
+    await db.news_owner_daily_state.update_one({'_id': 'owner_mode'},
+        {'$setOnInsert': {'trial': os.getenv('NEWS_OWNER_TRIAL_ENABLED', '').strip() == '1',
+                          'drafts': os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1'}}, upsert=True)
 
 
 def parse_message(message: str) -> tuple[str, dict]:

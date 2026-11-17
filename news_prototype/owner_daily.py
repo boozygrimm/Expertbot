@@ -174,7 +174,7 @@ async def preview(db, owner_id: int, owner_batch: int, key: str, model: str, *, 
 
 
 async def send_due(db, bot, owner_id: int, key: str, model: str, *, now: datetime | None = None,
-                   fetch=None, translate=None, check_enabled: bool = False) -> str:
+                   fetch=None, translate=None, check_enabled: bool = False, reply_markup=None) -> str:
     """Called under a cross-process lease. Resumes preparation, never uncertain sends."""
     if type(owner_id) is not int or owner_id <= 0:
         raise ValueError('Неверный владелец')
@@ -226,7 +226,10 @@ async def send_due(db, bot, owner_id: int, key: str, model: str, *, now: datetim
     if not claim.modified_count:
         return 'changed'
     try:
-        msg = await bot.send_message(owner_id, record['text'], parse_mode=None, disable_web_page_preview=True)
+        options = {'parse_mode': None, 'disable_web_page_preview': True}
+        if reply_markup is not None:
+            options['reply_markup'] = reply_markup
+        msg = await bot.send_message(owner_id, record['text'], **options)
     except Exception:
         await db.news_owner_daily_deliveries.update_one({'_id': ident, 'stage': 'sending'},
                                                         {'$set': {'stage': 'uncertain'}})

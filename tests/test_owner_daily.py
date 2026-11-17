@@ -209,7 +209,7 @@ print(json.dumps(sorted(names)))
         result = subprocess.run([sys.executable, '-c', script], env=env, text=True,
                                 capture_output=True, check=True, timeout=30)
         names = set(json.loads(result.stdout))
-        self.assertTrue({'news_daily_on', 'news_daily_off', 'news_daily_status', 'news_collected'} <= names)
+        self.assertTrue({'panel', 'news_daily_status', 'news_collected'} <= names)
 
     async def test_handlers_private_owner_only_and_preview_is_pickable(self):
         from handlers import news_owner_drafts as handlers
@@ -237,37 +237,6 @@ print(json.dumps(sorted(names)))
             await handlers.collected(message)
             await handlers.daily_status(message)
             message.answer.assert_not_awaited()
-
-    async def test_chat_toggle_is_private_persistent_and_polls_immediately(self):
-        from handlers import news_owner_drafts as handlers
-        import app_setup
-        db = AsyncMongoMockClient().test
-        message = SimpleNamespace(from_user=SimpleNamespace(id=handlers.ADMIN_ID), chat=SimpleNamespace(type='private'),
-                                  text='/news_daily_on', answer=AsyncMock())
-        with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '0', 'NEWS_OWNER_TRIAL_ENABLED': '0',
-                                     'NEWS_OWNER_DRAFT_ENABLED': '0'}), \
-             patch.object(handlers, 'db', SimpleNamespace(db=db)), \
-             patch.object(app_setup, 'collect_owner_daily_news', AsyncMock()) as collect:
-            await handlers.daily_toggle(message)
-            self.assertTrue(await owner_daily.enabled(db))
-            collect.assert_awaited_once()
-            await handlers.daily_status(message)
-            self.assertIn('Сбор включён', message.answer.await_args.args[0])
-            self.assertIn('Подготовка сценариев сейчас выключена', message.answer.await_args.args[0])
-            message.text = '/news_daily_off'
-            await handlers.daily_toggle(message)
-            self.assertFalse(await owner_daily.enabled(db))
-            with patch.dict(os.environ, {'NEWS_OWNER_DAILY_ENABLED': '1'}):
-                self.assertFalse(await owner_daily.enabled(db))
-            message.from_user.id += 1
-            message.text = '/news_daily_on'
-            await handlers.daily_toggle(message)
-            self.assertFalse(await owner_daily.enabled(db))
-            collect.assert_awaited_once()
-            message.from_user.id -= 1
-            message.chat.type = 'group'
-            await handlers.daily_toggle(message)
-            self.assertFalse(await owner_daily.enabled(db))
 
     async def test_jobs_do_not_fetch_or_send_when_off(self):
         import app_setup

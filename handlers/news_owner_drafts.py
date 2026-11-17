@@ -15,10 +15,6 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-def enabled() -> bool:
-    return os.getenv('NEWS_OWNER_DRAFT_ENABLED', '').strip() == '1' and owner_trial.enabled()
-
-
 def authorized(message) -> bool:
     return bool(message.from_user and message.from_user.id == ADMIN_ID and message.chat.type == 'private')
 
@@ -101,7 +97,7 @@ async def show(message, draft_id: int, *, for_program: bool = False) -> None:
 async def prepare(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -156,7 +152,7 @@ async def prepare_urls(message: types.Message, urls: list[str], accent: str = ''
 async def prepare_many(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -174,7 +170,7 @@ async def prepare_many(message: types.Message) -> None:
 async def discover(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     if len((message.text or '').split()) != 1:
@@ -234,27 +230,6 @@ async def discover(message: types.Message) -> None:
         await message.answer('Не удалось получить подборку. Попробуйте позже.', parse_mode=None)
 
 
-@router.message(Command('news_daily_on', 'news_daily_off'))
-async def daily_toggle(message: types.Message) -> None:
-    if not authorized(message):
-        return
-    from news_prototype import owner_daily
-    command = (message.text or '').split()[0].split('@')[0].lower()
-    turn_on = command == '/news_daily_on'
-    try:
-        await owner_daily.set_enabled(db.db, turn_on)
-        if turn_on:
-            await message.answer('Сбор включён. Начинаю проверять источники; подборка — в 03:00 МСК. '
-                                 'Состояние: /news_daily_status', parse_mode=None)
-            from app_setup import collect_owner_daily_news
-            await collect_owner_daily_news()
-        else:
-            await message.answer('Сбор и ежедневная отправка выключены. Включить: /news_daily_on', parse_mode=None)
-    except Exception as exc:
-        logger.warning('Не удалось изменить состояние сбора: %s', type(exc).__name__)
-        await message.answer('Не удалось изменить состояние сбора. Попробуйте позже.', parse_mode=None)
-
-
 @router.message(Command('news_daily_status'))
 async def daily_status(message: types.Message) -> None:
     if not authorized(message):
@@ -262,7 +237,7 @@ async def daily_status(message: types.Message) -> None:
     from news_prototype import owner_daily
     try:
         if not await owner_daily.enabled(db.db):
-            await message.answer('Ежедневный сбор новостей выключен. Включить: /news_daily_on', parse_mode=None)
+            await message.answer('Ежедневный сбор новостей выключен. Управление: /panel', parse_mode=None)
             return
         from datetime import datetime, timedelta, timezone
         now = datetime.now(timezone.utc)
@@ -285,8 +260,8 @@ async def daily_status(message: types.Message) -> None:
             labels = {'preparing': 'готовится', 'ready': 'ожидает отправки', 'sending': 'отправка не подтверждена',
                       'uncertain': 'отправка не подтверждена', 'sent': 'доставлена'}
             text += f'\nПоследняя подборка ({last["day"]}): {labels.get(last.get("stage"), "неизвестно")}.'
-        text += '\nПосмотреть накопленное: /news_collected\nВыключить сбор: /news_daily_off'
-        if not enabled():
+        text += '\nПосмотреть накопленное: /news_collected\nУправление: /panel'
+        if not await owner_trial.drafts_enabled(db.db):
             text += '\nПодготовка сценариев сейчас выключена; сбору это не мешает.'
         await message.answer(text, parse_mode=None)
     except Exception as exc:
@@ -301,7 +276,7 @@ async def collected(message: types.Message) -> None:
     from news_prototype import owner_daily
     try:
         if not await owner_daily.enabled(db.db):
-            await message.answer('Ежедневный сбор новостей выключен. Включить: /news_daily_on', parse_mode=None)
+            await message.answer('Ежедневный сбор новостей выключен. Управление: /panel', parse_mode=None)
             return
         from ai_providers import fire_gemini_key
         from models import GEMINI_CHAT_MODEL
@@ -317,7 +292,7 @@ async def collected(message: types.Message) -> None:
 async def pick(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     from news_prototype import owner_discovery
@@ -342,7 +317,7 @@ async def pick(message: types.Message) -> None:
 async def list_drafts(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -362,7 +337,7 @@ async def list_drafts(message: types.Message) -> None:
 async def get_draft(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -381,7 +356,7 @@ async def get_draft(message: types.Message) -> None:
 async def provide_source(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -406,7 +381,7 @@ async def provide_source(message: types.Message) -> None:
 async def edit_draft(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -428,7 +403,7 @@ async def edit_draft(message: types.Message) -> None:
 async def remove_focus(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -453,7 +428,7 @@ async def remove_focus(message: types.Message) -> None:
 async def remove_image(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -478,7 +453,7 @@ async def remove_image(message: types.Message) -> None:
 async def approve_draft(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -570,7 +545,7 @@ async def show_program(message, program_id: int) -> None:
 async def create_program(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -592,7 +567,7 @@ async def create_program(message: types.Message) -> None:
 async def list_programs(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -612,7 +587,7 @@ async def list_programs(message: types.Message) -> None:
 async def get_program(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
@@ -631,7 +606,7 @@ async def get_program(message: types.Message) -> None:
 async def approve_program(message: types.Message) -> None:
     if not authorized(message):
         return
-    if not enabled():
+    if not await owner_trial.drafts_enabled(db.db):
         await message.answer('Подготовка черновиков выключена.', parse_mode=None)
         return
     try:
