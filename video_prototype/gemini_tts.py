@@ -6,6 +6,8 @@ import base64
 import io
 import json
 import re
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -96,8 +98,29 @@ def request_one(key, text, timeout):
         return validated_audio(json.loads(raw))
     except urllib.error.HTTPError as exc:
         raise TTSFailure(f'HTTP {exc.code}') from None
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError, RecursionError):
-        raise TTSFailure('ошибка связи или формата Gemini') from None
+    except urllib.error.URLError as exc:
+        # Never print the URL, response, request text, or exception details:
+        # they can contain credentials. Only publish fixed categories.
+        reason = exc.reason
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            category = 'таймаут соединения Gemini'
+        elif isinstance(reason, socket.gaierror):
+            category = 'ошибка DNS Gemini'
+        elif isinstance(reason, ssl.SSLError):
+            category = 'ошибка TLS Gemini'
+        else:
+            category = 'ошибка соединения Gemini'
+        raise TTSFailure(category) from None
+    except (TimeoutError, socket.timeout):
+        raise TTSFailure('таймаут соединения Gemini') from None
+    except ssl.SSLError:
+        raise TTSFailure('ошибка TLS Gemini') from None
+    except socket.gaierror:
+        raise TTSFailure('ошибка DNS Gemini') from None
+    except OSError:
+        raise TTSFailure('ошибка ввода-вывода Gemini') from None
+    except (ValueError, RecursionError):
+        raise TTSFailure('некорректный формат ответа Gemini') from None
 
 
 def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET):
