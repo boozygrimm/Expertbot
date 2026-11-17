@@ -112,7 +112,10 @@ def build_timeline(audio: Path, parts: list[tuple[int, Path]], sections: list[di
     return (audio, active, states), estimates
 
 
-def send_video_once(video: Path, folder: Path, env: dict) -> str:
+def send_video_once(video: Path, folder: Path, env: dict, *,
+                    caption: str = 'Пробный вестник: смена говорящих приблизительная, проверь на слух.') -> str:
+    if not isinstance(caption, str) or len(caption) > 500 or '\r' in caption or '\n' in caption:
+        raise ValueError('Неверная подпись видео')
     settings = read_settings()
     token = (os.environ.get('BOT_TOKEN') or os.environ.get('TELEGRAM_TOKEN') or settings.get('BOT_TOKEN')
              or settings.get('TELEGRAM_TOKEN') or env.get('BOT_TOKEN') or env.get('TELEGRAM_TOKEN'))
@@ -124,8 +127,7 @@ def send_video_once(video: Path, folder: Path, env: dict) -> str:
     data = video.read_bytes()
     boundary = '----bulletin-video-' + secrets.token_hex(12)
     payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat}\r\n'
-               f'--{boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n'
-               'Пробный вестник: смена говорящих приблизительная, проверь на слух.\r\n'
+               f'--{boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n{caption}\r\n'
                f'--{boundary}\r\nContent-Disposition: form-data; name="video"; filename="bulletin-preview.mp4"\r\n'
                'Content-Type: video/mp4\r\n\r\n').encode() + data + f'\r\n--{boundary}--\r\n'.encode()
     request = urllib.request.Request(f'https://api.telegram.org/bot{token}/sendVideo', data=payload,
