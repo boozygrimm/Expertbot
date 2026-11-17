@@ -159,6 +159,11 @@ def quiet(pid: int, *, recent_seconds: int = 120):
         if log.is_symlink(): raise SafetyError('Небезопасный журнал видео')
         if now - folder.stat().st_mtime < recent_seconds or (log.exists() and now - log.stat().st_mtime < recent_seconds):
             raise SafetyError('Недавно работала видеозадача; подождите и проверьте снова')
+        # The existing worker starts retention cleanup on restart. Do not cause
+        # even a normal 30-day cleanup without an explicit separate decision.
+        # A day of headroom also excludes folders near the threshold.
+        if log.is_file() and now - max(folder.stat().st_mtime, log.stat().st_mtime) >= 29 * 24 * 60 * 60:
+            raise SafetyError('Есть старые видео, которые перезапуск может удалить; нужна отдельная проверка')
     if NEWS_ROOT.is_symlink() or not NEWS_ROOT.is_dir():
         raise SafetyError('Каталог новостей недоступен')
     for folder in NEWS_ROOT.iterdir():
