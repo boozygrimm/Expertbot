@@ -45,14 +45,17 @@ async def _current_story(db, owner_id: int, bulletin_id: int, revision: str, sec
             or not bulletin_limits.number(section_id) or not isinstance(revision, str)
             or not re.fullmatch(r'[0-9a-f]{64}', revision)):
         raise ValueError('Неверные данные вестника')
-    # The existing gate checks revision, source freshness, stage and image-only
-    # render contract. It does NOT record an owner's approval.
-    await owner_bulletin.approved_payload(db, owner_id, bulletin_id, revision)
+    # Validate the SAME snapshot, including choices/source_revision, rather
+    # than validating one database read and extracting from another. This is
+    # still a point-in-time check, not an atomic authorization to render.
     item = await owner_bulletin.get(db, owner_id, bulletin_id)
     if (not item or item.get('stage') != 'ready_for_review' or item.get('revision') != revision
-            or owner_bulletin.revision(item['stories'], item['sections']) != revision
-            or item.get('mode') != 'direct'):
+            or item.get('mode') != 'direct'
+            or owner_bulletin.revision(item['stories'], item['sections']) != revision):
         raise ValueError('Версия вестника изменилась')
+    if not await owner_bulletin._sources_current(db, owner_id, item):
+        raise ValueError('Один из источников изменился')
+    owner_bulletin._payload_from_sections(item['sections'])
     matches = [story for story in item['stories'] if story.get('draft_id') == section_id]
     if (len(matches) != 1 or not any(section.get('id') == section_id for section in item['sections'])
             or matches[0].get('telegram_video_status') != 'available'):
@@ -111,7 +114,7 @@ async def acquire(db, owner_id: int, bulletin_id: int, revision: str, section_id
     """
     story = await _current_story(db, owner_id, bulletin_id, revision, section_id)
     post = await asyncio.to_thread(source.fetch_post, story['url'])
-    if (post.url != story['url'] or post.caption != story['summary']
+    if (post.url != story['url'] or not post.caption_complete or post.caption != story['summary']
             or post.video_status != 'available'):
         raise ValueError('Пост или его подпись изменились; нужна новая проверка источника')
     video = await asyncio.to_thread(source.download_video, post, Path(folder), ffmpeg=ffmpeg, ffprobe=ffprobe)

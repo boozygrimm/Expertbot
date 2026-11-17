@@ -213,7 +213,7 @@ async def fetch_article(url: str) -> dict:
                         from news_prototype import telegram_public_source
                         try:
                             candidate = telegram_public_source.parse_widget(current, bytes(data))
-                            if candidate.caption == body:
+                            if candidate.caption_complete and candidate.caption == body:
                                 video_status = candidate.video_status
                         except telegram_public_source.SourceError:
                             pass

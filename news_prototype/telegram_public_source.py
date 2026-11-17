@@ -44,6 +44,7 @@ class Post:
     caption: str
     video_status: str  # available | none | ambiguous
     video_url: str | None = field(default=None, repr=False)
+    caption_complete: bool = True
 
 
 @dataclass(frozen=True)
@@ -143,7 +144,11 @@ def parse_widget(url: str, html: bytes) -> Post:
         if caption_parser.matches != 1 or caption_parser.bodies != 1 or video_parser.matches != 1:
             raise ValueError
         caption = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
-                            for line in ''.join(caption_parser.parts).split('\n')).strip()[:MAX_TEXT]
+                            for line in ''.join(caption_parser.parts).split('\n')).strip()
+        # A prefix is sufficient for display, but never enough to assert that
+        # a later post is unchanged. Record truncation before slicing.
+        caption_complete = len(caption) <= MAX_TEXT
+        caption = caption[:MAX_TEXT]
         caption = ''.join(c for c in caption if (ord(c) >= 32 and ord(c) != 127) or c == '\n')
         if not caption:
             raise ValueError
@@ -151,10 +156,10 @@ def parse_widget(url: str, html: bytes) -> Post:
         raise SourceError('Пост с подписью не найден однозначно') from None
     candidates = list(dict.fromkeys(video_parser.videos))
     if video_parser.video_tags == 0:
-        return Post(canonical, post_id, caption, 'none')
+        return Post(canonical, post_id, caption, 'none', caption_complete=caption_complete)
     if video_parser.video_tags != 1 or len(candidates) != 1:
-        return Post(canonical, post_id, caption, 'ambiguous')
-    return Post(canonical, post_id, caption, 'available', candidates[0])
+        return Post(canonical, post_id, caption, 'ambiguous', caption_complete=caption_complete)
+    return Post(canonical, post_id, caption, 'available', candidates[0], caption_complete)
 
 
 def fetch_post(url: str) -> Post:
