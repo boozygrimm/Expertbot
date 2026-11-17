@@ -6,7 +6,7 @@ Coordinates apply only to the selected 960x540 studio image.
 from __future__ import annotations
 
 from functools import lru_cache
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from news_prototype import bulletin_concept_screen
 
@@ -20,8 +20,8 @@ def _smooth(x: float) -> float:
 
 def screen_level(t: float, on_click: float, off_click: float) -> float:
     """Fade up after power-on and fade down after power-off."""
-    on = _smooth((t - on_click - .08) / .55)
-    off = 1 - _smooth((t - off_click - .08) / .50)
+    on = _smooth((t - on_click - .13) / .50)
+    off = 1 - _smooth((t - off_click - .10) / .53)
     return min(on, off)
 
 
@@ -60,6 +60,14 @@ def television_mask() -> Image.Image:
     return mask.resize(SIZE, Image.Resampling.LANCZOS).filter(ImageFilter.GaussianBlur(.35))
 
 
+@lru_cache(maxsize=1)
+def unlit_screen() -> Image.Image:
+    """Dark glass and the same subtle reflection used by the older animation."""
+    image = Image.new('RGB', SIZE, (5, 10, 18))
+    ImageDraw.Draw(image).ellipse((130, 48, 800, 340), fill=(8, 15, 25))
+    return image
+
+
 def apply_television(frame: Image.Image, level: float) -> Image.Image:
     """Dim the outer television picture while leaving its frame and remote lit."""
     if frame.size != SIZE or not 0 <= level <= 1:
@@ -67,9 +75,39 @@ def apply_television(frame: Image.Image, level: float) -> Image.Image:
     if level >= 1:
         return frame
     original = frame.convert('RGB')
-    dark = Image.new('RGB', SIZE, (3, 8, 15))
-    dimmed = Image.blend(dark, original, level)
+    dimmed = Image.blend(unlit_screen(), original, level)
     return Image.composite(dimmed, original, television_mask())
+
+
+def power_effect(frame: Image.Image, t: float, on_click: float, off_click: float,
+                 click_times: list[float]) -> Image.Image:
+    """Adapt the old CRT flash and remote-button glow to the new TV mask."""
+    if frame.size != SIZE:
+        raise ValueError('Неверный размер кадра')
+    flash = max(max(0., 1 - abs(t - center) / span)
+                for center, span in ((on_click + .21, .11), (off_click + .54, .12)))
+    pulse = max((max(0., 1 - abs(t - at) / .16) for at in click_times), default=0.)
+    if flash <= 0 and pulse <= 0:
+        return frame
+    result = frame.convert('RGBA')
+    if flash > 0:
+        line = Image.new('RGBA', SIZE)
+        draw = ImageDraw.Draw(line)
+        draw.rounded_rectangle((155, 269, 802, 273), radius=2,
+                               fill=(168, 224, 255, round(155 * flash)))
+        # Clip to the glass and exclude the foreground remote.
+        line.putalpha(ImageChops.multiply(line.getchannel('A'), television_mask()))
+        result = Image.alpha_composite(result, line)
+    if pulse > 0:
+        glow = Image.new('RGBA', SIZE)
+        draw = ImageDraw.Draw(glow)
+        x, y = 735, 394
+        radius = 3 + round(3 * pulse)
+        draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=(255, 50, 25, round(125 * pulse)))
+        glow = glow.filter(ImageFilter.GaussianBlur(3))
+        ImageDraw.Draw(glow).ellipse((x-2, y-2, x+2, y+2), fill=(255, 180, 110, round(230 * pulse)))
+        result = Image.alpha_composite(result, glow)
+    return result.convert('RGB')
 
 
 @lru_cache(maxsize=1)

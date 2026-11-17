@@ -64,7 +64,7 @@ def remote_click(rate: int) -> array:
 def power_click_positions(dialogue_frames: int, rate: int) -> tuple[int, int]:
     """Absolute PCM positions in the intro and after the frame-aligned speech."""
     fps = bender_trial.FPS
-    return round(.65 * rate), round(((combined_trial.INTRO_FRAMES + dialogue_frames) / fps + .35) * rate)
+    return round(.85 * rate), round(((combined_trial.INTRO_FRAMES + dialogue_frames) / fps + .5) * rate)
 
 
 def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequence[int] = (),
@@ -145,12 +145,16 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                 brightness = round(12 * bulletin_remote_animation.screen_level(t, on_time, off_time))
                 data = frame_bytes(index, state, brightness)
                 amount = bulletin_remote_animation.press_amount(t, click_times)
-                if index is not None or amount > 0:
+                effect_active = (abs(t - on_time - .21) < .11 or abs(t - off_time - .54) < .12
+                                 or any(abs(t - at) < .16 for at in click_times))
+                if index is not None or amount > 0 or effect_active:
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
                     if index is not None and t < windows[-1].end:
                         frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
                     if amount > 0:
                         frame = bulletin_remote_animation.apply(frame, amount)
+                    if effect_active:
+                        frame = bulletin_remote_animation.power_effect(frame, t, on_time, off_time, click_times)
                     data = frame.tobytes()
                 process.stdin.write(data)
             process.stdin.close()

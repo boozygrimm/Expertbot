@@ -167,7 +167,7 @@ def run(job: Path, base: Path, ffmpeg: str) -> Path:
         raise ValueError('Недопустимые ссылки на аудио')
     windows, total = bulletin_timing.section_windows(parts)
     timeline, estimates = build_timeline(audio, parts, bulletin['sections'])
-    folder = base / 'video-preview-tv-power-1'
+    folder = base / 'video-preview-crt-power-1'
     folder.mkdir(mode=0o700, exist_ok=False)
     for index, estimate in enumerate(estimates, 1):
         print(f'Новость {index}: {estimate}', flush=True)

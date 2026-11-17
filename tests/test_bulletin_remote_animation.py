@@ -17,12 +17,27 @@ def test_outer_tv_dimming_hides_studio_but_preserves_remote_and_frame():
     bright = bulletin_wide_screen.compose()
     dark = animation.apply_television(bright, 0)
     for point in ((430, 140), (270, 225), (600, 210), (400, 390)):
-        assert dark.getpixel(point) == (3, 8, 15)
+        assert dark.getpixel(point) == animation.unlit_screen().getpixel(point)
         assert bright.getpixel(point) != dark.getpixel(point)
     for point in ((735, 394), (750, 405), (775, 425), (890, 200), (20, 20)):
         assert bright.getpixel(point) == dark.getpixel(point)
     assert animation.apply_television(bright, 1).tobytes() == bright.tobytes()
     with pytest.raises(ValueError): animation.apply_television(bright, 1.1)
+
+
+def test_crt_flash_and_button_glow_match_power_events_without_touching_frame():
+    original = animation.apply_television(bulletin_wide_screen.compose(), 0)
+    on, off = .85, 8.
+    on_flash = animation.power_effect(original, on + .21, on, off, [on, off])
+    off_flash = animation.power_effect(original, off + .54, on, off, [on, off])
+    assert sum(on_flash.getpixel((400, 271))) > sum(original.getpixel((400, 271))) + 100
+    assert sum(off_flash.getpixel((400, 271))) > sum(original.getpixel((400, 271))) + 100
+    assert on_flash.getpixel((20, 20)) == original.getpixel((20, 20))
+    assert on_flash.getpixel((735, 394)) == original.getpixel((735, 394))
+    glow = animation.power_effect(original, on, on, off, [on, off])
+    assert glow.getpixel((735, 394)) != original.getpixel((735, 394))
+    idle = animation.power_effect(original, 3., on, off, [on, off])
+    assert idle.tobytes() == original.tobytes()
 
 
 def test_press_is_timed_to_click_and_stops_between_events():
