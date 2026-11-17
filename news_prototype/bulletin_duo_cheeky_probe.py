@@ -9,8 +9,8 @@ import wave
 from news_prototype import bulletin_duo_content_probe as probe
 
 JOB = Path('/data/video-prototype/news-jobs/fe65e362-28b2-51bd-b626-0e33388b165c')
-FOLDER = Path('/data/video-prototype/bulletin-duo-content-cheeky-fe65e362')
-BENDER_STYLE = 'По-русски, уверенно, дерзко и насмешливо, с выразительным сарказмом.'
+FOLDER = Path('/data/video-prototype/bulletin-duo-content-cheekier-fe65e362')
+BENDER_STYLE = 'По-русски, уверенно, дерзко и насмешливо, с ехидной интонацией и иронией, будто слегка подкалывает собеседника.'
 
 
 def main():
