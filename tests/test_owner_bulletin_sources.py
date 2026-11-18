@@ -148,3 +148,75 @@ class TelegramVideoSourceReviewTests(unittest.IsolatedAsyncioTestCase):
         await sources.collect(db, 123, 78, fetch, AsyncMock())
         item = await owner_bulletin.get(db, 123, 78)
         self.assertTrue(all('telegram_video_status' not in story for story in item['stories']))
+
+
+class SourceChangesTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = AsyncMongoMockClient().test
+        await sources.create(self.db, 123, 99, choices(3))
+        async def fetch(url):
+            if url.endswith('/1'): raise OSError('offline')
+            return {'summary': SOURCE}
+        await sources.collect(self.db, 123, 99, fetch, AsyncMock())
+
+    async def test_remove_missing_preserves_others_and_stale_cards_fail(self):
+        old = await owner_bulletin.get(self.db, 123, 99)
+        self.assertEqual(old['missing_ids'], [2])
+        self.assertEqual(await sources.remove_missing(self.db, 123, 99, 2, old['source_revision']), 'new')
+        item = await owner_bulletin.get(self.db, 123, 99)
+        self.assertEqual(item['stories'], [old['stories'][0], old['stories'][2]])
+        self.assertEqual([c['draft_id'] for c in item['choices']], [1, 3])
+        self.assertTrue(await owner_bulletin._sources_current(self.db, 123, item))
+        self.assertEqual(await sources.remove_missing(self.db, 123, 99, 2, old['source_revision']), 'stale')
+        self.assertEqual(await sources.provide_source(self.db, 123, 99, 2, old['source_revision'], SOURCE), 'stale')
+        editor = AsyncMock(side_effect=lambda stories: response(stories))
+        self.assertEqual(await owner_bulletin.prepare(self.db, 123, 99, editor, expected_source=old['source_revision']), 'stale')
+        editor.assert_not_awaited()
+        self.assertEqual(await owner_bulletin.prepare(self.db, 123, 99, editor, expected_source=item['source_revision']), 'ready_for_review')
+        item = await owner_bulletin.get(self.db, 123, 99)
+        self.assertEqual([s['id'] for s in (await owner_bulletin.approved_payload(self.db, 123, 99, item['revision']))['sections']], [1, 3])
+
+    async def test_two_down_to_one_then_add_source_only_fetches_new(self):
+        old = await owner_bulletin.get(self.db, 123, 99)
+        # First add a fourth missing entry, then remove both missing stories.
+        fetch = AsyncMock(side_effect=OSError('unavailable'))
+        self.assertEqual(await sources.append_sources(self.db, 123, 99, old['source_revision'],
+            ['https://example.com/missing'], fetch, AsyncMock()), 'source_missing')
+        item = await owner_bulletin.get(self.db, 123, 99)
+        self.assertEqual(item['missing_ids'], [2, 4])
+        self.assertEqual(await sources.remove_missing(self.db, 123, 99, 2, item['source_revision']), 'source_missing')
+        item = await owner_bulletin.get(self.db, 123, 99)
+        self.assertEqual(await sources.remove_missing(self.db, 123, 99, 4, item['source_revision']), 'new')
+        # Separate two-story bulletin, removing a missing story leaves one.
+        await sources.create(self.db, 123, 100, choices(2))
+        async def initial(url):
+            if url.endswith('/1'): raise OSError()
+            return {'summary': SOURCE}
+        await sources.collect(self.db, 123, 100, initial, AsyncMock())
+        item = await owner_bulletin.get(self.db, 123, 100)
+        self.assertEqual(await sources.remove_missing(self.db, 123, 100, 2, item['source_revision']), 'source_too_few')
+        item = await owner_bulletin.get(self.db, 123, 100)
+        before = item['stories'][0]
+        fetch = AsyncMock(return_value={'summary': SOURCE, 'title': 'Добавлено'})
+        self.assertEqual(await sources.append_sources(self.db, 123, 100, item['source_revision'],
+            ['https://example.com/fresh'], fetch, AsyncMock()), 'new')
+        fetch.assert_awaited_once_with('https://example.com/fresh')
+        item = await owner_bulletin.get(self.db, 123, 100)
+        self.assertEqual(item['stories'][0], before)
+        self.assertEqual([s['draft_id'] for s in item['stories']], [1, 3])
+        self.assertTrue(await owner_bulletin._sources_current(self.db, 123, item))
+
+    async def test_duplicate_invalid_stale_and_parallel_operations(self):
+        item = await owner_bulletin.get(self.db, 123, 99)
+        for text in ['http://example.com/a', 'https://127.0.0.1/x', 'https://t.me/c/1/2',
+                     'https://example.com/a\nhttps://example.com/a']:
+            with self.assertRaises(ValueError): sources.parse_urls(text)
+        fetch = AsyncMock(return_value={'summary': SOURCE})
+        with self.assertRaises(ValueError):
+            await sources.append_sources(self.db, 123, 99, item['source_revision'], [item['choices'][0]['url']], fetch, AsyncMock())
+        self.assertEqual(await sources.append_sources(self.db, 124, 99, item['source_revision'],
+                         ['https://example.com/add'], fetch, AsyncMock()), 'stale')
+        results = await asyncio.gather(
+            sources.remove_missing(self.db, 123, 99, 2, item['source_revision']),
+            sources.append_sources(self.db, 123, 99, item['source_revision'], ['https://example.com/add'], fetch, AsyncMock()))
+        self.assertEqual(results.count('stale'), 1)

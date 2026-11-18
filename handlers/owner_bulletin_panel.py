@@ -68,6 +68,8 @@ async def selection(message, session):
     if page or page + 1 < len(pages):
         nav.adjust(2); b.attach(nav)
     actions = InlineKeyboardBuilder()
+    if session.get('mode') == 'direct':
+        actions.button(text='➕ Добавить свои источники', callback_data=f'nb:addlinks:{session["_id"]}')
     if len(selected) >= 2:
         actions.button(text=('📥 Прочитать выбранные источники' if session.get('mode') == 'direct' else
                              '📝 Подготовить один вестник'), callback_data=f'nb:prepare:{session["_id"]}')
@@ -86,6 +88,40 @@ async def selection(message, session):
         '\n\nНажми номер, чтобы выбрать или убрать новость.' +
         (' 🔗 открывает источник.' if session.get('mode') == 'direct' else ''),
         reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
+
+
+async def add_selection_links(message, owner_id: int, data: dict, text: str):
+    urls = owner_bulletin_sources.parse_urls(text)
+    now = datetime.now(timezone.utc)
+    session = await db.db.owner_bulletin_selections.find_one({'_id': data['selection_id'], 'owner_id': owner_id,
+        'message_id': data['selection_message_id'], 'mode': 'direct', 'stage': 'open', 'expires_at': {'$gt': now}})
+    if not session:
+        return 'stale'
+    items = list(session['items'])
+    selected = list(session['selected'])
+    for url in urls:
+        existing = next((entry for entry in items if entry.get('url') == url), None)
+        if existing is None:
+            number = max((entry['number'] for entry in items), default=0) + 1
+            existing = {'number': number, 'label': url[:300], 'url': url}
+            items.append(existing)
+        if existing['number'] not in selected:
+            selected.append(existing['number'])
+    if len(selected) > 20:
+        raise ValueError('В вестнике может быть не больше 20 новостей.')
+    sent = await message.answer('Обновляю выбор новостей…', parse_mode=None)
+    pages = _selection_pages(items)
+    page = next((i for i, entries in enumerate(pages) if any(e['number'] == selected[-1] for e in entries)), 0)
+    result = await db.db.owner_bulletin_selections.update_one(
+        {'_id': session['_id'], 'owner_id': owner_id, 'message_id': session['message_id'],
+         'stage': 'open', 'selected': session['selected'], 'items': session['items'], 'expires_at': {'$gt': now}},
+        {'$set': {'items': items, 'selected': selected, 'page': page, 'message_id': sent.message_id}})
+    if not result.modified_count:
+        await sent.edit_text('Выбор изменился. Открой его заново.', parse_mode=None)
+        return 'stale'
+    session.update(items=items, selected=selected, page=page, message_id=sent.message_id)
+    await selection(sent, session)
+    return 'saved'
 
 
 def _chunks(text: str, limit: int = 3600):
@@ -174,23 +210,46 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
 async def show_sources(message, item: dict):
     stage = item.get('stage')
     if stage == 'source_missing':
+        b = InlineKeyboardBuilder()
+        if len(item['stories']) < 20:
+            b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
         await message.answer('Не удалось получить достаточно текста для некоторых новостей. '
-                             'Пришли текст для каждой из них; редактор пока не запускался.', parse_mode=None)
+                             'Пришли текст или убери новость; редактор пока не запускался.',
+                             reply_markup=b.as_markup() if len(item['stories']) < 20 else None, parse_mode=None)
         for story in item['stories']:
             if story['draft_id'] not in item['missing_ids']:
                 continue
             b = InlineKeyboardBuilder()
             b.button(text='📄 Прислать текст', callback_data=f'nb:source:{item["bulletin_id"]}:{story["draft_id"]}')
-            await message.answer(f'Новость {story["draft_id"]}: {story["title"]}\nИсточник: {story["url"]}',
-                                 reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
+            token = secrets.token_hex(8)
+            await db.db.owner_bulletin_cards.insert_one({'_id': token, 'owner_id': item['owner_id'],
+                'bulletin_id': item['bulletin_id'], 'section_id': story['draft_id'],
+                'source_revision': item['source_revision'], 'kind': 'remove_missing',
+                'expires_at': datetime.now(timezone.utc) + timedelta(days=2)})
+            b.button(text='❌ Убрать новость', callback_data=f'nb:remove_source:{token}')
+            b.adjust(1)
+            chunks = list(_chunks(f'Новость {story["draft_id"]}: {story["title"]}\nИсточник: {story["url"]}'))
+            for part in chunks[:-1]:
+                await message.answer(part, parse_mode=None, disable_web_page_preview=True)
+            sent = await message.answer(chunks[-1], reply_markup=b.as_markup(),
+                                        parse_mode=None, disable_web_page_preview=True)
+            await db.db.owner_bulletin_cards.update_one({'_id': token}, {'$set': {'message_id': sent.message_id}})
     elif stage == 'new':
         b = InlineKeyboardBuilder()
         b.button(text='📝 Подготовить общий сценарий', callback_data=f'nb:editor:{item["bulletin_id"]}')
+        if len(item['stories']) < 20:
+            b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
+        b.adjust(1)
         await message.answer('Все источники собраны. Картинки, если нашлись, будут показаны вместе со сценарием. '
                              'Следующий шаг требует отдельного подтверждения запроса к Gemini.',
                              reply_markup=b.as_markup(), parse_mode=None)
+    elif stage == 'source_too_few':
+        b = InlineKeyboardBuilder()
+        b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
+        await message.answer('Осталась одна новость. Добавь хотя бы один источник: в вестнике нужно минимум две новости.',
+                             reply_markup=b.as_markup(), parse_mode=None)
     else:
-        await show_review(message, item['owner_id'], item)
+        return await show_review(message, item['owner_id'], item)
 
 
 async def collect_selected(message, owner_id: int, data: dict):
@@ -219,7 +278,7 @@ async def run_editor(message, owner_id: int, data: dict):
             item.get('source_revision') != data['source_revision'] or
             not await owner_bulletin._sources_current(db.db, owner_id, item)):
         return await message.answer('Источники или состояние изменились; редактор не запускался.', parse_mode=None)
-    result = await owner_bulletin.prepare(db.db, owner_id, data['number'], make_bulletin)
+    result = await owner_bulletin.prepare(db.db, owner_id, data['number'], make_bulletin, expected_source=data['source_revision'])
     item = await owner_bulletin.get(db.db, owner_id, data['number'])
     if result == 'ready_for_review':
         return await show_review(message, owner_id, item)
@@ -308,7 +367,7 @@ async def shorten_confirmed(message, owner_id: int, data: dict):
 
 
 async def show_review(message, owner_id: int, item: dict):
-    if item.get('mode') == 'direct' and item.get('stage') in ('new', 'source_missing'):
+    if item.get('mode') == 'direct' and item.get('stage') in ('new', 'source_missing', 'source_too_few'):
         return await show_sources(message, item)
     if item.get('stage') in ('approving', 'approval_uncertain', 'queued', 'shortening'):
         stage, request_id = await owner_bulletin_admission.status(db.db, owner_id, item['bulletin_id'])
@@ -436,12 +495,19 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                        'stage': 'open', 'expires_at': now + timedelta(hours=2)}
             await db.db.owner_bulletin_selections.insert_one(session)
             await callback.answer(); return await selection(callback.message, session)
-        if action in ('editor', 'source') and len(parts) in (3, 4) and parts[2].isdigit():
+        if action in ('editor', 'source', 'more') and len(parts) in (3, 4) and parts[2].isdigit():
             if not await owner_trial.drafts_enabled(db.db):
                 return await callback.answer('Подготовка сценариев выключена.', show_alert=True)
             item = await owner_bulletin.get(db.db, owner, int(parts[2]))
             if not item or item.get('mode') != 'direct':
                 return await callback.answer('Вестник не найден.', show_alert=True)
+            if action == 'more' and len(parts) == 3:
+                if item.get('stage') not in ('new', 'source_missing', 'source_too_few') or len(item['stories']) >= 20:
+                    return await callback.answer('Нельзя добавить источники на этом этапе.', show_alert=True)
+                return await tools.ask(callback, state, 'bulletin_more_sources',
+                    'Пришли HTTPS-ссылки на статьи или публичные посты, по одной в строке. '
+                    'Я прочитаю только новые источники. Редактор и рендер не запустятся.',
+                    number=item['bulletin_id'], source_revision=item['source_revision'])
             if action == 'editor' and len(parts) == 3:
                 if item.get('stage') != 'new' or not await owner_bulletin._sources_current(db.db, owner, item):
                     return await callback.answer('Источники или состояние изменились.', show_alert=True)
@@ -474,11 +540,18 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
         if len(parts) < 3 or len(parts[2]) != 16 or any(c not in '0123456789abcdef' for c in parts[2]):
             raise ValueError('Неверная кнопка')
         token = parts[2]
-        if action in ('sel', 'page', 'prepare'):
+        if action in ('sel', 'page', 'prepare', 'addlinks'):
             session = await db.db.owner_bulletin_selections.find_one({'_id': token, 'owner_id': owner,
                 'message_id': callback.message.message_id, 'stage': 'open', 'expires_at': {'$gt': now}})
             if not session: return await callback.answer('Выбор устарел. Открой его заново.', show_alert=True)
             selected = session['selected']
+            if action == 'addlinks' and len(parts) == 3:
+                if session.get('mode') != 'direct':
+                    return await callback.answer('Здесь нельзя добавить ссылки.', show_alert=True)
+                return await tools.ask(callback, state, 'bulletin_selection_links',
+                    'Пришли HTTPS-ссылки на статьи или публичные посты, по одной в строке. '
+                    'Они добавятся к выбранным новостям; чтение источников потребует подтверждения.',
+                    selection_id=token, selection_message_id=session['message_id'])
             if action in ('sel', 'page'):
                 if len(parts) != 4 or not parts[3].isdigit(): raise ValueError('Неверная кнопка')
                 value = int(parts[3])
@@ -487,16 +560,16 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                     if value in selected: changed = [n for n in selected if n != value]
                     elif len(selected) < 20: changed = selected + [value]
                     else: return await callback.answer('Можно выбрать не больше 20 новостей.', show_alert=True)
-                    result = await db.db.owner_bulletin_selections.update_one({'_id': token, 'stage': 'open', 'selected': selected}, {'$set': {'selected': changed}})
+                    result = await db.db.owner_bulletin_selections.update_one({'_id': token, 'owner_id': owner, 'message_id': session['message_id'], 'stage': 'open', 'selected': selected, 'items': session['items']}, {'$set': {'selected': changed}})
                     if not result.modified_count: return await callback.answer('Выбор изменился, попробуй ещё раз.', show_alert=True)
                     session['selected'] = changed
                 else:
                     if value >= len(_selection_pages(session['items'])): raise ValueError('Неверная страница')
                     session['page'] = value
-                    await db.db.owner_bulletin_selections.update_one({'_id': token, 'stage': 'open'}, {'$set': {'page': value}})
+                    await db.db.owner_bulletin_selections.update_one({'_id': token, 'owner_id': owner, 'message_id': session['message_id'], 'stage': 'open'}, {'$set': {'page': value}})
                 await callback.answer(); return await selection(callback.message, session)
             if len(parts) != 3 or not 2 <= len(selected) <= 20: raise ValueError('Нужны новости')
-            result = await db.db.owner_bulletin_selections.update_one({'_id': token, 'stage': 'open', 'selected': selected}, {'$set': {'stage': 'confirmed'}})
+            result = await db.db.owner_bulletin_selections.update_one({'_id': token, 'owner_id': owner, 'message_id': session['message_id'], 'stage': 'open', 'selected': selected, 'items': session['items']}, {'$set': {'stage': 'confirmed'}})
             if not result.modified_count: return await callback.answer('Выбор уже обрабатывается.', show_alert=True)
             entries = {i['number']: i for i in session['items']}
             names = '\n'.join(f'{i}. {" ".join(str(entries[n]["label"]).split())} (№{n})' for i, n in enumerate(selected, 1))
@@ -513,6 +586,21 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             return await tools.new_confirmation(callback.message, owner, 'prepare_bulletin',
                 'Подготовить один общий сценарий по выбранным новостям? Один запрос к Gemini расходует квоту. '
                 'Видео и публикация не запускаются.', draft_ids=selected, revisions=revisions)
+        if action == 'remove_source' and len(parts) == 3:
+            card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
+                'kind': 'remove_missing', 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Карточка устарела. Открой вестник заново.', show_alert=True)
+            if not await owner_trial.drafts_enabled(db.db):
+                return await callback.answer('Подготовка сценариев выключена.', show_alert=True)
+            result = await owner_bulletin_sources.remove_missing(db.db, owner, card['bulletin_id'],
+                card['section_id'], card['source_revision'])
+            if result in ('new', 'source_missing', 'source_too_few'):
+                await callback.answer('Новость убрана.')
+                return await show_sources(callback.message, await owner_bulletin.get(db.db, owner, card['bulletin_id']))
+            if result == 'too_few':
+                return await callback.answer('Добавь другой источник, прежде чем убрать последнюю новость.', show_alert=True)
+            return await callback.answer('Новость уже убрана или версия изменилась. Открой вестник заново.', show_alert=True)
         if action == 'detail' and len(parts) == 4 and parts[3].isdigit():
             card = await db.db.owner_bulletin_actions.find_one({'_id': token, 'owner_id': owner,
                 'action': 'review', 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})

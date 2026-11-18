@@ -85,15 +85,18 @@ async def _sources_current(db, owner_id: int, item: dict) -> bool:
     return True
 
 
-async def prepare(db, owner_id: int, number: int, editor) -> str:
+async def prepare(db, owner_id: int, number: int, editor, *, expected_source: str | None = None) -> str:
     """One claimed external request; ambiguous/failed results are not retried."""
     key = _key(owner_id, number)
     item = await get(db, owner_id, number)
     if not item or item.get('stage') != 'new':
         return 'not_new'
-    if not await _sources_current(db, owner_id, item):
+    if (expected_source is not None and item.get('source_revision') != expected_source) or not await _sources_current(db, owner_id, item):
         return 'stale'
-    claimed = await db.news_owner_bulletins.update_one({'_id': key, 'stage': 'new', 'owner_id': owner_id},
+    query = {'_id': key, 'stage': 'new', 'owner_id': owner_id}
+    if item.get('mode') == 'direct':
+        query['source_revision'] = item['source_revision']
+    claimed = await db.news_owner_bulletins.update_one(query,
         {'$set': {'stage': 'editing'}})
     if not claimed.modified_count:
         return 'not_new'
