@@ -215,11 +215,13 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         with patch('news_prototype.news_worker_client.NewsWorkerClient', side_effect=ValueError('no worker')):
             await self.handler.approve_draft(msg)
         self.assertIn('Не удалось проверить воркер', msg.answer.await_args.args[0])
-        self.assertIn('картинка сохранена', msg.answer.await_args.args[0])
+        self.assertIn('черновик сохранён', msg.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         self.assertEqual(await owner_drafts.remove_image(self.db, 123, 10, item['revision']), 'saved')
         item = await owner_drafts.get(self.db, 123, 10)
-        await self.handler.approve_draft(self.msg(f'/news_approve 10 {item["revision"]}'))
+        with patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=SimpleNamespace(
+                capabilities=AsyncMock(return_value={'news-story-bulletin-studio-v1'}))):
+            await self.handler.approve_draft(self.msg(f'/news_approve 10 {item["revision"]}'))
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
 
     async def test_trial_status_explains_missing_image_capability(self):
@@ -237,6 +239,19 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('проверить поддержку изображения', msg.answer.await_args.args[0])
         self.assertEqual(await owner_trial.status(self.db), 'queued')
 
+    async def test_no_image_story_waits_for_new_studio_worker(self):
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(return_value=DRAFT))
+        item = await owner_drafts.get(self.db, 123, 10)
+        msg = self.msg(f'/news_approve 10 {item["revision"]}')
+        client = SimpleNamespace(capabilities=AsyncMock(return_value={'news-story-v1'}))
+        with patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
+            await self.handler.approve_draft(msg)
+        self.assertIn('новая студия', msg.answer.await_args.args[0])
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+        self.assertEqual((await owner_drafts.get(self.db, 123, 10))['stage'], 'draft_ready')
+
     async def test_handler_prepares_shows_and_approves_only_explicit_command(self):
         msg = self.msg('/news_prepare ' + URL + '\nАкцент: суть')
         with patch.object(self.handler.article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})), \
@@ -249,7 +264,9 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(text.startswith('/news_edit 10 ') for text in texts))
         self.assertTrue(any(text.startswith('/news_approve 10 ') for text in texts))
         approval = self.msg('/news_approve 10 ' + item['revision'], message_id=11)
-        await self.handler.approve_draft(approval)
+        with patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=SimpleNamespace(
+                capabilities=AsyncMock(return_value={'news-story-bulletin-studio-v1'}))):
+            await self.handler.approve_draft(approval)
         self.assertIn('поставлен', approval.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
 

@@ -128,10 +128,10 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
         item = await self.prepare(10, AsyncMock(return_value={'description': DESCRIPTION, 'regions': REGIONS}))
         queue = SimpleNamespace(head=AsyncMock(return_value=None))
-        client = SimpleNamespace(supports_images=AsyncMock(return_value=True),
+        client = SimpleNamespace(supports_story_studio=AsyncMock(return_value=True), supports_images=AsyncMock(return_value=True),
                                  supports_programs=AsyncMock(return_value=True),
                                  supports_image_focus=AsyncMock(return_value=False),
-                                 submit=AsyncMock(return_value={'status':'running'}),
+                                 submit_studio=AsyncMock(return_value={'status':'running'}),
                                  submit_program=AsyncMock(return_value={'status':'running'}))
         for kind in ('story', 'program'):
             jobs = self.db['jobs_' + kind]
@@ -141,11 +141,11 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
                 await news_queue.enqueue_program(jobs, 'program', [item['script'], item['script']])
             await news_queue.run_idle_once(queue, jobs, client)
             self.assertEqual((await jobs.find_one({}))['stage'], 'queued')
-            client.submit.assert_not_awaited(); client.submit_program.assert_not_awaited()
+            client.submit_studio.assert_not_awaited(); client.submit_program.assert_not_awaited()
             client.supports_image_focus.return_value = True
             await news_queue.run_idle_once(queue, jobs, client)
             self.assertEqual((await jobs.find_one({}))['stage'], 'running')
-            client.submit.reset_mock(); client.submit_program.reset_mock()
+            client.submit_studio.reset_mock(); client.submit_program.reset_mock()
             client.supports_image_focus.return_value = False
 
     async def test_draft_handler_checks_focus_before_approval(self):
@@ -153,7 +153,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         item = await self.prepare(10, AsyncMock(return_value={'description': DESCRIPTION, 'regions': REGIONS}))
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                   text=f'/news_approve 10 {item["revision"]}', answer=AsyncMock())
-        client = SimpleNamespace(capabilities=AsyncMock(return_value={'news-story-image-v1'}))
+        client = SimpleNamespace(capabilities=AsyncMock(return_value={'news-story-image-v1', 'news-story-bulletin-studio-v1'}))
         with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
@@ -178,7 +178,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
             client.capabilities.side_effect = None
             client.capabilities.return_value = set()
             await handler.approve_draft(message)
-            self.assertIn('Воркер ответил, но не поддерживает', message.answer.await_args.args[0])
+            self.assertIn('новая студия одиночных сюжетов', message.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         self.assertEqual((await owner_drafts.get(self.db, 123, 10))['script']['image_b64'], self.image)
 

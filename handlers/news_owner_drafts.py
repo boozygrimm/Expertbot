@@ -536,17 +536,21 @@ async def approve_draft(message: types.Message) -> None:
             raise ValueError
         draft_id = _id(parts[1])
         item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
-        if item and item.get('stage') == 'draft_ready' and item.get('revision') == parts[2] and item.get('script', {}).get('image_b64'):
+        if item and item.get('stage') == 'draft_ready' and item.get('revision') == parts[2]:
             from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
             try:
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
                 capabilities = await client.capabilities()
             except (ValueError, OSError, NewsWorkerError):
                 await message.answer('Не удалось проверить воркер: он может просыпаться или быть недоступен. '
-                                     'Рендер не запущен, картинка сохранена. Проверь подключение и попробуй '
+                                     'Рендер не запущен, черновик сохранён. Проверь подключение и попробуй '
                                      'подтвердить эту версию позже.', parse_mode=None)
                 return
-            if 'news-story-image-v1' not in capabilities:
+            if 'news-story-bulletin-studio-v1' not in capabilities:
+                await message.answer('Воркер ответил, но новая студия одиночных сюжетов ещё не доступна. '
+                                     'Обновите воркер; рендер не запущен, черновик сохранён.', parse_mode=None)
+                return
+            if item.get('script', {}).get('image_b64') and 'news-story-image-v1' not in capabilities:
                 await message.answer('Воркер ответил, но не поддерживает картинки в одиночных сюжетах. '
                                      'Рендер не запущен, картинка сохранена; сначала обновите воркер.', parse_mode=None)
                 return

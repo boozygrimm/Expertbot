@@ -27,7 +27,7 @@ class EndToEndNewsTests(unittest.IsolatedAsyncioTestCase):
                 (work/'video.mp4').write_bytes(b'test-video')
                 (work/'status.json').write_text('{"stage":"ready_for_review"}')
             shared=worker.JobStore(lambda *args:'old-file-id')
-            news=news_jobs.NewsJobs(shared,root/'worker',fake_render)
+            news=news_jobs.NewsJobs(shared,root/'worker',fake_render,run_story_studio=fake_render)
             server=ThreadingHTTPServer(('127.0.0.1',0),worker.handler_for(shared,'secret',news))
             thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
             try:

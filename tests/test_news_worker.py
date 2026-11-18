@@ -77,6 +77,31 @@ class NewsWorkerTests(unittest.TestCase):
         self.assertFalse(created); self.assertEqual(state['status'],'ready')
         self.assertEqual(restarted.status(job)['status'],'ready')
 
+    def test_versioned_studio_endpoint_and_legacy_id_collision(self):
+        job = str(uuid.uuid4()); payload = {'request_id': job, 'script': self.script}
+        self.assertNotIn('news-story-bulletin-studio-v1', json.loads(self.request('GET', '/health')[1])['capabilities'])
+        self.assertEqual(self.request('POST', '/news-studio-jobs', payload)[0], 404)
+        self.assertEqual(self.calls, [])
+        self.news.run_story_studio = self.news.run_job
+        self.assertIn('news-story-bulletin-studio-v1', json.loads(self.request('GET', '/health')[1])['capabilities'])
+        # Historic request on the old endpoint is never mistaken for a new-studio job.
+        old = self.root / 'news' / job; (old / 'work').mkdir(parents=True)
+        (old / 'request.json').write_text(json.dumps(self.script, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+        (old / 'work' / 'status.json').write_text('{"stage":"ready_for_review"}')
+        (old / 'work' / 'video.mp4').write_bytes(b'old video')
+        self.assertEqual(self.request('POST', '/news-studio-jobs', payload)[0], 409)
+        self.assertEqual(self.request('GET', '/news-studio-jobs/' + job)[0], 404)
+        self.assertEqual(self.request('GET', '/news-jobs/' + job)[0], 200)
+        self.assertEqual(self.calls, [])
+        fresh = str(uuid.uuid4()); payload['request_id'] = fresh
+        self.assertEqual(self.request('POST', '/news-studio-jobs', payload)[0], 202)
+        self.assertTrue(self.started.wait(2))
+        self.assertEqual(self.request('POST', '/news-studio-jobs', payload)[0], 200)
+        self.assertEqual(self.request('GET', '/news-studio-jobs/' + fresh)[0], 200)
+        stored = json.loads((self.root / 'news' / fresh / 'request.json').read_text())
+        self.assertEqual(stored, {'studio': 'bulletin-v1', 'script': self.script})
+        self.assertEqual(self.calls, [fresh])
+
     def test_digest_validates_sources_and_uses_same_slot(self):
         self.news.run_digest = self.news.run_job
         ids = [str(uuid.uuid4()) for _ in range(2)]

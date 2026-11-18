@@ -84,6 +84,9 @@ class NewsWorkerClient:
         """Fail closed unless this worker explicitly advertises the news protocol."""
         return await self._supports('news-story-v1')
 
+    async def supports_story_studio(self) -> bool:
+        return await self._supports('news-story-bulletin-studio-v1')
+
     async def supports_images(self) -> bool:
         """Never submit an illustrated story to an older worker that drops images."""
         return await self._supports('news-story-image-v1')
@@ -131,9 +134,9 @@ class NewsWorkerClient:
     async def supports_image_focus(self) -> bool:
         return await self._supports('news-image-focus-v1')
 
-    async def _status(self, session: aiohttp.ClientSession, request_id: str) -> dict | None:
+    async def _status(self, session: aiohttp.ClientSession, request_id: str, *, studio: bool = False) -> dict | None:
         try:
-            async with session.get(self.base_url + '/news-jobs/' + request_id,
+            async with session.get(self.base_url + ('/news-studio-jobs/' if studio else '/news-jobs/') + request_id,
                                    headers=self.headers, allow_redirects=False, timeout=self.timeout) as resp:
                 if resp.status == 404:
                     return None
@@ -151,11 +154,22 @@ class NewsWorkerClient:
         async with aiohttp.ClientSession() as session:
             return await self._status(session, request_id)
 
+    async def status_studio(self, request_id: str) -> dict | None:
+        valid_id(request_id)
+        async with aiohttp.ClientSession() as session:
+            return await self._status(session, request_id, studio=True)
+
     async def submit(self, request_id: str, script: dict) -> dict:
         valid_id(request_id)
         if not isinstance(script, dict):
             raise ValueError('Нужен сценарий')
         return await self._submit('/news-jobs', request_id, {'request_id': request_id, 'script': script})
+
+    async def submit_studio(self, request_id: str, script: dict) -> dict:
+        valid_id(request_id)
+        if not isinstance(script, dict):
+            raise ValueError('Нужен сценарий')
+        return await self._submit('/news-studio-jobs', request_id, {'request_id': request_id, 'script': script}, studio=True)
 
     async def submit_program(self, request_id: str, scripts: list[dict]) -> dict:
         valid_id(request_id)
@@ -176,7 +190,7 @@ class NewsWorkerClient:
             valid_id(item)
         return await self._submit('/news-digests', request_id, {'request_id': request_id, 'inputs': inputs})
 
-    async def _submit(self, endpoint: str, request_id: str, payload: dict) -> dict:
+    async def _submit(self, endpoint: str, request_id: str, payload: dict, *, studio: bool = False) -> dict:
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(self.base_url + endpoint, json=payload, headers=self.headers,
@@ -197,7 +211,7 @@ class NewsWorkerClient:
                         raise NewsUncertain('Нет подтверждения приёма задачи')
                     return data
             except (aiohttp.ClientError, TimeoutError, ValueError, NewsUncertain):
-                known = await self._status(session, request_id)
+                known = await self._status(session, request_id, studio=True) if studio else await self._status(session, request_id)
                 if known is None:
                     raise NewsUncertain('Результат отправки неизвестен; не создавайте новую задачу вслепую') from None
                 return known

@@ -332,6 +332,8 @@ def handler_for(store, secret, news=None):
                 capabilities = ['animated-sign-v1', 'voice-notes-v1']
                 if news is not None:
                     capabilities.extend(['news-story-v1', 'news-story-image-v1', 'news-image-focus-v1'])
+                    if getattr(news, 'run_story_studio', None) is not None:
+                        capabilities.append('news-story-bulletin-studio-v1')
                     if news.run_program is not None:
                         capabilities.append('news-program-v1')
                     if getattr(news, 'run_bulletin', None) is not None:
@@ -342,6 +344,13 @@ def handler_for(store, secret, news=None):
                             if shutil.which('ffmpeg'):
                                 capabilities.append('news-bulletin-manual-video-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
+            studio_match = re.fullmatch(r'/news-studio-jobs/([0-9a-f-]{36})', path)
+            if news is not None and studio_match:
+                try:
+                    state = news.studio_status(studio_match.group(1))
+                except ValueError:
+                    state = None
+                return self.respond(200, state) if state else self.respond(404, {'error': 'not_found'})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:
                 request_id = news_match.group(1)
@@ -426,7 +435,9 @@ def handler_for(store, secret, news=None):
                     return self.respond(200, {'sha256': upload.group(1)})
                 except (ValueError, OSError, telegram_public_source.SourceError):
                     return self.respond(400, {'error': 'invalid_video'})
-            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests', '/news-programs', '/news-bulletins')):
+            if path == '/news-studio-jobs' and (news is None or getattr(news, 'run_story_studio', None) is None):
+                return self.respond(404, {'error': 'not_found'})
+            if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-studio-jobs', '/news-digests', '/news-programs', '/news-bulletins')):
                 return self.respond(404, {'error': 'not_found'})
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -434,10 +445,10 @@ def handler_for(store, secret, news=None):
                 return self.respond(400, {'error': 'invalid_length'})
             # An optional sanitized thumbnail is bounded separately by its codec.
             limit = (5_100_000 if path == '/news-bulletins' else 2_000_000 if path == '/news-programs' else
-                     600_000 if path == '/news-jobs' else 100_000 if path == '/news-digests' else MAX_BODY)
+                     600_000 if path in ('/news-jobs', '/news-studio-jobs') else 100_000 if path == '/news-digests' else MAX_BODY)
             if not 0 < length <= limit:
                 return self.respond(413, {'error': 'invalid_length'})
-            if path in ('/news-jobs', '/news-digests', '/news-programs', '/news-bulletins'):
+            if path in ('/news-jobs', '/news-studio-jobs', '/news-digests', '/news-programs', '/news-bulletins'):
                 from video_prototype.news_jobs import NewsBusy, NewsConflict, validate_request as validate_news, validate_digest, validate_program, validate_bulletin
                 try:
                     data = json.loads(self.rfile.read(length).decode('utf-8'))
@@ -452,7 +463,8 @@ def handler_for(store, secret, news=None):
                         job, created = news.submit_program(request_id, scripts)
                     else:
                         request_id, script = validate_news(data)
-                        job, created = news.submit(request_id, script)
+                        job, created = (news.submit_studio(request_id, script) if path == '/news-studio-jobs'
+                                        else news.submit(request_id, script))
                 except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError):
                     return self.respond(400, {'error': 'invalid_news_job'})
                 except NewsBusy:
@@ -517,10 +529,13 @@ def main():
         if str(HERE.parent) not in sys.path:
             sys.path.insert(0, str(HERE.parent))
         from news_prototype import story_pipeline  # noqa: F401
-        from video_prototype.news_jobs import NewsJobs, runner as news_runner, digest_runner, program_runner, bulletin_runner, bulletin_assets_ready
+        from video_prototype.news_jobs import (NewsJobs, runner as news_runner, digest_runner, program_runner,
+                                               bulletin_runner, bulletin_assets_ready, story_studio_runner, story_studio_assets_ready)
         news_root = args.output_dir.parent / 'news-jobs'
+        studio_ready = bulletin_assets_ready()
         news = NewsJobs(store, news_root, news_runner(HERE.parent), digest_runner(HERE.parent, news_root),
-                        program_runner(HERE.parent), bulletin_runner(HERE.parent) if bulletin_assets_ready() else None)
+                        program_runner(HERE.parent), bulletin_runner(HERE.parent) if studio_ready else None,
+                        story_studio_runner(HERE.parent) if studio_ready and story_studio_assets_ready() else None)
         if news.run_bulletin is None:
             print('Вестник недоступен: исходные слои или шрифт не прошли проверку.', flush=True)
     server = ThreadingHTTPServer((args.bind, args.port), handler_for(store, secret, news))

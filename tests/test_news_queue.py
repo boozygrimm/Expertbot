@@ -18,8 +18,10 @@ class NewsQueueTests(unittest.IsolatedAsyncioTestCase):
         self.script = {'turns':[{'speaker':'Бендер','text':'Тест'},
                                 {'speaker':'Киберсенсей','text':'Ответ'}]}
         self.client = type('Client', (), {})()
-        self.client.submit = AsyncMock(return_value={'status':'running'})
+        self.client.supports_story_studio = AsyncMock(return_value=True)
+        self.client.submit_studio = AsyncMock(return_value={'status':'running'})
         self.client.status = AsyncMock(return_value={'status':'ready'})
+        self.client.status_studio = AsyncMock(return_value={'status':'ready'})
 
     async def job(self): return await self.jobs.find_one({})
 
@@ -31,10 +33,20 @@ class NewsQueueTests(unittest.IsolatedAsyncioTestCase):
             await news_queue.enqueue_script(self.jobs,'candidate-1',changed)
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
         self.assertEqual((await self.job())['stage'],'running')
-        self.client.submit.assert_awaited_once()
+        self.client.submit_studio.assert_awaited_once()
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
         self.assertEqual((await self.job())['stage'],'ready_for_review')
-        self.client.status.assert_awaited_once()
+        self.client.status_studio.assert_awaited_once()
+
+    async def test_new_studio_is_required_even_without_image(self):
+        await news_queue.enqueue_script(self.jobs, 'candidate', self.script)
+        self.client.supports_story_studio.return_value = False
+        await news_queue.run_idle_once(self.queue, self.jobs, self.client)
+        self.client.submit_studio.assert_not_awaited()
+        self.assertEqual((await self.job())['stage'], 'queued')
+        self.client.supports_story_studio.return_value = True
+        await news_queue.run_idle_once(self.queue, self.jobs, self.client)
+        self.client.submit_studio.assert_awaited_once()
 
     async def test_digest_selection_order_and_dispatch(self):
         await news_queue.enqueue_script(self.jobs,'one',self.script)
@@ -72,19 +84,19 @@ class NewsQueueTests(unittest.IsolatedAsyncioTestCase):
         await news_queue.enqueue_script(self.jobs,'candidate-1',self.script)
         await self.queue.enqueue({'id':'user-job'})
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
-        self.client.submit.assert_not_awaited()
+        self.client.submit_studio.assert_not_awaited()
         self.assertEqual((await self.job())['stage'],'queued')
 
     async def test_busy_can_retry_but_uncertain_post_cannot(self):
         await news_queue.enqueue_script(self.jobs,'candidate-1',self.script)
-        self.client.submit.side_effect=NewsBusy()
+        self.client.submit_studio.side_effect=NewsBusy()
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
         self.assertEqual((await self.job())['stage'],'queued')
-        self.client.submit.side_effect=NewsUncertain()
+        self.client.submit_studio.side_effect=NewsUncertain()
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
         self.assertEqual((await self.job())['stage'],'uncertain')
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
-        self.assertEqual(self.client.submit.await_count,2)
+        self.assertEqual(self.client.submit_studio.await_count,2)
 
     async def test_recovery_queries_same_id_and_never_resubmits(self):
         await news_queue.enqueue_script(self.jobs,'candidate-1',self.script)
@@ -93,7 +105,7 @@ class NewsQueueTests(unittest.IsolatedAsyncioTestCase):
         self.client.status.return_value=None
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
         self.client.status.assert_awaited_once_with(job['request_id'])
-        self.client.submit.assert_not_awaited()
+        self.client.submit_studio.assert_not_awaited()
         self.assertEqual((await self.job())['stage'],'uncertain')
 
     async def test_user_request_arrives_before_submission(self):
@@ -106,7 +118,7 @@ class NewsQueueTests(unittest.IsolatedAsyncioTestCase):
             return {'id':'user'} if checks >= 3 else await original()
         self.queue.head=head
         await news_queue.run_idle_once(self.queue,self.jobs,self.client)
-        self.client.submit.assert_not_awaited()
+        self.client.submit_studio.assert_not_awaited()
         self.assertEqual((await self.job())['stage'],'queued')
 
 
