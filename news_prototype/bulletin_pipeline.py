@@ -47,7 +47,19 @@ def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
         sources = []
         for index, video in enumerate(bulletin_contract.selected_videos(bulletin)):
             private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=f'bulletin-source-{index}-', dir=folder.parent)))
-            sources.append(_acquire_reviewed_video(video, private, ffmpeg))
+            if video.get('manual') is True:
+                from news_prototype import bulletin_manual_media
+                ffprobe = shutil.which('ffprobe')
+                if not ffprobe:
+                    raise ValueError('Для видео нужен ffprobe')
+                # Job output is news_root/<request-id>/work; the upload cache
+                # is a sibling to all job directories, never a request path.
+                media_root = folder.parent.parent
+                path = bulletin_manual_media.acquire(media_root, video['video_sha256'], private / 'source',
+                                                     ffmpeg=ffmpeg, ffprobe=ffprobe)
+                sources.append((path, ffprobe))
+            else:
+                sources.append(_acquire_reviewed_video(video, private, ffmpeg))
         return _run(bulletin, folder, ffmpeg, keys, sources)
 
 

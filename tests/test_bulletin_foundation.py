@@ -49,6 +49,35 @@ class BulletinEditorTests(unittest.TestCase):
         self.assertEqual(result['verification'], 'needs_review')
         self.assertEqual({s['turns'][0]['speaker'] for s in result['sections']}, editor.SPEAKERS)
 
+    def test_source_openings_are_bound_to_each_url_and_idempotent(self):
+        stories = inputs(4)
+        stories[0]['url'] = 'https://t.me/ulta_games/23320'
+        stories[1]['url'] = 'https://telegram.me/s/channel/23'
+        stories[2]['url'] = 'https://t.me.example.org/news'
+        stories[3]['url'] = 'https://example.com/article'
+        prompt, material = editor.prompt_for(stories)
+        assert 'Не придумывай' in prompt
+        assert [s['source_kind'] for s in json.loads(material)['stories']] == [
+            'telegram', 'telegram', 'website', 'website']
+        data = response(stories)
+        data['sections'][0]['turns'][0]['text'] = 'А вот что пишут в Телеграме. Интересная новость.'
+        checked = editor.parse_draft(json.dumps(data, ensure_ascii=False), stories)
+        assert checked['sections'][0]['turns'][0]['text'] == 'А вот что пишут в Телеграме. Интересная новость.'
+        assert checked['sections'][1]['turns'][0]['text'].startswith('А вот что пишут в Телеграме. ')
+        assert checked['sections'][2]['turns'][0]['text'].startswith('На сайте поделились новостью. ')
+        assert checked['sections'][3]['turns'][0]['text'].startswith('Новость с сайта. ')
+        again = editor.parse_draft(json.dumps(checked, ensure_ascii=False), stories)
+        assert again['sections'] == checked['sections']
+        assert again['spoken_characters'] == sum(len(t['text']) for s in again['sections'] for t in s['turns'])
+        assert again['sections'][0]['turns'][0]['evidence'] == data['sections'][0]['turns'][0]['evidence']
+
+    def test_source_opening_counts_towards_limits(self):
+        stories = inputs(2)
+        data = response(stories)
+        data['sections'][0]['turns'][0]['text'] = 'x' * 470
+        with self.assertRaisesRegex(ValueError, 'источника'):
+            editor.parse_draft(json.dumps(data), stories)
+
     def test_missing_reordered_duplicate_or_cross_story_evidence_rejected(self):
         stories = inputs(3)
         for mutation in ('missing', 'reordered', 'duplicate', 'wrong_quote', 'no_fact', 'one_voice'):
@@ -98,7 +127,7 @@ class BulletinEditorTests(unittest.TestCase):
         stories = inputs(2)
         data = response(stories)
         turn = data['sections'][0]['turns'][0]
-        data['sections'][0]['turns'] = [dict(turn, text='😀' * 470) for _ in range(5)]
+        data['sections'][0]['turns'] = [dict(turn, text='😀' * 450) for _ in range(5)]
         with self.assertRaisesRegex(ValueError, 'Telegram'):
             editor.parse_draft(json.dumps(data, ensure_ascii=False), stories)
 

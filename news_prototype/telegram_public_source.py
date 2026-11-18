@@ -42,7 +42,7 @@ class Post:
     url: str
     post_id: str
     caption: str
-    video_status: str  # available | none | ambiguous
+    video_status: str  # available | none | ambiguous | too_big
     video_url: str | None = field(default=None, repr=False)
     caption_complete: bool = True
 
@@ -155,6 +155,8 @@ def parse_widget(url: str, html: bytes) -> Post:
     except (ValueError, TypeError, RecursionError):
         raise SourceError('Пост с подписью не найден однозначно') from None
     candidates = list(dict.fromkeys(video_parser.videos))
+    if video_parser.too_big and not candidates:
+        return Post(canonical, post_id, caption, 'too_big', caption_complete=caption_complete)
     if video_parser.video_tags == 0:
         return Post(canonical, post_id, caption, 'none', caption_complete=caption_complete)
     if video_parser.video_tags != 1 or len(candidates) != 1:

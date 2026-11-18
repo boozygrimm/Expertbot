@@ -29,7 +29,7 @@ def test_editor_only_adds_bounded_nonfact_comments_to_one_detected_video():
     data = response(stories); data['sections'][0]['video_remarks'] = REMARKS
     checked = bulletin_editor.parse_draft(json.dumps(data, ensure_ascii=False), stories)
     assert checked['sections'][0]['video_remarks'] == REMARKS
-    assert checked['spoken_characters'] == sum(len(t['text']) for s in data['sections'] for t in s['turns']) + sum(len(t['text']) for t in REMARKS)
+    assert checked['spoken_characters'] == sum(len(t['text']) for s in checked['sections'] for t in s['turns']) + sum(len(t['text']) for t in REMARKS)
     for invalid in ([REMARKS[0]], [REMARKS[0], REMARKS[0]],
                     [REMARKS[0], {'speaker': 'Киберсенсей', 'text': 'x' * 121}],
                     [REMARKS[0], {'speaker': 'Киберсенсей', 'text': 'x\ny'}]):

@@ -182,6 +182,9 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
     elif video_status == 'ambiguous':
         await message.answer('Видео поста найдено неоднозначно; оно не используется. '
                              'Проверь источник отдельно.', parse_mode=None)
+    elif video_status == 'too_big':
+        await message.answer('В посте видео слишком большое для публичной страницы Telegram. '
+                             'Обрежь нужный фрагмент в Telegram и пришли его кнопкой ниже.', parse_mode=None)
     token = secrets.token_hex(8)
     await db.db.owner_bulletin_cards.insert_one({'_id': token, 'owner_id': owner_id,
         'bulletin_id': item['bulletin_id'], 'section_id': section['id'], 'revision': item['revision'],
@@ -199,6 +202,10 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
             reviewed = await db.db.news_owner_bulletin_video_reviews.find_one({'_id': review_id, 'stage': 'sent'})
             if reviewed:
                 b.button(text='✅ Выбрать просмотренное видео', callback_data=f'nb:usevideo:{token}')
+    if item.get('mode') == 'direct' and not section.get('video'):
+        b.button(text='📎 Прислать фрагмент видео', callback_data=f'nb:manualvideo:{token}')
+    if section.get('video') and video_status != 'available':
+        b.button(text='❌ Убрать видео из вестника', callback_data=f'nb:novideo:{token}')
     if section.get('image_b64'):
         b.button(text='🖼 Убрать эту картинку', callback_data=f'nb:noimage:{token}')
     b.button(text='📋 Все вестники', callback_data='nb:list')
@@ -209,6 +216,10 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
 
 async def show_sources(message, item: dict):
     stage = item.get('stage')
+    too_big = [str(story['draft_id']) for story in item.get('stories', []) if story.get('telegram_video_status') == 'too_big']
+    if too_big:
+        await message.answer('В новостях ' + ', '.join(too_big) + ' видео слишком большое для публичной страницы Telegram. '
+                             'После подготовки сценария открой новость и пришли нужный обрезанный фрагмент.', parse_mode=None)
     if stage == 'source_missing':
         b = InlineKeyboardBuilder()
         if len(item['stories']) < 20:
@@ -408,7 +419,8 @@ async def show_review(message, owner_id: int, item: dict):
         source = next((s for s in item.get('stories', []) if s.get('draft_id') == section['id']), {})
         video_status = ('видео выбрано' if section.get('video') else
                         'видео найдено, не выбрано' if source.get('telegram_video_status') == 'available' else
-                        'видео неоднозначно' if source.get('telegram_video_status') == 'ambiguous' else 'без видео')
+                        'видео неоднозначно' if source.get('telegram_video_status') == 'ambiguous' else
+                        'видео слишком большое' if source.get('telegram_video_status') == 'too_big' else 'без видео')
         image_status = 'картинка' if section.get('image_b64') else 'шуточная заглушка'
         lines.append(f'Материалы: {image_status}, {video_status}.')
     lines.append('\nОткрой номер новости для источника, цитат, картинки, видео и исправлений. '
@@ -663,6 +675,23 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer()
             return await tools.new_confirmation(callback.message, owner, confirmation, prompt,
                 number=card['bulletin_id'], revision=card['revision'])
+        if action == 'manualvideo' and len(parts) == 3:
+            card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
+                'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Карточка устарела. Открой новость заново.', show_alert=True)
+            item = await owner_bulletin.get(db.db, owner, card['bulletin_id'])
+            if (not item or item.get('mode') != 'direct' or item.get('stage') != 'ready_for_review'
+                    or item.get('revision') != card['revision'] or not await owner_trial.drafts_enabled(db.db)
+                    or not await owner_bulletin._sources_current(db.db, owner, item)):
+                return await callback.answer('Версия изменилась. Открой вестник заново.', show_alert=True)
+            section = next((s for s in item['sections'] if s['id'] == card['section_id']), None)
+            if not section or section.get('video'):
+                return await callback.answer('Сначала убери выбранное видео.', show_alert=True)
+            return await tools.ask(callback, state, 'bulletin_manual_video',
+                'Обрежь видео в Telegram и пришли выбранный фрагмент одним сообщением как видео или MP4-файл. '
+                'Размер — до 20 МБ, длительность — до 10 минут. После загрузки потребуется подтвердить права и выбор; рендер не запустится.',
+                number=card['bulletin_id'], section_id=card['section_id'], revision=card['revision'])
         if action == 'remarks' and len(parts) == 3:
             card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
                 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
