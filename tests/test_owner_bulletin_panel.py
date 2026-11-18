@@ -140,6 +140,30 @@ class BulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('изменилась', self.callback.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
 
+    async def test_section_back_button_opens_current_review_without_side_effects(self):
+        await self.ready(2)
+        await owner_bulletin.create(self.db, self.user.id, 99, [1, 2])
+        await owner_bulletin.prepare(self.db, self.user.id, 99, AsyncMock(side_effect=response))
+        item = await owner_bulletin.get(self.db, self.user.id, 99)
+        await panel.show_section(self.message, self.user.id, item, item['sections'][0])
+        markup = self.message.answer.await_args.kwargs['reply_markup']
+        buttons = [button for row in markup.inline_keyboard for button in row]
+        back = next(button for button in buttons if button.text == '↩️ К сценарию вестника')
+        self.assertEqual(back.callback_data, 'nb:view:99')
+        edited = owner_bulletin.editable_section(item['sections'][0]).replace(
+            item['sections'][0]['ticker'], 'Проверенный заголовок')
+        self.assertEqual(await owner_bulletin.change_section(self.db, self.user.id, 99, item['revision'],
+                                                              item['sections'][0]['id'], text=edited), 'saved')
+        self.message.answer.reset_mock()
+        await self.click(back.callback_data)
+        self.assertTrue(any('Проверенный заголовок' in c.args[0] for c in self.message.answer.await_args_list))
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+        self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
+        self.message.answer.reset_mock()
+        self.callback.from_user = SimpleNamespace(id=self.user.id + 1)
+        await self.click(back.callback_data)
+        self.message.answer.assert_not_awaited()
+
     async def test_selection_shows_complete_titles_and_number_buttons(self):
         from datetime import datetime, timezone
         titles = [f'Очень длинный заголовок новости {n} ' + 'важные слова ' * 8 for n in range(1, 11)]
@@ -347,6 +371,15 @@ async def run():
         card = await database.owner_bulletin_actions.find_one({'action':'review'})
         await cb(7, f'nb:detail:{card["_id"]}:1', card['message_id'])
         assert any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
+        detail = next(m for m in reversed(sent) if isinstance(m, SendMessage) and m.text == 'Действия с этой версией новости:')
+        buttons = [button for row in detail.reply_markup.inline_keyboard for button in row]
+        back = next(button for button in buttons if button.text == '↩️ К сценарию вестника')
+        assert back.callback_data == 'nb:view:322'
+        before = len(sent)
+        await cb(8, back.callback_data, 501)
+        assert any(isinstance(m, SendMessage) and 'Вестник №322 · сценарий' in m.text for m in sent[before:])
+        assert editor.await_count == 1
+        assert await database.news_owner_trial_jobs.count_documents({}) == 0
     await bot.session.close()
 asyncio.run(run())
 '''

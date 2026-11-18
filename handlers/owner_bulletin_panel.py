@@ -208,6 +208,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         b.button(text='❌ Убрать видео из вестника', callback_data=f'nb:novideo:{token}')
     if section.get('image_b64'):
         b.button(text='🖼 Убрать эту картинку', callback_data=f'nb:noimage:{token}')
+    b.button(text='↩️ К сценарию вестника', callback_data=f'nb:view:{item["bulletin_id"]}')
     b.button(text='📋 Все вестники', callback_data='nb:list')
     b.adjust(1)
     sent = await message.answer('Действия с этой версией новости:', reply_markup=b.as_markup(), parse_mode=None)
