@@ -208,6 +208,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         b.button(text='❌ Убрать видео из вестника', callback_data=f'nb:novideo:{token}')
     if section.get('image_b64'):
         b.button(text='🖼 Убрать эту картинку', callback_data=f'nb:noimage:{token}')
+    b.button(text='↩️ К сценарию вестника', callback_data=f'nb:view:{item["bulletin_id"]}')
     b.button(text='📋 Все вестники', callback_data='nb:list')
     b.adjust(1)
     sent = await message.answer('Действия с этой версией новости:', reply_markup=b.as_markup(), parse_mode=None)
@@ -653,17 +654,21 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                           'В готовом видео нужно проверить голоса и полноту речи; анимация говорящих приблизительная. '
                           'Если выпуск превысит пять минут, он не будет обрезан или автоматически повторён. '
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
-                selected_videos = [s for s in item['sections'] if s.get('video')]
+                selected_videos = [(i, s) for i, s in enumerate(item['sections'], 1) if s.get('video')]
                 if selected_videos:
                     descriptions = []
-                    for selected in selected_videos:
+                    for position, selected in selected_videos:
                         video = selected['video']
                         place = 'между репликами' if video.get('cut_after') else 'после новости'
                         remarks = 'с репликами' if video.get('remarks') else 'без реплик'
-                        descriptions.append(f'№{selected["id"]}: {place}, {remarks}')
+                        descriptions.append(f'новость {position}: {place}, {remarks}')
                     prompt += (' Видео: ' + '; '.join(descriptions) + '. Каждое видео идёт в студии и около '
                                '10 секунд на весь экран со звуком; реплики поверх требуют дополнительных запросов Gemini. '
                                'Если любой источник изменился или недоступен, выпуск не соберётся.')
+                else:
+                    prompt += (' ВНИМАНИЕ: в этой версии НЕТ выбранных видео. '
+                               'В выпуске будут только картинки или заглушки. '
+                               'Если нужен фрагмент, вернись в сценарий и выбери его до рендера.')
                 confirmation = 'render_bulletin'
             else:
                 stage, _ = await owner_bulletin_admission.status(db.db, owner, item['bulletin_id'])
@@ -762,7 +767,9 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 await tools.ask(callback, state, 'bulletin_edit', 'Скопируй следующую карточку, исправь и отправь одним сообщением. '
                     'Источник менять нельзя; исправленные реплики потребуется проверить. Для вставки между репликами '
                     'добавь строку «Видео после: 1» (число — сколько реплик прозвучит до видео); '
-                    'чтобы вставить после всей новости, убери эту строку. При изменении выбранное видео потребуется проверить и выбрать заново.',
+                    'чтобы вставить после всей новости, убери эту строку. ВНИМАНИЕ: изменение текста снимет ВСЕ выбранные видео '
+                    'во всём вестнике, даже в других новостях. После правки их нужно выбрать и подтвердить заново; '
+                    'присланный фрагмент потребуется отправить повторно.',
                     number=card['bulletin_id'], section_id=card['section_id'], revision=card['revision'])
                 return await callback.message.answer(editable, parse_mode=None)
             result = await owner_bulletin.change_section(db.db, owner, card['bulletin_id'], card['revision'], card['section_id'], remove_image=True)

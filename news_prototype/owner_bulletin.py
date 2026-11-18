@@ -274,10 +274,6 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
     if not await _sources_current(db, owner_id, item):
         return 'stale_source'
     sections = copy.deepcopy(item['sections'])
-    # A media approval is specific to the entire reviewed version. Any edit
-    # invalidates it; the owner must inspect/approve the new version again.
-    for part in sections:
-        part.pop('video', None)
     section = next((part for part in sections if part['id'] == section_id), None)
     if section is None:
         raise ValueError('Новость не найдена')
@@ -302,10 +298,15 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
             section['video_cut_after'] = cut
         else:
             section.pop('video_cut_after', None)
+    # An identical edit is not a new revision and must not discard media.
+    if sections == item['sections']:
+        return 'unchanged'
+    # Approval covers the whole reviewed version, so a real change invalidates
+    # every selected video, including videos attached to other sections.
+    for part in sections:
+        part.pop('video', None)
     _payload_from_sections(sections)
     new_rev = revision(item['stories'], sections)
-    if new_rev == expected:
-        return 'unchanged'
     result = await db.news_owner_bulletins.update_one(
         {'_id': _key(owner_id, number), 'owner_id': owner_id, 'stage': 'ready_for_review', 'revision': expected},
         {'$set': {'sections': sections, 'revision': new_rev, 'verification': 'needs_review'}})
