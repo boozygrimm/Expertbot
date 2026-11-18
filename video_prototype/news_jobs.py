@@ -86,10 +86,11 @@ def validate_digest(value: object) -> tuple[str, list[str]]:
 
 
 class NewsJobs:
-    def __init__(self, shared, root: Path, run_job, run_digest=None, run_program=None, run_bulletin=None):
+    def __init__(self, shared, root: Path, run_job, run_digest=None, run_program=None, run_bulletin=None, run_story_studio=None):
         self.shared, self.root, self.run_job, self.run_digest = shared, Path(root), run_job, run_digest
         self.run_program = run_program
         self.run_bulletin = run_bulletin
+        self.run_story_studio = run_story_studio
         self.states = {}
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.root.is_symlink() or not self.root.is_dir():
@@ -163,9 +164,31 @@ class NewsJobs:
             state = 'interrupted'
         return {'request_id': request_id, 'status': state}
 
+    def studio_status(self, request_id: str) -> dict | None:
+        """Only a persisted studio reservation can satisfy studio recovery."""
+        folder = self._directory(request_id)
+        request = folder / 'request.json'
+        try:
+            if folder.is_symlink() or request.is_symlink() or not request.is_file() or request.stat().st_size > 600_000:
+                return None
+            data = json.loads(request.read_text(encoding='utf-8'))
+            if not isinstance(data, dict) or set(data) != {'studio', 'script'} or data['studio'] != 'bulletin-v1':
+                return None
+            validate_request({'request_id': request_id, 'script': data['script']})
+        except (OSError, ValueError, TypeError):
+            return None
+        return self.status(request_id)
+
     def submit(self, request_id: str, script: dict) -> tuple[dict, bool]:
         request_id, script = validate_request({'request_id': request_id, 'script': script})
         return self._submit(request_id, script, self.run_job)
+
+    def submit_studio(self, request_id: str, script: dict) -> tuple[dict, bool]:
+        request_id, script = validate_request({'request_id': request_id, 'script': script})
+        if self.run_story_studio is None:
+            raise ValueError('Студия недоступна')
+        # The wrapper makes collisions with historic legacy jobs fail closed.
+        return self._submit(request_id, {'studio': 'bulletin-v1', 'script': script}, self.run_story_studio)
 
     def submit_program(self, request_id: str, scripts: list[dict]) -> tuple[dict, bool]:
         request_id, scripts = validate_program({'request_id': request_id, 'scripts': scripts})
@@ -193,6 +216,8 @@ class NewsJobs:
                 if request_file.stat().st_size > 600_000:
                     raise ValueError
                 stored = json.loads(request_file.read_text(encoding='utf-8'))
+                if isinstance(stored, dict) and set(stored) == {'studio', 'script'} and stored['studio'] == 'bulletin-v1':
+                    stored = stored['script']
                 validate_request({'request_id': source_id, 'script': stored})
                 if self.status(source_id) != {'request_id': source_id, 'status': 'ready'}:
                     raise ValueError
@@ -311,6 +336,24 @@ def runner(repo_root: Path):
     return run
 
 
+def story_studio_runner(repo_root: Path):
+    """New versioned single-story studio; runs in the same exclusive slot."""
+    repo_root = Path(repo_root)
+    def run(request_id: str, folder: Path) -> None:
+        env = os.environ.copy()
+        for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
+                     'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
+            env.pop(name, None)
+        command = [sys.executable, '-u', '-m', 'news_prototype.story_pipeline',
+                   '--script', str(folder / 'request.json'), '--output-dir', str(folder / 'work'), '--studio-request']
+        with (folder / 'worker.log').open('ab') as log:
+            process = subprocess.run(command, cwd=repo_root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+        if process.returncode:
+            raise RuntimeError('Не удалось создать новостной сюжет в новой студии')
+    return run
+
+
 def program_runner(repo_root: Path):
     """Render approved stories sequentially and assemble one final video."""
     repo_root = Path(repo_root)
@@ -345,6 +388,14 @@ def bulletin_assets_ready() -> bool:
             bulletin_wide_screen.compose(speaker_layers=layers, fallback_position=position)
         desk_ticker.prepare('ПРОВЕРКА')
         return True
+    except Exception:
+        return False
+
+
+def story_studio_assets_ready() -> bool:
+    try:
+        from news_prototype import story_studio_video
+        return callable(story_studio_video.render) and bulletin_assets_ready()
     except Exception:
         return False
 

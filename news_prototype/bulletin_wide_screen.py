@@ -25,13 +25,24 @@ def _speaker_layer(path: Path) -> Image.Image:
         return original.copy()
 
 
-def compose(image_b64: str | None = None, *, speaker_layers=None, fallback_position: int | None = None) -> Image.Image:
+def compose(image_b64: str | None = None, *, speaker_layers=None, fallback_position: int | None = None,
+            screen_panel: Image.Image | None = None) -> Image.Image:
     """Show the screen behind both separate cutouts, without starting media."""
     image = bulletin_concept_screen.base_frame().convert('RGBA')
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(FRAME, radius=12, fill=(11, 22, 32), outline=(88, 105, 116), width=5)
     draw.rounded_rectangle(SCREEN, radius=7, fill=(18, 53, 94), outline=(47, 99, 134), width=2)
-    if image_b64 is not None:
+    if screen_panel is not None:
+        if image_b64 is not None or not isinstance(screen_panel, Image.Image):
+            raise ValueError('Неверная картинка экрана')
+        x0, y0, x1, y1 = SCREEN
+        size = (x1 - x0 - 8, y1 - y0 - 8)
+        source = screen_panel.convert('RGB')
+        panel = ImageOps.fit(source, size, Image.Resampling.LANCZOS).filter(ImageFilter.GaussianBlur(12))
+        fitted = ImageOps.contain(source, size, Image.Resampling.LANCZOS)
+        panel.paste(fitted, ((size[0] - fitted.width) // 2, (size[1] - fitted.height) // 2))
+        image.paste(panel, (x0 + 4, y0 + 4))
+    elif image_b64 is not None:
         raw = decode_thumbnail(image_b64)
         x0, y0, x1, y1 = SCREEN
         width, height = x1 - x0 - 8, y1 - y0 - 8

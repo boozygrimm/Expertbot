@@ -138,7 +138,8 @@ async def run_idle_once(queue, collection, client) -> None:
     if pending:
         stage = pending['stage']
         try:
-            state = await client.status(pending['request_id'])
+            state = await (client.status_studio(pending['request_id']) if pending.get('studio_protocol') == 'bulletin-v1'
+                           else client.status(pending['request_id']))
         except NewsWorkerError:
             # Check again later, never submit a second time.
             return
@@ -179,6 +180,12 @@ async def run_idle_once(queue, collection, client) -> None:
                 return
         except (AttributeError, NewsWorkerError):
             return
+    if job.get('kind', 'story') == 'story':
+        try:
+            if not await client.supports_story_studio():
+                return
+        except (AttributeError, NewsWorkerError):
+            return
     if job.get('kind') not in ('digest', 'program', 'bulletin') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
         try:
             if not await client.supports_images():
@@ -192,8 +199,10 @@ async def run_idle_once(queue, collection, client) -> None:
                 return
         except (AttributeError, NewsWorkerError):
             return
-    changed = await collection.update_one({'_id': job['_id'], 'stage': 'queued'},
-                                          {'$set': {'stage': 'submitting', 'updated_at': datetime.now(timezone.utc)}})
+    updates = {'stage': 'submitting', 'updated_at': datetime.now(timezone.utc)}
+    if job.get('kind', 'story') == 'story':
+        updates['studio_protocol'] = 'bulletin-v1'
+    changed = await collection.update_one({'_id': job['_id'], 'stage': 'queued'}, {'$set': updates})
     if not changed.modified_count:
         return
     # Close the most common priority race after claiming, and fence the lease.
@@ -210,7 +219,7 @@ async def run_idle_once(queue, collection, client) -> None:
         elif job.get('kind') == 'program':
             state = await client.submit_program(job['request_id'], job['scripts'])
         else:
-            state = await client.submit(job['request_id'], job['script'])
+            state = await client.submit_studio(job['request_id'], job['script'])
     except NewsBusy:
         await _advance(collection, job, 'submitting', 'queued')
         return

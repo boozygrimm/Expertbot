@@ -31,6 +31,23 @@ def section_index(windows, timestamp: float) -> int | None:
     return index if index >= 0 else None
 
 
+def picture_view_blend(views, window, timestamp: float) -> tuple[int, int, float]:
+    """Full image, reviewed details, and full image again with dissolves."""
+    if views is None or len(views) != 3 or window is None:
+        return 0, 0, 0.0
+    start, end = window
+    if end - start < 7 or not start < timestamp < end:
+        return 0, 0, 0.0
+    progress = (timestamp - start) / (end - start)
+    if progress < .16: return 0, 0, 0.0
+    if progress < .24: return 0, 1, (progress - .16) / .08
+    if progress < .45: return 1, 1, 0.0
+    if progress < .53: return 1, 2, (progress - .45) / .08
+    if progress < .74: return 2, 2, 0.0
+    if progress < .82: return 2, 0, (progress - .74) / .08
+    return 0, 0, 0.0
+
+
 def click_positions(windows, rate: int) -> list[int]:
     """Select a spot in each inter-news gap, just before the next image."""
     intro = combined_trial.INTRO_FRAMES / bender_trial.FPS
@@ -83,7 +100,8 @@ def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequ
 
 def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
            timeline: tuple, video: dict | None = None, videos: list[dict] | None = None,
-           extra_clicks: Sequence[int] = ()) -> None:
+           extra_clicks: Sequence[int] = (), picture_views: tuple | None = None,
+           picture_window: tuple | None = None) -> None:
     """Render reviewed media with one continuous decoder per video, sequentially.
 
     No source download, TTS, delivery or publication occurs here. Video entries
@@ -97,14 +115,18 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
         raise ValueError('Неверный таймлайн диалога')
     if [section['id'] for section in sections] != [window.section_id for window in windows]:
         raise ValueError('Порядок разделов не совпадает')
+    if picture_views is not None and (len(sections) != 1 or len(picture_views) not in (1, 3)
+                                      or picture_window is None):
+        raise ValueError('Неверные виды изображения')
     layers = bulletin_animation.frames()
-    tickers = [desk_ticker.prepare(section['ticker']) for section in sections]
+    tickers = [desk_ticker.prepare(section['ticker']) if section.get('ticker') else None for section in sections]
 
-    @lru_cache(maxsize=8)
-    def frame_bytes(index: int | None, state: tuple[bool, bool, bool]) -> bytes:
+    @lru_cache(maxsize=32 if picture_views is not None else 8)
+    def frame_bytes(index: int | None, state: tuple[bool, bool, bool], view: int = 0) -> bytes:
         image = sections[index].get('image_b64') if index is not None else None
-        return bulletin_wide_screen.compose(image, speaker_layers=layers[state],
-                                            fallback_position=index).tobytes()
+        panel = picture_views[view] if index is not None and picture_views is not None else None
+        return bulletin_wide_screen.compose(None if panel is not None else image, speaker_layers=layers[state],
+                                            fallback_position=index, screen_panel=panel).tobytes()
 
     fps = bender_trial.FPS
     rate = podcast_video_trial.RATE
@@ -215,7 +237,13 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                         scene.alpha_composite(layer)
                     data = scene.convert('RGB').tobytes()
                 else:
-                    data = frame_bytes(index, state)
+                    first, second, mix = (picture_view_blend(picture_views, picture_window, t)
+                                          if index is not None else (0, 0, 0.0))
+                    data = frame_bytes(index, state, first)
+                    if mix:
+                        a = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
+                        b = Image.frombytes('RGB', bulletin_wide_screen.SIZE, frame_bytes(index, state, second))
+                        data = Image.blend(a, b, mix).tobytes()
                 # The old animation used frame start rather than midpoint for its effects.
                 effect_t = n / fps
                 power_active = (effect_t < 1.48 or effect_t >= off_time + .1
@@ -226,7 +254,7 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                 transition_active = any(abs(t - at) < .16 for at in transition_times)
                 if index is not None or amount > 0 or power_active or transition_active:
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
-                    if index is not None and t < windows[-1].end:
+                    if index is not None and tickers[index] is not None and t < windows[-1].end:
                         frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
                     if video_frame is not None and item['fullscreen'][0] <= n < item['fullscreen'][1]:
                         screen = Image.new('RGB', bulletin_wide_screen.SIZE)

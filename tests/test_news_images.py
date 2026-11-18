@@ -187,14 +187,14 @@ class MediaFlowTests(unittest.IsolatedAsyncioTestCase):
         script = DRAFT['script'] | {'image_b64': self.thumb}
         await news_queue.enqueue_script(jobs, 'some-id', script)
         queue = type('Queue', (), {'head': AsyncMock(return_value=None)})()
-        client = type('Client', (), {'supports_images': AsyncMock(return_value=False), 'submit': AsyncMock()})()
+        client = type('Client', (), {'supports_images': AsyncMock(return_value=False), 'supports_story_studio': AsyncMock(return_value=True), 'submit_studio': AsyncMock()})()
         await news_queue.run_idle_once(queue, jobs, client)
-        client.submit.assert_not_awaited()
+        client.submit_studio.assert_not_awaited()
         self.assertEqual((await jobs.find_one({}))['stage'], 'queued')
         client.supports_images.return_value = True
-        client.submit.return_value = {'status': 'running'}
+        client.submit_studio.return_value = {'status': 'running'}
         await news_queue.run_idle_once(queue, jobs, client)
-        self.assertEqual(client.submit.await_args.args[1]['image_b64'], self.thumb)
+        self.assertEqual(client.submit_studio.await_args.args[1]['image_b64'], self.thumb)
         self.assertEqual((await jobs.find_one({}))['stage'], 'running')
 
     async def test_image_approved_through_http_worker_and_private_delivery(self):
@@ -212,7 +212,7 @@ class MediaFlowTests(unittest.IsolatedAsyncioTestCase):
                 (work / 'video.mp4').write_bytes(b'video')
                 (work / 'status.json').write_text('{"stage":"ready_for_review"}')
             shared = worker.JobStore(lambda *_: 'normal')
-            news = news_jobs.NewsJobs(shared, Path(temp) / 'worker', render)
+            news = news_jobs.NewsJobs(shared, Path(temp) / 'worker', render, run_story_studio=render)
             server = ThreadingHTTPServer(('127.0.0.1', 0), worker.handler_for(shared, 'secret', news))
             thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
             try:
@@ -235,7 +235,8 @@ class MediaFlowTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(await owner_trial.status(self.db), 'ready_for_review')
                 job = await self.db.news_owner_trial_jobs.find_one({})
                 stored = json.loads((Path(temp) / 'worker' / job['_id'] / 'request.json').read_text())
-                self.assertEqual(stored['image_b64'], self.thumb)
+                self.assertEqual(stored['studio'], 'bulletin-v1')
+                self.assertEqual(stored['script']['image_b64'], self.thumb)
                 bot = SimpleNamespace(send_video=AsyncMock(return_value=SimpleNamespace(message_id=99)))
                 self.assertEqual(await review_delivery.run_once(self.db.news_owner_trial_jobs,
                     self.db.news_owner_trial_candidates, client, bot, 123), 'review_sent')

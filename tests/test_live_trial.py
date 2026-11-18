@@ -64,19 +64,19 @@ class LiveTrialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await live_trial.enqueue(self.db,data),'queued')
         self.assertEqual(await live_trial.enqueue(self.db,data),'already_queued')
         _,jobs=live_trial._collections(self.db,data['trial_id'])
-        client=SimpleNamespace(supports_news=AsyncMock(return_value=True),
-                               submit=AsyncMock(return_value={'status':'running'}),
-                               status=AsyncMock(return_value={'status':'ready'}))
+        client=SimpleNamespace(supports_story_studio=AsyncMock(return_value=True), supports_news=AsyncMock(return_value=True),
+                               submit_studio=AsyncMock(return_value={'status':'running'}),
+                               status_studio=AsyncMock(return_value={'status':'ready'}))
         # Refuse to create a new queue silently.
         with self.assertRaises(ValueError): await live_trial.drive_once(self.db,data,client)
         from bender_queue import VideoQueue
         queue=VideoQueue(self.db.bender_video_queue,owner='ordinary')
         await queue.ensure(); await queue.enqueue({'id':'ordinary'})
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'queued')
-        client.submit.assert_not_awaited()
+        client.submit_studio.assert_not_awaited()
         self.assertTrue(await queue.acquire()); await queue.remove('ordinary'); await queue.release()
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'running')
-        client.submit.assert_awaited_once()
+        client.submit_studio.assert_awaited_once()
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'ready_for_review')
         self.assertEqual((await jobs.find_one({}))['stage'],'ready_for_review')
         self.assertEqual((await self.db.bender_video_queue.find_one({}))['items'],[])
@@ -86,16 +86,16 @@ class LiveTrialTests(unittest.IsolatedAsyncioTestCase):
         from news_prototype.news_worker_client import NewsBusy, NewsUncertain
         data=await self.prepared(); await live_trial.enqueue(self.db,data)
         queue=VideoQueue(self.db.bender_video_queue); await queue.ensure()
-        client=SimpleNamespace(supports_news=AsyncMock(return_value=False),
-                               submit=AsyncMock(side_effect=NewsBusy()), status=AsyncMock())
+        client=SimpleNamespace(supports_story_studio=AsyncMock(return_value=True), supports_news=AsyncMock(return_value=False),
+                               submit_studio=AsyncMock(side_effect=NewsBusy()), status=AsyncMock())
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'worker_not_ready')
-        client.submit.assert_not_awaited()
+        client.submit_studio.assert_not_awaited()
         client.supports_news.return_value=True
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'queued')
-        client.submit.side_effect=NewsUncertain()
+        client.submit_studio.side_effect=NewsUncertain()
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'uncertain')
         self.assertEqual(await live_trial.drive_once(self.db,data,client),'uncertain')
-        self.assertEqual(client.submit.await_count,2)
+        self.assertEqual(client.submit_studio.await_count,2)
 
     async def test_delivery_only_once_to_owner(self):
         data=await self.prepared(); await live_trial.enqueue(self.db,data)
@@ -121,7 +121,7 @@ class LiveTrialTests(unittest.IsolatedAsyncioTestCase):
             (work/'video.mp4').write_bytes(b'test video')
             (work/'status.json').write_text('{"stage":"ready_for_review"}')
         shared=worker.JobStore(lambda *args: 'normal')
-        news=news_jobs.NewsJobs(shared,self.root/'worker',render)
+        news=news_jobs.NewsJobs(shared,self.root/'worker',render,run_story_studio=render)
         server=ThreadingHTTPServer(('127.0.0.1',0),worker.handler_for(shared,'secret',news))
         thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
         try:

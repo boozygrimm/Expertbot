@@ -69,6 +69,19 @@ class NewsWorkerClientTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(NewsUncertain): await self.client.submit(self.job,{})
         self.assertEqual(self.requests,[('post','Bearer secret')])
 
+    async def test_studio_uncertain_checks_versioned_status_not_legacy(self):
+        from unittest.mock import patch, AsyncMock
+        with patch.object(self.client, '_submit', new=AsyncMock(return_value={'status': 'running'})) as submit:
+            await self.client.submit_studio(self.job, {'turns': []})
+            self.assertEqual(submit.await_args.args[0], '/news-studio-jobs')
+            self.assertTrue(submit.await_args.kwargs['studio'])
+        # A lost response must not accept a legacy result with the same UUID.
+        with patch.object(self.client, '_status', new=AsyncMock(return_value=None)) as status:
+            # Existing test server returns 404 for this new route.
+            with self.assertRaises(NewsUncertain):
+                await self.client.submit_studio(self.job, {'turns': []})
+            self.assertTrue(status.await_args.kwargs['studio'])
+
     async def test_digest_uncertain_queries_same_id_without_reposting(self):
         self.mode='uncertain'
         result=await self.client.submit_digest(self.job,[str(uuid.uuid4()),str(uuid.uuid4())])
