@@ -166,6 +166,10 @@ class DiscoveryTests(unittest.TestCase):
             with patch.object(deploy, 'BASE', base), patch.object(deploy, 'PROC', proc), patch.object(deploy, 'prop', side_effect=prop):
                 argv(worker)
                 self.assertEqual(deploy.discover_old(), old)
+                (pid/'cmdline').write_bytes((str(deploy.PYTHON)+'\0-u\0'+str(worker)+'\0').encode())
+                self.assertEqual(deploy.discover_old(), old)
+                (pid/'cmdline').write_bytes((str(deploy.PYTHON)+'\0'+str(worker)+'\0'+str(worker)+'\0').encode())
+                with self.assertRaises(deploy.SafetyError): deploy.discover_old()
                 argv(base/'unexpected'/'video_prototype'/'worker.py')
                 with self.assertRaises(deploy.SafetyError): deploy.discover_old()
                 argv(worker); worker.unlink(); worker.symlink_to('/etc/passwd')
@@ -187,3 +191,15 @@ class DiscoveryTests(unittest.TestCase):
              patch.object(deploy.urllib.request, 'build_opener', return_value=opener), \
              patch.object(deploy, 'ARCHIVE_SHA', 'bad'):
             with self.assertRaises(deploy.SafetyError): deploy.download_archive(Path(tmp))
+
+
+    def test_reuses_only_matching_archive(self):
+        blob = b'archive'
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp); stage = base/'bulletin-stage-abcdefgh'; stage.mkdir()
+            (stage/'source.tar.gz').write_bytes(blob)
+            with patch.object(deploy, 'BASE', base), \
+                 patch.object(deploy, 'ARCHIVE_SHA', hashlib.sha256(blob).hexdigest()), \
+                 patch.object(deploy, 'download_archive') as download:
+                self.assertEqual(deploy.available_stage(), stage)
+                download.assert_not_called()

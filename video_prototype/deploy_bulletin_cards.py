@@ -120,14 +120,17 @@ def discover_old() -> Path:
     args = [s.decode('utf-8') for s in (PROC / str(pid) / 'cmdline').read_bytes().split(b'\0') if s]
     if len(args) < 2 or args[0] != str(PYTHON):
         raise SafetyError('Работает другая версия воркера')
-    worker = Path(args[1])
+    workers = [Path(arg) for arg in args[1:] if arg.endswith('/video_prototype/worker.py')]
+    if len(workers) != 1:
+        raise SafetyError('Путь запущенного воркера не определён однозначно')
+    worker = workers[0]
     old = worker.parent.parent
     if (not worker.is_absolute() or worker != old / 'video_prototype/worker.py'
             or old.name != 'Expertbot-' + OLD_COMMIT or old.parent.parent != BASE
             or not re.fullmatch(r'bulletin-code-[A-Za-z0-9_]{8}', old.parent.name)
             or any(p.is_symlink() for p in (old.parent, old, old / 'video_prototype', worker))
             or not worker.is_file()):
-        raise SafetyError('Работает неожиданная версия воркера')
+        raise SafetyError(f'Работает неожиданная версия воркера: {worker!s}')
     return old
 
 
@@ -332,16 +335,37 @@ def download_archive(stage: Path):
         raise SafetyError('Архив не прошёл проверку')
 
 
+def available_stage() -> Path:
+    # Reuse a previously verified download, including one from a failed
+    # pre-switch attempt. Never trust its name or contents without the hash.
+    for stage in BASE.glob('bulletin-stage-*'):
+        if (stage.is_symlink() or not stage.is_dir()
+                or not re.fullmatch(r'bulletin-stage-[A-Za-z0-9]{8}', stage.name)):
+            continue
+        try:
+            if hashlib.sha256(read_file(stage / 'source.tar.gz', MAX_ARCHIVE)).hexdigest() == ARCHIVE_SHA:
+                print('Использую уже скачанную проверенную версию.', flush=True)
+                return stage
+        except (OSError, SafetyError):
+            continue
+    while True:
+        stage = Path(tempfile.mkdtemp(prefix='bulletin-stage-', dir=BASE))
+        if re.fullmatch(r'bulletin-stage-[A-Za-z0-9]{8}', stage.name):
+            break
+        stage.rmdir()  # Only the empty temporary directory just created.
+    print('Скачиваю проверенную версию воркера...', flush=True)
+    download_archive(stage)
+    return stage
+
+
 def main():
     try:
         if os.geteuid() != 0:
             raise SafetyError('Нужен запуск через sudo')
         if BASE.is_symlink() or not BASE.is_dir():
             raise SafetyError('Каталог установки недоступен')
-        stage = Path(tempfile.mkdtemp(prefix='bulletin-stage-', dir=BASE))
-        print('Скачиваю проверенную версию воркера...', flush=True)
-        download_archive(stage)
-        deploy(stage)
+        discover_old()  # Check the current service before downloading anything.
+        deploy(available_stage())
     except Exception as exc:
         print('Обновление не подтверждено:', str(exc) if isinstance(exc, SafetyError) else type(exc).__name__)
         return 1
