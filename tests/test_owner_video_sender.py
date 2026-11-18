@@ -124,32 +124,49 @@ async def test_unknown_delivery_never_retries(ctx):
 
 
 @pytest.mark.asyncio
-async def test_circle_preview_fences_cancel_and_checks_size(ctx):
+async def test_converted_note_preview_and_confirm_when_private_notes_forbidden(ctx):
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import SendVideoNote
     await ctx.db.auth_chats.insert_one({'chat_id': -101, 'title': 'Друзья', 'status': 'approved'})
     data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
-    ctx.message.video = SimpleNamespace(file_id='input', file_size=20_000_001, duration=30)
     ctx.state.get_data.return_value = data
+    ctx.message.video = SimpleNamespace(file_id='input', file_size=20_000_001, duration=30)
     await sender.receive_video(ctx.message, ctx.state, data)
     assert '20 МБ' in ctx.message.answer.await_args.args[0]
     ctx.bot.download.assert_not_awaited()
-    ctx.message.video.file_size = 12
-    async def download(file_id, destination): destination.write(b'1234ftypxxxx')
+    source = b'1234ftypxxxx'
+    converted = b'1234ftypconverted'
+    ctx.message.video.file_size = len(source)
+    async def download(file_id, destination):
+        destination.write(source if file_id == 'input' else converted)
     async def make_note(source, target):
-        target.write_bytes(b'note')
+        target.write_bytes(converted)
         return 2.4
+    async def send_note(chat_id, video_note, **kwargs):
+        if chat_id == ctx.user.id:
+            raise TelegramBadRequest(method=SendVideoNote(chat_id=chat_id, video_note='x'),
+                                     message='Bad Request: VOICE_MESSAGES_FORBIDDEN')
+        return SimpleNamespace(message_id=93)
     ctx.bot.download.side_effect = download
-    ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview-note'))
+    ctx.bot.send_video.return_value = SimpleNamespace(video=SimpleNamespace(file_id='preview-video'))
+    ctx.bot.send_video_note.side_effect = send_note
     with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
         await sender.receive_video(ctx.message, ctx.state, data)
-    ctx.bot.send_video_note.assert_awaited_once()
-    assert ctx.bot.send_video_note.await_args.kwargs['chat_id'] == ctx.user.id
-    assert ctx.bot.send_video_note.await_args.kwargs['length'] == 480
-    assert ctx.bot.send_video_note.await_args.kwargs['duration'] == 3
+    ctx.bot.send_video_note.assert_not_awaited()
+    assert ctx.bot.send_video.await_args.kwargs['chat_id'] == ctx.user.id
+    assert ctx.bot.send_video.await_args.kwargs['video'].data == converted
+    assert 'обычное видео' in ctx.message.answer.await_args.args[0]
     record = await ctx.db.owner_video_confirmations.find_one({})
-    assert record['file_id'] == 'preview-note'
+    assert record['file_id'] == 'preview-video' and record['delivery'] == 'converted_note'
+    assert record['duration'] == 3
     ctx.callback.data = 'ovideo:send:' + record['_id']
-    await sender.action(ctx.callback, ctx.state, ctx.bot)
-    assert ctx.bot.send_video_note.await_args.kwargs == {'chat_id': -101, 'video_note': 'preview-note'}
+    await asyncio.gather(sender.action(ctx.callback, ctx.state, ctx.bot),
+                         sender.action(ctx.callback, ctx.state, ctx.bot))
+    ctx.bot.send_video_note.assert_awaited_once()
+    sent = ctx.bot.send_video_note.await_args.kwargs
+    assert sent['chat_id'] == -101 and sent['video_note'].data == converted
+    assert sent['length'] == 480 and sent['duration'] == 3
+    assert (await ctx.db.owner_video_confirmations.find_one({}))['stage'] == 'sent'
 
 
 @pytest.mark.asyncio
@@ -159,15 +176,16 @@ async def test_cancel_during_conversion_never_makes_confirmation(ctx):
     ctx.message.video = SimpleNamespace(file_id='input', file_size=12, duration=10)
     async def download(file_id, destination): destination.write(b'1234ftypxxxx')
     async def make_note(source, target):
-        target.write_bytes(b'note')
+        target.write_bytes(b'1234ftypxxxx')
         return 2.4
     ctx.bot.download.side_effect = download
-    ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview-note'))
+    ctx.bot.send_video.return_value = SimpleNamespace(video=SimpleNamespace(file_id='preview-video'))
     ctx.state.get_data.return_value = {'action': 'other'}
     with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
         await sender.receive_video(ctx.message, ctx.state, data)
     assert await ctx.db.owner_video_confirmations.count_documents({}) == 0
-    assert ctx.bot.send_video_note.await_args.kwargs['chat_id'] == ctx.user.id
+    assert ctx.bot.send_video.await_args.kwargs['chat_id'] == ctx.user.id
+    ctx.bot.send_video_note.assert_not_awaited()
 
 
 def test_real_dispatcher_handles_video_note_before_transcription():
@@ -350,7 +368,7 @@ async def test_invalid_group_ids_never_produce_buttons(ctx):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('step', ['download', 'preview_note', 'group_check'])
+@pytest.mark.parametrize('step', ['download', 'preview_video', 'group_check'])
 async def test_telegram_bad_request_reports_failed_step_without_leaking(ctx, caplog, step):
     from aiogram.exceptions import TelegramBadRequest
     from aiogram.methods import GetFile
@@ -364,11 +382,11 @@ async def test_telegram_bad_request_reports_failed_step_without_leaking(ctx, cap
         target.write_bytes(b'note')
         return 2.4
     ctx.bot.download.side_effect = download
-    ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview'))
+    ctx.bot.send_video.return_value = SimpleNamespace(video=SimpleNamespace(file_id='preview'))
     exc = TelegramBadRequest(method=GetFile(file_id='secret-file-id'),
                              message='Bad Request: file is too big secret-file-id https://example.com/token')
     if step == 'download': ctx.bot.download.side_effect = exc
-    elif step == 'preview_note': ctx.bot.send_video_note.side_effect = exc
+    elif step == 'preview_video': ctx.bot.send_video.side_effect = exc
     else: ctx.bot.get_chat.side_effect = exc
     with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
         await sender.receive_video(ctx.message, ctx.state, data)
@@ -435,13 +453,137 @@ async def test_public_telegram_symbol_visible_in_preview_log_without_confirmatio
         target.write_bytes(b'note')
         return 2.4
     ctx.bot.download.side_effect = download
-    ctx.bot.send_video_note.side_effect = TelegramBadRequest(
+    ctx.bot.send_video.side_effect = TelegramBadRequest(
         method=SendVideoNote(chat_id=1, video_note='input-secret'),
         message='Bad Request: FILE_CONTENT_TYPE_INVALID')
     with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
         await sender.receive_video(ctx.message, ctx.state, data)
-    assert 'stage=preview_note' in caplog.text
+    assert 'stage=preview_video' in caplog.text
     assert 'telegram_code=FILE_CONTENT_TYPE_INVALID' in caplog.text
     assert 'input-secret' not in caplog.text
     assert await ctx.db.owner_video_confirmations.count_documents({}) == 0
     assert all(call.kwargs['chat_id'] != -101 for call in ctx.bot.send_video_note.await_args_list)
+
+
+async def prepare_converted_note(ctx):
+    await ctx.db.auth_chats.insert_one({'chat_id': -101, 'title': 'Друзья', 'status': 'approved'})
+    data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
+    ctx.state.get_data.return_value = data
+    ctx.message.video = SimpleNamespace(file_id='input', file_size=12, duration=2)
+    async def download(file_id, destination): destination.write(b'1234ftypxxxx')
+    async def make_note(source, target):
+        target.write_bytes(b'1234ftypnote')
+        return 2.4
+    ctx.bot.download.side_effect = download
+    ctx.bot.send_video.return_value = SimpleNamespace(video=SimpleNamespace(file_id='preview-video'))
+    with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
+        await sender.receive_video(ctx.message, ctx.state, data)
+    return await ctx.db.owner_video_confirmations.find_one({'stage': 'ready'})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['changed', 'download_error', 'revoked'])
+async def test_converted_note_never_sent_if_retrieval_or_recheck_fails(ctx, failure):
+    record = await prepare_converted_note(ctx)
+    assert record and record['stage'] == 'ready'
+    async def download(file_id, destination):
+        if failure == 'download_error':
+            raise TimeoutError('private')
+        if failure == 'revoked':
+            await ctx.db.auth_chats.update_one({'chat_id': -101}, {'$set': {'status': 'denied'}})
+        destination.write(b'1234ftypbad!' if failure == 'changed' else b'1234ftypnote')
+    ctx.bot.download.side_effect = download
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video_note.assert_not_awaited()
+    assert 'В группу ничего не отправлено' in ctx.message.answer.await_args.args[0]
+    assert (await ctx.db.owner_video_confirmations.find_one({}))['stage'] == 'failed'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video_note.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_converted_note_cancel_and_ambiguous_delivery_never_repeat(ctx):
+    record = await prepare_converted_note(ctx)
+    ctx.callback.data = 'ovideo:cancel:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video_note.assert_not_awaited()
+    # A new confirmation is necessary; unknown group delivery is never retried.
+    await ctx.db.auth_chats.delete_many({})
+    record = await prepare_converted_note(ctx)
+    async def download(file_id, destination): destination.write(b'1234ftypnote')
+    ctx.bot.download.side_effect = download
+    ctx.bot.send_video_note.side_effect = TimeoutError('private')
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video_note.assert_awaited_once()
+    assert (await ctx.db.owner_video_confirmations.find_one({'_id': record['_id']}))['stage'] == 'uncertain'
+
+
+@pytest.mark.asyncio
+async def test_converted_note_roundtrip_with_real_aiogram_multipart(ctx):
+    # Local fake Bot API exercises the real aiogram upload/download pipeline;
+    # it never contacts Telegram or posts to a real chat.
+    from aiohttp import web
+    from aiogram import Bot
+    from aiogram.client.session.aiohttp import AiohttpSession
+    from aiogram.client.telegram import TelegramAPIServer
+
+    source = b'1234ftypsrc!'
+    converted = b'1234ftypconverted'
+    seen = []
+    async def method(request):
+        name = request.match_info['method']
+        form = await request.post()
+        if name == 'getFile':
+            data = source if form['file_id'] == 'source-id' else converted
+            path = 'source.mp4' if form['file_id'] == 'source-id' else 'preview.mp4'
+            return web.json_response({'ok': True, 'result': {'file_id': form['file_id'],
+                'file_unique_id': 'unique', 'file_size': len(data), 'file_path': path}})
+        if name == 'sendVideo':
+            upload = form[form['video'].removeprefix('attach://')].file.read()
+            seen.append((name, int(form['chat_id']), upload))
+            return web.json_response({'ok': True, 'result': {'message_id': 1, 'date': 1760000000,
+                'chat': {'id': ctx.user.id, 'type': 'private'}, 'video': {'file_id': 'preview-id',
+                'file_unique_id': 'unique', 'width': 480, 'height': 480, 'duration': 3}}})
+        if name == 'sendVideoNote':
+            upload = form[form['video_note'].removeprefix('attach://')].file.read()
+            seen.append((name, int(form['chat_id']), upload, int(form['length']), int(form['duration'])))
+            return web.json_response({'ok': True, 'result': {'message_id': 2, 'date': 1760000000,
+                'chat': {'id': -101, 'type': 'supergroup', 'title': 'Друзья'},
+                'video_note': {'file_id': 'note-id', 'file_unique_id': 'unique', 'length': 480, 'duration': 3}}})
+        return web.json_response({'ok': False, 'error_code': 400, 'description': 'Bad Request: unexpected'}, status=400)
+    async def file(request):
+        return web.Response(body=source if request.match_info['name'] == 'source.mp4' else converted)
+    app = web.Application()
+    app.router.add_post('/bot{token}/{method}', method)
+    app.router.add_get('/file/bot{token}/{name}', file)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    bot = Bot('123456:TESTTOKEN', session=AiohttpSession(api=TelegramAPIServer.from_base(f'http://127.0.0.1:{port}')))
+    try:
+        ctx.message.bot = bot
+        ctx.message.video = SimpleNamespace(file_id='source-id', file_size=len(source), duration=2)
+        data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
+        ctx.state.get_data.return_value = data
+        async def make_note(src, target):
+            target.write_bytes(converted)
+            return 2.4
+        with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note), \
+             patch.object(sender, '_group', AsyncMock(return_value='Друзья')):
+            await sender.receive_video(ctx.message, ctx.state, data)
+            record = await ctx.db.owner_video_confirmations.find_one({'stage': 'ready'})
+            assert record and seen == [('sendVideo', ctx.user.id, converted)]
+            ctx.callback.data = 'ovideo:send:' + record['_id']
+            await sender.action(ctx.callback, ctx.state, bot)
+        assert seen == [('sendVideo', ctx.user.id, converted), ('sendVideoNote', -101, converted, 480, 3)]
+        assert (await ctx.db.owner_video_confirmations.find_one({'_id': record['_id']}))['stage'] == 'sent'
+    finally:
+        await bot.session.close()
+        await runner.cleanup()

@@ -194,6 +194,7 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
     if mode == 'note' and getattr(media, 'duration', None) is not None and media.duration > 60:
         return await message.answer('Кружок может длиться до 60 секунд. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
     direct = bool((mode == 'video' and video) or (mode == 'note' and note))
+    converted_info = None
     stage = 'download'
     try:
         # Only a conversion/download needs the Bot API's 20 MB download limit.
@@ -217,11 +218,18 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
                     target = Path(temp) / 'note.mp4'
                     duration = await owner_video_media.make_note(source, target)
                     payload = target.read_bytes()
-                    stage = 'preview_note'
-                    sent = await message.bot.send_video_note(chat_id=message.from_user.id,
-                        video_note=types.BufferedInputFile(payload, filename='note.mp4'),
-                        length=owner_video_media.SIZE, duration=math.ceil(duration))
-                    file_id = sent.video_note.file_id
+                    # An owner's private chat can reject video notes even when
+                    # the destination group accepts them. Preview the exact MP4
+                    # as an ordinary video and only upload it as a note to the
+                    # group after explicit confirmation.
+                    stage = 'preview_video'
+                    sent = await message.bot.send_video(chat_id=message.from_user.id,
+                        video=types.BufferedInputFile(payload, filename='note.mp4'),
+                        caption='Предпросмотр обычным видео. В группу отправлю кружком только после подтверждения.',
+                        parse_mode=None)
+                    file_id = sent.video.file_id
+                    converted_info = {'delivery': 'converted_note', 'size': len(payload),
+                        'sha256': hashlib.sha256(payload).hexdigest(), 'duration': math.ceil(duration)}
                 else:
                     await owner_video_media.probe(source)
                     stage = 'preview_video'
@@ -258,14 +266,19 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
     token = secrets.token_hex(16)
     now = datetime.now(timezone.utc)
     await db.db.owner_video_confirmations.delete_many({'expires_at': {'$lt': now}})
-    await db.db.owner_video_confirmations.insert_one({'_id': token, 'owner_id': message.from_user.id,
+    confirmation = {'_id': token, 'owner_id': message.from_user.id,
         'chat_id': data['chat_id'], 'title': title, 'mode': mode, 'file_id': file_id,
-        'caption': caption, 'stage': 'ready', 'expires_at': now + timedelta(minutes=15)})
+        'caption': caption, 'stage': 'ready', 'expires_at': now + timedelta(minutes=15)}
+    if converted_info:
+        confirmation.update(converted_info)
+    await db.db.owner_video_confirmations.insert_one(confirmation)
     b = InlineKeyboardBuilder()
     b.button(text='✅ Отправить в этот чат', callback_data=f'ovideo:send:{token}')
     b.button(text='❌ Отмена', callback_data=f'ovideo:cancel:{token}')
     label = 'кружком' if mode == 'note' else 'обычным видео'
     warning = '\nПодпись в кружок не добавляется.' if mode == 'note' and message.caption else ''
+    if converted_info:
+        warning += '\nПредпросмотр выше — обычное видео; в группе оно будет кружком.'
     shown_caption = ('\nПодпись: ' + caption if caption else '\nБез подписи.') if mode == 'video' else ''
     await message.answer(f'Отправить {label} от имени бота в группу «{title}» (ID {data["chat_id"]})?'
                          + shown_caption + warning + '\nПроверь видео и чат. Это увидят участники группы.',
@@ -313,7 +326,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
         if not record:
             return await callback.answer('Подтверждение уже использовано или устарело. Проверь чат.', show_alert=True)
         if op == 'cancel':
-            result = await db.db.owner_video_confirmations.update_one(query, {'$set': {'stage': 'cancelled'}, '$unset': {'file_id': '', 'caption': ''}})
+            result = await db.db.owner_video_confirmations.update_one(query, {'$set': {'stage': 'cancelled'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
             if not result.modified_count:
                 return await callback.answer('Действие уже обрабатывается. Проверь чат.', show_alert=True)
             await callback.answer('Отменено')
@@ -330,22 +343,53 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             await callback.answer('Отправляю')
         except Exception as exc:
             logger.debug('Не удалось подтвердить нажатие: %s', type(exc).__name__)
+        note_payload = None
+        if claimed.get('delivery') is not None:
+            try:
+                if (claimed['delivery'] != 'converted_note' or claimed['mode'] != 'note'
+                        or type(claimed.get('size')) is not int
+                        or not 0 < claimed['size'] <= owner_video_media.MAX_BYTES
+                        or type(claimed.get('duration')) is not int
+                        or not 1 <= claimed['duration'] <= 60
+                        or not isinstance(claimed.get('sha256'), str)
+                        or not re.fullmatch(r'[0-9a-f]{64}', claimed['sha256'])
+                        or not isinstance(claimed.get('file_id'), str)):
+                    raise ValueError('Некорректный предпросмотр')
+                buffer = _LimitedBuffer()
+                await asyncio.wait_for(bot.download(claimed['file_id'], destination=buffer), timeout=120)
+                note_payload = buffer.getvalue()
+                if (len(note_payload) != claimed['size'] or note_payload[4:8] != b'ftyp'
+                        or hashlib.sha256(note_payload).hexdigest() != claimed['sha256']):
+                    raise ValueError('Предпросмотр изменился')
+                # A slow download must not bypass a revoked group approval.
+                if await _group(bot, chat_id) != claimed['title']:
+                    raise ValueError('Группа изменилась')
+            except Exception as exc:
+                logger.warning('Не удалось проверить предпросмотр перед отправкой: %s', type(exc).__name__)
+                await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'},
+                    {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
+                return await callback.message.answer('Не удалось получить предпросмотр или проверить группу. '
+                    'В группу ничего не отправлено. Начни отправку заново.', parse_mode=None)
         try:
-            if claimed['mode'] == 'note':
+            if note_payload is not None:
+                sent = await bot.send_video_note(chat_id=chat_id,
+                    video_note=types.BufferedInputFile(note_payload, filename='note.mp4'),
+                    length=owner_video_media.SIZE, duration=claimed['duration'])
+            elif claimed['mode'] == 'note':
                 sent = await bot.send_video_note(chat_id=chat_id, video_note=claimed['file_id'])
             else:
                 sent = await bot.send_video(chat_id=chat_id, video=claimed['file_id'],
                                             caption=claimed.get('caption') or None, parse_mode=None)
         except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
-            await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': ''}})
+            await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
             return await callback.message.answer('Telegram не принял видео. Проверь права бота, формат и ограничения Telegram; повтор возможен только через новую отправку.', parse_mode=None)
         except Exception as exc:
             logger.warning('Результат отправки видео неизвестен: %s', type(exc).__name__)
-            await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'uncertain'}, '$unset': {'file_id': '', 'caption': ''}})
+            await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'uncertain'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
             return await callback.message.answer('Не удалось подтвердить результат. Проверь группу: видео могло быть отправлено. Автоматического повтора нет.', parse_mode=None)
         try:
             await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'},
-                {'$set': {'stage': 'sent', 'message_id': sent.message_id}, '$unset': {'file_id': '', 'caption': ''}})
+                {'$set': {'stage': 'sent', 'message_id': sent.message_id}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
         except Exception as exc:
             logger.warning('Не удалось сохранить результат отправки видео: %s', type(exc).__name__)
         await callback.message.answer(f'Видео отправлено в группу «{title}» (ID {claimed["chat_id"]}).', parse_mode=None)
