@@ -106,11 +106,14 @@ class _LimitedVideoBuffer(io.BytesIO):
         return super().write(data)
 
 
-@router.message(OwnerInput.waiting, F.video | F.document)
+@router.message(OwnerInput.waiting, F.video | F.document | F.video_note)
 async def receive_bulletin_video(message: types.Message, state: FSMContext):
     if not authorized(message.from_user, message.chat):
         return
     data = await state.get_data()
+    if data.get('action') == 'owner_send_video':
+        from handlers import owner_video_sender
+        return await owner_video_sender.receive_video(message, state, data)
     if data.get('action') != 'bulletin_manual_video':
         return await message.answer('Сейчас ожидается другой ввод. Отмени его или пришли нужные данные.', parse_mode=None)
     from news_prototype import owner_bulletin, owner_trial, bulletin_manual_media
@@ -162,6 +165,8 @@ async def receive_input(message: types.Message, state: FSMContext):
         return
     data = await state.get_data()
     action = data.get('action')
+    if action == 'owner_send_video':
+        return await message.answer('Пришли видео, кружок или MP4-файл, либо отмени ввод кнопкой.', parse_mode=None)
     text = (message.text or '').strip()
     if not text:
         return await message.answer('Нужно текстовое сообщение. Можно отменить ввод кнопкой.', parse_mode=None)

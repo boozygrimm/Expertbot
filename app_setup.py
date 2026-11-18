@@ -86,6 +86,9 @@ def configure_dispatcher() -> Dispatcher:
     dp.include_router(game_stats.router)
     dp.include_router(anachronism.router)
     dp.include_router(image_gen.router)
+    # Owner media input must be handled before general video-note transcription.
+    from handlers import owner_tools_panel
+    dp.include_router(owner_tools_panel.router)
     dp.include_router(voice_rec.router)
     dp.include_router(social_rp.router)
     dp.include_router(alc_core.router)
@@ -93,12 +96,12 @@ def configure_dispatcher() -> Dispatcher:
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
     # Owner-only handlers are always registered; persistent settings gate their
     # actions so the owner can change modes without restarting the bot.
-    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel, owner_control_panel, owner_tools_panel, owner_news_actions, owner_bulletin_panel, owner_legacy_news
+    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel, owner_control_panel, owner_news_actions, owner_bulletin_panel, owner_legacy_news, owner_video_sender
     dp.include_router(news_owner_trial.router)
     dp.include_router(news_owner_drafts.router)
     dp.include_router(news_owner_panel.router)
     dp.include_router(owner_control_panel.router)
-    dp.include_router(owner_tools_panel.router)
+    dp.include_router(owner_video_sender.router)
     dp.include_router(owner_news_actions.router)
     dp.include_router(owner_bulletin_panel.router)
     dp.include_router(owner_legacy_news.router)
