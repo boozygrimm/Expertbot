@@ -336,3 +336,48 @@ def test_invalid_media_and_full_cache_leave_no_partial_files(tmp_path, source_mp
     with pytest.raises(ValueError):
         media.save(tmp_path, hashlib.sha256(b'not a real video').hexdigest(), b'not a real video',
                    ffmpeg='ffmpeg', ffprobe='ffprobe')
+
+
+@pytest.mark.asyncio
+async def test_edit_warns_and_unmodified_edit_retains_video_and_render_warns():
+    import os
+    os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
+    os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
+    from handlers import owner_tools_panel as tools, owner_bulletin_panel as panel
+    from news_prototype import owner_trial
+    db = AsyncMongoMockClient().test
+    owner = tools.ADMIN_ID
+    await owner_bulletin_sources.create(db, owner, 47, [
+        {'url': 'https://t.me/ExampleNews/102', 'title': 'Видео'},
+        {'url': 'https://example.com/story', 'title': 'Другая новость'}])
+    await owner_bulletin_sources.collect(db, owner, 47,
+        AsyncMock(return_value={'summary': SOURCE, 'telegram_video_status': 'too_big'}), AsyncMock())
+    await owner_bulletin.prepare(db, owner, 47, AsyncMock(side_effect=response))
+    item = await owner_bulletin.get(db, owner, 47)
+    assert await owner_bulletin_manual_video.attach(db, owner, 47, item['revision'], 1, 'a'*64) == 'selected'
+    selected = await owner_bulletin.get(db, owner, 47)
+    unchanged = owner_bulletin.editable_section(selected['sections'][1])
+    assert await owner_bulletin.change_section(db, owner, 47, selected['revision'], 2, text=unchanged) == 'unchanged'
+    assert await owner_bulletin.get(db, owner, 47) == selected
+    message = SimpleNamespace(from_user=SimpleNamespace(id=owner), chat=SimpleNamespace(id=owner, type='private'),
+        message_id=123, text=unchanged.replace(selected['sections'][1]['ticker'], 'Исправлено'),
+        answer=AsyncMock(return_value=SimpleNamespace(message_id=999)), answer_photo=AsyncMock())
+    state = SimpleNamespace(get_data=AsyncMock(return_value={'action': 'bulletin_edit', 'number': 47,
+        'section_id': 2, 'revision': selected['revision']}), clear=AsyncMock())
+    fake = SimpleNamespace(db=db)
+    with patch.object(tools, 'db', fake), patch.object(panel, 'db', fake), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
+         patch.object(owner_trial, 'runtime_enabled', AsyncMock(return_value=True)):
+        await tools.receive_input(message, state)
+        texts = [c.args[0] for c in message.answer.await_args_list]
+        assert any('сняты выбранные видео для новостей 1' in t and 'повторно' in t for t in texts)
+        item = await owner_bulletin.get(db, owner, 47)
+        assert 'video' not in item['sections'][0]
+        await panel.show_review(message, owner, item)
+        card = await db.owner_bulletin_actions.find_one({'action': 'render'})
+        callback = SimpleNamespace(from_user=message.from_user, message=message,
+            data='nb:render:' + card['_id'], answer=AsyncMock())
+        message.message_id = card['message_id']
+        await panel.callback_action(callback, state)
+        assert 'НЕТ выбранных видео' in message.answer.await_args.args[0]
+        assert await db.news_owner_trial_jobs.count_documents({}) == 0

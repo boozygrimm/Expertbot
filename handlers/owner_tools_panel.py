@@ -286,13 +286,20 @@ async def receive_input(message: types.Message, state: FSMContext):
             from handlers import owner_bulletin_panel
             from news_prototype import owner_bulletin
             owner_bulletin.parse_section_edit(text)
+            before = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+            selected = [i for i, section in enumerate(before.get('sections', []), 1) if section.get('video')] if (
+                before and before.get('revision') == data['revision']) else []
             result = await owner_bulletin.change_section(db.db, message.from_user.id, data['number'],
                 data['revision'], data['section_id'], text=text)
             await state.clear()
             if result in ('saved', 'unchanged'):
                 item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
-                await message.answer('Изменения сохранены; проверь новую версию. Остальные новости открой из списка вестников.' if result == 'saved' else
-                                     'Изменений нет.', parse_mode=None)
+                notice = 'Изменения сохранены; проверь новую версию. Остальные новости открой из списка вестников.' if result == 'saved' else 'Изменений нет.'
+                if result == 'saved' and selected:
+                    notice += (' ВНИМАНИЕ: из-за правки сняты выбранные видео для новостей '
+                               + ', '.join(map(str, selected)) + '. До рендера выбери и подтверди их заново; '
+                               'присланные фрагменты нужно отправить повторно.')
+                await message.answer(notice, parse_mode=None)
                 section = next(s for s in item['sections'] if s['id'] == data['section_id'])
                 await owner_bulletin_panel.show_section(message, message.from_user.id, item, section)
             else:
