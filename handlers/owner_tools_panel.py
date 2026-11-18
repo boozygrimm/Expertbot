@@ -32,10 +32,10 @@ def authorized(user, chat) -> bool:
     return bool(user and user.id == ADMIN_ID and chat and chat.type == 'private' and chat.id == ADMIN_ID)
 
 
-def proxy(message, user, *, text=None):
+def proxy(message, user, *, text=None, for_program=False):
     """Pass actual owner identity and the real incoming/message ID to old handlers."""
     return SimpleNamespace(from_user=user, chat=message.chat, message_id=message.message_id,
-        text=text, panel_mode=True, answer=message.answer, reply=getattr(message, 'reply', message.answer),
+        text=text, panel_mode=True, for_program=for_program, answer=message.answer, reply=getattr(message, 'reply', message.answer),
         answer_photo=getattr(message, 'answer_photo', None), reply_to_message=getattr(message, 'reply_to_message', None))
 
 
@@ -61,7 +61,7 @@ async def new_confirmation(message, owner_id: int, action: str, text: str, **dat
     await message.answer(text, reply_markup=builder.as_markup(), parse_mode=None)
 
 
-async def ask(callback, state: FSMContext, action: str, prompt: str, **data):
+async def ask(callback, state: FSMContext, action: str, prompt: str, *, answer_text: str | None = None, **data):
     token = secrets.token_hex(8)
     async with _input_lock:
         await state.clear()
@@ -69,8 +69,11 @@ async def ask(callback, state: FSMContext, action: str, prompt: str, **data):
         await state.update_data(action=action, input_token=token, **data)
     builder = InlineKeyboardBuilder()
     builder.button(text='❌ Отменить ввод', callback_data=f'owner_tools:cancel_input:{token}')
-    await callback.answer()
-    await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None)
+    if answer_text:
+        await callback.answer(answer_text, show_alert=True)
+    else:
+        await callback.answer()
+    await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None, disable_web_page_preview=True)
 
 
 async def profile_choice(callback, state, action_name: str, size: str = ''):
@@ -319,7 +322,8 @@ async def receive_input(message: types.Message, state: FSMContext):
                 handler = 'edit_draft'
             await state.clear()
             from handlers import news_owner_drafts
-            await getattr(news_owner_drafts, handler)(proxy(message, message.from_user, text=content))
+            await getattr(news_owner_drafts, handler)(proxy(message, message.from_user, text=content,
+                                                             for_program=data.get('for_program', False)))
         elif action == 'recipe':
             await state.clear()
             from handlers.alc_lab import cmd_recipe_cheatsheet
@@ -725,9 +729,16 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     await news_intake.create_digest(message)
             elif name in ('noimage', 'nofocus'):
                 from handlers import news_owner_drafts
+                message.for_program = data.get('for_program', False)
                 message.text = f'/news_{name} {data["number"]} {data["revision"]}'
                 fn = news_owner_drafts.remove_image if name == 'noimage' else news_owner_drafts.remove_focus
                 await fn(message)
+                # The result is already shown in a fresh card (or an error message).
+                # Do not leave a permanent 'Выполняю' message in the chat.
+                try:
+                    await callback.message.delete()
+                except Exception:
+                    pass  # Deletion is best-effort and must not repeat the mutation.
             elif name in ('approve_draft', 'approve_program'):
                 from handlers import news_owner_drafts
                 command = '/news_approve' if name == 'approve_draft' else '/news_program_approve'

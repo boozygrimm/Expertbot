@@ -18,7 +18,8 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
-async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bool = False):
+async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bool = False,
+               text: str | None = None, media_view: bool = False):
     """Store the reviewed revision server-side (it cannot fit in callback_data)."""
     if kind == 'draft':
         number = item['draft_id']
@@ -36,16 +37,21 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
     now = datetime.now(timezone.utc)
     await db.db.owner_news_cards.delete_many({'expires_at': {'$lt': now}})
     await db.db.owner_news_cards.insert_one({'_id': token, 'owner_id': owner_id, 'kind': kind,
-        'number': number, 'revision': revision, 'stage': stage, 'expires_at': now + timedelta(days=2)})
+        'number': number, 'revision': revision, 'stage': stage, 'for_program': for_program,
+        'expires_at': now + timedelta(days=2)})
     b = InlineKeyboardBuilder()
     if kind == 'draft' and stage == 'needs_source':
         b.button(text='📄 Прислать текст источника', callback_data=f'newsact:source:{token}')
-    elif kind == 'draft':
-        b.button(text='✏️ Исправить сценарий', callback_data=f'newsact:edit:{token}')
+    elif kind == 'draft' and media_view:
         if item.get('script', {}).get('image_regions'):
             b.button(text='🔍 Убрать увеличенные области', callback_data=f'newsact:nofocus:{token}')
         if item.get('script', {}).get('image_b64'):
             b.button(text='🖼 Убрать картинку', callback_data=f'newsact:noimage:{token}')
+        b.button(text='↩️ К сценарию', callback_data=f'newsact:back:{token}')
+    elif kind == 'draft':
+        b.button(text='✏️ Исправить сценарий', callback_data=f'newsact:edit:{token}')
+        if item.get('script', {}).get('image_b64'):
+            b.button(text='🖼 Проверить картинку', callback_data=f'newsact:media:{token}')
         if for_program:
             b.button(text='📺 Собрать выпуск', callback_data='newsact:choose')
         else:
@@ -54,8 +60,8 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         b.button(text='🎬 Подтвердить рендер выпуска', callback_data=f'newsact:approve:{token}')
     b.button(text='📰 Панель новостей', callback_data='news_panel:home')
     b.adjust(1)
-    await message.answer('Действия с этой версией:' if stage != 'needs_source' else 'Источник требует уточнения:',
-                         reply_markup=b.as_markup(), parse_mode=None)
+    await message.answer(text if text is not None else ('Действия с этой версией:' if stage != 'needs_source' else 'Источник требует уточнения:'),
+                         reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
 
 
 async def selection(message, session):
@@ -178,22 +184,35 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                       else owner_program.get(db.db, callback.from_user.id, number))
         if not item or item.get('stage') != card_doc['stage'] or (rev and item.get('revision') != rev):
             return await callback.answer('Состояние изменилось. Открой карточку заново.', show_alert=True)
+        if action == 'media' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            if not item.get('script', {}).get('image_b64'):
+                return await callback.answer('Картинка больше не выбрана.', show_alert=True)
+            await callback.answer()
+            from handlers import news_owner_drafts
+            return await news_owner_drafts.show_image_details(callback.message, callback.from_user.id, item,
+                                                               for_program=card_doc.get('for_program', False))
+        if action == 'back' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            await callback.answer()
+            from handlers import news_owner_drafts
+            return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number,
+                                                item=item, for_program=card_doc.get('for_program', False))
         if action == 'source' and kind == 'draft' and card_doc['stage'] == 'needs_source':
             await tools.ask(callback, state, 'news_source', 'Пришли полный текст источника одним сообщением. '
                             'Редактор использует квоту Gemini; рендер не начнётся.', number=number)
             return
         if action == 'edit' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
             editable = owner_drafts.editable_message(number, item['url'], item['script']).split('\n', 1)[1]
-            await tools.ask(callback, state, 'news_edit', 'Скопируй следующее сообщение, исправь строки и пришли обратно. '
-                            'Ссылку источника менять нельзя. Для отмены нажми кнопку выше.', number=number, revision=rev)
-            await callback.message.answer(editable, parse_mode=None, disable_web_page_preview=True)
+            await tools.ask(callback, state, 'news_edit', editable, number=number, revision=rev,
+                            for_program=card_doc.get('for_program', False),
+                            answer_text='Скопируй новое сообщение, исправь строки и пришли обратно. '
+                                        'Ссылку источника менять нельзя. Для отмены нажми кнопку под сообщением.')
             return
         if action in ('noimage', 'nofocus') and kind == 'draft' and card_doc['stage'] == 'draft_ready':
             await callback.answer()
             prompt = ('Убрать изображение из этой версии черновика?' if action == 'noimage' else
                       'Убрать автоматически выбранные области увеличения из этой версии черновика?')
             await tools.new_confirmation(callback.message, callback.from_user.id, action, prompt,
-                                         number=number, revision=rev)
+                                         number=number, revision=rev, for_program=card_doc.get('for_program', False))
             return
         if action == 'approve' and card_doc['stage'] in ('draft_ready', 'ready_for_review'):
             await callback.answer()
