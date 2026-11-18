@@ -93,6 +93,28 @@ async def _list(callback, page: int) -> None:
     await callback.message.answer(text, reply_markup=_buttons(b), parse_mode=None)
 
 
+# Telegram's error text may contain URLs, file identifiers or other private
+# data. Log only known, static descriptions; never log an arbitrary response.
+_TELEGRAM_ERRORS = (
+    ('file is too big', 'file_is_too_big', 'Файл слишком большой для Telegram.'),
+    ('wrong file identifier', 'wrong_file_identifier', 'Telegram не смог распознать файл.'),
+    ('file_id_invalid', 'file_id_invalid', 'Telegram не смог распознать файл.'),
+    ('video_content_type_invalid', 'video_content_type_invalid', 'Telegram не принял формат видео.'),
+    ('wrong type of the web page content', 'wrong_content_type', 'Telegram не принял формат видео.'),
+    ('chat not found', 'chat_not_found', 'Telegram не нашёл чат.'),
+    ('not enough rights', 'not_enough_rights', 'Telegram сообщает, что боту не хватает прав.'),
+    ('have no rights', 'not_enough_rights', 'Telegram сообщает, что боту не хватает прав.'),
+)
+
+
+def _telegram_error(exc: TelegramBadRequest) -> tuple[str, str]:
+    message = str(exc.message or '').lower()
+    for phrase, code, explanation in _TELEGRAM_ERRORS:
+        if phrase in message:
+            return code, explanation
+    return 'other', 'Telegram не сообщил распознаваемую причину.'
+
+
 async def receive_video(message: types.Message, state: FSMContext, data: dict) -> None:
     if not _owner(message.from_user, message.chat):
         return
@@ -112,14 +134,17 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
     if mode == 'note' and getattr(media, 'duration', None) is not None and media.duration > 60:
         return await message.answer('Кружок может длиться до 60 секунд. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
     direct = bool((mode == 'video' and video) or (mode == 'note' and note))
+    stage = 'download'
     try:
         # Only a conversion/download needs the Bot API's 20 MB download limit.
         if not direct:
             size = getattr(media, 'file_size', None)
             if type(size) is not int or not 0 < size <= owner_video_media.MAX_BYTES:
                 return await message.answer('Для преобразования нужен MP4 до 20 МБ. Обрежь видео в Telegram и пришли снова.', parse_mode=None)
+            stage = 'preparation_notice'
             await message.answer('Готовлю предпросмотр в личке. В группу ничего пока не отправляю.', parse_mode=None)
             buffer = _LimitedBuffer()
+            stage = 'download'
             await asyncio.wait_for(message.bot.download(file_id, destination=buffer), timeout=120)
             raw = buffer.getvalue()
             if len(raw) != size or raw[4:8] != b'ftyp':
@@ -127,28 +152,40 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
             with tempfile.TemporaryDirectory(prefix='owner-video-') as temp:
                 source = Path(temp) / 'input.mp4'
                 source.write_bytes(raw)
+                stage = 'conversion'
                 if mode == 'note':
                     target = Path(temp) / 'note.mp4'
                     await owner_video_media.make_note(source, target)
                     payload = target.read_bytes()
+                    stage = 'preview_note'
                     sent = await message.bot.send_video_note(chat_id=message.from_user.id,
                         video_note=types.BufferedInputFile(payload, filename='note.mp4'))
                     file_id = sent.video_note.file_id
                 else:
                     await owner_video_media.probe(source)
+                    stage = 'preview_video'
                     sent = await message.bot.send_video(chat_id=message.from_user.id,
                         video=types.BufferedInputFile(raw, filename='video.mp4'), caption=caption or None,
                         parse_mode=None)
                     file_id = sent.video.file_id
                 if not isinstance(file_id, str) or not 1 <= len(file_id) <= 1024:
                     raise ValueError('Нет идентификатора предпросмотра')
+        stage = 'group_check'
         title = await _group(message.bot, data['chat_id'])
+    except TelegramBadRequest as exc:
+        code, explanation = _telegram_error(exc)
+        logger.warning('Подготовка видео: TelegramBadRequest stage=%s reason=%s', stage, code)
+        steps = {'download': 'скачивании файла', 'preview_note': 'отправке предпросмотра кружка',
+                 'preview_video': 'отправке предпросмотра видео', 'group_check': 'проверке группы',
+                 'preparation_notice': 'отправке сообщения о подготовке'}
+        return await message.answer(f'Ошибка Telegram при {steps.get(stage, "подготовке видео")}. '
+                                    f'{explanation} В группу ничего не отправлено.', parse_mode=None)
     except owner_video_media.VideoError as exc:
         return await message.answer(str(exc), parse_mode=None)
     except (ValueError, KeyError):
         return await message.answer('Не удалось проверить файл или доступ к группе. Ничего не отправлено в группу.', parse_mode=None)
     except Exception as exc:
-        logger.warning('Не удалось подготовить отправку видео: %s', type(exc).__name__)
+        logger.warning('Не удалось подготовить отправку видео: %s stage=%s', type(exc).__name__, stage)
         return await message.answer('Не удалось подготовить видео или проверить группу. В группу ничего не отправлено.', parse_mode=None)
     # A slow download/preview must not resurrect an input cancelled in the meantime.
     async with tools._input_lock:
