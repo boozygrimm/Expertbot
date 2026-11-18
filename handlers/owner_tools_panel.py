@@ -163,6 +163,28 @@ async def receive_input(message: types.Message, state: FSMContext):
             await new_confirmation(message, message.from_user.id, 'trial',
                 'Поставить этот проверенный сценарий на рендер? Видео придёт в личку, публикации не будет.',
                 content=content)
+        elif action in ('bulletin_selection_links', 'bulletin_more_sources'):
+            if not await owner_trial.drafts_enabled(db.db):
+                await state.clear()
+                return await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+            from handlers import owner_bulletin_panel
+            from news_prototype import owner_bulletin, owner_bulletin_sources, article_fetch, news_image_fetch
+            try:
+                if action == 'bulletin_selection_links':
+                    result = await owner_bulletin_panel.add_selection_links(message, message.from_user.id, data, text)
+                else:
+                    urls = owner_bulletin_sources.parse_urls(text)
+                    result = await owner_bulletin_sources.append_sources(db.db, message.from_user.id, data['number'],
+                        data['source_revision'], urls, article_fetch.fetch_article, news_image_fetch.fetch_thumbnail)
+            except ValueError as exc:
+                return await message.answer(str(exc) + ' Исправь ссылки или отмени ввод.', parse_mode=None)
+            await state.clear()
+            if result == 'stale':
+                return await message.answer('Версия изменилась. Открой выбор или вестник заново.', parse_mode=None)
+            if action == 'bulletin_more_sources':
+                await message.answer('Новые источники добавлены; редактор пока не запускался.', parse_mode=None)
+                item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+                await owner_bulletin_panel.show_sources(message, item)
         elif action == 'bulletin_source':
             if not await owner_trial.drafts_enabled(db.db):
                 await state.clear()
@@ -172,7 +194,7 @@ async def receive_input(message: types.Message, state: FSMContext):
             result = await owner_bulletin_sources.provide_source(db.db, message.from_user.id, data['number'],
                 data['section_id'], data['source_revision'], text)
             await state.clear()
-            if result in ('new', 'source_missing'):
+            if result in ('new', 'source_missing', 'source_too_few'):
                 item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
                 await message.answer('Текст сохранён; редактор пока не запускался.', parse_mode=None)
                 await owner_bulletin_panel.show_sources(message, item)

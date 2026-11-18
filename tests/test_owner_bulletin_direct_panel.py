@@ -140,6 +140,90 @@ class DirectBulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'editor_failed')
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
 
+    async def test_add_links_at_selection_then_confirm_without_premature_fetch(self):
+        with patch.object(owner_daily, 'recent_items', AsyncMock(return_value=[])):
+            await self.click('nb:daily')
+        session = await self.db.owner_bulletin_selections.find_one({'mode': 'direct'})
+        token = session['_id']
+        markup = self.message.edit_text.await_args.kwargs['reply_markup']
+        self.assertTrue(any(b.callback_data == f'nb:addlinks:{token}' for row in markup.inline_keyboard for b in row))
+        await self.click(f'nb:addlinks:{token}')
+        self.state.get_data.return_value = self.state.update_data.await_args.kwargs
+        sent = SimpleNamespace(message_id=777, edit_text=AsyncMock())
+        self.message.answer.return_value = sent
+        self.message.text = 'https://example.com/a\nhttps://t.me/ExampleNews/123'
+        with patch.object(article_fetch, 'fetch_article', AsyncMock()) as fetch:
+            await tools.receive_input(self.message, self.state)
+            fetch.assert_not_awaited()
+        session = await self.db.owner_bulletin_selections.find_one({'_id': token})
+        self.assertEqual(session['selected'], [1, 2])
+        self.assertEqual([i['url'] for i in session['items']], ['https://example.com/a', 'https://t.me/ExampleNews/123'])
+        self.assertEqual(session['message_id'], 777)
+        self.assertTrue(any(b.callback_data == f'nb:prepare:{token}' for row in
+                            sent.edit_text.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+        self.callback.message.message_id = 777
+        await self.click(f'nb:prepare:{token}')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'collect_bulletin_sources'})
+        self.assertEqual([c['url'] for c in confirm['data']['choices']], ['https://example.com/a', 'https://t.me/ExampleNews/123'])
+        self.assertEqual(await self.db.news_owner_bulletins.count_documents({}), 0)
+
+    async def test_selection_deduplicates_limits_and_rejects_expired_buttons(self):
+        items = [{'title': 'Одна', 'url': 'https://example.com/a'}]
+        with patch.object(owner_daily, 'recent_items', AsyncMock(return_value=items)):
+            await self.click('nb:daily')
+        session = await self.db.owner_bulletin_selections.find_one({'mode': 'direct'})
+        token = session['_id']
+        await self.click(f'nb:addlinks:{token}')
+        data = self.state.update_data.await_args.kwargs
+        self.state.get_data.return_value = data
+        self.message.text = 'http://example.com/insecure'
+        await tools.receive_input(self.message, self.state)
+        self.assertEqual((await self.db.owner_bulletin_selections.find_one({'_id': token}))['selected'], [])
+        sent = SimpleNamespace(message_id=777, edit_text=AsyncMock())
+        self.message.answer.return_value = sent
+        self.message.text = 'https://example.com/a\nhttps://example.com/b'
+        await tools.receive_input(self.message, self.state)
+        session = await self.db.owner_bulletin_selections.find_one({'_id': token})
+        self.assertEqual([i['url'] for i in session['items']], ['https://example.com/a', 'https://example.com/b'])
+        self.assertEqual(session['selected'], [1, 2])
+        self.assertEqual(await panel.add_selection_links(self.message, self.user.id, data, 'https://example.com/c'), 'stale')
+        data['selection_message_id'] = 777
+        with self.assertRaises(ValueError):
+            await panel.add_selection_links(self.message, self.user.id, data,
+                '\n'.join(f'https://example.com/extra{i}' for i in range(19)))
+        self.assertEqual((await self.db.owner_bulletin_selections.find_one({'_id': token}))['selected'], [1, 2])
+
+    async def test_remove_missing_then_add_new_to_same_bulletin(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        async def fetch(url):
+            if url.endswith('/0'): raise OSError('offline')
+            return {'summary': SOURCE}
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(side_effect=fetch)):
+            await tools.action(self.callback, self.state, None)
+        card = await self.db.owner_bulletin_cards.find_one({'kind': 'remove_missing'})
+        markup = [c.kwargs.get('reply_markup') for c in self.message.answer.await_args_list if c.kwargs.get('reply_markup')]
+        self.assertTrue(any(b.callback_data == 'nb:remove_source:' + card['_id'] for m in markup for row in m.inline_keyboard for b in row))
+        self.callback.message.message_id = card['message_id']
+        await self.click('nb:remove_source:' + card['_id'])
+        item = await owner_bulletin.get(self.db, self.user.id, 321)
+        self.assertEqual(item['stage'], 'source_too_few')
+        await self.click('nb:more:321')
+        self.state.get_data.return_value = self.state.update_data.await_args.kwargs
+        self.message.text = 'https://example.com/new'
+        fake = AsyncMock(return_value={'summary': SOURCE})
+        with patch.object(article_fetch, 'fetch_article', fake), patch.object(panel, 'make_bulletin', AsyncMock()) as editor:
+            await tools.receive_input(self.message, self.state)
+            fake.assert_awaited_once_with('https://example.com/new')
+            editor.assert_not_awaited()
+        item = await owner_bulletin.get(self.db, self.user.id, 321)
+        self.assertEqual(item['stage'], 'new')
+        self.assertEqual([s['url'] for s in item['stories']], ['https://example.com/news/1', 'https://example.com/new'])
+        self.assertTrue(await owner_bulletin._sources_current(self.db, self.user.id, item))
+        await self.click('nb:remove_source:' + card['_id'])
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'new')
+
+
     async def test_real_dispatcher_direct_selection_does_not_create_individual_drafts(self):
         import subprocess, sys
         script = r'''
@@ -257,3 +341,79 @@ asyncio.run(run())
 '''
         result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+
+def test_real_dispatcher_manual_sources_end_to_end():
+    import subprocess, sys
+    script = r'''
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from aiogram import Bot
+from aiogram.types import Update, Message
+from aiogram.methods import SendMessage
+from mongomock_motor import AsyncMongoMockClient
+from app_setup import configure_dispatcher
+from config import ADMIN_ID
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, logger
+from news_prototype import owner_daily, owner_trial, article_fetch
+from tests.test_owner_drafts import SOURCE
+
+async def run():
+    database = AsyncMongoMockClient().test
+    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players, messages=database.messages)
+    bot = Bot('123456:TESTTOKEN'); sequence = 500
+    async def request(bot_arg, method, **kwargs):
+        nonlocal sequence
+        if isinstance(method, SendMessage):
+            sequence += 1
+            return Message.model_validate({'message_id':sequence, 'date':1760000000,
+                 'chat':{'id':ADMIN_ID,'type':'private'},
+                 'from':{'id':123456,'is_bot':True,'first_name':'Bot'},'text':method.text}, context={'bot':bot_arg})
+        return True
+    dp = configure_dispatcher()
+    user = {'id':ADMIN_ID,'is_bot':False,'first_name':'Owner'}
+    chat = {'id':ADMIN_ID,'type':'private'}
+    async def cb(i, data, mid=321):
+        update = Update.model_validate({'update_id':i,'callback_query':{'id':str(i),
+            'chat_instance':'owner','from':user,'data':data,'message':{'message_id':mid,
+            'date':1760000000,'chat':chat,'from':{'id':123456,'is_bot':True,'first_name':'Bot'},'text':'Panel'}}})
+        await asyncio.wait_for(dp.feed_update(bot, update), 5)
+    async def msg(i, text):
+        update = Update.model_validate({'update_id':i,'message':{'message_id':400+i,'date':1760000000,
+                                  'chat':chat,'from':user,'text':text}})
+        await asyncio.wait_for(dp.feed_update(bot, update), 5)
+    async def fetch(url):
+        if url.endswith('/missing'): raise OSError()
+        return {'summary':SOURCE}
+    with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), patch.object(alc_build, 'db', fake), patch.object(logger, 'db', fake), \
+         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
+         patch.object(owner_daily, 'recent_items', AsyncMock(return_value=[])), \
+         patch.object(article_fetch, 'fetch_article', AsyncMock(side_effect=fetch)), \
+         patch.object(panel, 'make_bulletin', AsyncMock()) as editor, \
+         patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
+        await cb(1,'nb:daily')
+        session = await database.owner_bulletin_selections.find_one({}); token = session['_id']
+        await cb(2, 'nb:addlinks:'+token)
+        await msg(3, 'https://example.com/missing\nhttps://example.com/working')
+        session = await database.owner_bulletin_selections.find_one({'_id':token})
+        assert session['selected'] == [1,2] and session['message_id'] != 321
+        await cb(4, 'nb:prepare:'+token, session['message_id'])
+        confirmation = await database.owner_panel_confirmations.find_one({'action':'collect_bulletin_sources'})
+        await cb(5, 'owner_tools:run:'+confirmation['_id'], 322)
+        item = await database.news_owner_bulletins.find_one({}); assert item['stage'] == 'source_missing'
+        card = await database.owner_bulletin_cards.find_one({'kind':'remove_missing'})
+        await cb(6, 'nb:remove_source:'+card['_id'], card['message_id'])
+        item = await database.news_owner_bulletins.find_one({}); assert item['stage'] == 'source_too_few'
+        await cb(7, 'nb:more:322')
+        await msg(8, 'https://example.com/third')
+        item = await database.news_owner_bulletins.find_one({}); assert item['stage'] == 'new'
+        assert [s['url'] for s in item['stories']] == ['https://example.com/working', 'https://example.com/third']
+        editor.assert_not_awaited()
+        assert await database.news_owner_trial_jobs.count_documents({}) == 0
+    await bot.session.close()
+asyncio.run(run())
+'''
+    result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

@@ -50,17 +50,32 @@ def _source_text(value):
     return value.strip()
 
 
-async def collect(db, owner_id: int, number: int, fetch, fetch_image) -> str:
-    key = owner_bulletin._key(owner_id, number)
-    item = await owner_bulletin.get(db, owner_id, number)
-    if not item or item.get('mode') != 'direct' or item.get('stage') != 'collect_new':
-        return 'not_new'
-    claim = await db.news_owner_bulletins.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'collect_new'},
-        {'$set': {'stage': 'fetching_sources'}})
-    if not claim.modified_count:
-        return 'not_new'
-    semaphore = asyncio.Semaphore(4)
+def parse_urls(text: str) -> list[str]:
+    """Accept individual public HTTPS article/post links, one per line."""
+    if not isinstance(text, str) or len(text) > 20000:
+        raise ValueError('Нужны ссылки')
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not 1 <= len(lines) <= 20:
+        raise ValueError('Нужны от одной до двадцати ссылок')
+    try:
+        urls = [article_fetch.validate_url(line) for line in lines]
+        for url in urls:
+            widget_for(url)
+    except article_fetch.ArticleError:
+        raise ValueError('Нужны публичные HTTPS-ссылки на статьи или посты') from None
+    if len(set(urls)) != len(urls):
+        raise ValueError('Ссылки повторяются')
+    return urls
 
+
+def _stage(stories):
+    if any(not story.get('summary') for story in stories):
+        return 'source_missing'
+    return 'new' if len(stories) >= bulletin_editor.MIN_STORIES else 'source_too_few'
+
+
+async def _collect_choices(choices, fetch, fetch_image):
+    semaphore = asyncio.Semaphore(4)
     async def collect_one(choice):
         story = dict(choice, summary='')
         async with semaphore:
@@ -91,10 +106,22 @@ async def collect(db, owner_id: int, number: int, fetch, fetch_image) -> str:
                     story['image_b64'] = image
                     story['image_kind'] = media['kind']
                 except Exception:
-                    pass  # neutral screen rather than unrelated or unverified media
+                    pass  # The renderer uses a joke card, never unrelated media.
         return story
 
-    stories = await asyncio.gather(*(collect_one(choice) for choice in item['choices']))
+    return await asyncio.gather(*(collect_one(choice) for choice in choices))
+
+
+async def collect(db, owner_id: int, number: int, fetch, fetch_image) -> str:
+    key = owner_bulletin._key(owner_id, number)
+    item = await owner_bulletin.get(db, owner_id, number)
+    if not item or item.get('mode') != 'direct' or item.get('stage') != 'collect_new':
+        return 'not_new'
+    claim = await db.news_owner_bulletins.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'collect_new'},
+        {'$set': {'stage': 'fetching_sources'}})
+    if not claim.modified_count:
+        return 'not_new'
+    stories = await _collect_choices(item['choices'], fetch, fetch_image)
     missing = [s['draft_id'] for s in stories if not s['summary']]
     if not missing:
         bulletin_editor.material_for(stories)
@@ -117,11 +144,81 @@ async def provide_source(db, owner_id: int, number: int, section_id: int, expect
         return 'stale'
     story['summary'] = text
     missing = [s['draft_id'] for s in stories if not s['summary']]
-    if not missing:
+    stage = _stage(stories)
+    if stage == 'new':
         bulletin_editor.material_for(stories)
     result = await db.news_owner_bulletins.update_one(
         {'_id': owner_bulletin._key(owner_id, number), 'owner_id': owner_id,
          'stage': 'source_missing', 'source_revision': expected},
         {'$set': {'stories': stories, 'source_revision': owner_bulletin.revision(stories, []),
-                  'stage': 'source_missing' if missing else 'new', 'missing_ids': missing}})
-    return ('source_missing' if missing else 'new') if result.modified_count else 'stale'
+                  'stage': stage, 'missing_ids': missing}})
+    return stage if result.modified_count else 'stale'
+
+
+async def remove_missing(db, owner_id: int, number: int, section_id: int, expected: str) -> str:
+    """Remove only a missing story from the exact owner-reviewed source snapshot."""
+    item = await owner_bulletin.get(db, owner_id, number)
+    if (not item or item.get('mode') != 'direct' or item.get('stage') != 'source_missing'
+            or item.get('source_revision') != expected
+            or owner_bulletin.revision(item['stories'], []) != expected
+            or section_id not in item.get('missing_ids', [])):
+        return 'stale'
+    if (len(item['stories']) != len(item['choices']) or any(
+            s['draft_id'] != c['draft_id'] or s['url'] != c['url']
+            for s, c in zip(item['stories'], item['choices']))):
+        return 'stale'
+    stories = [s for s in item['stories'] if s['draft_id'] != section_id]
+    choices = [c for c in item['choices'] if c['draft_id'] != section_id]
+    if len(stories) < 1 or len(stories) != len(choices) or len(stories) != len(item['stories']) - 1:
+        return 'too_few'
+    missing = [s['draft_id'] for s in stories if not s.get('summary')]
+    stage = _stage(stories)
+    if stage == 'new':
+        bulletin_editor.material_for(stories)
+    result = await db.news_owner_bulletins.update_one(
+        {'_id': owner_bulletin._key(owner_id, number), 'owner_id': owner_id,
+         'stage': 'source_missing', 'source_revision': expected},
+        {'$set': {'choices': choices, 'stories': stories, 'source_revision': owner_bulletin.revision(stories, []),
+                  'stage': stage, 'missing_ids': missing,
+                  'next_source_id': max(item.get('next_source_id', 1), max(s['draft_id'] for s in item['stories']) + 1)}})
+    return stage if result.modified_count else 'stale'
+
+
+async def append_sources(db, owner_id: int, number: int, expected: str, urls: list[str], fetch, fetch_image) -> str:
+    """Read only newly added links; preserve existing snapshots and require CAS."""
+    urls = parse_urls('\n'.join(urls))
+    item = await owner_bulletin.get(db, owner_id, number)
+    stages = ('new', 'source_missing', 'source_too_few')
+    if (not item or item.get('mode') != 'direct' or item.get('stage') not in stages
+            or item.get('source_revision') != expected
+            or owner_bulletin.revision(item['stories'], []) != expected):
+        return 'stale'
+    stories, choices = item['stories'], item['choices']
+    if (len(stories) != len(choices) or any(s['draft_id'] != c['draft_id'] or s['url'] != c['url']
+                                              for s, c in zip(stories, choices))):
+        return 'stale'
+    if len(stories) + len(urls) > bulletin_editor.MAX_STORIES:
+        raise ValueError('Не более двадцати новостей')
+    if set(urls) & {choice['url'] for choice in choices}:
+        raise ValueError('Ссылка уже добавлена')
+    first = max(item.get('next_source_id', 1), max((s['draft_id'] for s in stories), default=0) + 1)
+    additions = [{'draft_id': first + i, 'url': url, 'title': url[:300]} for i, url in enumerate(urls)]
+    claim = await db.news_owner_bulletins.update_one(
+        {'_id': owner_bulletin._key(owner_id, number), 'owner_id': owner_id,
+         'stage': item['stage'], 'source_revision': expected},
+        {'$set': {'stage': 'fetching_sources'}})
+    if not claim.modified_count:
+        return 'stale'
+    found = await _collect_choices(additions, fetch, fetch_image)
+    stories = stories + found
+    choices = choices + additions
+    missing = [s['draft_id'] for s in stories if not s.get('summary')]
+    stage = _stage(stories)
+    if stage == 'new':
+        bulletin_editor.material_for(stories)
+    result = await db.news_owner_bulletins.update_one(
+        {'_id': owner_bulletin._key(owner_id, number), 'owner_id': owner_id,
+         'stage': 'fetching_sources', 'source_revision': expected},
+        {'$set': {'choices': choices, 'stories': stories, 'source_revision': owner_bulletin.revision(stories, []),
+                  'stage': stage, 'missing_ids': missing, 'next_source_id': first + len(additions)}})
+    return stage if result.modified_count else 'stale'
