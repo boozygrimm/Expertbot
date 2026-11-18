@@ -25,7 +25,7 @@ def _speaker_layer(path: Path) -> Image.Image:
         return original.copy()
 
 
-def compose(image_b64: str | None = None, *, speaker_layers=None) -> Image.Image:
+def compose(image_b64: str | None = None, *, speaker_layers=None, fallback_position: int | None = None) -> Image.Image:
     """Show the screen behind both separate cutouts, without starting media."""
     image = bulletin_concept_screen.base_frame().convert('RGBA')
     draw = ImageDraw.Draw(image)
@@ -41,6 +41,10 @@ def compose(image_b64: str | None = None, *, speaker_layers=None) -> Image.Image
             fitted = ImageOps.contain(source, (width, height), Image.Resampling.LANCZOS)
             panel.paste(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
         image.paste(panel, (x0 + 4, y0 + 4))
+    elif fallback_position is not None:
+        from news_prototype import bulletin_fallback
+        x0, y0, _, _ = SCREEN
+        image.paste(bulletin_fallback.card(fallback_position), (x0 + 4, y0 + 4))
     layers = speaker_layers if speaker_layers is not None else tuple(_speaker_layer(path) for path in LAYERS)
     if not isinstance(layers, (tuple, list)) or len(layers) != 2:
         raise ValueError('Нужны два слоя ведущих')

@@ -332,13 +332,17 @@ def program_runner(repo_root: Path):
 def bulletin_assets_ready() -> bool:
     """Fail closed: never advertise a scene the installed worker cannot load."""
     try:
-        from news_prototype import bulletin_animation, bulletin_wide_screen, desk_ticker, bulletin_job
+        from news_prototype import bulletin_animation, bulletin_wide_screen, bulletin_fallback, desk_ticker, bulletin_job
         # Check the actual child entry point as well as scene assets before
         # advertising the protocol, without using TTS or reading credentials.
         if not callable(bulletin_job.run):
             return False
         layers = bulletin_animation.frames()[(False, False, False)]
         bulletin_wide_screen.compose(speaker_layers=layers)
+        if not bulletin_fallback.ART.is_file() or not bulletin_fallback.FONT.is_file():
+            return False
+        for position in range(len(bulletin_fallback.CARDS)):
+            bulletin_wide_screen.compose(speaker_layers=layers, fallback_position=position)
         desk_ticker.prepare('ПРОВЕРКА')
         return True
     except Exception:

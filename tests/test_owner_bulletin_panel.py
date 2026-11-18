@@ -121,7 +121,7 @@ class BulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         item = await owner_bulletin.get(self.db, self.user.id, 99)
         await panel.show_review(self.message, self.user.id, item)
         messages = [c.args[0] for c in self.message.answer.await_args_list]
-        self.assertTrue(any('нейтральный фон' in s for s in messages))
+        self.assertTrue(any('шуточная заглушка' in s for s in messages))
         self.assertFalse(any('Цитата источника' in s for s in messages))
         self.message.answer_photo.assert_not_awaited()
         review = await self.db.owner_bulletin_actions.find_one({'action': 'review'})
@@ -428,6 +428,6 @@ class BulletinVideoHintReviewTests(unittest.IsolatedAsyncioTestCase):
             await panel.show_section(message, 123, item, section)
         messages = [call.args[0] for call in message.answer.await_args_list]
         self.assertTrue(any('обнаружено видео' in text and 'не использует' in text for text in messages))
-        self.assertTrue(any('нейтральный фон' in text for text in messages))
+        self.assertTrue(any('шуточная заглушка' in text for text in messages))
         message.answer_video.assert_not_awaited()
         self.assertEqual(await database.news_owner_trial_jobs.count_documents({}), 0)
