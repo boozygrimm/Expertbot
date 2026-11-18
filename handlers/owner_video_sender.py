@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
+import hashlib
 import io
 import logging
 import math
@@ -19,6 +20,7 @@ from pymongo import ReturnDocument
 
 from database import db
 from handlers import owner_tools_panel as tools, owner_video_media
+from handlers.telegram_error_codes import TELEGRAM_ERROR_CODES
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -157,6 +159,22 @@ def _safe_telegram_detail(exc: TelegramBadRequest) -> str:
     return ' '.join(''.join(result).split())[:240] or '[...]'
 
 
+def _telegram_symbol(exc: TelegramBadRequest) -> str:
+    """Expose only published error names; fingerprint unknown symbolic names.
+
+    A hash of a symbolic code permits matching against an updated public list
+    without recording arbitrary server text, file IDs, tokens or URLs.
+    """
+    message = str(exc.message or '').strip()
+    match = re.fullmatch(r'(?i:bad request):\s*([A-Z][A-Z0-9_]{2,79})', message)
+    if not match:
+        return 'unavailable'
+    code = match.group(1)
+    if code in TELEGRAM_ERROR_CODES:
+        return code
+    return 'sha256-' + hashlib.sha256(code.encode('ascii')).hexdigest()[:24]
+
+
 async def receive_video(message: types.Message, state: FSMContext, data: dict) -> None:
     if not _owner(message.from_user, message.chat):
         return
@@ -217,8 +235,8 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
         title = await _group(message.bot, data['chat_id'])
     except TelegramBadRequest as exc:
         code, explanation = _telegram_error(exc)
-        logger.warning('Подготовка видео: TelegramBadRequest stage=%s reason=%s detail=%s',
-                       stage, code, _safe_telegram_detail(exc))
+        logger.warning('Подготовка видео: TelegramBadRequest stage=%s reason=%s telegram_code=%s detail=%s',
+                       stage, code, _telegram_symbol(exc), _safe_telegram_detail(exc))
         steps = {'download': 'скачивании файла', 'preview_note': 'отправке предпросмотра кружка',
                  'preview_video': 'отправке предпросмотра видео', 'group_check': 'проверке группы',
                  'preparation_notice': 'отправке сообщения о подготовке'}
