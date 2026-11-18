@@ -341,3 +341,32 @@ async def test_invalid_group_ids_never_produce_buttons(ctx):
     for bad in (False, True, -1.5, '-100', 0, -2**63-1):
         with pytest.raises(ValueError): sender._chat_id(bad)
     ctx.bot.send_video.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('step', ['download', 'preview_note', 'group_check'])
+async def test_telegram_bad_request_reports_failed_step_without_leaking(ctx, caplog, step):
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import GetFile
+
+    await ctx.db.auth_chats.insert_one({'chat_id': -101, 'title': 'Друзья', 'status': 'approved'})
+    data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
+    ctx.state.get_data.return_value = data
+    ctx.message.video = SimpleNamespace(file_id='input', file_size=12, duration=2)
+    async def download(file_id, destination): destination.write(b'1234ftypxxxx')
+    async def make_note(source, target): target.write_bytes(b'note')
+    ctx.bot.download.side_effect = download
+    ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview'))
+    exc = TelegramBadRequest(method=GetFile(file_id='secret-file-id'),
+                             message='Bad Request: file is too big secret-file-id https://example.com/token')
+    if step == 'download': ctx.bot.download.side_effect = exc
+    elif step == 'preview_note': ctx.bot.send_video_note.side_effect = exc
+    else: ctx.bot.get_chat.side_effect = exc
+    with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
+        await sender.receive_video(ctx.message, ctx.state, data)
+    assert f'stage={step} reason=file_is_too_big' in caplog.text
+    assert 'secret-file-id' not in caplog.text and 'example.com' not in caplog.text
+    assert 'слишком большой' in ctx.message.answer.await_args.args[0]
+    assert 'В группу ничего не отправлено' in ctx.message.answer.await_args.args[0]
+    assert await ctx.db.owner_video_confirmations.count_documents({}) == 0
+    assert all(call.kwargs['chat_id'] != -101 for call in ctx.bot.send_video_note.await_args_list)
