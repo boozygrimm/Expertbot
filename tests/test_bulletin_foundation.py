@@ -32,6 +32,9 @@ class BulletinEditorTests(unittest.TestCase):
         self.assertIn('шутки и предположения не выдавай за факты', prompt)
         self.assertIn('Киберсенсей говорит тепло и живо', prompt)
         self.assertIn('интерес, удивление или сочувствие', prompt)
+        self.assertIn('смарт-контракт не обязательно приложение', prompt)
+        self.assertIn('информация остаётся', prompt.lower())
+        self.assertIn('Не называй фактическое', prompt)
 
     def test_twenty_selected_news_keep_order_and_use_both_presenters(self):
         stories = inputs(20)

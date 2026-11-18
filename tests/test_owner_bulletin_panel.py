@@ -121,8 +121,14 @@ class BulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         item = await owner_bulletin.get(self.db, self.user.id, 99)
         await panel.show_review(self.message, self.user.id, item)
         messages = [c.args[0] for c in self.message.answer.await_args_list]
-        self.assertTrue(any('https://example.com/news/1' in s and 'Цитата источника' in s for s in messages))
         self.assertTrue(any('нейтральный фон' in s for s in messages))
+        self.assertFalse(any('Цитата источника' in s for s in messages))
+        self.message.answer_photo.assert_not_awaited()
+        review = await self.db.owner_bulletin_actions.find_one({'action': 'review'})
+        self.callback.message.message_id = 999
+        await self.click(f'nb:detail:{review["_id"]}:1')
+        messages = [c.args[0] for c in self.message.answer.await_args_list]
+        self.assertTrue(any('https://example.com/news/1' in s and 'Цитата источника' in s for s in messages))
         self.message.answer_photo.assert_awaited_once()
         card = await self.db.owner_bulletin_cards.find_one({'section_id': 1})
         self.callback.message.message_id = 999
@@ -133,6 +139,109 @@ class BulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         await self.click(f'nb:noimage:{card["_id"]}')
         self.assertIn('изменилась', self.callback.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_selection_shows_complete_titles_and_number_buttons(self):
+        from datetime import datetime, timezone
+        titles = [f'Очень длинный заголовок новости {n} ' + 'важные слова ' * 8 for n in range(1, 11)]
+        session = {'_id': '0123456789abcdef', 'items': [
+            {'number': n, 'label': title, 'url': f'https://example.com/{n}'}
+            for n, title in enumerate(titles, 1)], 'selected': [2, 1], 'page': 0, 'mode': 'direct'}
+        await panel.selection(self.message, session)
+        text = self.message.edit_text.await_args.args[0]
+        self.assertTrue(all(title.strip() in text for title in titles[:8]))
+        self.assertIn('✅ 1 · 2.', text)
+        self.assertIn('✅ 2 · 1.', text)
+        self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
+        buttons = [b for row in self.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        selects = [b for b in buttons if b.callback_data and ':sel:' in b.callback_data]
+        self.assertEqual([b.text for b in selects], ['✅ 1', '✅ 2', '3', '4', '5', '6', '7', '8'])
+        self.assertEqual(len([b for b in buttons if b.url]), 8)
+        session['page'] = 1
+        await panel.selection(self.message, session)
+        text = self.message.edit_text.await_args.args[0]
+        self.assertTrue(all(title.strip() in text for title in titles[8:]))
+
+    async def test_selection_long_emoji_titles_split_pages_without_truncation(self):
+        items = [{'number': i, 'label': '📰' * 300 + f' номер {i}', 'url': f'https://example.com/{i}'}
+                 for i in range(1, 9)]
+        pages = panel._selection_pages(items)
+        self.assertGreater(len(pages), 1)
+        self.assertEqual([x for page in pages for x in page], items)
+        for page in range(len(pages)):
+            session = {'_id': '0123456789abcdef', 'items': items, 'selected': [], 'page': page, 'mode': 'direct'}
+            await panel.selection(self.message, session)
+            text = self.message.edit_text.await_args.args[0]
+            self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
+            for item in pages[page]: self.assertIn(item['label'], text)
+
+    async def test_overview_shows_full_dialogue_but_details_are_on_demand(self):
+        await self.ready(5, picture=True)
+        await owner_bulletin.create(self.db, self.user.id, 99, [1, 2, 3, 4, 5])
+        await owner_bulletin.prepare(self.db, self.user.id, 99, AsyncMock(side_effect=lambda s: response(s)))
+        item = await owner_bulletin.get(self.db, self.user.id, 99)
+        await panel.show_review(self.message, self.user.id, item)
+        text = '\n'.join(c.args[0] for c in self.message.answer.await_args_list)
+        for section in item['sections']:
+            self.assertIn(section['ticker'], text)
+            for turn in section['turns']: self.assertIn(turn['text'], text)
+        self.assertIn('включая комментарии', text)
+        self.assertNotIn('Цитата источника', text)
+        self.assertEqual(await self.db.owner_bulletin_cards.count_documents({}), 0)
+        self.message.answer_photo.assert_not_awaited()
+        review = await self.db.owner_bulletin_actions.find_one({'action': 'review'})
+        self.message.message_id = review['message_id']
+        await self.click(f'nb:detail:{review["_id"]}:1')
+        self.assertEqual(await self.db.owner_bulletin_cards.count_documents({}), 1)
+        self.message.answer_photo.assert_awaited_once()
+        self.assertTrue(any('Цитата источника' in c.args[0] for c in self.message.answer.await_args_list))
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_twenty_story_overview_splits_safely_without_losing_text(self):
+        await self.ready(20)
+        await owner_bulletin.create(self.db, self.user.id, 99, list(range(1, 21)))
+        def make(stories):
+            result = response(stories)
+            for i, section in enumerate(result['sections'], 1):
+                section['ticker'] = f'Заголовок {i} ' + '📰' * 45
+                section['turns'][0]['text'] = f'Реплика {i}: ' + 'новость ' * 10
+            return result
+        await owner_bulletin.prepare(self.db, self.user.id, 99, AsyncMock(side_effect=make))
+        item = await owner_bulletin.get(self.db, self.user.id, 99)
+        await panel.show_review(self.message, self.user.id, item)
+        calls = self.message.answer.await_args_list
+        self.assertGreater(len(calls), 1)
+        combined = ''.join(c.args[0] for c in calls)
+        for section in item['sections']:
+            self.assertIn(section['ticker'], combined)
+            self.assertIn(section['turns'][0]['text'], combined)
+        self.assertTrue(all(len(c.args[0].encode('utf-16-le')) // 2 <= 3600 for c in calls))
+        markup = calls[-1].kwargs['reply_markup']
+        buttons = [b for row in markup.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith('nb:detail:')]
+        self.assertEqual(len(buttons), 20)
+        self.assertEqual([b.text for b in buttons], [str(i) for i in range(1, 21)])
+        self.assertEqual(await self.db.owner_bulletin_cards.count_documents({}), 0)
+
+    async def test_detail_button_rejects_stale_revision_or_wrong_message_and_owner(self):
+        await self.ready(2)
+        await owner_bulletin.create(self.db, self.user.id, 99, [1, 2])
+        await owner_bulletin.prepare(self.db, self.user.id, 99, AsyncMock(side_effect=lambda s: response(s)))
+        item = await owner_bulletin.get(self.db, self.user.id, 99)
+        await panel.show_review(self.message, self.user.id, item)
+        review = await self.db.owner_bulletin_actions.find_one({'action': 'review'})
+        self.message.message_id = review['message_id'] + 1
+        await self.click(f'nb:detail:{review["_id"]}:1')
+        self.assertIn('устарела', self.callback.answer.await_args.args[0])
+        self.message.message_id = review['message_id']
+        self.callback.from_user = SimpleNamespace(id=self.user.id + 1)
+        await self.click(f'nb:detail:{review["_id"]}:1')
+        self.assertEqual(await self.db.owner_bulletin_cards.count_documents({}), 0)
+        self.callback.from_user = self.user
+        text = owner_bulletin.editable_section(item['sections'][0]).replace(item['sections'][0]['ticker'], 'Новый заголовок')
+        self.assertEqual(await owner_bulletin.change_section(self.db, self.user.id, 99, item['revision'],
+                                                              item['sections'][0]['id'], text=text), 'saved')
+        await self.click(f'nb:detail:{review["_id"]}:1')
+        self.assertIn('изменилась', self.callback.answer.await_args.args[0])
+        self.assertEqual(await self.db.owner_bulletin_cards.count_documents({}), 0)
 
     async def test_no_retry_after_editor_failure_and_no_render(self):
         confirm = await self.prepare_selection(2)
@@ -233,6 +342,10 @@ async def run():
         assert editor.await_count == 1
         assert await database.news_owner_bulletins.count_documents({'stage':'ready_for_review'}) == 1
         assert await database.news_owner_trial_jobs.count_documents({}) == 0
+        assert any(isinstance(m, SendMessage) and 'сценарий' in m.text for m in sent)
+        assert not any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
+        card = await database.owner_bulletin_actions.find_one({'action':'review'})
+        await cb(7, f'nb:detail:{card["_id"]}:1', card['message_id'])
         assert any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
     await bot.session.close()
 asyncio.run(run())
