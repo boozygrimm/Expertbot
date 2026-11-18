@@ -482,20 +482,21 @@ async def approve_draft(message: types.Message) -> None:
         draft_id = _id(parts[1])
         item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
         if item and item.get('stage') == 'draft_ready' and item.get('revision') == parts[2] and item.get('script', {}).get('image_b64'):
-            from news_prototype.news_worker_client import NewsWorkerClient
+            from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
             try:
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-                supported = await client.supports_images()
-                focus_supported = (not item['script'].get('image_regions') or await client.supports_image_focus())
-            except (ValueError, OSError):
-                supported = False
-            if not supported:
-                await message.answer(f'Воркер не подтвердил поддержку картинки. Рендер не запущен. '
-                                     f'Можно убрать её командой /news_noimage {draft_id} {parts[2]} '
-                                     'или сначала обновить воркер.', parse_mode=None)
+                capabilities = await client.capabilities()
+            except (ValueError, OSError, NewsWorkerError):
+                await message.answer('Не удалось проверить воркер: он может просыпаться или быть недоступен. '
+                                     'Рендер не запущен, картинка сохранена. Проверь подключение и попробуй '
+                                     'подтвердить эту версию позже.', parse_mode=None)
                 return
-            if not focus_supported:
-                await message.answer('Воркер не подтвердил поддержку выбранных областей картинки. '
+            if 'news-story-image-v1' not in capabilities:
+                await message.answer('Воркер ответил, но не поддерживает картинки в одиночных сюжетах. '
+                                     'Рендер не запущен, картинка сохранена; сначала обновите воркер.', parse_mode=None)
+                return
+            if item['script'].get('image_regions') and 'news-image-focus-v1' not in capabilities:
+                await message.answer('Воркер ответил, но не поддерживает выбранные области картинки. '
                                      'Обновите воркер; рендер не запущен.', parse_mode=None)
                 return
         result = await owner_drafts.approve(db.db, message.from_user.id, draft_id, parts[2])

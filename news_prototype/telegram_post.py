@@ -148,3 +148,103 @@ def extract_post_info(data: bytes, post: str, charset: str | None = None) -> tup
 def extract_post(data: bytes, post: str, charset: str | None = None) -> tuple[str, str]:
     title, body, _ = extract_post_info(data, post, charset)
     return title, body
+
+
+def safe_channel_name(value: object) -> str | None:
+    """Conservatively accept a short display name for speech, never a URL/command."""
+    import unicodedata
+    if not isinstance(value, str) or len(value) > 300:
+        return None
+    # Decorative emoji are discarded; control and format characters are not
+    # accepted, including bidi controls and newlines.
+    if any(unicodedata.category(c)[0] == 'C' for c in value):
+        return None
+    value = ''.join(c for c in value if unicodedata.category(c)[0] != 'S')
+    value = re.sub(r'\s+', ' ', value).strip()
+    if (not 1 <= len(value) <= 60 or not any(c.isalpha() for c in value)
+            or not all(c.isalnum() or c in " '-.,!&()" or unicodedata.category(c)[0] == 'M' for c in value)
+            or 'http' in value.casefold() or 'www.' in value.casefold()):
+        return None
+    return value
+
+
+def channel_opening(url: str, name: object) -> str | None:
+    """Form a source introduction only for a validated public Telegram post."""
+    try:
+        clean = safe_channel_name(name)
+        if clean and widget_for(validate_url(url)):
+            return f'В телеграм-канале «{clean}» поделились новостью.'
+    except (ArticleError, TypeError, ValueError):
+        pass
+    return None
+
+
+class ChannelNameParser(HTMLParser):
+    """Read only the exact post's owner header, never a forward or reply."""
+    def __init__(self, post: str):
+        super().__init__(convert_charrefs=True)
+        self.post = post.casefold()
+        self.channel = post.split('/', 1)[0].casefold()
+        self.stack = []
+        self.matches = 0
+        self.owners = 0
+        self.valid = False
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower(); attrs = dict(attrs)
+        classes = set((attrs.get('class') or '').split())
+        target, suppressed, author, owner = self.stack[-1][1:] if self.stack else (False, False, False, False)
+        if 'tgme_widget_message' in classes:
+            target = not suppressed and (attrs.get('data-post') or '').casefold() == self.post
+            author = owner = False
+            if target: self.matches += 1
+        suppressed = (suppressed or tag in ('script', 'style', 'noscript', 'template')
+                      or 'tgme_widget_message_reply' in classes
+                      or 'tgme_widget_message_forwarded_from' in classes)
+        if target and not suppressed and 'tgme_widget_message_author' in classes:
+            author = True
+        if target and not suppressed and author and tag == 'a' and 'tgme_widget_message_owner_name' in classes:
+            self.owners += 1
+            try:
+                parts = urlsplit(attrs.get('href') or '')
+                owner = (parts.scheme == 'https' and parts.hostname in HOSTS and not parts.username
+                         and not parts.password and parts.port in (None, 443) and not parts.query
+                         and not parts.fragment and parts.path.strip('/').casefold() == self.channel)
+            except ValueError:
+                owner = False
+            self.valid = owner
+        if tag not in VOID_TAGS:
+            self.stack.append((tag, target, suppressed, author, owner))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag.lower() not in VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag.lower():
+                del self.stack[i:]
+                break
+
+    def handle_data(self, data):
+        if self.stack:
+            _, target, suppressed, _, owner = self.stack[-1]
+            if target and not suppressed and owner:
+                self.parts.append(data)
+
+
+def extract_channel_name(data: bytes, post: str, charset: str | None = None) -> str | None:
+    """Return a validated display name or None; a missing name never blocks the post."""
+    if not isinstance(data, bytes) or len(data) > MAX_BYTES:
+        return None
+    try:
+        parser = ChannelNameParser(post)
+        parser.feed(data.decode(charset or 'utf-8', errors='replace'))
+        parser.close()
+        if parser.matches != 1 or parser.owners != 1 or not parser.valid:
+            return None
+        return safe_channel_name(''.join(parser.parts))
+    except (LookupError, TypeError, ValueError, RecursionError, IndexError):
+        return None

@@ -77,6 +77,28 @@ class TelegramPostTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(POST_BODY,result['summary'])
         self.assertNotIn('Соседний',result['summary'])
 
+    async def test_fetch_exposes_verified_display_name_without_extra_requests(self):
+        author = (b'<div class="tgme_widget_message_author accent_color">'
+                  b'<a class="tgme_widget_message_owner_name" href="https://t.me/ExampleNews">'
+                  b'<span dir="auto">Example News</span></a></div>')
+        data = PAGE.replace(b'data-post="ExampleNews/102">', b'data-post="ExampleNews/102">' + author)
+        class Content:
+            async def iter_chunked(self, _): yield data
+        class Response:
+            status=200; headers={}; content_type='text/html'; content_length=len(data); charset='utf-8'; content=Content()
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+        class Session:
+            def __init__(self): self.calls = []
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects): self.calls.append(url); return Response()
+        session = Session()
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=session):
+            result = await article_fetch.fetch_article('https://t.me/ExampleNews/102')
+        self.assertEqual(result['telegram_channel_name'], 'Example News')
+        self.assertEqual(session.calls, ['https://t.me/ExampleNews/102?embed=1'])
+
     async def test_redirect_not_accepted_as_a_post(self):
         class Response:
             status=302; headers={'Location':'https://example.com/'}
@@ -173,3 +195,26 @@ class TelegramVideoDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=Session()):
             result = await article_fetch.fetch_article('https://t.me/ExampleNews/102')
         self.assertEqual(result['telegram_video_status'], 'none')
+
+
+class TelegramChannelNameTests(unittest.TestCase):
+    def test_name_from_exact_owner_header_only(self):
+        def widget(post, owner, name):
+            return f'''<div class="tgme_widget_message" data-post="{post}">
+                <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name"
+                href="{owner}"><span dir="auto">{name}</span></a></div>
+                <div class="tgme_widget_message_forwarded_from"><span>OTHER CHANNEL</span></div>
+                <div class="tgme_widget_message_text js-message_text">News body.</div></div>'''
+        first = widget('Other/20', 'https://t.me/Other', 'Wrong channel')
+        target = widget('ExampleNews/102', 'https://t.me/ExampleNews', 'Новости &amp; Игры')
+        data = (first + target).encode()
+        self.assertEqual(telegram_post.extract_channel_name(data, 'examplenews/102'), 'Новости & Игры')
+        self.assertIsNone(telegram_post.extract_channel_name((first + target + target).encode(), 'ExampleNews/102'))
+        self.assertIsNone(telegram_post.extract_channel_name(target.replace('https://t.me/ExampleNews', 'https://t.me/Other').encode(), 'ExampleNews/102'))
+        self.assertIsNone(telegram_post.extract_channel_name(target.replace('https://t.me/ExampleNews', 'https://t.me.example.org/ExampleNews').encode(), 'ExampleNews/102'))
+        self.assertIsNone(telegram_post.extract_channel_name(PAGE, 'ExampleNews/102'))
+
+    def test_invalid_or_unpronounceable_names_fall_back(self):
+        for name in ('https://evil.example', 'www.example.com', 'x'*61, '📰', 'x\nInjected', 'A\u202eB'):
+            with self.subTest(name=name): self.assertIsNone(telegram_post.safe_channel_name(name))
+        self.assertEqual(telegram_post.safe_channel_name('Игры 📰'), 'Игры')

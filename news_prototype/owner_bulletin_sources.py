@@ -86,6 +86,10 @@ async def _collect_choices(choices, fetch, fetch_image):
                 if isinstance(title, str) and title.strip() and len(title) <= 300:
                     story['title'] = title.strip()
                 story['summary'] = summary
+                from news_prototype.telegram_post import safe_channel_name
+                name = safe_channel_name(article.get('telegram_channel_name'))
+                if name and widget_for(choice['url']) is not None:
+                    story['telegram_channel_name'] = name
                 video_status = article.get('telegram_video_status')
                 if (isinstance(video_status, str) and video_status in ('available', 'none', 'ambiguous', 'too_big')
                         and widget_for(choice['url']) is not None):
