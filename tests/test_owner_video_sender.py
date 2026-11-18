@@ -587,3 +587,136 @@ async def test_converted_note_roundtrip_with_real_aiogram_multipart(ctx):
     finally:
         await bot.session.close()
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_removes_only_video_flow_bot_messages_after_success(ctx):
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+    storage = MemoryStorage()
+    state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=ctx.user.id, user_id=ctx.user.id))
+    await ctx.db.auth_chats.insert_one({'chat_id': -101, 'title': 'Друзья', 'status': 'approved'})
+    ctx.bot.delete_message = AsyncMock()
+    ids = iter([101, 102, 103])  # input prompt, preparing notice, confirmation
+    ctx.message.answer.side_effect = lambda *args, **kwargs: SimpleNamespace(message_id=next(ids))
+    ctx.callback.data = 'ovideo:format:-101:note'
+    await sender.action(ctx.callback, state, ctx.bot)
+    data = await state.get_data()
+    assert data['video_bot_messages'] == [101]
+    source = b'1234ftypxxxx'; result = b'1234ftypnote'
+    ctx.message.message_id = 777  # owner's incoming media, never delete it
+    ctx.message.video = SimpleNamespace(file_id='source', file_size=len(source), duration=2)
+    async def download(file_id, destination): destination.write(source if file_id == 'source' else result)
+    async def make_note(src, target):
+        target.write_bytes(result)
+        return 2.4
+    ctx.bot.download.side_effect = download
+    ctx.bot.send_video.return_value = SimpleNamespace(message_id=104, video=SimpleNamespace(file_id='preview'))
+    with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
+        await sender.receive_video(ctx.message, state, data)
+    record = await ctx.db.owner_video_confirmations.find_one({})
+    assert record['cleanup_ids'] == [101, 102, 104]
+    ctx.callback.message = SimpleNamespace(chat=ctx.message.chat, message_id=103,
+                                           answer=AsyncMock(), edit_text=AsyncMock())
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, state, ctx.bot)
+    deleted = {call.kwargs['message_id'] for call in ctx.bot.delete_message.await_args_list}
+    assert {101, 102, 103, 104}.issubset(deleted)
+    assert 777 not in deleted
+    assert all(call.kwargs['chat_id'] == ctx.user.id for call in ctx.bot.delete_message.await_args_list)
+    ctx.bot.send_video_note.assert_awaited_once()
+    await storage.close()
+
+
+@pytest.mark.asyncio
+async def test_cancel_input_cleans_bot_not_owner_and_late_preview(ctx):
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+    storage = MemoryStorage()
+    state = FSMContext(storage=storage, key=StorageKey(bot_id=1, chat_id=ctx.user.id, user_id=ctx.user.id))
+    ctx.bot.delete_message = AsyncMock()
+    ids = iter([201, 202])  # prompt and bot's validation message
+    ctx.message.answer.side_effect = lambda *args, **kwargs: SimpleNamespace(message_id=next(ids))
+    await tools.ask(ctx.callback, state, 'owner_send_video', 'Пришли видео', chat_id=-101, mode='note')
+    data = await state.get_data()
+    owner_message = SimpleNamespace(from_user=ctx.user, chat=ctx.message.chat, bot=ctx.bot,
+                                    message_id=777, text='не видео', answer=ctx.message.answer)
+    await tools.receive_input(owner_message, state)
+    ctx.callback.message.message_id = 201
+    ctx.callback.data = 'owner_tools:cancel_input:' + data['input_token']
+    await tools.action(ctx.callback, state, ctx.bot)
+    await sender.track_bot_message(state, data['input_token'], SimpleNamespace(message_id=203), ctx.bot, ctx.user.id)
+    deleted = {call.kwargs['message_id'] for call in ctx.bot.delete_message.await_args_list}
+    assert 202 in deleted and 203 in deleted
+    assert 201 not in deleted and 777 not in deleted  # prompt edited to cancellation; owner untouched
+    ctx.message.edit_text.assert_awaited_once()
+    ctx.bot.send_video_note.assert_not_awaited()
+    await storage.close()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_error_does_not_repeat_or_break_publication(ctx):
+    record = await prepare(ctx)
+    await ctx.db.owner_video_confirmations.update_one({'_id': record['_id']}, {'$set': {'cleanup_ids': [201]}})
+    ctx.bot.delete_message = AsyncMock(side_effect=RuntimeError('cannot delete'))
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video.assert_awaited_once()
+    assert (await ctx.db.owner_video_confirmations.find_one({}))['stage'] == 'sent'
+    assert any('отправлено' in call.args[0] for call in ctx.message.answer.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_cancel_confirmation_removes_only_tracked_bot_messages(ctx):
+    record = await prepare(ctx)
+    await ctx.db.owner_video_confirmations.update_one({'_id': record['_id']},
+                                                     {'$set': {'cleanup_ids': [201, 202]}})
+    ctx.bot.delete_message = AsyncMock()
+    ctx.callback.message.message_id = 203  # confirmation stays as the cancellation notice
+    ctx.callback.data = 'ovideo:cancel:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    assert {call.kwargs['message_id'] for call in ctx.bot.delete_message.await_args_list} == {201, 202}
+    assert all(call.kwargs['chat_id'] == ctx.user.id for call in ctx.bot.delete_message.await_args_list)
+    ctx.message.edit_text.assert_awaited_once()
+    ctx.bot.send_video.assert_not_awaited()
+    ctx.bot.send_video_note.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_navigation_replaces_only_video_menus_and_keeps_panel(ctx):
+    await ctx.db.auth_chats.insert_many([
+        {'chat_id': -n, 'title': str(n), 'status': 'approved'} for n in range(101, 111)])
+    ctx.bot.delete_message = AsyncMock()
+    ctx.message.message_id = 10  # dashboard is retained
+    ctx.callback.data = 'ovideo:open'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.delete_message.assert_not_awaited()
+    ctx.message.message_id = 11  # list page
+    ctx.callback.data = 'ovideo:page:1'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.message.message_id = 12  # next page
+    ctx.callback.data = 'ovideo:chat:-101'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.message.message_id = 13  # format selection
+    ctx.callback.data = 'ovideo:format:-101:video'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    assert [c.kwargs['message_id'] for c in ctx.bot.delete_message.await_args_list] == [11, 12, 13]
+    assert all(c.kwargs['chat_id'] == ctx.user.id for c in ctx.bot.delete_message.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_expired_confirmation_can_be_cancelled_and_cleaned_but_not_sent(ctx):
+    record = await prepare(ctx)
+    await ctx.db.owner_video_confirmations.update_one({'_id': record['_id']}, {'$set': {
+        'expires_at': datetime.now(timezone.utc) - timedelta(seconds=1), 'cleanup_ids': [201]}})
+    ctx.bot.delete_message = AsyncMock()
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.send_video.assert_not_awaited()
+    ctx.callback.data = 'ovideo:cancel:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    ctx.bot.delete_message.assert_awaited_once_with(chat_id=ctx.user.id, message_id=201)
+    assert (await ctx.db.owner_video_confirmations.find_one({}))['stage'] == 'cancelled'

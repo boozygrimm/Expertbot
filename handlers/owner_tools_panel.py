@@ -73,7 +73,10 @@ async def ask(callback, state: FSMContext, action: str, prompt: str, *, answer_t
         await callback.answer(answer_text, show_alert=True)
     else:
         await callback.answer()
-    await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None, disable_web_page_preview=True)
+    sent = await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode=None, disable_web_page_preview=True)
+    if action == 'owner_send_video':
+        from handlers import owner_video_sender
+        await owner_video_sender.track_bot_message(state, token, sent, callback.message.bot, callback.message.chat.id)
 
 
 async def profile_choice(callback, state, action_name: str, size: str = ''):
@@ -166,7 +169,9 @@ async def receive_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     action = data.get('action')
     if action == 'owner_send_video':
-        return await message.answer('Пришли видео, кружок или MP4-файл, либо отмени ввод кнопкой.', parse_mode=None)
+        from handlers import owner_video_sender
+        return await owner_video_sender.input_notice(message, state, data,
+            'Пришли видео, кружок или MP4-файл, либо отмени ввод кнопкой.')
     text = (message.text or '').strip()
     if not text:
         return await message.answer('Нужно текстовое сообщение. Можно отменить ввод кнопкой.', parse_mode=None)
@@ -430,6 +435,10 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 if matches:
                     await state.clear()
             await callback.answer('Ввод отменён' if matches else 'Этот ввод уже завершён')
+            if matches and data.get('action') == 'owner_send_video':
+                from handlers import owner_video_sender
+                await owner_video_sender.cleanup_bot_messages(bot, callback.message.chat.id,
+                    data.get('video_bot_messages'), keep=[callback.message.message_id])
             await callback.message.edit_text('Ввод отменён. Пульт: /panel' if matches else
                                              'Этот ввод уже завершён. Пульт: /panel', parse_mode=None)
             return
