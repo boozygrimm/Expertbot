@@ -285,3 +285,59 @@ async def test_group_list_has_pagination(ctx):
     buttons = [b.callback_data for row in ctx.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
     assert len([b for b in buttons if b.startswith('ovideo:chat:')]) == 2
     assert 'ovideo:page:0' in buttons
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['video', 'note'])
+async def test_mongodb_64bit_group_id_works_through_selection_and_send(ctx, mode):
+    from bson import BSON
+    original = -1001234567890
+    # MongoDB stores this Telegram ID as a BSON int64 and PyMongo reads it as
+    # Int64, unlike the small integer identifiers used by older tests.
+    cid = BSON(BSON.encode({'id': original})).decode()['id']
+    assert type(cid) is not int and isinstance(cid, int)
+    await ctx.db.auth_chats.insert_one({'chat_id': cid, 'title': 'Большой чат', 'status': 'approved'})
+    ctx.bot.get_chat.return_value = SimpleNamespace(id=original, type='supergroup', title='Большой чат')
+    ctx.callback.data = 'ovideo:open'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    buttons = [b for row in ctx.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+    assert any(b.callback_data == f'ovideo:chat:{original}' for b in buttons)
+    ctx.callback.data = f'ovideo:chat:{original}'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    assert 'Большой чат' in ctx.message.answer.await_args.args[0]
+    ctx.callback.data = f'ovideo:format:{original}:{mode}'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    data = ctx.state.update_data.await_args.kwargs
+    ctx.state.get_data.return_value = data
+    if mode == 'video':
+        ctx.message.video = SimpleNamespace(file_id='video', file_size=1234, duration=2)
+    else:
+        ctx.message.video_note = SimpleNamespace(file_id='video', file_size=1234, duration=2)
+    await sender.receive_video(ctx.message, ctx.state, data)
+    record = await ctx.db.owner_video_confirmations.find_one({})
+    assert record and record['chat_id'] == original
+    # Simulate the second database roundtrip, which is also BSON int64.
+    await ctx.db.owner_video_confirmations.update_one({'_id': record['_id']}, {'$set': {'chat_id': cid}})
+    ctx.callback.data = 'ovideo:send:' + record['_id']
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    if mode == 'video':
+        ctx.bot.send_video.assert_awaited_once_with(chat_id=original, video='video', caption=None, parse_mode=None)
+        assert type(ctx.bot.send_video.await_args.kwargs['chat_id']) is int
+    else:
+        ctx.bot.send_video_note.assert_awaited_once_with(chat_id=original, video_note='video')
+        assert type(ctx.bot.send_video_note.await_args.kwargs['chat_id']) is int
+    assert (await ctx.db.owner_video_confirmations.find_one({}))['stage'] == 'sent'
+
+
+@pytest.mark.asyncio
+async def test_invalid_group_ids_never_produce_buttons(ctx):
+    # Non-integer numeric values compare < 0 in Mongo, but cannot be chat IDs.
+    await ctx.db.auth_chats.insert_one({'chat_id': -123.5, 'title': 'Повреждённая запись', 'status': 'approved'})
+    ctx.callback.data = 'ovideo:open'
+    await sender.action(ctx.callback, ctx.state, ctx.bot)
+    buttons = [b.callback_data for row in ctx.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+    assert not any(b.startswith('ovideo:chat:') for b in buttons)
+    assert 'нет доступных групп' in ctx.message.answer.await_args.args[0]
+    for bad in (False, True, -1.5, '-100', 0, -2**63-1):
+        with pytest.raises(ValueError): sender._chat_id(bad)
+    ctx.bot.send_video.assert_not_awaited()
