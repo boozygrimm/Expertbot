@@ -44,14 +44,15 @@ def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
     if folder.exists() or folder.is_symlink():
         raise FileExistsError('Папка выпуска уже существует')
     with ExitStack() as stack:
-        source = None
-        if 'video' in bulletin:
-            private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='bulletin-source-', dir=folder.parent)))
-            source = _acquire_reviewed_video(bulletin['video'], private, ffmpeg)
-        return _run(bulletin, folder, ffmpeg, keys, source)
+        sources = []
+        for index, video in enumerate(bulletin_contract.selected_videos(bulletin)):
+            private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=f'bulletin-source-{index}-', dir=folder.parent)))
+            sources.append(_acquire_reviewed_video(video, private, ffmpeg))
+        return _run(bulletin, folder, ffmpeg, keys, sources)
 
 
-def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], source: tuple[Path, str] | None) -> Path:
+
+def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], sources: list[tuple[Path, str]]) -> Path:
     sections = bulletin['sections']
     # One joint Algenib/Puck recording per news item, as in the owner-approved
     # full-bulletin trial. Reuse the same key rotation; no per-turn TTS calls.
@@ -73,22 +74,19 @@ def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], source: tup
         # Full-section WAVs do not contain reliable speaker boundaries. The
         # approved preview's heuristic animates only unambiguous estimates;
         # speech and both presenters remain intact even without a split.
-        remarks = None
-        clip_frames = 240
-        if source is not None and bulletin['video'].get('remarks'):
-            remarks = bulletin_dialogue_audio.prepare_remarks(bulletin['video']['remarks'], folder / 'video-remarks', ffmpeg, keys)
-            rate, samples = podcast_video_trial.read_wav(remarks)
-            # Keep a one-second lead-in and half a second after the complete
-            # joint recording. Longer output extends the clip, never truncates.
-            clip_frames = max(240, math.ceil((len(samples) / rate + 1.5) * combined_trial.bender.FPS))
-        story_pipeline._state(folder, 'rendering')
-        if source is None:
-            timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
-            bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
-        else:
-            target = next(w for w in windows if w.section_id == bulletin['video']['section_id'])
-            intro = combined_trial.INTRO_FRAMES / combined_trial.bender.FPS
-            if 'cut_after' in bulletin['video']:
+        videos = bulletin_contract.selected_videos(bulletin)
+        specs = []
+        intro = combined_trial.INTRO_FRAMES / combined_trial.bender.FPS
+        for video, source in zip(videos, sources):
+            remarks = None
+            clip_frames = 240
+            if video.get('remarks'):
+                folder_name = 'video-remarks' if len(videos) == 1 else f'video-remarks-{video["section_id"]}'
+                remarks = bulletin_dialogue_audio.prepare_remarks(video['remarks'], folder / folder_name, ffmpeg, keys)
+                rate, samples = podcast_video_trial.read_wav(remarks)
+                clip_frames = max(240, math.ceil((len(samples) / rate + 1.5) * combined_trial.bender.FPS))
+            target = next(w for w in windows if w.section_id == video['section_id'])
+            if 'cut_after' in video:
                 target_index = next(i for i, s in enumerate(sections, 1) if s['id'] == target.section_id)
                 rate, before = podcast_video_trial.read_wav(folder / f'{target_index}-before-normalized.wav')
                 _, after = podcast_video_trial.read_wav(folder / f'{target_index}-after-normalized.wav')
@@ -99,13 +97,19 @@ def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], source: tup
                     raise ValueError('Граница записей не совпадает со сценарием')
                 cut_time = target.start - intro + len(before) / rate + .25
             else:
-                # Legacy snapshots put the clip after the complete story.
                 cut_time = target.end - intro - .25
-            # The cut is in our inserted silence, not estimated from speech.
-            cut_frame = round(cut_time * combined_trial.bender.FPS)
-            bulletin_video_pipeline.render(bulletin, audio, parts, source[0], temporary, ffmpeg, source[1],
-                                           section_id=target.section_id, cut_frame=cut_frame,
-                                           clip_frames=clip_frames, remarks=remarks)
+            specs.append({'section_id': target.section_id, 'cut_frame': round(cut_time * combined_trial.bender.FPS),
+                          'clip_frames': clip_frames, 'remarks': remarks, 'source': source[0]})
+        story_pipeline._state(folder, 'rendering')
+        if not specs:
+            timeline, _ = bulletin_full_video_trial.build_timeline(audio, parts, sections)
+            bulletin_layered_video.render(temporary, ffmpeg, sections=sections, windows=windows, timeline=timeline)
+        elif len(specs) == 1:
+            spec = specs[0]
+            bulletin_video_pipeline.render(bulletin, audio, parts, spec['source'], temporary, ffmpeg, sources[0][1],
+                section_id=spec['section_id'], cut_frame=spec['cut_frame'], clip_frames=spec['clip_frames'], remarks=spec['remarks'])
+        else:
+            bulletin_video_pipeline.render_many(bulletin, audio, parts, temporary, ffmpeg, sources[0][1], specs=specs)
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(temporary),
                         '-f', 'null', '-'], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         temporary.replace(output)

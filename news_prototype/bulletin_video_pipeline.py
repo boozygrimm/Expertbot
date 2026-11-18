@@ -38,9 +38,9 @@ def _source_audio(path: Path, ffmpeg: str, duration: float, has_audio: bool) -> 
 
 
 def _mix(plan: timing.Plan, entry: timing.Insert, source_audio: array, source_duration: float,
-         remarks: array | None) -> array:
+         remarks: array | None, *, event=None, samples=None) -> array:
     """Fill only the reserved clip, never touching the original dialogue."""
-    event = plan.events[0]
+    event = event or plan.events[0]
     if not math.isfinite(source_duration) or not 0 < source_duration <= telegram_public_source.MAX_SECONDS:
         raise ValueError('Неверная длительность источника')
     period = round(source_duration * timing.RATE)
@@ -61,7 +61,7 @@ def _mix(plan: timing.Plan, entry: timing.Insert, source_audio: array, source_du
         if len(remarks) + timing.RATE + timing.RATE // 2 > clip_length:
             raise ValueError('Реплики не помещаются во вставку')
         clip = telegram_story_overlay_trial.mix_with_ducking(clip, remarks, timing.RATE)
-    mixed = array('h', plan.samples)
+    mixed = array('h', plan.samples if samples is None else samples)
     start = (event.clip_start - combined_trial.INTRO_FRAMES) * timing.SAMPLES_PER_FRAME
     if start < 0 or any(mixed[start:start + len(clip)]):
         raise ValueError('Вставка пересекает исходный диалог')
@@ -81,6 +81,16 @@ def render(data: dict, dialogue: Path, parts: list[tuple], source: Path,
     the original dialogue at 24 fps, inside digital silence. Remarks, if
     supplied, are an existing mono 24 kHz WAV, not newly generated.
     """
+    return render_many(data, dialogue, parts, output, ffmpeg, ffprobe,
+                       specs=[{'section_id': section_id, 'cut_frame': cut_frame, 'clip_frames': clip_frames,
+                               'source': source, 'remarks': remarks}], single=True)
+
+
+def render_many(data: dict, dialogue: Path, parts: list[tuple], output: Path, ffmpeg: str, ffprobe: str,
+                *, specs: list[dict], single: bool = False) -> Path:
+    """Render separately checked videos in story order with a shared PCM budget."""
+    if not isinstance(specs, list) or not specs:
+        raise ValueError('Нет видеовставок')
     sections = bulletin_contract.validate_bulletin(data)['sections']
     expected = [(s['id'], turn['speaker']) for s in sections for turn in s['turns']]
     if not isinstance(parts, list) or not parts or any(not isinstance(p, tuple) for p in parts):
@@ -91,13 +101,13 @@ def render(data: dict, dialogue: Path, parts: list[tuple], source: Path,
             raise ValueError('Реплики и новости не совпадают')
     elif any(len(p) != 3 for p in parts) or [(p[0], p[2]) for p in parts] != expected:
         raise ValueError('Реплики и новости не совпадают')
-    dialogue, source, output = Path(dialogue), Path(source), Path(output)
+    dialogue, output = Path(dialogue), Path(output)
     paths = [Path(p[1]) for p in parts]
-    inputs = [dialogue, source, *paths] + ([Path(remarks)] if remarks is not None else [])
+    inputs = [dialogue, *paths] + [Path(spec['source']) for spec in specs] + [Path(spec['remarks']) for spec in specs if spec.get('remarks') is not None]
     if (any(p.is_symlink() or not p.is_file() for p in inputs) or output.exists() or output.is_symlink()
             or output.resolve() in {p.resolve() for p in inputs} or not output.parent.is_dir()):
         raise ValueError('Недопустимый исходный файл или результат')
-    if not 0 < source.stat().st_size <= telegram_public_source.MAX_VIDEO:
+    if any(not 0 < Path(spec['source']).stat().st_size <= telegram_public_source.MAX_VIDEO for spec in specs):
         raise ValueError('Неверный размер исходного видео')
     if whole_stories:
         original, _ = bulletin_full_video_trial.build_timeline(dialogue, [(p[0], Path(p[1])) for p in parts], sections)
@@ -108,40 +118,55 @@ def render(data: dict, dialogue: Path, parts: list[tuple], source: Path,
     intro = combined_trial.INTRO_FRAMES / timing.FPS
     section_ranges = [timing.Section(w.section_id, round((w.start - intro) * timing.RATE),
                                      round((w.end - intro) * timing.RATE)) for w in windows]
-    entry = timing.Insert(section_id, cut_frame, clip_frames)
-    plan = timing.plan(speech, section_ranges, [entry])
-    event = plan.events[0]
-    # Check budget and silence before invoking either decoder or renderer.
-    duration, _, _, has_audio = telegram_public_source.inspect(source, ffprobe, ffmpeg)
-    source_audio = _source_audio(source, ffmpeg, duration, has_audio)
-    comments = podcast_video_trial.read_wav(Path(remarks))[1] if remarks is not None else None
-    mixed = _mix(plan, entry, source_audio, duration, comments)
-    extra = entry.before_frames + entry.clip_frames + entry.hold_frames + entry.after_frames
-    target_index = next(i for i, w in enumerate(windows) if w.section_id == section_id)
+    entries = [timing.Insert(spec['section_id'], spec['cut_frame'], spec['clip_frames']) for spec in specs]
+    if [e.cut_frame for e in entries] != sorted(e.cut_frame for e in entries):
+        raise ValueError('Неверный порядок вставок')
+    plan = timing.plan(speech, section_ranges, entries)
+    mixed = plan.samples
     shifted = []
-    for i, w in enumerate(windows):
-        before = extra / timing.FPS if i > target_index else 0
-        after = extra / timing.FPS if i >= target_index else 0
-        shifted.append(bulletin_timing.SectionWindow(w.section_id, w.start + before, w.end + after))
-    active = original[1][:cut_frame] + [None] * extra + original[1][cut_frame:]
-    states = original[2][:cut_frame] + [False] * extra + original[2][cut_frame:]
+    extra_by_id = {e.section_id: e.before_frames + e.clip_frames + e.hold_frames + e.after_frames for e in entries}
+    elapsed = 0
+    for w in windows:
+        extra = extra_by_id.get(w.section_id, 0)
+        shifted.append(bulletin_timing.SectionWindow(w.section_id, w.start + elapsed / timing.FPS,
+                                                      w.end + (elapsed + extra) / timing.FPS))
+        elapsed += extra
+    active, states, previous = [], [], 0
+    for entry in entries:
+        extra = extra_by_id[entry.section_id]
+        active += original[1][previous:entry.cut_frame] + [None] * extra
+        states += original[2][previous:entry.cut_frame] + [False] * extra
+        previous = entry.cut_frame
+    active += original[1][previous:]
+    states += original[2][previous:]
     if combined_trial.INTRO_FRAMES + len(active) + combined_trial.TAIL_FRAMES != plan.total_frames:
         raise ValueError('Аудио и кадровый таймлайн не совпадают')
-    # Clicks are placed in reserved silence; write_sound refuses overlap.
-    click1 = (event.clip_start - combined_trial.INTRO_FRAMES) * timing.SAMPLES_PER_FRAME - round(.09 * timing.RATE)
-    click2 = (event.return_frame - combined_trial.INTRO_FRAMES) * timing.SAMPLES_PER_FRAME
-    section_start = section_ranges[target_index].start_sample
-    video_start = combined_trial.INTRO_FRAMES + (section_start + timing.SAMPLES_PER_FRAME - 1) // timing.SAMPLES_PER_FRAME
+    video_specs, clicks = [], []
+    elapsed = 0
+    for spec, entry, event in zip(specs, entries, plan.events):
+        source = Path(spec['source'])
+        duration, _, _, has_audio = telegram_public_source.inspect(source, ffprobe, ffmpeg)
+        source_audio = _source_audio(source, ffmpeg, duration, has_audio)
+        comments = podcast_video_trial.read_wav(Path(spec['remarks']))[1] if spec.get('remarks') is not None else None
+        mixed = _mix(plan, entry, source_audio, duration, comments, event=event, samples=mixed)
+        clicks.extend([(event.clip_start - combined_trial.INTRO_FRAMES) * timing.SAMPLES_PER_FRAME - round(.09 * timing.RATE),
+                       (event.return_frame - combined_trial.INTRO_FRAMES) * timing.SAMPLES_PER_FRAME])
+        target_index = next(i for i, w in enumerate(windows) if w.section_id == entry.section_id)
+        section_start = section_ranges[target_index].start_sample
+        video_start = combined_trial.INTRO_FRAMES + (section_start + timing.SAMPLES_PER_FRAME - 1) // timing.SAMPLES_PER_FRAME + elapsed
+        video_specs.append({'section_id': entry.section_id, 'path': source, 'start': video_start,
+                            'fullscreen': (event.clip_start, event.return_frame)})
+        elapsed += extra_by_id[entry.section_id]
     with tempfile.TemporaryDirectory(prefix='bulletin-video-', dir=output.parent) as tmp:
         tmp = Path(tmp); audio = tmp / 'dialogue.wav'; partial = tmp / 'video.mp4'
         bender_trial.write_wav(audio, mixed, timing.RATE)
+        kwargs = {'video': video_specs[0]} if single else {'videos': video_specs}
         bulletin_layered_video.render(partial, ffmpeg, sections=sections, windows=shifted,
-            timeline=(audio, active, states), video={'section_id': section_id, 'path': source,
-            'start': video_start, 'fullscreen': (event.clip_start, event.return_frame)}, extra_clicks=(click1, click2))
+            timeline=(audio, active, states), extra_clicks=tuple(clicks), **kwargs)
         subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-i', str(partial), '-f', 'null', '-'],
                        check=True, timeout=240, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                        env=telegram_public_source.media_env())
-        os.link(partial, output)  # atomic no-overwrite, same filesystem
+        os.link(partial, output)
     return output
 
 

@@ -109,10 +109,10 @@ async def approve_for_bulletin(db, owner_id: int, number: int, revision: str, se
         if (review.get('source_url') != story['url'] or review.get('caption_sha256') != video._digest_text(story['summary'])
                 or not item or item.get('revision') != revision or item.get('stage') != 'ready_for_review'):
             return 'stale'
-        if any('video' in section for section in item['sections']):
-            return 'already_selected'
         sections = copy.deepcopy(item['sections'])
         section = next(part for part in sections if part['id'] == section_id)
+        if 'video' in section:
+            return 'already_selected'
         section['video'] = {'section_id': section_id, 'post_url': story['url'],
                             'caption_sha256': review['caption_sha256'], 'video_sha256': review['video_sha256']}
         if 'video_remarks' in section:

@@ -82,13 +82,13 @@ def write_sound(audio: Path, output: Path, dialogue_frames: int, *, clicks: Sequ
 
 
 def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
-           timeline: tuple, video: dict | None = None, extra_clicks: Sequence[int] = ()) -> None:
-    """Render a bulletin; optional local video uses one continuous decoder.
+           timeline: tuple, video: dict | None = None, videos: list[dict] | None = None,
+           extra_clicks: Sequence[int] = ()) -> None:
+    """Render reviewed media with one continuous decoder per video, sequentially.
 
-    The caller supplies already reviewed local media and a prepared timeline.
-    No source download, TTS, delivery or publication occurs here. ``video``
-    identifies one section, its starting frame and its fullscreen frame range;
-    all positions are absolute in the output including the intro.
+    No source download, TTS, delivery or publication occurs here. Video entries
+    identify their sections, starting frames and fullscreen ranges; positions
+    are absolute in the output including the intro.
     """
     if len(sections) != len(windows) or not sections:
         raise ValueError('Разделы и таймлайн не совпадают')
@@ -113,26 +113,34 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
     screen_mask = bulletin_remote_animation.television_mask()
     off_screen = bulletin_remote_animation.unlit_screen()
     total_frames = combined_trial.INTRO_FRAMES + len(active) + combined_trial.TAIL_FRAMES
-    video_frames = set()
-    video_index = None
-    if video is not None:
-        if (not isinstance(video, dict) or set(video) != {'section_id', 'path', 'start', 'fullscreen'}
-                or video['section_id'] not in [s['id'] for s in sections]
-                or type(video['start']) is not int or not isinstance(video['fullscreen'], tuple)
-                or len(video['fullscreen']) != 2 or any(type(x) is not int for x in video['fullscreen'])):
+    if video is not None and videos is not None:
+        raise ValueError('Неверные видеовставки')
+    videos = [video] if video is not None else (videos or [])
+    frame_video = {}
+    seen = set()
+    for item in videos:
+        if (not isinstance(item, dict) or set(item) != {'section_id', 'path', 'start', 'fullscreen'}
+                or item['section_id'] not in [s['id'] for s in sections] or item['section_id'] in seen
+                or type(item['start']) is not int or not isinstance(item['fullscreen'], tuple)
+                or len(item['fullscreen']) != 2 or any(type(x) is not int for x in item['fullscreen'])):
             raise ValueError('Неверная видеовставка')
-        source = Path(video['path'])
+        seen.add(item['section_id'])
+        source = Path(item['path'])
         if source.is_symlink() or not source.is_file() or output.exists() or output.is_symlink():
             raise ValueError('Недопустимый источник или результат')
         if total_frames > 300 * fps:
             raise ValueError('Выпуск превышает пять минут')
-        video_index = next(i for i, s in enumerate(sections) if s['id'] == video['section_id'])
-        video_frames = {n for n in range(combined_trial.INTRO_FRAMES, combined_trial.INTRO_FRAMES + len(active))
-                        if n >= video['start'] and section_index(windows, (n + .5) / fps) == video_index}
-        first, last = video['fullscreen']
-        if (not video_frames or video['start'] != min(video_frames) or not 0 <= first < last <= total_frames
-                or any(n not in video_frames for n in range(first, last))):
+        video_index = next(i for i, s in enumerate(sections) if s['id'] == item['section_id'])
+        frames = [n for n in range(combined_trial.INTRO_FRAMES, combined_trial.INTRO_FRAMES + len(active))
+                  if n >= item['start'] and section_index(windows, (n + .5) / fps) == video_index]
+        first, last = item['fullscreen']
+        if (not frames or item['start'] != frames[0] or not 0 <= first < last <= total_frames
+                or not set(range(first, last)).issubset(frames) or any(n in frame_video for n in frames)):
             raise ValueError('Видеовставка выходит за границы новости')
+        for n in frames:
+            frame_video[n] = (item, len(frames), n == frames[-1])
+    if videos:
+        from news_prototype.telegram_public_source import media_env
         transparent = Image.new('RGBA', bulletin_wide_screen.SIZE)
         video_background = bulletin_wide_screen.compose(speaker_layers=(transparent, transparent)).convert('RGBA')
     with tempfile.TemporaryDirectory(prefix='bulletin-layered-') as tmp:
@@ -144,18 +152,17 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
                    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', str(output)]
         decoder = None
-        if video is not None:
-            from news_prototype.telegram_public_source import media_env
+        def start_decoder(item, count):
             decoder_cmd = [ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file,pipe',
                            '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2', '-stream_loop', '-1',
-                           '-i', str(source), '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
+                           '-i', str(item['path']), '-map', '0:v:0', '-an', '-sn', '-dn', '-vf',
                            f'scale=704:396:force_original_aspect_ratio=decrease,'
                            f'pad=704:396:(ow-iw)/2:(oh-ih)/2:color=black,fps={fps}:start_time=0',
-                           '-frames:v', str(len(video_frames)), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
-            decoder = subprocess.Popen(decoder_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=media_env())
+                           '-frames:v', str(count), '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1']
+            return subprocess.Popen(decoder_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=media_env())
         try:
             process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                                       env=media_env() if video is not None else None)
+                                       env=media_env() if videos else None)
         except BaseException:
             if decoder is not None:
                 decoder.kill(); decoder.wait()
@@ -182,12 +189,21 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                 if index is None and t >= windows[-1].end:
                     index = len(sections) - 1
                 video_frame = None
-                if n in video_frames:
-                    assert decoder is not None and decoder.stdout is not None
+                current = frame_video.get(n)
+                if current:
+                    item, count, last_frame = current
+                    if decoder is None:
+                        decoder = start_decoder(item, count)
+                    assert decoder.stdout is not None
                     pixels = decoder.stdout.read(704 * 396 * 3)
                     if len(pixels) != 704 * 396 * 3:
                         raise ValueError('Неполный кадр исходного видео')
                     video_frame = Image.frombytes('RGB', (704, 396), pixels)
+                    if last_frame:
+                        decoder.stdout.close()
+                        if decoder.wait(timeout=60) != 0:
+                            raise RuntimeError('Не удалось декодировать видео источника')
+                        decoder = None
                     fitted = ImageOps.contain(video_frame, (456, 212), Image.Resampling.LANCZOS)
                     panel = Image.new('RGB', (456, 212), (18, 53, 94))
                     panel.paste(fitted, ((456 - fitted.width) // 2, (212 - fitted.height) // 2))
@@ -211,7 +227,7 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
                     frame = Image.frombytes('RGB', bulletin_wide_screen.SIZE, data)
                     if index is not None and t < windows[-1].end:
                         frame = desk_ticker.apply(frame, tickers[index], t - windows[index].start)
-                    if video_frame is not None and video['fullscreen'][0] <= n < video['fullscreen'][1]:
+                    if video_frame is not None and item['fullscreen'][0] <= n < item['fullscreen'][1]:
                         screen = Image.new('RGB', bulletin_wide_screen.SIZE)
                         screen.paste(video_frame, (110, 56 + (419 - 396) // 2))
                         frame = Image.composite(screen, frame, screen_mask)

@@ -157,7 +157,10 @@ async def run_idle_once(queue, collection, client) -> None:
         try:
             if not await client.supports_bulletins():
                 return
-            video = job.get('bulletin', {}).get('video')
+            bulletin = job.get('bulletin', {})
+            if 'videos' in bulletin and not await client.supports_bulletin_multi_video():
+                return
+            video = bulletin.get('video')
             if video is not None and not await client.supports_bulletin_video():
                 return
             if isinstance(video, dict) and 'remarks' in video and not await client.supports_bulletin_video_remarks():

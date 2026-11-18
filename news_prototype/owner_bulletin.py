@@ -145,20 +145,20 @@ def _payload_from_sections(sections: list[dict]) -> dict:
             clean['image_b64'] = section['image_b64']
         result.append(clean)
     videos = [section['video'] for section in sections if 'video' in section]
-    if len(videos) > 1:
-        raise ValueError('В выпуске поддерживается одно видео')
     payload = {'sections': result}
-    if videos:
-        if not isinstance(videos[0], dict):
-            raise ValueError('Неверное видео')
-        payload['video'] = videos[0]
-        selected = next((section for section in sections if section['id'] == videos[0].get('section_id')
-                         and 'video' in section), None)
-        if selected is None:
+    for section in sections:
+        if 'video' not in section:
+            continue
+        video = section['video']
+        if not isinstance(video, dict) or video.get('section_id') != section['id']:
             raise ValueError('Видео привязано к другой новости')
-        if (videos[0].get('remarks') != selected.get('video_remarks') or
-                videos[0].get('cut_after') != selected.get('video_cut_after')):
+        if (video.get('remarks') != section.get('video_remarks') or
+                video.get('cut_after') != section.get('video_cut_after')):
             raise ValueError('Видео не совпадает с проверенным сценарием')
+    if len(videos) == 1:
+        payload['video'] = videos[0]
+    elif videos:
+        payload['videos'] = videos
     return bulletin_contract.validate_bulletin(payload)
 
 
@@ -227,15 +227,16 @@ async def change_video_remarks(db, owner_id: int, number: int, expected: str, se
         return 'unchanged'
     for part in sections:
         part.pop('video', None)
-        part.pop('video_remarks', None)
+    section.pop('video_remarks', None)
     if remarks is not None:
         section['video_remarks'] = remarks
     # Enforce the full text budget even before media is selected.
     payload = _payload_from_sections(sections)
     spoken = sum(len(turn['text']) for s in payload['sections'] for turn in s['turns'])
     count = sum(len(s['turns']) for s in payload['sections'])
-    if remarks and (spoken + sum(len(t['text']) for t in remarks) > bulletin_limits.MAX_SPOKEN_CHARS
-                    or count + len(remarks) > bulletin_contract.MAX_TURNS):
+    all_remarks = [t for s in sections for t in s.get('video_remarks', [])]
+    if (spoken + sum(len(t['text']) for t in all_remarks) > bulletin_limits.MAX_SPOKEN_CHARS
+            or count + len(all_remarks) > bulletin_contract.MAX_TURNS):
         raise ValueError('Выпуск с этими репликами слишком длинный')
     new_rev = revision(item['stories'], sections)
     if new_rev == expected:

@@ -268,7 +268,7 @@ async def use_video_confirmed(message, owner_id: int, data: dict):
                              'Рендер не запускался; он потребует отдельного подтверждения.', parse_mode=None)
         return await show_review(message, owner_id, item)
     return await message.answer('Видео не выбрано: исходник не был подтверждён или версия изменилась. '
-                                'В одном выпуске пока поддерживается одно видео. Открой вестник заново.', parse_mode=None)
+                                'Открой вестник заново.', parse_mode=None)
 
 
 async def shorten_confirmed(message, owner_id: int, data: dict):
@@ -474,15 +474,17 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                           'В готовом видео нужно проверить голоса и полноту речи; анимация говорящих приблизительная. '
                           'Если выпуск превысит пять минут, он не будет обрезан или автоматически повторён. '
                           'Видео придёт только владельцу для проверки; публикации в канал не будет.')
-                selected_video = next((s for s in item['sections'] if s.get('video')), None)
-                if selected_video:
-                    extra = ('Поверх видео прозвучат две показанные реплики: их совместная озвучка потребует дополнительного запроса Gemini. '
-                             if selected_video['video'].get('remarks') else 'Без реплик поверх видео. ')
-                    place = ('между отмеченными репликами новости' if selected_video['video'].get('cut_after')
-                             else 'после всей новости')
-                    prompt += (f' В выпуске выбрано видео новости №{selected_video["id"]}: студия, '
-                               f'затем около 10 секунд на весь экран со звуком {place}. ' + extra +
-                               'Если источник изменился или недоступен, выпуск не соберётся.')
+                selected_videos = [s for s in item['sections'] if s.get('video')]
+                if selected_videos:
+                    descriptions = []
+                    for selected in selected_videos:
+                        video = selected['video']
+                        place = 'между репликами' if video.get('cut_after') else 'после новости'
+                        remarks = 'с репликами' if video.get('remarks') else 'без реплик'
+                        descriptions.append(f'№{selected["id"]}: {place}, {remarks}')
+                    prompt += (' Видео: ' + '; '.join(descriptions) + '. Каждое видео идёт в студии и около '
+                               '10 секунд на весь экран со звуком; реплики поверх требуют дополнительных запросов Gemini. '
+                               'Если любой источник изменился или недоступен, выпуск не соберётся.')
                 confirmation = 'render_bulletin'
             else:
                 stage, _ = await owner_bulletin_admission.status(db.db, owner, item['bulletin_id'])

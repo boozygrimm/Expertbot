@@ -45,7 +45,7 @@ SYSTEM = '''Ты редактор короткого русского новос
 "evidence":"дословная цитата из этой новости"},{"speaker":"Киберсенсей",
 "text":"короткая шутка","kind":"comment","evidence":""}]}]}.
 Не произноси ссылки. Разделы должны точно соответствовать числу и порядку новостей.
-Для одной новости с video_candidate=true при уместности можно добавить в этот
+Для новостей с video_candidate=true при уместности можно добавить в каждый такой
 раздел поле video_remarks: ровно две короткие реплики разных ведущих в формате
 [{"speaker":"Бендер","text":"..."},{"speaker":"Киберсенсей","text":"..."}].
 Они прозвучат поверх видео, если владелец его отдельно выберет. Чтобы после
@@ -115,7 +115,7 @@ def parse_draft(raw: str, stories: list[dict]) -> dict:
     sections = data.get('sections')
     if data.get('decision') != 'draft' or not isinstance(sections, list) or len(sections) != len(sources):
         raise ValueError('Не все новости включены в вестник')
-    result, speakers, spoken, turns_count, video_remarks_count = [], set(), 0, 0, 0
+    result, speakers, spoken, turns_count = [], set(), 0, 0
     for section, source in zip(sections, sources):
         if not isinstance(section, dict) or type(section.get('id')) is not int or section['id'] != source['id']:
             raise ValueError('Изменён порядок или номер новости')
@@ -158,10 +158,9 @@ def parse_draft(raw: str, stories: list[dict]) -> dict:
             raise ValueError('Раздел слишком длинный для редактирования в Telegram')
         entry = {'id': source['id'], 'url': source['url'], 'ticker': ticker.strip(), 'turns': checked}
         if 'video_remarks' in section:
-            if not source['video_candidate'] or video_remarks_count:
-                raise ValueError('Реплики допустимы только для одного найденного видео')
+            if not source['video_candidate']:
+                raise ValueError('Реплики допустимы только для найденного видео')
             remarks = validate_video_remarks(section['video_remarks'])
-            video_remarks_count += 1
             turns_count += len(remarks)
             spoken += sum(len(t['text']) for t in remarks)
             entry['video_remarks'] = remarks

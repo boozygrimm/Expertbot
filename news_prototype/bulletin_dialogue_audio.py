@@ -173,9 +173,12 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
     folder = Path(folder)
     folder.mkdir(mode=0o700, parents=False, exist_ok=False)
     parts = []
+    videos = {v['section_id']: v for v in bulletin_contract.selected_videos(bulletin)}
+    reserved = sum((e.before_frames + e.clip_frames + e.hold_frames + e.after_frames) / bulletin_video_timing_plan.FPS
+                   for e in (bulletin_video_timing_plan.Insert(v['section_id'], 1, 240) for v in videos.values()))
     for index, section in enumerate(bulletin['sections'], 1):
         print(f'Озвучиваю новость {index} из {len(bulletin["sections"])}...', flush=True)
-        video = bulletin.get('video', {})
+        video = videos.get(section['id'], {})
         cut = video.get('cut_after') if video.get('section_id') == section['id'] else None
         raw, normalized = folder / f'{index}-raw.wav', folder / f'{index}-normalized.wav'
         if cut is not None:
@@ -185,8 +188,6 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
             # Completed WAVs are retained on failure; never retry a job.
             partial = parts + [(section['id'], before)]
             try:
-                insert = bulletin_video_timing_plan.Insert(section['id'], 1, 240)
-                reserved = (insert.before_frames + insert.clip_frames + insert.hold_frames + insert.after_frames) / bulletin_video_timing_plan.FPS
                 bulletin_timing.section_windows(partial, max_seconds=bulletin_timing.MAX_SECONDS - reserved)
             except bulletin_timing.BulletinTooLong:
                 podcast_audio_trial.assemble_wav([p for _, p in partial], folder / 'dialogue.wav')
@@ -208,10 +209,7 @@ def prepare(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> tuple[Pat
             # Once completed audio and fixed intro/tail already exceed the
             # entire budget, more requests cannot make it shorter. Keep the
             # available recordings intact and stop without rendering.
-            max_seconds = bulletin_timing.MAX_SECONDS
-            if 'video' in bulletin:
-                insert = bulletin_video_timing_plan.Insert(bulletin['video']['section_id'], 1, 240)
-                max_seconds -= (insert.before_frames + insert.clip_frames + insert.hold_frames + insert.after_frames) / bulletin_video_timing_plan.FPS
+            max_seconds = bulletin_timing.MAX_SECONDS - reserved
             bulletin_timing.section_windows(parts, max_seconds=max_seconds)
         except bulletin_timing.BulletinTooLong:
             podcast_audio_trial.assemble_wav([path for _, path in parts], folder / 'dialogue.wav')
