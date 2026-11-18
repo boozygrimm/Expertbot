@@ -11,13 +11,14 @@ from handlers import owner_video_media as media
 
 
 @pytest.mark.asyncio
-async def test_conversion_keeps_complete_landscape_within_circle_and_audio(tmp_path):
+@pytest.mark.parametrize('size,box', [('320x180', '70:0:180:180'), ('180x320', '0:70:180:180')])
+async def test_conversion_center_crops_without_borders_and_keeps_audio(tmp_path, size, box):
     ffmpeg = pytest.importorskip('imageio_ffmpeg').get_ffmpeg_exe()
     ffprobe = shutil.which('ffprobe')
     if not ffprobe:
         pytest.skip('ffprobe not installed')
     source, output = tmp_path/'source.mp4', tmp_path/'note.mp4'
-    subprocess.run([ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:r=24',
+    subprocess.run([ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', f'color=c=red:s={size}:r=24,drawbox={box}:color=green:t=fill',
         '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=24000', '-t', '2', '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(source)], check=True)
     converted_duration = await media.make_note(source, output, ffmpeg=ffmpeg, ffprobe=ffprobe)
@@ -32,13 +33,12 @@ async def test_conversion_keeps_complete_landscape_within_circle_and_audio(tmp_p
     subprocess.run([ffmpeg, '-v', 'error', '-ss', '1', '-i', str(output), '-frames:v', '1', str(frame)], check=True)
     with Image.open(frame) as im:
         im = im.convert('RGB')
-        # The corners of the red frame remain inside the circular mask, with
-        # a small safety margin against codec artefacts and Telegram's crop.
-        for x, y in ((39, 128), (440, 128), (39, 351), (440, 351)):
-            assert math.hypot(x-240, y-240) < 240
+        # Green central square fills even the outermost pixels. The red outer
+        # strips are cropped for both landscape and portrait input.
+        for x, y in ((10, 10), (469, 10), (10, 469), (469, 469), (240, 240)):
             r, g, b = im.getpixel((x, y))
-            assert r > 150 and g < 80 and b < 80
-        assert max(im.getpixel((10, 10))) < 40
+            assert g > 70 and r < 60 and b < 60
+
 
 
 @pytest.mark.asyncio

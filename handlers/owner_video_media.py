@@ -70,11 +70,10 @@ async def make_note(source: Path, target: Path, *, ffmpeg: str = 'ffmpeg', ffpro
     await _run([ffmpeg, '-nostdin', '-v', 'error', '-xerror', '-n',
         '-protocol_whitelist', 'file,pipe', '-format_whitelist', FORMATS, '-i', str(source),
         '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '-1', '-map_chapters', '-1',
-        # Fit the whole rectangular frame inside the *circle*, not just the
-        # surrounding square: the scaled diagonal must be <= circle diameter.
-        '-vf', "scale=w='max(2,trunc(iw*470/sqrt(iw*iw+ih*ih)/2)*2)':"
-               "h='max(2,trunc(ih*470/sqrt(iw*iw+ih*ih)/2)*2)',"
-               f'pad={SIZE}:{SIZE}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1',
+        # Fill the square so Telegram's circular mask has no black bars.
+        # Center-crop the longer side; the circle also hides square corners.
+        '-vf', f'scale={SIZE}:{SIZE}:force_original_aspect_ratio=increase,'
+               f'crop={SIZE}:{SIZE},setsar=1',
         '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
         '-maxrate', '1800k', '-bufsize', '3600k', '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', str(target)])

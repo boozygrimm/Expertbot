@@ -68,7 +68,44 @@ async def _group(bot, chat_id: int) -> str:
     return str(chat.title or 'Без названия')[:100]
 
 
-async def _list(callback, page: int) -> None:
+async def cleanup_bot_messages(bot, chat_id: int, message_ids, *, keep=()):
+    """Best-effort deletion of IDs taken only from this bot's sent messages."""
+    kept = set(keep)
+    for message_id in dict.fromkeys(message_ids or []):
+        if type(message_id) is not int or message_id <= 0 or message_id in kept:
+            continue
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception as exc:
+            logger.debug('Не удалось удалить служебное сообщение: %s', type(exc).__name__)
+
+
+async def track_bot_message(state, token, sent, bot, chat_id):
+    """Track only bot-created messages for the current video input."""
+    message_id = getattr(sent, 'message_id', None)
+    if type(message_id) is not int or message_id <= 0:
+        return
+    async with tools._input_lock:
+        current = await state.get_data()
+        active = (isinstance(current, dict) and current.get('action') == 'owner_send_video'
+                  and current.get('input_token') == token)
+        if active:
+            ids = list(current.get('video_bot_messages') or [])
+            if message_id not in ids:
+                ids.append(message_id)
+                await state.update_data(video_bot_messages=ids)
+    if not active:
+        # Preparation may finish after cancellation; don't leave a late preview.
+        await cleanup_bot_messages(bot, chat_id, [message_id])
+
+
+async def input_notice(message, state, data, text):
+    sent = await message.answer(text, parse_mode=None)
+    await track_bot_message(state, data.get('input_token'), sent, message.bot, message.chat.id)
+    return sent
+
+
+async def _list(callback, page: int, *, bot=None, replace: bool = False) -> None:
     if page < 0 or page > 10000:
         raise ValueError('Неверная страница')
     rows = await db.auth_chats.find({'status': 'approved', 'chat_id': {'$lt': 0}},
@@ -95,6 +132,8 @@ async def _list(callback, page: int) -> None:
             'На этой странице нет доступных групп. Проверь другие страницы или доступ к группам в пульте.' if rows else
             'Разрешённых групп не найдено. Проверь доступ к группам в пульте.')
     await callback.message.answer(text, reply_markup=_buttons(b), parse_mode=None)
+    if replace:
+        await cleanup_bot_messages(bot, callback.message.chat.id, [callback.message.message_id])
 
 
 # Telegram's error text may contain URLs, file identifiers or other private
@@ -180,19 +219,19 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
         return
     mode = data.get('mode')
     if mode not in ('video', 'note'):
-        return await message.answer('Ввод устарел. Открой отправку заново.', parse_mode=None)
+        return await input_notice(message, state, data, 'Ввод устарел. Открой отправку заново.')
     video, note, document = message.video, message.video_note, message.document
     media = video or note or document
     if not media or (document and getattr(document, 'mime_type', '') not in ('video/mp4', 'application/octet-stream')):
-        return await message.answer('Пришли видео, кружок или MP4-файл.', parse_mode=None)
+        return await input_notice(message, state, data, 'Пришли видео, кружок или MP4-файл.')
     file_id = getattr(media, 'file_id', None)
     if not isinstance(file_id, str) or not 1 <= len(file_id) <= 1024:
-        return await message.answer('Не удалось получить видео. Пришли его снова.', parse_mode=None)
+        return await input_notice(message, state, data, 'Не удалось получить видео. Пришли его снова.')
     caption = (message.caption or '') if mode == 'video' else ''
     if len(caption.encode('utf-16-le')) // 2 > 1024:
-        return await message.answer('Подпись слишком длинная: максимум 1024 символа Telegram.', parse_mode=None)
+        return await input_notice(message, state, data, 'Подпись слишком длинная: максимум 1024 символа Telegram.')
     if mode == 'note' and getattr(media, 'duration', None) is not None and media.duration > 60:
-        return await message.answer('Кружок может длиться до 60 секунд. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
+        return await input_notice(message, state, data, 'Кружок может длиться до 60 секунд. Обрежь видео в Telegram и пришли его снова.')
     direct = bool((mode == 'video' and video) or (mode == 'note' and note))
     converted_info = None
     stage = 'download'
@@ -201,9 +240,9 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
         if not direct:
             size = getattr(media, 'file_size', None)
             if type(size) is not int or not 0 < size <= owner_video_media.MAX_BYTES:
-                return await message.answer('Для преобразования нужен MP4 до 20 МБ. Обрежь видео в Telegram и пришли снова.', parse_mode=None)
+                return await input_notice(message, state, data, 'Для преобразования нужен MP4 до 20 МБ. Обрежь видео в Telegram и пришли снова.')
             stage = 'preparation_notice'
-            await message.answer('Готовлю предпросмотр в личке. В группу ничего пока не отправляю.', parse_mode=None)
+            await input_notice(message, state, data, 'Готовлю предпросмотр в личке. В группу ничего пока не отправляю.')
             buffer = _LimitedBuffer()
             stage = 'download'
             await asyncio.wait_for(message.bot.download(file_id, destination=buffer), timeout=120)
@@ -237,6 +276,7 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
                         video=types.BufferedInputFile(raw, filename='video.mp4'), caption=caption or None,
                         parse_mode=None)
                     file_id = sent.video.file_id
+                await track_bot_message(state, data.get('input_token'), sent, message.bot, message.chat.id)
                 if not isinstance(file_id, str) or not 1 <= len(file_id) <= 1024:
                     raise ValueError('Нет идентификатора предпросмотра')
         stage = 'group_check'
@@ -248,27 +288,29 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
         steps = {'download': 'скачивании файла', 'preview_note': 'отправке предпросмотра кружка',
                  'preview_video': 'отправке предпросмотра видео', 'group_check': 'проверке группы',
                  'preparation_notice': 'отправке сообщения о подготовке'}
-        return await message.answer(f'Ошибка Telegram при {steps.get(stage, "подготовке видео")}. '
-                                    f'{explanation} В группу ничего не отправлено.', parse_mode=None)
+        return await input_notice(message, state, data, f'Ошибка Telegram при {steps.get(stage, "подготовке видео")}. '
+                                    f'{explanation} В группу ничего не отправлено.')
     except owner_video_media.VideoError as exc:
-        return await message.answer(str(exc), parse_mode=None)
+        return await input_notice(message, state, data, str(exc))
     except (ValueError, KeyError):
-        return await message.answer('Не удалось проверить файл или доступ к группе. Ничего не отправлено в группу.', parse_mode=None)
+        return await input_notice(message, state, data, 'Не удалось проверить файл или доступ к группе. Ничего не отправлено в группу.')
     except Exception as exc:
         logger.warning('Не удалось подготовить отправку видео: %s stage=%s', type(exc).__name__, stage)
-        return await message.answer('Не удалось подготовить видео или проверить группу. В группу ничего не отправлено.', parse_mode=None)
+        return await input_notice(message, state, data, 'Не удалось подготовить видео или проверить группу. В группу ничего не отправлено.')
     # A slow download/preview must not resurrect an input cancelled in the meantime.
     async with tools._input_lock:
         current = await state.get_data()
         if current.get('action') != 'owner_send_video' or current.get('input_token') != data.get('input_token'):
-            return await message.answer('Ввод уже отменён или заменён. В группу ничего не отправлено.', parse_mode=None)
+            return
+        cleanup_ids = list(current.get('video_bot_messages') or [])
         await state.clear()
     token = secrets.token_hex(16)
     now = datetime.now(timezone.utc)
     await db.db.owner_video_confirmations.delete_many({'expires_at': {'$lt': now}})
     confirmation = {'_id': token, 'owner_id': message.from_user.id,
         'chat_id': data['chat_id'], 'title': title, 'mode': mode, 'file_id': file_id,
-        'caption': caption, 'stage': 'ready', 'expires_at': now + timedelta(minutes=15)}
+        'caption': caption, 'stage': 'ready', 'expires_at': now + timedelta(minutes=15),
+        'cleanup_ids': cleanup_ids}
     if converted_info:
         confirmation.update(converted_info)
     await db.db.owner_video_confirmations.insert_one(confirmation)
@@ -292,11 +334,15 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
     parts = (callback.data or '').split(':')
     op = parts[1] if len(parts) > 1 else ''
     try:
-        if op == 'open' and len(parts) == 2:
-            await state.clear()
-            return await _list(callback, 0)
+        if op in ('open', 'back') and len(parts) == 2:
+            async with tools._input_lock:
+                previous = await state.get_data()
+                await state.clear()
+            if isinstance(previous, dict) and previous.get('action') == 'owner_send_video':
+                await cleanup_bot_messages(bot, callback.message.chat.id, previous.get('video_bot_messages'))
+            return await _list(callback, 0, bot=bot, replace=(op == 'back'))
         if op == 'page' and len(parts) == 3 and parts[2].isascii() and parts[2].isdigit():
-            return await _list(callback, int(parts[2]))
+            return await _list(callback, int(parts[2]), bot=bot, replace=True)
         if op in ('chat', 'format') and len(parts) == (3 if op == 'chat' else 4):
             chat_id = int(parts[2])
             title = await _group(bot, chat_id)
@@ -304,24 +350,29 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 b = InlineKeyboardBuilder()
                 b.button(text='🎬 Обычное видео', callback_data=f'ovideo:format:{chat_id}:video')
                 b.button(text='⭕ Кружок', callback_data=f'ovideo:format:{chat_id}:note')
-                b.button(text='⬅️ К списку чатов', callback_data='ovideo:open')
+                b.button(text='⬅️ К списку чатов', callback_data='ovideo:back')
                 await callback.answer()
-                return await callback.message.answer(f'Группа «{title}» (ID {chat_id}). Выбери формат:',
-                                                     reply_markup=_buttons(b), parse_mode=None)
+                await callback.message.answer(f'Группа «{title}» (ID {chat_id}). Выбери формат:',
+                                              reply_markup=_buttons(b), parse_mode=None)
+                return await cleanup_bot_messages(bot, callback.message.chat.id, [callback.message.message_id])
             mode = parts[3]
             if mode not in ('video', 'note'):
                 raise ValueError('Неверный формат')
             prompt = (f'Группа «{title}» (ID {chat_id}). Пришли видео, кружок или MP4-файл. '
-                      + ('Для кружка — до 60 секунд и до 20 МБ при преобразовании; кадр целиком, с полями. '
+                      + ('Для кружка — до 60 секунд и до 20 МБ при преобразовании; края кадра будут обрезаны. '
                          'Подписи у кружка нет. ' if mode == 'note' else
                          'Подпись видео сохранится; для MP4-файла или кружка при преобразовании лимит 20 МБ. ')
                       + 'Публикация — только после отдельного подтверждения.')
-            return await tools.ask(callback, state, 'owner_send_video', prompt, chat_id=chat_id, mode=mode)
+            await tools.ask(callback, state, 'owner_send_video', prompt, chat_id=chat_id, mode=mode)
+            return await cleanup_bot_messages(bot, callback.message.chat.id, [callback.message.message_id])
         if op not in ('send', 'cancel') or len(parts) != 3 or len(parts[2]) != 32 or any(c not in '0123456789abcdef' for c in parts[2]):
             raise ValueError('Неверная кнопка')
         token = parts[2]
-        query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready',
-                 'expires_at': {'$gt': datetime.now(timezone.utc)}}
+        query = {'_id': token, 'owner_id': callback.from_user.id, 'stage': 'ready'}
+        # Expiration blocks publication, but the owner can still cancel and
+        # clean up an expired confirmation that remains in the database.
+        if op == 'send':
+            query['expires_at'] = {'$gt': datetime.now(timezone.utc)}
         record = await db.db.owner_video_confirmations.find_one(query)
         if not record:
             return await callback.answer('Подтверждение уже использовано или устарело. Проверь чат.', show_alert=True)
@@ -330,6 +381,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             if not result.modified_count:
                 return await callback.answer('Действие уже обрабатывается. Проверь чат.', show_alert=True)
             await callback.answer('Отменено')
+            await cleanup_bot_messages(bot, callback.message.chat.id, record.get('cleanup_ids'),
+                                       keep=[callback.message.message_id])
             return await callback.message.edit_text('Отменено. Видео в группу не отправлено.', parse_mode=None)
         chat_id = _chat_id(record['chat_id'])
         title = await _group(bot, chat_id)
@@ -368,6 +421,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 logger.warning('Не удалось проверить предпросмотр перед отправкой: %s', type(exc).__name__)
                 await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'},
                     {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
+                await cleanup_bot_messages(bot, callback.message.chat.id,
+                    list(claimed.get('cleanup_ids') or []) + [callback.message.message_id])
                 return await callback.message.answer('Не удалось получить предпросмотр или проверить группу. '
                     'В группу ничего не отправлено. Начни отправку заново.', parse_mode=None)
         try:
@@ -382,16 +437,22 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                                             caption=claimed.get('caption') or None, parse_mode=None)
         except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
             await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
+            await cleanup_bot_messages(bot, callback.message.chat.id,
+                list(claimed.get('cleanup_ids') or []) + [callback.message.message_id])
             return await callback.message.answer('Telegram не принял видео. Проверь права бота, формат и ограничения Telegram; повтор возможен только через новую отправку.', parse_mode=None)
         except Exception as exc:
             logger.warning('Результат отправки видео неизвестен: %s', type(exc).__name__)
             await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'uncertain'}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
+            await cleanup_bot_messages(bot, callback.message.chat.id,
+                list(claimed.get('cleanup_ids') or []) + [callback.message.message_id])
             return await callback.message.answer('Не удалось подтвердить результат. Проверь группу: видео могло быть отправлено. Автоматического повтора нет.', parse_mode=None)
         try:
             await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'},
                 {'$set': {'stage': 'sent', 'message_id': sent.message_id}, '$unset': {'file_id': '', 'caption': '', 'sha256': '', 'size': '', 'duration': '', 'delivery': ''}})
         except Exception as exc:
             logger.warning('Не удалось сохранить результат отправки видео: %s', type(exc).__name__)
+        await cleanup_bot_messages(bot, callback.message.chat.id,
+            list(claimed.get('cleanup_ids') or []) + [callback.message.message_id])
         await callback.message.answer(f'Видео отправлено в группу «{title}» (ID {claimed["chat_id"]}).', parse_mode=None)
     except ValueError:
         await callback.answer('Группа недоступна или кнопка устарела. Открой отправку заново.', show_alert=True)
