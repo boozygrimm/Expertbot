@@ -401,3 +401,47 @@ def test_recognizes_common_video_note_rejections():
                         ('There is no video note in the request', 'no_video_note')]:
         exc = TelegramBadRequest(method=GetFile(file_id='not-logged'), message=error)
         assert sender._telegram_error(exc)[0] == code
+
+
+def test_public_telegram_symbol_is_logged_without_logging_arbitrary_input():
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import SendVideoNote
+    method = SendVideoNote(chat_id=1, video_note='untrusted-file-id')
+    # These actual public Telegram error names were hidden by the older filter.
+    for name in ('FILE_PARTS_INVALID', 'FILE_CONTENT_TYPE_INVALID', 'VOICE_MESSAGES_FORBIDDEN'):
+        exc = TelegramBadRequest(method=method, message='Bad Request: ' + name)
+        assert sender._telegram_symbol(exc) == name
+    for message in ('Bad Request: https://private.example/secret',
+                    'Bad Request: 123456:BOT_TOKEN',
+                    'Bad Request: unexpected arbitrary words',
+                    'Bad Request: FILE_PARTS_INVALID private data'):
+        exc = TelegramBadRequest(method=method, message=message)
+        assert sender._telegram_symbol(exc) == 'unavailable'
+    unknown = TelegramBadRequest(method=method, message='Bad Request: NEVER_SEEN_SECRET_IDENTIFIER')
+    assert sender._telegram_symbol(unknown).startswith('sha256-')
+    assert 'SECRET' not in sender._telegram_symbol(unknown)
+
+
+@pytest.mark.asyncio
+async def test_public_telegram_symbol_visible_in_preview_log_without_confirmation(ctx, caplog):
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import SendVideoNote
+    await ctx.db.auth_chats.insert_one({'chat_id': -101, 'title': 'Друзья', 'status': 'approved'})
+    data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
+    ctx.state.get_data.return_value = data
+    ctx.message.video = SimpleNamespace(file_id='input-secret', file_size=12, duration=2)
+    async def download(file_id, destination): destination.write(b'1234ftypxxxx')
+    async def make_note(source, target):
+        target.write_bytes(b'note')
+        return 2.4
+    ctx.bot.download.side_effect = download
+    ctx.bot.send_video_note.side_effect = TelegramBadRequest(
+        method=SendVideoNote(chat_id=1, video_note='input-secret'),
+        message='Bad Request: FILE_CONTENT_TYPE_INVALID')
+    with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
+        await sender.receive_video(ctx.message, ctx.state, data)
+    assert 'stage=preview_note' in caplog.text
+    assert 'telegram_code=FILE_CONTENT_TYPE_INVALID' in caplog.text
+    assert 'input-secret' not in caplog.text
+    assert await ctx.db.owner_video_confirmations.count_documents({}) == 0
+    assert all(call.kwargs['chat_id'] != -101 for call in ctx.bot.send_video_note.await_args_list)
