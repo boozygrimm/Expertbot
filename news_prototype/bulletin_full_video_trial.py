@@ -1,8 +1,8 @@
 """One-off video preview from the already generated bulletin dialogue.
 
 No TTS, queue, database, service or publication operations. Candidate speaker
-boundaries are only heuristics; ambiguous sections have no talking-mouth
-animation. This is a review preview, not a verified speaker alignment.
+boundaries are only heuristics and can be wrong. This is a review preview,
+not verified speaker alignment or phoneme-level lip sync.
 """
 from __future__ import annotations
 
@@ -59,7 +59,47 @@ def candidate_split(samples, turns):
     return candidates[0] if len(candidates) == 1 else None
 
 
-def build_timeline(audio: Path, parts: list[tuple[int, Path]], sections: list[dict]):
+def approximate_ranges(samples, turns, rate):
+    """Estimate turn boundaries by relative text length, preferring nearby pauses.
+
+    This is not diarization: real speaking rates and pauses can differ. Every
+    turn gets an interval even when no suitable silence is present.
+    """
+    if len(turns) == 1:
+        return [(0, len(samples), turns[0]['speaker'])]
+    split = candidate_split(samples, turns)
+    if split is not None:
+        boundaries = [round(split * rate)]
+    else:
+        weights = [max(1, len(t['text'].strip())) for t in turns]
+        total = sum(weights)
+        targets = [round(len(samples) * sum(weights[:i]) / total) for i in range(1, len(turns))]
+        levels = bender_trial.levels(samples, rate)
+        peak = max(levels, default=0)
+        threshold = min(peak * .15, max(35.0, peak * .035)) if peak else 0
+        pauses = []
+        start = None
+        for i in range(len(levels) + 1):
+            silent = i < len(levels) and levels[i] <= threshold
+            if silent and start is None:
+                start = i
+            elif not silent and start is not None:
+                if (i - start) / bender_trial.FPS >= .15:
+                    pauses.append(round((start + i) * rate / (2 * bender_trial.FPS)))
+                start = None
+        boundaries = []
+        for i, target in enumerate(targets):
+            # Do not let a snapped pause swallow the neighbouring turn.
+            low = (targets[i - 1] + target) // 2 if i else 1
+            high = (target + targets[i + 1]) // 2 if i + 1 < len(targets) else len(samples) - 1
+            margin = min(round(rate * .65), round(len(samples) * .12))
+            choices = [p for p in pauses if low < p < high and abs(p - target) <= margin]
+            boundaries.append(min(choices, key=lambda p: abs(p - target)) if choices else target)
+    edges = [0, *boundaries, len(samples)]
+    return [(edges[i], edges[i + 1], turn['speaker']) for i, turn in enumerate(turns)]
+
+
+def build_timeline(audio: Path, parts: list[tuple[int, Path]], sections: list[dict], *, group_cuts=None):
     """Verify unaltered PCM assembly, then estimate active speakers by section."""
     with tempfile.TemporaryDirectory(prefix='bulletin-check-') as tmp:
         rebuilt = Path(tmp) / 'rebuilt.wav'
@@ -68,6 +108,8 @@ def build_timeline(audio: Path, parts: list[tuple[int, Path]], sections: list[di
         _, expected = podcast_video_trial.read_wav(rebuilt)
     if joined != expected:
         raise ValueError('Общий звук не совпадает с записями новостей')
+    if len(parts) != len(sections):
+        raise ValueError('Разделы и записи не совпадают')
     fps = bender_trial.FPS
     ranges, cursor, estimates = [], 0, []
     gap = round(rate * podcast_audio_trial.GAP_MS / 1000)
@@ -76,20 +118,19 @@ def build_timeline(audio: Path, parts: list[tuple[int, Path]], sections: list[di
             raise ValueError('Неверный порядок новостей')
         _, samples = podcast_video_trial.read_wav(path)
         turns = section['turns']
-        names = {turn['speaker'] for turn in turns}
-        if len(names) == 1:
-            split, speaker = None, turns[0]['speaker']
-            ranges.append((cursor, cursor + len(samples), speaker))
-            estimates.append('один ведущий по сценарию')
+        cut = (group_cuts or {}).get(section_id)
+        if cut is not None:
+            turn_count, sample_offset = cut
+            if not 0 < turn_count < len(turns) or not 0 < sample_offset < len(samples):
+                raise ValueError('Неверная граница групп реплик')
+            groups = [(0, samples[:sample_offset], turns[:turn_count]),
+                      (sample_offset, samples[sample_offset:], turns[turn_count:])]
         else:
-            split = candidate_split(samples, turns)
-            if split is None:
-                estimates.append('граница неясна, рты неподвижны')
-            else:
-                boundary = cursor + round(split * rate)
-                ranges.extend([(cursor, boundary, turns[0]['speaker']),
-                               (boundary, cursor + len(samples), turns[1]['speaker'])])
-                estimates.append(f'предположительная смена на {boundary / rate:.2f} с аудио')
+            groups = [(0, samples, turns)]
+        for offset, group_samples, group_turns in groups:
+            for start, end, speaker in approximate_ranges(group_samples, group_turns, rate):
+                ranges.append((cursor + offset + start, cursor + offset + end, speaker))
+        estimates.append('приблизительные границы по сценарию и паузам; возможны ошибки')
         cursor += len(samples)
         if index < len(parts):
             cursor += gap

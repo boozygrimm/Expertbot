@@ -103,7 +103,8 @@ def render(output: Path, ffmpeg: str, *, sections: list[dict], windows: list,
     @lru_cache(maxsize=8)
     def frame_bytes(index: int | None, state: tuple[bool, bool, bool]) -> bytes:
         image = sections[index].get('image_b64') if index is not None else None
-        return bulletin_wide_screen.compose(image, speaker_layers=layers[state]).tobytes()
+        return bulletin_wide_screen.compose(image, speaker_layers=layers[state],
+                                            fallback_position=index).tobytes()
 
     fps = bender_trial.FPS
     rate = podcast_video_trial.RATE

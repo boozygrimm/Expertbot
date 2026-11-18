@@ -12,7 +12,7 @@ import imageio_ffmpeg
 from PIL import Image
 import pytest
 
-from news_prototype import bulletin_full_video_trial as trial, combined_trial, podcast_audio_trial, podcast_video_trial
+from news_prototype import bulletin_animation, bulletin_wide_screen, bulletin_full_video_trial as trial, combined_trial, podcast_audio_trial, podcast_video_trial
 from tests.test_bulletin_pipeline import payload as picture_payload
 
 
@@ -56,11 +56,18 @@ def test_real_synthetic_render_uses_existing_sound_and_pictures():
              patch.object(trial.bulletin_duo_content_probe, 'read_worker_env', return_value={}), \
              patch.object(trial, 'send_video_once', return_value='sent') as send, \
              patch.object(combined_trial, 'display', wraps=combined_trial.display) as old_display, \
-             patch.object(combined_trial, 'write_sound', wraps=combined_trial.write_sound) as old_sound:
+             patch.object(combined_trial, 'write_sound', wraps=combined_trial.write_sound) as old_sound, \
+             patch.object(bulletin_wide_screen, 'compose', wraps=bulletin_wide_screen.compose) as compose:
             output = trial.run(job, base, ffmpeg)
             assert output.is_file()
             send.assert_called_once()
             old_sound.assert_called_once()
+            # In the no-pause second story, both presenters are actually
+            # composited with their talking layers; speech is not regenerated.
+            layers = bulletin_animation.frames()
+            calls = [c for c in compose.call_args_list if c.kwargs.get('fallback_position') == 1]
+            for state in ((True, False, False), (False, False, True)):
+                assert any(all(a is b for a, b in zip(c.kwargs['speaker_layers'], layers[state])) for c in calls)
             times = [call.args[3] for call in old_display.call_args_list]
             assert any(.95 < t < 1.2 for t in times)
             assert any(t > 8.7 for t in times)
@@ -100,7 +107,7 @@ def test_real_synthetic_render_uses_existing_sound_and_pictures():
             assert diff.getbbox() is not None
 
 
-def test_timeline_closes_mouths_for_ambiguous_section_and_rejects_changed_audio():
+def test_timeline_estimates_ambiguous_section_and_rejects_changed_audio():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp); a = root / 'a.wav'; b = root / 'b.wav'
         segment(a); segment(b, False)
@@ -108,8 +115,40 @@ def test_timeline_closes_mouths_for_ambiguous_section_and_rejects_changed_audio(
         turns = [{'speaker':'Бендер','text':'Один.'}, {'speaker':'Киберсенсей','text':'Двааа.'}]
         sections = [{'id':1,'turns':turns},{'id':2,'turns':turns}]
         timeline, notes = trial.build_timeline(joined, [(1,a),(2,b)], sections)
-        assert 'предположительная' in notes[0] and 'неподвижны' in notes[1]
+        assert all('приблизительные' in note for note in notes)
         assert any(s == 'Бендер' for s in timeline[1]) and any(s == 'Киберсенсей' for s in timeline[1])
-        assert all(s is None for s in timeline[1][math.ceil(3.35 * 24):])
+        second = slice(math.ceil(3.35 * 24), None)
+        for speaker in ('Бендер', 'Киберсенсей'):
+            assert any(name == speaker and opened for name, opened in zip(timeline[1][second], timeline[2][second]))
         segment(b)
         with pytest.raises(ValueError): trial.build_timeline(joined, [(1,a),(2,b)], sections)
+
+
+def test_multi_turn_estimates_and_known_video_cut():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp); part = root / 'part.wav'
+        samples = segment(part, False)
+        joined = root / 'dialogue.wav'; podcast_audio_trial.assemble_wav([part], joined)
+        turns = [{'speaker': 'Бендер', 'text': 'а' * 60},
+                 {'speaker': 'Киберсенсей', 'text': 'б' * 10},
+                 {'speaker': 'Бендер', 'text': 'в' * 10},
+                 {'speaker': 'Киберсенсей', 'text': 'г' * 20}]
+        sections = [{'id': 1, 'turns': turns}]
+        timeline, _ = trial.build_timeline(joined, [(1, part)], sections,
+                                           group_cuts={1: (2, len(samples) // 2)})
+        active, states = timeline[1:]
+        assert active[round(1.45 * 24)] == 'Киберсенсей'
+        assert active[round(1.55 * 24)] == 'Бендер'
+        assert active[round(2.8 * 24)] == 'Киберсенсей'
+        assert all(any(name == speaker and opened for name, opened in zip(active[start:end], states[start:end]))
+                   for speaker, start, end in [('Бендер', 0, 35), ('Киберсенсей', 30, 36),
+                                               ('Бендер', 36, 48), ('Киберсенсей', 48, 72)])
+        with pytest.raises(ValueError):
+            trial.build_timeline(joined, [(1, part)], sections, group_cuts={1: (4, 100)})
+
+
+def test_zero_audio_and_same_speaker_are_safe():
+    turns = [{'speaker': 'Бендер', 'text': 'один'}, {'speaker': 'Киберсенсей', 'text': 'два'}]
+    ranges = trial.approximate_ranges(array('h', [0] * 24000), turns, 24000)
+    assert ranges == [(0, 12000, 'Бендер'), (12000, 24000, 'Киберсенсей')]
+    assert trial.approximate_ranges(array('h', [0] * 100), turns[:1], 24000) == [(0, 100, 'Бендер')]

@@ -72,8 +72,8 @@ def _run(bulletin: dict, folder: Path, ffmpeg: str, keys: list[str], sources: li
             raise ValueError('Порядок записей и новостей не совпадает')
         windows, _ = bulletin_timing.section_windows(parts)
         # Full-section WAVs do not contain reliable speaker boundaries. The
-        # approved preview's heuristic animates only unambiguous estimates;
-        # speech and both presenters remain intact even without a split.
+        # heuristic estimates turn boundaries, including ambiguous cases. It
+        # can be wrong and never changes the original speech.
         videos = bulletin_contract.selected_videos(bulletin)
         specs = []
         intro = combined_trial.INTRO_FRAMES / combined_trial.bender.FPS

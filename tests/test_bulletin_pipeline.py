@@ -71,7 +71,7 @@ class BulletinPipelineTests(unittest.TestCase):
                 self.assertGreater(red[0], red[2] + 60)
                 self.assertGreater(blue[2], blue[0] + 60)
 
-    def test_missing_picture_replaces_previous_with_neutral_screen(self):
+    def test_missing_picture_replaces_previous_with_joke_card(self):
         import imageio_ffmpeg
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
         data = payload()
@@ -85,7 +85,7 @@ class BulletinPipelineTests(unittest.TestCase):
                             '-frames:v', '1', str(target)], check=True)
             with Image.open(target) as frame:
                 pixel = frame.convert('RGB').getpixel((450, 150))
-            expected = bulletin_wide_screen.compose().getpixel((450, 150))
+            expected = bulletin_wide_screen.compose(fallback_position=1).getpixel((450, 150))
             self.assertLess(sum(abs(a - b) for a, b in zip(pixel, expected)), 15)
 
     def test_overlength_stops_before_video_and_saves_no_partial_result(self):

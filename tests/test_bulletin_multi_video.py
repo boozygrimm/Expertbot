@@ -109,9 +109,12 @@ def test_two_continuous_decoders_and_pcm_mix_in_real_synthetic_render(tmp_path, 
          patch.object(bulletin_video_pipeline.telegram_public_source, 'inspect', return_value=(2., 320, 180, True)), \
          patch.object(bulletin_dialogue_audio, 'request_one', return_value=(wav(), 1.)) as tts, \
          patch.object(bulletin_layered_video.subprocess, 'Popen', wraps=popen) as processes, \
-         patch.object(bulletin_video_pipeline, '_mix', wraps=bulletin_video_pipeline._mix) as mix:
+         patch.object(bulletin_video_pipeline, '_mix', wraps=bulletin_video_pipeline._mix) as mix, \
+         patch.object(bulletin_video_pipeline.bulletin_full_video_trial, 'build_timeline', wraps=bulletin_video_pipeline.bulletin_full_video_trial.build_timeline) as timeline:
         output = bulletin_pipeline.run(data, tmp_path / 'work', imageio_ffmpeg.get_ffmpeg_exe(), ['fake'])
     assert output.stat().st_size > 1000 and tts.call_count == 6 and mix.call_count == 2
+    cuts = timeline.call_args.kwargs['group_cuts']
+    assert set(cuts) == {1, 2} and all(turn_count == 1 and offset > 0 for turn_count, offset in cuts.values())
     assert len([c for c in processes.call_args_list if '-stream_loop' in c.args[0]]) == 2
     plan = mix.call_args_list[0].args[0]
     _, original = podcast_video_trial.read_wav(tmp_path / 'work' / 'dialogue.wav')

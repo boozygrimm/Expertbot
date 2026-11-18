@@ -109,13 +109,25 @@ def render_many(data: dict, dialogue: Path, parts: list[tuple], output: Path, ff
         raise ValueError('Недопустимый исходный файл или результат')
     if any(not 0 < Path(spec['source']).stat().st_size <= telegram_public_source.MAX_VIDEO for spec in specs):
         raise ValueError('Неверный размер исходного видео')
+    windows, _ = bulletin_timing.section_windows([(p[0], Path(p[1])) for p in parts])
+    intro = combined_trial.INTRO_FRAMES / timing.FPS
     if whole_stories:
-        original, _ = bulletin_full_video_trial.build_timeline(dialogue, [(p[0], Path(p[1])) for p in parts], sections)
+        # The cut frame is inside the verified silence between separately
+        # synthesized groups; preserve that known boundary when estimating turns.
+        selected = {v['section_id']: v for v in bulletin_contract.selected_videos(data)}
+        cuts = {}
+        for spec in specs:
+            video = selected.get(spec['section_id'], {})
+            if 'cut_after' in video:
+                window = next(w for w in windows if w.section_id == spec['section_id'])
+                start = round((window.start - intro) * timing.RATE)
+                cuts[spec['section_id']] = (video['cut_after'],
+                                            spec['cut_frame'] * timing.SAMPLES_PER_FRAME - start)
+        original, _ = bulletin_full_video_trial.build_timeline(
+            dialogue, [(p[0], Path(p[1])) for p in parts], sections, group_cuts=cuts)
     else:
         original = podcast_video_trial.dialogue_timeline_from_parts(dialogue, [(Path(p[1]), p[2]) for p in parts])
     _, speech = podcast_video_trial.read_wav(dialogue)
-    windows, _ = bulletin_timing.section_windows([(p[0], Path(p[1])) for p in parts])
-    intro = combined_trial.INTRO_FRAMES / timing.FPS
     section_ranges = [timing.Section(w.section_id, round((w.start - intro) * timing.RATE),
                                      round((w.end - intro) * timing.RATE)) for w in windows]
     entries = [timing.Insert(spec['section_id'], spec['cut_frame'], spec['clip_frames']) for spec in specs]

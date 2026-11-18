@@ -130,7 +130,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         await message.answer_photo(types.BufferedInputFile(decode_thumbnail(section['image_b64']), filename='source.jpg'),
             caption='Картинка для этой новости. Проверь, что она соответствует источнику.', parse_mode=None)
     else:
-        await message.answer('Картинки нет: на экране будет нейтральный фон.', parse_mode=None)
+        await message.answer('Картинки нет: на экране будет шуточная студийная заглушка с ежом.', parse_mode=None)
     source = next((story for story in item.get('stories', []) if story.get('draft_id') == section['id']), None)
     video_status = source.get('telegram_video_status') if source else None
     if section.get('video'):
@@ -142,7 +142,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         hint = ('Сначала посмотри исходник, затем отдельно подтверди его использование и права на видео и звук.'
                 if item.get('mode') == 'direct' else 'Выбор видео доступен только при прямом выборе новостей.')
         await message.answer('В этом посте обнаружено видео. Эта версия его не использует. ' + hint +
-                             ' Иначе останется картинка или нейтральный экран.', parse_mode=None)
+                             ' Иначе останется картинка или шуточная заглушка.', parse_mode=None)
     elif video_status == 'ambiguous':
         await message.answer('Видео поста найдено неоднозначно; оно не используется. '
                              'Проверь источник отдельно.', parse_mode=None)
@@ -350,7 +350,7 @@ async def show_review(message, owner_id: int, item: dict):
         video_status = ('видео выбрано' if section.get('video') else
                         'видео найдено, не выбрано' if source.get('telegram_video_status') == 'available' else
                         'видео неоднозначно' if source.get('telegram_video_status') == 'ambiguous' else 'без видео')
-        image_status = 'картинка' if section.get('image_b64') else 'нейтральный фон'
+        image_status = 'картинка' if section.get('image_b64') else 'шуточная заглушка'
         lines.append(f'Материалы: {image_status}, {video_status}.')
     lines.append('\nОткрой номер новости для источника, цитат, картинки, видео и исправлений. '
                  'Рендер потребует отдельного подтверждения.')
