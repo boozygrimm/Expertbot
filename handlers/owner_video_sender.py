@@ -39,10 +39,17 @@ def _buttons(markup):
     return markup.as_markup()
 
 
+def _chat_id(value: object) -> int:
+    # MongoDB decodes 64-bit Telegram IDs as bson.int64.Int64, an int subclass.
+    # Accept numeric integers only, not bool/float/strings or invalid ranges.
+    if not isinstance(value, int) or isinstance(value, bool) or not -(2**63) <= value < 0:
+        raise ValueError('Группа недоступна')
+    return int(value)
+
+
 async def _group(bot, chat_id: int) -> str:
     """Check the approved ID and the bot's *current* membership, not history."""
-    if type(chat_id) is not int or chat_id >= 0:
-        raise ValueError('Группа недоступна')
+    chat_id = _chat_id(chat_id)
     if not await db.auth_chats.find_one({'chat_id': chat_id, 'status': 'approved'}):
         raise ValueError('Группа больше не разрешена')
     chat = await bot.get_chat(chat_id)
@@ -65,20 +72,25 @@ async def _list(callback, page: int) -> None:
     if page and not rows:
         return await callback.answer('Страница пуста. Открой список заново.', show_alert=True)
     b = InlineKeyboardBuilder()
+    displayed = 0
     for row in rows[:PAGE_SIZE]:
-        cid = row.get('chat_id')
-        if type(cid) is int and cid < 0:
-            title = str(row.get('title') or 'Группа')[:55]
-            b.button(text=f'{title} · {cid}', callback_data=f'ovideo:chat:{cid}')
+        try:
+            cid = _chat_id(row.get('chat_id'))
+        except ValueError:
+            continue
+        title = str(row.get('title') or 'Группа')[:55]
+        b.button(text=f'{title} · {cid}', callback_data=f'ovideo:chat:{cid}')
+        displayed += 1
     if page:
         b.button(text='⬅️ Предыдущая страница', callback_data=f'ovideo:page:{page - 1}')
     if len(rows) > PAGE_SIZE:
         b.button(text='➡️ Следующая страница', callback_data=f'ovideo:page:{page + 1}')
     b.button(text='⬅️ Пульт', callback_data='owner_panel:tools')
     await callback.answer()
-    await callback.message.answer('Выбери разрешённую группу. Состав бота в ней будет проверен перед отправкой.'
-        if rows else 'Разрешённых групп не найдено. Проверь доступ к группам в пульте.',
-        reply_markup=_buttons(b), parse_mode=None)
+    text = ('Выбери разрешённую группу. Состав бота в ней будет проверен перед отправкой.' if displayed else
+            'На этой странице нет доступных групп. Проверь другие страницы или доступ к группам в пульте.' if rows else
+            'Разрешённых групп не найдено. Проверь доступ к группам в пульте.')
+    await callback.message.answer(text, reply_markup=_buttons(b), parse_mode=None)
 
 
 async def receive_video(message: types.Message, state: FSMContext, data: dict) -> None:
@@ -207,7 +219,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 return await callback.answer('Действие уже обрабатывается. Проверь чат.', show_alert=True)
             await callback.answer('Отменено')
             return await callback.message.edit_text('Отменено. Видео в группу не отправлено.', parse_mode=None)
-        title = await _group(bot, record['chat_id'])
+        chat_id = _chat_id(record['chat_id'])
+        title = await _group(bot, chat_id)
         if title != record['title']:
             return await callback.answer('Название группы изменилось. Открой отправку заново.', show_alert=True)
         claimed = await db.db.owner_video_confirmations.find_one_and_update(
@@ -220,9 +233,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             logger.debug('Не удалось подтвердить нажатие: %s', type(exc).__name__)
         try:
             if claimed['mode'] == 'note':
-                sent = await bot.send_video_note(chat_id=claimed['chat_id'], video_note=claimed['file_id'])
+                sent = await bot.send_video_note(chat_id=chat_id, video_note=claimed['file_id'])
             else:
-                sent = await bot.send_video(chat_id=claimed['chat_id'], video=claimed['file_id'],
+                sent = await bot.send_video(chat_id=chat_id, video=claimed['file_id'],
                                             caption=claimed.get('caption') or None, parse_mode=None)
         except (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter):
             await db.db.owner_video_confirmations.update_one({'_id': token, 'stage': 'sending'}, {'$set': {'stage': 'failed'}, '$unset': {'file_id': '', 'caption': ''}})
