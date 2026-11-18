@@ -59,7 +59,7 @@ async def approve(db, owner_id: int, number: int, expected: str) -> str:
     if await db.news_owner_trial_jobs.find_one({'_id': request_id}):
         return 'revision_used'
     stage, finished_id = await owner_trial.status_info(db)
-    if stage not in ('not_queued', 'review_sent') or (stage == 'review_sent' and not finished_id):
+    if stage not in ('not_queued', 'review_sent', 'failed') or (stage != 'not_queued' and not finished_id):
         return 'trial_busy'
     key = owner_bulletin._key(owner_id, number)
     claimed = await db.news_owner_bulletins.update_one(
@@ -83,7 +83,8 @@ async def approve(db, owner_id: int, number: int, expected: str) -> str:
                 {'$set': {'stage': 'ready_for_review'}, '$unset': {'candidate_id': '', 'request_id': ''}})
             return 'disabled'
         if finished_id:
-            if await owner_trial.open_next(db, owner_id, finished_id) not in ('opened', 'already_open'):
+            release = owner_trial.release_failed_for_bulletin if stage == 'failed' else owner_trial.open_next
+            if await release(db, owner_id, finished_id) not in ('opened', 'already_open'):
                 raise ValueError('Слот не освобождён')
         # Refuse to claim a newly open slot if a previously issued job exists.
         if await db.news_owner_trial_jobs.find_one({'_id': request_id}):

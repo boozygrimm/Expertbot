@@ -69,6 +69,30 @@ class AdmissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 2)
         self.assertEqual(await admission.approve(self.db,123,99,one['revision']), 'already_processed')
 
+    async def test_failed_trial_is_retired_on_new_confirmed_bulletin_without_replay(self):
+        one = await self.prepare(number=99)
+        two = await self.prepare(number=100)
+        self.assertEqual(await admission.approve(self.db, 123, 99, one['revision']), 'queued')
+        old_job = await self.db.news_owner_trial_jobs.find_one({})
+        await self.db.news_owner_trial_jobs.update_one({'_id': old_job['_id']}, {'$set': {'stage': 'failed'}})
+        self.assertEqual(await owner_trial.status_info(self.db), ('failed', old_job['_id']))
+        self.assertEqual(await admission.approve(self.db, 123, 100, two['revision']), 'queued')
+        self.assertEqual((await self.db.news_owner_trial_jobs.find_one({'_id': old_job['_id']}))['stage'], 'failed')
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 2)
+        self.assertEqual(await admission.approve(self.db, 123, 99, one['revision']), 'already_processed')
+
+    async def test_uncertain_or_foreign_trial_is_not_retired(self):
+        one = await self.prepare(number=99)
+        two = await self.prepare(number=100)
+        self.assertEqual(await admission.approve(self.db, 123, 99, one['revision']), 'queued')
+        job = await self.db.news_owner_trial_jobs.find_one({})
+        for stage in ('uncertain', 'running', 'submitting', 'interrupted'):
+            await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']}, {'$set': {'stage': stage}})
+            self.assertEqual(await admission.approve(self.db, 123, 100, two['revision']), 'trial_busy')
+        await self.db.news_owner_trial_jobs.update_one({'_id': job['_id']}, {'$set': {'stage': 'failed'}})
+        self.assertEqual(await owner_trial.release_failed_for_bulletin(self.db, 124, job['_id']), 'not_allowed')
+        self.assertEqual((await self.db.news_owner_trial_gate.find_one({'_id': 'slot'}))['candidate_id'], job['candidate_id'])
+
     async def test_partial_admission_never_automatically_retries(self):
         item = await self.prepare()
         real = news_queue.enqueue_bulletin
