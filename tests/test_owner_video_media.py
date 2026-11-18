@@ -20,13 +20,14 @@ async def test_conversion_keeps_complete_landscape_within_circle_and_audio(tmp_p
     subprocess.run([ffmpeg, '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:r=24',
         '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=24000', '-t', '2', '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(source)], check=True)
-    await media.make_note(source, output, ffmpeg=ffmpeg, ffprobe=ffprobe)
+    converted_duration = await media.make_note(source, output, ffmpeg=ffmpeg, ffprobe=ffprobe)
     info = json.loads(subprocess.check_output([ffprobe, '-v', 'error', '-show_entries',
         'stream=codec_type,width,height:format=duration', '-of', 'json', str(output)]))
     video = next(s for s in info['streams'] if s['codec_type'] == 'video')
     assert (video['width'], video['height']) == (480, 480)
     assert any(s['codec_type'] == 'audio' for s in info['streams'])
     assert abs(float(info['format']['duration'])-2) < .3
+    assert converted_duration == float(info['format']['duration'])
     frame = tmp_path/'frame.png'
     subprocess.run([ffmpeg, '-v', 'error', '-ss', '1', '-i', str(output), '-frames:v', '1', str(frame)], check=True)
     with Image.open(frame) as im:

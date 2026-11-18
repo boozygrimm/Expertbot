@@ -61,7 +61,7 @@ async def probe(path: Path, *, ffprobe: str = 'ffprobe') -> float:
     return duration
 
 
-async def make_note(source: Path, target: Path, *, ffmpeg: str = 'ffmpeg', ffprobe: str = 'ffprobe') -> None:
+async def make_note(source: Path, target: Path, *, ffmpeg: str = 'ffmpeg', ffprobe: str = 'ffprobe') -> float:
     duration = await probe(source, ffprobe=ffprobe)
     if duration > MAX_SECONDS:
         raise VideoError('Кружок должен быть не длиннее 60 секунд; обрежь видео сам в Telegram')
@@ -86,3 +86,4 @@ async def make_note(source: Path, target: Path, *, ffmpeg: str = 'ffmpeg', ffpro
         raise VideoError('Кружок после преобразования длиннее 60 секунд; немного сократи исходное видео в Telegram')
     if abs(converted - duration) > 0.3:
         raise VideoError('Не удалось сохранить полную длительность видео')
+    return converted

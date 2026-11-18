@@ -134,13 +134,17 @@ async def test_circle_preview_fences_cancel_and_checks_size(ctx):
     ctx.bot.download.assert_not_awaited()
     ctx.message.video.file_size = 12
     async def download(file_id, destination): destination.write(b'1234ftypxxxx')
-    async def make_note(source, target): target.write_bytes(b'note')
+    async def make_note(source, target):
+        target.write_bytes(b'note')
+        return 2.4
     ctx.bot.download.side_effect = download
     ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview-note'))
     with patch.object(sender.owner_video_media, 'make_note', side_effect=make_note):
         await sender.receive_video(ctx.message, ctx.state, data)
     ctx.bot.send_video_note.assert_awaited_once()
     assert ctx.bot.send_video_note.await_args.kwargs['chat_id'] == ctx.user.id
+    assert ctx.bot.send_video_note.await_args.kwargs['length'] == 480
+    assert ctx.bot.send_video_note.await_args.kwargs['duration'] == 3
     record = await ctx.db.owner_video_confirmations.find_one({})
     assert record['file_id'] == 'preview-note'
     ctx.callback.data = 'ovideo:send:' + record['_id']
@@ -154,7 +158,9 @@ async def test_cancel_during_conversion_never_makes_confirmation(ctx):
     data = {'action': 'owner_send_video', 'input_token': 'a'*16, 'chat_id': -101, 'mode': 'note'}
     ctx.message.video = SimpleNamespace(file_id='input', file_size=12, duration=10)
     async def download(file_id, destination): destination.write(b'1234ftypxxxx')
-    async def make_note(source, target): target.write_bytes(b'note')
+    async def make_note(source, target):
+        target.write_bytes(b'note')
+        return 2.4
     ctx.bot.download.side_effect = download
     ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview-note'))
     ctx.state.get_data.return_value = {'action': 'other'}
@@ -354,7 +360,9 @@ async def test_telegram_bad_request_reports_failed_step_without_leaking(ctx, cap
     ctx.state.get_data.return_value = data
     ctx.message.video = SimpleNamespace(file_id='input', file_size=12, duration=2)
     async def download(file_id, destination): destination.write(b'1234ftypxxxx')
-    async def make_note(source, target): target.write_bytes(b'note')
+    async def make_note(source, target):
+        target.write_bytes(b'note')
+        return 2.4
     ctx.bot.download.side_effect = download
     ctx.bot.send_video_note.return_value = SimpleNamespace(video_note=SimpleNamespace(file_id='preview'))
     exc = TelegramBadRequest(method=GetFile(file_id='secret-file-id'),
@@ -370,3 +378,26 @@ async def test_telegram_bad_request_reports_failed_step_without_leaking(ctx, cap
     assert 'В группу ничего не отправлено' in ctx.message.answer.await_args.args[0]
     assert await ctx.db.owner_video_confirmations.count_documents({}) == 0
     assert all(call.kwargs['chat_id'] != -101 for call in ctx.bot.send_video_note.await_args_list)
+
+
+def test_unknown_telegram_description_filters_private_values():
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import GetFile
+    exc = TelegramBadRequest(method=GetFile(file_id='not-logged'),
+        message='Bad Request: video note processing failed at https://host.example/secret 123456:ABCXYZ privateword')
+    detail = sender._safe_telegram_detail(exc)
+    assert 'video note processing failed' in detail
+    assert all(s not in detail for s in ('host', 'secret', '123456', 'abcxyz', 'privateword'))
+    # Unknown descriptions retain useful safe vocabulary without exposing IDs.
+    assert '[...]' in detail
+
+
+def test_recognizes_common_video_note_rejections():
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import GetFile
+    for error, code in [('VIDEO_NOTE_INVALID', 'video_note_invalid'),
+                        ('VIDEO_NOTE_LENGTH_INVALID', 'video_note_length_invalid'),
+                        ('Wrong video note length', 'wrong_video_note_length'),
+                        ('There is no video note in the request', 'no_video_note')]:
+        exc = TelegramBadRequest(method=GetFile(file_id='not-logged'), message=error)
+        assert sender._telegram_error(exc)[0] == code
