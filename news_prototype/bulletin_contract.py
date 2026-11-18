@@ -57,19 +57,23 @@ def validate_bulletin(data: object) -> dict:
         raise ValueError('Неверный список видео')
     checked_videos, seen_videos = [], set()
     for video in videos:
-        fields = {'section_id', 'post_url', 'caption_sha256', 'video_sha256'}
-        if (not isinstance(video, dict) or set(video) not in
-                (fields, fields | {'remarks'}, fields | {'cut_after'}, fields | {'remarks', 'cut_after'})
-                or not bulletin_limits.number(video.get('section_id')) or video['section_id'] not in ids
-                or any(not isinstance(video.get(k), str) or not re.fullmatch(r'[0-9a-f]{64}', video[k])
-                       for k in ('caption_sha256', 'video_sha256'))):
+        if not isinstance(video, dict):
             raise ValueError('Неверное утверждённое видео')
-        try:
-            canonical, _ = telegram_public_source.canonical_post(video['post_url'])
-            if canonical != video['post_url']:
-                raise ValueError
-        except (telegram_public_source.SourceError, ValueError):
-            raise ValueError('Неверный источник видео') from None
+        manual = video.get('manual') is True
+        fields = ({'section_id', 'manual', 'video_sha256'} if manual else
+                  {'section_id', 'post_url', 'caption_sha256', 'video_sha256'})
+        hashes = ('video_sha256',) if manual else ('caption_sha256', 'video_sha256')
+        if (set(video) not in (fields, fields | {'remarks'}, fields | {'cut_after'}, fields | {'remarks', 'cut_after'})
+                or not bulletin_limits.number(video.get('section_id')) or video['section_id'] not in ids
+                or any(not isinstance(video.get(k), str) or not re.fullmatch(r'[0-9a-f]{64}', video[k]) for k in hashes)):
+            raise ValueError('Неверное утверждённое видео')
+        if not manual:
+            try:
+                canonical, _ = telegram_public_source.canonical_post(video['post_url'])
+                if canonical != video['post_url']:
+                    raise ValueError
+            except (telegram_public_source.SourceError, ValueError):
+                raise ValueError('Неверный источник видео') from None
         if video['section_id'] in seen_videos:
             raise ValueError('Повтор видео для одной новости')
         seen_videos.add(video['section_id'])

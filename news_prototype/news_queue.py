@@ -158,6 +158,10 @@ async def run_idle_once(queue, collection, client) -> None:
             if not await client.supports_bulletins():
                 return
             bulletin = job.get('bulletin', {})
+            from news_prototype import bulletin_contract
+            if (any(v.get('manual') is True for v in bulletin_contract.selected_videos(bulletin))
+                    and not await client.supports_bulletin_manual_video()):
+                return
             if 'videos' in bulletin and not await client.supports_bulletin_multi_video():
                 return
             video = bulletin.get('video')

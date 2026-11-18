@@ -87,7 +87,7 @@ async def _collect_choices(choices, fetch, fetch_image):
                     story['title'] = title.strip()
                 story['summary'] = summary
                 video_status = article.get('telegram_video_status')
-                if (isinstance(video_status, str) and video_status in ('available', 'none', 'ambiguous')
+                if (isinstance(video_status, str) and video_status in ('available', 'none', 'ambiguous', 'too_big')
                         and widget_for(choice['url']) is not None):
                     # A discovery hint only: not a downloaded/approved video.
                     # This field participates in source_revision and never

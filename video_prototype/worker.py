@@ -339,6 +339,8 @@ def handler_for(store, secret, news=None):
                         if shutil.which('ffprobe'):
                             capabilities.extend(['news-bulletin-video-v1', 'news-bulletin-video-remarks-v1',
                                                  'news-bulletin-video-cut-v1', 'news-bulletin-multi-video-v1'])
+                            if shutil.which('ffmpeg'):
+                                capabilities.append('news-bulletin-manual-video-v1')
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             news_match = re.fullmatch(r'/news-jobs/([0-9a-f-]{36})(/video)?', path)
             if news is not None and news_match:
@@ -399,6 +401,31 @@ def handler_for(store, secret, news=None):
             if not self.authorized():
                 return self.respond(401, {'error': 'unauthorized'})
             path = urlsplit(self.path).path
+            upload = re.fullmatch(r'/news-bulletin-manual/([0-9a-f]{64})', path)
+            if upload:
+                if news is None or getattr(news, 'run_bulletin', None) is None:
+                    return self.respond(404, {'error': 'not_found'})
+                from news_prototype import bulletin_manual_media, telegram_public_source
+                ffmpeg, ffprobe = shutil.which('ffmpeg'), shutil.which('ffprobe')
+                if not ffmpeg or not ffprobe:
+                    return self.respond(503, {'error': 'unavailable'})
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 16 <= length <= bulletin_manual_media.MAX_BYTES:
+                        return self.respond(413, {'error': 'invalid_length'})
+                    # Bound an incomplete upload; do not leave a worker thread blocked forever.
+                    previous_timeout = self.connection.gettimeout()
+                    try:
+                        self.connection.settimeout(120)
+                        data = self.rfile.read(length)
+                    finally:
+                        self.connection.settimeout(previous_timeout)
+                    if len(data) != length:
+                        raise ValueError('incomplete')
+                    bulletin_manual_media.save(news.root, upload.group(1), data, ffmpeg=ffmpeg, ffprobe=ffprobe)
+                    return self.respond(200, {'sha256': upload.group(1)})
+                except (ValueError, OSError, telegram_public_source.SourceError):
+                    return self.respond(400, {'error': 'invalid_video'})
             if path not in ('/jobs', '/voice-jobs') and not (news is not None and path in ('/news-jobs', '/news-digests', '/news-programs', '/news-bulletins')):
                 return self.respond(404, {'error': 'not_found'})
             try:

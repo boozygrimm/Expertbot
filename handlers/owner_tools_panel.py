@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import asyncio
+import io
+import os
 import logging
 import secrets
 from types import SimpleNamespace
@@ -93,6 +95,64 @@ async def profile_choice(callback, state, action_name: str, size: str = ''):
         reply_markup=b.as_markup(), parse_mode=None)
 
 
+class _LimitedVideoBuffer(io.BytesIO):
+    def write(self, data):
+        from news_prototype.bulletin_manual_media import MAX_BYTES
+        if self.tell() + len(data) > MAX_BYTES:
+            raise ValueError('Фрагмент больше 20 МБ')
+        return super().write(data)
+
+
+@router.message(OwnerInput.waiting, F.video | F.document)
+async def receive_bulletin_video(message: types.Message, state: FSMContext):
+    if not authorized(message.from_user, message.chat):
+        return
+    data = await state.get_data()
+    if data.get('action') != 'bulletin_manual_video':
+        return await message.answer('Сейчас ожидается другой ввод. Отмени его или пришли нужные данные.', parse_mode=None)
+    from news_prototype import owner_bulletin, owner_trial, bulletin_manual_media
+    from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
+    media = message.video or message.document
+    size = getattr(media, 'file_size', None)
+    if (type(size) is not int or size <= 0 or size > bulletin_manual_media.MAX_BYTES
+            or (message.document and getattr(message.document, 'mime_type', '') not in ('video/mp4', 'application/octet-stream'))):
+        return await message.answer('Нужен MP4-фрагмент до 20 МБ. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
+    item = await owner_bulletin.get(db.db, message.from_user.id, data['number'])
+    if (not await owner_trial.drafts_enabled(db.db) or not item or item.get('stage') != 'ready_for_review'
+            or item.get('revision') != data['revision'] or item.get('mode') != 'direct'
+            or not await owner_bulletin._sources_current(db.db, message.from_user.id, item)
+            or not any(s['id'] == data['section_id'] and not s.get('video') for s in item['sections'])):
+        await state.clear()
+        return await message.answer('Версия изменилась. Открой новость заново.', parse_mode=None)
+    try:
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        if not await client.supports_bulletin_manual_video():
+            return await message.answer('Воркер пока не поддерживает загрузку фрагментов. Видео не добавлено.', parse_mode=None)
+        buffer = _LimitedVideoBuffer()
+        await asyncio.wait_for(message.bot.download(media.file_id, destination=buffer), timeout=120)
+        payload = buffer.getvalue()
+        if len(payload) != size or payload[4:8] != b'ftyp':
+            raise ValueError('Неверный MP4')
+        digest = await client.upload_bulletin_video(payload)
+    except (ValueError, NewsWorkerError, OSError, TimeoutError):
+        return await message.answer('Не удалось получить или проверить MP4-фрагмент. Попробуй короче или отмени ввод.', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось принять фрагмент: %s', type(exc).__name__)
+        return await message.answer('Не удалось получить или проверить фрагмент; попробуй позже.', parse_mode=None)
+    # The owner may cancel or start another input while download/validation runs.
+    async with _input_lock:
+        current = await state.get_data()
+        if (current.get('action') != 'bulletin_manual_video'
+                or current.get('input_token') != data.get('input_token')):
+            return await message.answer('Ввод уже отменён или заменён; фрагмент не выбран.', parse_mode=None)
+        await state.clear()
+    await new_confirmation(message, message.from_user.id, 'use_manual_bulletin_video',
+        'Добавить именно присланный фрагмент в эту новость? Проверь видео, звук и права на использование. '
+        'Фрагмент будет на экране студии и примерно 10 секунд на весь экран; короткий фрагмент может повторяться. '
+        'Озвучка и рендер сейчас не запускаются.',
+        number=data['number'], section_id=data['section_id'], revision=data['revision'], digest=digest)
+
+
 @router.message(OwnerInput.waiting, F.text, ~F.text.regexp(r'^/(?:panel|панель)(?:@\w+)?(?:\s|$)'))
 async def receive_input(message: types.Message, state: FSMContext):
     if not authorized(message.from_user, message.chat):
@@ -163,6 +223,8 @@ async def receive_input(message: types.Message, state: FSMContext):
             await new_confirmation(message, message.from_user.id, 'trial',
                 'Поставить этот проверенный сценарий на рендер? Видео придёт в личку, публикации не будет.',
                 content=content)
+        elif action == 'bulletin_manual_video':
+            return await message.answer('Пришли обрезанный MP4-фрагмент как видео или файл, либо отмени ввод.', parse_mode=None)
         elif action in ('bulletin_selection_links', 'bulletin_more_sources'):
             if not await owner_trial.drafts_enabled(db.db):
                 await state.clear()
@@ -679,6 +741,20 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             elif name == 'run_bulletin_editor':
                 from handlers import owner_bulletin_panel
                 await owner_bulletin_panel.run_editor(message, callback.from_user.id, data)
+            elif name == 'use_manual_bulletin_video':
+                from news_prototype import owner_bulletin, owner_bulletin_manual_video
+                from handlers import owner_bulletin_panel
+                if not await owner_trial.drafts_enabled(db.db):
+                    await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+                else:
+                    result = await owner_bulletin_manual_video.attach(db.db, callback.from_user.id,
+                        data['number'], data['revision'], data['section_id'], data['digest'])
+                    if result == 'selected':
+                        await message.answer('Фрагмент добавлен. Проверь сценарий и отдельно подтверди рендер.', parse_mode=None)
+                        await owner_bulletin_panel.show_review(message, callback.from_user.id,
+                            await owner_bulletin.get(db.db, callback.from_user.id, data['number']))
+                    else:
+                        await message.answer('Версия изменилась; фрагмент не добавлен. Открой вестник заново.', parse_mode=None)
             elif name == 'review_bulletin_video':
                 from handlers import owner_bulletin_panel
                 await owner_bulletin_panel.video_review_confirmed(message, callback.from_user.id, data, bot)

@@ -85,6 +85,28 @@ class NewsWorkerClient:
     async def supports_bulletin_multi_video(self) -> bool:
         return await self._supports('news-bulletin-multi-video-v1')
 
+    async def supports_bulletin_manual_video(self) -> bool:
+        return await self._supports('news-bulletin-manual-video-v1')
+
+    async def upload_bulletin_video(self, data: bytes) -> str:
+        from news_prototype.bulletin_manual_media import MAX_BYTES
+        if not isinstance(data, bytes) or not 16 <= len(data) <= MAX_BYTES:
+            raise ValueError('Нужен MP4-фрагмент до 20 МБ')
+        digest = hashlib.sha256(data).hexdigest()
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.base_url + '/news-bulletin-manual/' + digest,
+                                        data=data, headers=self.headers, allow_redirects=False,
+                                        timeout=aiohttp.ClientTimeout(total=360, sock_connect=30, sock_read=330)) as response:
+                    if response.status != 200:
+                        raise NewsWorkerError('Воркер не принял фрагмент')
+                    result = await read_json(response)
+                    if not isinstance(result, dict) or result.get('sha256') != digest:
+                        raise NewsWorkerError('Сохранение фрагмента не подтверждено')
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            raise NewsWorkerError('Не удалось передать фрагмент воркеру') from None
+        return digest
+
     async def supports_image_focus(self) -> bool:
         return await self._supports('news-image-focus-v1')
 

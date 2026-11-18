@@ -64,6 +64,7 @@ class VideoParser(HTMLParser):
         self.matches = 0
         self.videos = []
         self.video_tags = 0
+        self.too_big = False
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -91,6 +92,12 @@ class VideoParser(HTMLParser):
                     pass
         if tag not in VOID:
             self.stack.append((tag, target, suppressed, owner, in_video))
+
+    def handle_data(self, data):
+        if self.stack:
+            _, target, suppressed, owner, _ = self.stack[-1]
+            if target and not suppressed and owner and 'media is too big' in data.casefold():
+                self.too_big = True
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
