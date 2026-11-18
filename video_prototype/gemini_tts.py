@@ -6,6 +6,8 @@ import base64
 import io
 import json
 import re
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -96,16 +98,38 @@ def request_one(key, text, timeout):
         return validated_audio(json.loads(raw))
     except urllib.error.HTTPError as exc:
         raise TTSFailure(f'HTTP {exc.code}') from None
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError, RecursionError):
-        raise TTSFailure('ошибка связи или формата Gemini') from None
+    except urllib.error.URLError as exc:
+        # Never print the URL, response, request text, or exception details:
+        # they can contain credentials. Only publish fixed categories.
+        reason = exc.reason
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            category = 'таймаут соединения Gemini'
+        elif isinstance(reason, socket.gaierror):
+            category = 'ошибка DNS Gemini'
+        elif isinstance(reason, ssl.SSLError):
+            category = 'ошибка TLS Gemini'
+        else:
+            category = 'ошибка соединения Gemini'
+        raise TTSFailure(category) from None
+    except (TimeoutError, socket.timeout):
+        raise TTSFailure('таймаут соединения Gemini') from None
+    except ssl.SSLError:
+        raise TTSFailure('ошибка TLS Gemini') from None
+    except socket.gaierror:
+        raise TTSFailure('ошибка DNS Gemini') from None
+    except OSError:
+        raise TTSFailure('ошибка ввода-вывода Gemini') from None
+    except (ValueError, RecursionError):
+        raise TTSFailure('некорректный формат ответа Gemini') from None
 
 
-def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET):
+def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET, request_fn=None):
     """Rotate initial key, then try other keys once until the deadline for starting attempts."""
     if not keys:
         raise TTSFailure('нет ключей Gemini')
     if budget <= 0:
         raise TTSFailure('нет времени на Gemini')
+    request = request_one if request_fn is None else request_fn
     ordered = keys[start_index % len(keys):] + keys[:start_index % len(keys)]
     deadline = time.monotonic() + budget
     for key in ordered:
@@ -113,7 +137,7 @@ def synthesize(text, output, keys, start_index=0, *, budget=TOTAL_BUDGET):
         if remaining <= 0:
             break
         try:
-            data, duration = request_one(key, text, min(REQUEST_TIMEOUT, remaining))
+            data, duration = request(key, text, min(REQUEST_TIMEOUT, remaining))
             # A fresh clip directory is used per job; only publish validated WAV.
             temp = Path(output).with_suffix('.wav.tmp')
             temp.write_bytes(data)

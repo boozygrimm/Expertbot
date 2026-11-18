@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-from news_prototype import bulletin_contract, bulletin_editor, owner_drafts, owner_program
+from news_prototype import bulletin_contract, bulletin_editor, bulletin_limits, owner_drafts, owner_program
 
 
 def _key(owner_id: int, number: int) -> str:
@@ -144,7 +144,22 @@ def _payload_from_sections(sections: list[dict]) -> dict:
         if 'image_b64' in section:
             clean['image_b64'] = section['image_b64']
         result.append(clean)
-    return bulletin_contract.validate_bulletin({'sections': result})
+    videos = [section['video'] for section in sections if 'video' in section]
+    payload = {'sections': result}
+    for section in sections:
+        if 'video' not in section:
+            continue
+        video = section['video']
+        if not isinstance(video, dict) or video.get('section_id') != section['id']:
+            raise ValueError('Видео привязано к другой новости')
+        if (video.get('remarks') != section.get('video_remarks') or
+                video.get('cut_after') != section.get('video_cut_after')):
+            raise ValueError('Видео не совпадает с проверенным сценарием')
+    if len(videos) == 1:
+        payload['video'] = videos[0]
+    elif videos:
+        payload['videos'] = videos
+    return bulletin_contract.validate_bulletin(payload)
 
 
 def parse_section_edit(text: str) -> dict:
@@ -157,20 +172,86 @@ def parse_section_edit(text: str) -> dict:
     field, sep, title = lines[0].partition(':')
     if not sep or field.casefold() != 'строка' or not title.strip() or len(title.strip()) > 120:
         raise ValueError('Первая строка: Строка: заголовок')
-    turns = []
+    turns, cut = [], None
     for line in lines[1:]:
         speaker, sep, content = line.partition(':')
+        if sep and speaker.casefold() == 'видео после':
+            if cut is not None or not content.strip().isascii() or not content.strip().isdigit():
+                raise ValueError('Укажи место видео один раз: Видео после: номер')
+            cut = int(content.strip())
+            continue
         if not sep or speaker not in bulletin_editor.SPEAKERS or not content.strip():
             raise ValueError('Каждая реплика начинается с Бендер: или Киберсенсей:')
         turns.append({'speaker': speaker, 'text': content.strip()})
     if not 1 <= len(turns) <= 8:
         raise ValueError('Нужно от одной до восьми реплик')
-    return {'ticker': title.strip(), 'turns': turns}
+    if cut is not None and not 1 <= cut < len(turns):
+        raise ValueError('Место видео должно быть между репликами')
+    result = {'ticker': title.strip(), 'turns': turns}
+    if cut is not None:
+        result['video_cut_after'] = cut
+    return result
+
+
+def parse_video_remarks(text: str) -> list[dict] | None:
+    """Parse two reviewed overlay comments; a single dash removes them."""
+    if not isinstance(text, str) or len(text) > 500:
+        raise ValueError('Нужны две короткие реплики')
+    if text.strip() == '-':
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    turns = []
+    for line in lines:
+        speaker, sep, content = line.partition(':')
+        if not sep:
+            raise ValueError('Начни каждую реплику с имени ведущего и двоеточия')
+        turns.append({'speaker': speaker.strip(), 'text': content.strip()})
+    return bulletin_contract.validate_video_remarks(turns)
+
+
+async def change_video_remarks(db, owner_id: int, number: int, expected: str, section_id: int, text: str) -> str:
+    """Save only one pair of owner-reviewed comments, invalidating media approval."""
+    import copy
+    remarks = parse_video_remarks(text)
+    item = await get(db, owner_id, number)
+    if (not item or item.get('mode') != 'direct' or item.get('stage') != 'ready_for_review'
+            or item.get('revision') != expected or revision(item['stories'], item['sections']) != expected
+            or not await _sources_current(db, owner_id, item)):
+        return 'stale'
+    story = next((s for s in item['stories'] if s['draft_id'] == section_id), None)
+    sections = copy.deepcopy(item['sections'])
+    section = next((s for s in sections if s['id'] == section_id), None)
+    if not section or not story or story.get('telegram_video_status') != 'available':
+        return 'stale'
+    if section.get('video_remarks') == remarks and not any(s.get('video') for s in sections):
+        return 'unchanged'
+    for part in sections:
+        part.pop('video', None)
+    section.pop('video_remarks', None)
+    if remarks is not None:
+        section['video_remarks'] = remarks
+    # Enforce the full text budget even before media is selected.
+    payload = _payload_from_sections(sections)
+    spoken = sum(len(turn['text']) for s in payload['sections'] for turn in s['turns'])
+    count = sum(len(s['turns']) for s in payload['sections'])
+    all_remarks = [t for s in sections for t in s.get('video_remarks', [])]
+    if (spoken + sum(len(t['text']) for t in all_remarks) > bulletin_limits.MAX_SPOKEN_CHARS
+            or count + len(all_remarks) > bulletin_contract.MAX_TURNS):
+        raise ValueError('Выпуск с этими репликами слишком длинный')
+    new_rev = revision(item['stories'], sections)
+    if new_rev == expected:
+        return 'unchanged'
+    changed = await db.news_owner_bulletins.update_one({'_id': _key(owner_id, number), 'owner_id': owner_id,
+        'stage': 'ready_for_review', 'revision': expected}, {'$set': {
+            'sections': sections, 'revision': new_rev, 'verification': 'needs_review'}})
+    return 'saved' if changed.modified_count else 'stale'
 
 
 def editable_section(section: dict) -> str:
     lines = ['Строка: ' + section['ticker']]
     lines.extend(turn['speaker'] + ': ' + ' '.join(turn['text'].splitlines()) for turn in section['turns'])
+    if 'video_cut_after' in section:
+        lines.append('Видео после: ' + str(section['video_cut_after']))
     text = '\n'.join(lines)
     if len(text.encode('utf-16-le')) // 2 > 3800:
         raise ValueError('Раздел слишком длинный для Telegram')
@@ -190,6 +271,10 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
     if not await _sources_current(db, owner_id, item):
         return 'stale_source'
     sections = copy.deepcopy(item['sections'])
+    # A media approval is specific to the entire reviewed version. Any edit
+    # invalidates it; the owner must inspect/approve the new version again.
+    for part in sections:
+        part.pop('video', None)
     section = next((part for part in sections if part['id'] == section_id), None)
     if section is None:
         raise ValueError('Новость не найдена')
@@ -206,6 +291,14 @@ async def change_section(db, owner_id: int, number: int, expected: str, section_
             else:
                 checked.append({**turn, 'kind': 'owner_edit', 'evidence': ''})
         section['ticker'], section['turns'] = edited['ticker'], checked
+        cut = edited.get('video_cut_after')
+        if cut is not None:
+            story = next((s for s in item['stories'] if s['draft_id'] == section_id), None)
+            if item.get('mode') != 'direct' or not story or story.get('telegram_video_status') != 'available':
+                raise ValueError('Для этой новости нельзя выбрать видео')
+            section['video_cut_after'] = cut
+        else:
+            section.pop('video_cut_after', None)
     _payload_from_sections(sections)
     new_rev = revision(item['stories'], sections)
     if new_rev == expected:

@@ -205,8 +205,18 @@ async def fetch_article(url: str) -> dict:
                         data.extend(chunk)
                         if len(data) > MAX_BYTES:
                             raise ArticleError('Страница слишком большая')
+                    video_status = None
                     if telegram:
                         title, body, media = extract_post_info(bytes(data), post, response.charset)
+                        # Inspect only the exact same widget; never persist a
+                        # signed CDN URL or download video during source review.
+                        from news_prototype import telegram_public_source
+                        try:
+                            candidate = telegram_public_source.parse_widget(current, bytes(data))
+                            if candidate.caption_complete and candidate.caption == body:
+                                video_status = candidate.video_status
+                        except telegram_public_source.SourceError:
+                            pass
                     else:
                         title, body, image = extract_article_info(bytes(data), response.charset)
                         media = None
@@ -218,6 +228,8 @@ async def fetch_article(url: str) -> dict:
                     result = {'title': title, 'summary': body, 'resolved_url': current}
                     if media:
                         result['media'] = media
+                    if video_status is not None:
+                        result['telegram_video_status'] = video_status
                     return result
         raise ArticleError('Не удалось прочитать страницу')
     except ArticleError:

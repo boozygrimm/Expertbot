@@ -237,9 +237,10 @@ async def status_info(db) -> tuple[str, str | None]:
         return 'admission_incomplete', None
     stage = job.get('stage', 'unknown')
     message_id = job.get('review_message_id')
-    # A token is offered only for an explicitly confirmed Telegram delivery.
-    if (stage == 'review_sent' and job.get('request_id') == request_id
-            and type(message_id) is int and message_id > 0):
+    # Failed tasks are terminal, and can be retired when the owner explicitly
+    # approves a new bulletin. Never offer a token for an uncertain operation.
+    if (job.get('request_id') == request_id and (stage == 'failed' or
+            (stage == 'review_sent' and type(message_id) is int and message_id > 0))):
         return stage, request_id
     return stage, None
 
@@ -247,6 +248,34 @@ async def status_info(db) -> tuple[str, str | None]:
 async def status(db) -> str:
     stage, _ = await status_info(db)
     return stage
+
+
+async def release_failed_for_bulletin(db, owner_id: int, request_id: str) -> str:
+    """Retire a terminal failed trial only during explicit new-bulletin approval.
+
+    Keep the old job unchanged; no replay, deletion or new render here. The
+    gate's compare-and-set cannot release another owner's or a newer task.
+    """
+    if type(owner_id) is not int or owner_id <= 0:
+        raise ValueError('Неверный владелец')
+    request_id = valid_id(request_id)
+    gate = await db.news_owner_trial_gate.find_one({'_id': 'slot'})
+    if gate and gate.get('candidate_id') is None and gate.get('ready_for_next') is True:
+        return 'already_open' if gate.get('last_released_request_id') == request_id else 'not_allowed'
+    candidate_id = gate.get('candidate_id') if gate else None
+    if (not isinstance(candidate_id, str) or not re.fullmatch(r'owner-trial:[0-9a-f]{64}', candidate_id)
+            or str(uuid.uuid5(NAMESPACE, candidate_id)) != request_id):
+        return 'not_allowed'
+    candidate = await db.news_owner_trial_candidates.find_one({'_id': candidate_id, 'owner_id': owner_id})
+    job = await db.news_owner_trial_jobs.find_one({'_id': request_id, 'request_id': request_id,
+                                                  'candidate_id': candidate_id, 'stage': 'failed'})
+    if not candidate or not job:
+        return 'not_allowed'
+    result = await db.news_owner_trial_gate.update_one(
+        {'_id': 'slot', 'candidate_id': candidate_id},
+        {'$set': {'candidate_id': None, 'ready_for_next': True,
+                  'last_released_request_id': request_id, 'released_at': datetime.now(timezone.utc)}})
+    return 'opened' if result.modified_count else 'changed'
 
 
 async def open_next(db, owner_id: int, request_id: str) -> str:

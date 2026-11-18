@@ -108,3 +108,33 @@ class GeminiTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+class SafeDiagnosticTests(unittest.TestCase):
+    def test_error_categories_never_include_secrets_or_response(self):
+        import socket
+        import ssl
+        cases = [
+            (urllib.error.URLError(socket.timeout('SECRET')), 'таймаут соединения Gemini'),
+            (urllib.error.URLError(socket.gaierror('SECRET')), 'ошибка DNS Gemini'),
+            (urllib.error.URLError(ssl.SSLError('SECRET')), 'ошибка TLS Gemini'),
+            (urllib.error.URLError('SECRET'), 'ошибка соединения Gemini'),
+            (TimeoutError('SECRET'), 'таймаут соединения Gemini'),
+            (OSError('SECRET'), 'ошибка ввода-вывода Gemini'),
+        ]
+        for error, expected in cases:
+            with self.subTest(expected=expected):
+                opener = unittest.mock.Mock()
+                opener.open.side_effect = error
+                with patch.object(t.urllib.request, 'build_opener', return_value=opener):
+                    with self.assertRaises(t.TTSFailure) as raised:
+                        t.request_one('secret key', 'private text', 1)
+                self.assertEqual(str(raised.exception), expected)
+                self.assertNotIn('SECRET', str(raised.exception))
+
+    def test_bad_json_reports_fixed_format_error(self):
+        opener = unittest.mock.Mock()
+        opener.open.return_value = Response(b'bad secret json')
+        with patch.object(t.urllib.request, 'build_opener', return_value=opener):
+            with self.assertRaises(t.TTSFailure) as raised:
+                t.request_one('secret key', 'private text', 1)
+        self.assertEqual(str(raised.exception), 'некорректный формат ответа Gemini')
