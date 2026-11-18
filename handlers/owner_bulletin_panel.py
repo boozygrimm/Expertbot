@@ -26,28 +26,46 @@ async def make_bulletin(stories):
     return await editor_client.bulletin(stories, fire_gemini_key(), GEMINI_CHAT_MODEL)
 
 
+def _selection_pages(items):
+    """Keep complete saved titles visible while respecting Telegram's UTF-16 limit."""
+    pages, current, units = [], [], 0
+    for item in items:
+        title = ' '.join(str(item['label']).split())
+        line_units = len(f'✅ {item["number"]}. {title}\n'.encode('utf-16-le')) // 2
+        if line_units > 3000:
+            raise ValueError('Заголовок слишком длинный для Telegram')
+        if current and (len(current) >= PAGE_SIZE or units + line_units > 3000):
+            pages.append(current); current, units = [], 0
+        current.append(item); units += line_units
+    if current or not pages:
+        pages.append(current)
+    return pages
+
+
 async def selection(message, session):
     items, selected = session['items'], session['selected']
-    pages = max(1, (len(items) + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = min(max(0, session['page']), pages - 1)
+    pages = _selection_pages(items)
+    page = min(max(0, session['page']), len(pages) - 1)
+    visible = pages[page]
     b = InlineKeyboardBuilder()
-    for item in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
+    for item in visible:
         number = item['number']
-        b.button(text=('✅ ' if number in selected else '▫️ ') + item['label'][:65],
+        b.button(text=('✅ ' if number in selected else '') + str(number),
                  callback_data=f'nb:sel:{session["_id"]}:{number}')
-    b.adjust(1)
+    if visible:
+        b.adjust(4)
     if session.get('mode') == 'direct':
         links = InlineKeyboardBuilder()
-        for item in items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
-            links.button(text=f'🔗 Источник {item["number"]}', url=item['url'])
-        if items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
-            links.adjust(2); b.attach(links)
+        for item in visible:
+            links.button(text=f'🔗 {item["number"]}', url=item['url'])
+        if visible:
+            links.adjust(4); b.attach(links)
     nav = InlineKeyboardBuilder()
     if page:
         nav.button(text='⬅️', callback_data=f'nb:page:{session["_id"]}:{page - 1}')
-    if page + 1 < pages:
+    if page + 1 < len(pages):
         nav.button(text='➡️', callback_data=f'nb:page:{session["_id"]}:{page + 1}')
-    if page or page + 1 < pages:
+    if page or page + 1 < len(pages):
         nav.adjust(2); b.attach(nav)
     actions = InlineKeyboardBuilder()
     if len(selected) >= 2:
@@ -55,26 +73,35 @@ async def selection(message, session):
                              '📝 Подготовить один вестник'), callback_data=f'nb:prepare:{session["_id"]}')
     actions.button(text='📰 Панель новостей', callback_data='news_panel:home')
     actions.adjust(1); b.attach(actions)
-    description = ('Показаны собранные новости за последние сутки. Сначала можно отдельно подтвердить чтение источников, '
-                   'затем — один общий запрос редактору; отдельные сюжеты не создаются.'
-                   if session.get('mode') == 'direct' else
-                   'Показаны до 100 готовых или подтверждённо доставленных черновиков. '
-                   'Подготовка общего сценария требует отдельного подтверждения и одного запроса к Gemini; '
-                   'отдельные черновики уже могли использовать квоту при создании.')
+    lines = []
+    for item in visible:
+        number = item['number']
+        mark = f'✅ {selected.index(number) + 1} ·' if number in selected else '▫️'
+        lines.append(f'{mark} {number}. ' + ' '.join(str(item['label']).split()))
+    description = ('Новости за последние сутки.' if session.get('mode') == 'direct' else 'Готовые черновики.')
     await message.edit_text(
-        f'📰 Выбор новостей для вестника · {page + 1}/{pages}\n'
-        f'Выбрано {len(selected)} из 20, порядок — по нажатию. ' + description + ' Видео не запускается.',
-        reply_markup=b.as_markup(), parse_mode=None)
+        f'📰 Выбор новостей · {page + 1}/{len(pages)}\n'
+        f'{description} Выбрано {len(selected)} из 20; порядок — по нажатию.\n\n'
+        + ('\n\n'.join(lines) if lines else 'Новостей пока нет.') +
+        '\n\nНажми номер, чтобы выбрать или убрать новость.' +
+        (' 🔗 открывает источник.' if session.get('mode') == 'direct' else ''),
+        reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
 
 
 def _chunks(text: str, limit: int = 3600):
+    """Keep whole lines together where possible, without dropping characters."""
     chunk, units = [], 0
-    for char in text:
-        length = 2 if ord(char) > 0xffff else 1
-        if units + length > limit:
+    for line in text.splitlines(keepends=True):
+        line_units = len(line.encode('utf-16-le')) // 2
+        if chunk and units + line_units > limit:
             yield ''.join(chunk)
             chunk, units = [], 0
-        chunk.append(char); units += length
+        for char in line:
+            length = 2 if ord(char) > 0xffff else 1
+            if units + length > limit:
+                yield ''.join(chunk)
+                chunk, units = [], 0
+            chunk.append(char); units += length
     if chunk:
         yield ''.join(chunk)
 
@@ -90,7 +117,7 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
         elif turn.get('kind') == 'owner_edit':
             lines.append('Изменено владельцем — проверь факт и формулировку по источнику.')
         else:
-            lines.append('Комментарий/шутка — не факт.')
+            lines.append('Помечено как комментарий: проверь, нет ли здесь новых фактов.')
         if section.get('video_cut_after') == index:
             lines.append('▶ Здесь видеовставка, если видео будет выбрано; затем новость продолжается.')
     if section.get('video_remarks'):
@@ -308,11 +335,44 @@ async def show_review(message, owner_id: int, item: dict):
     if (item.get('revision') != owner_bulletin.revision(item['stories'], item['sections']) or
             not await owner_bulletin._sources_current(db.db, owner_id, item)):
         return await message.answer('Исходные данные изменились. Выбери новости заново; этот вестник устарел.', parse_mode=None)
-    await message.answer(f'Вестник №{item["bulletin_id"]}: проверь каждую реплику, цитату, источник и картинку. '
-                         'Цитаты не гарантируют точность пересказа. Рендер потребует отдельного подтверждения.', parse_mode=None)
-    for section in item['sections']:
-        await show_section(message, owner_id, item, section)
-    await action_card(message, owner_id, item, 'render', '🎬 Подготовить рендер')
+    lines = [f'📰 Вестник №{item["bulletin_id"]} · сценарий',
+             'Проверь факты во всех репликах, включая комментарии. Цитата не гарантирует точность пересказа.']
+    for position, section in enumerate(item['sections'], 1):
+        lines.append(f'\n{position}. {section["ticker"]}')
+        for index, turn in enumerate(section['turns'], 1):
+            lines.append(f'{turn["speaker"]}: {turn["text"]}')
+            if section.get('video_cut_after') == index:
+                lines.append('▶ Здесь видео, если оно выбрано; затем новость продолжается.')
+        if section.get('video_remarks'):
+            lines.append('Поверх видео, если выбрано:')
+            lines.extend(f'{turn["speaker"]}: {turn["text"]}' for turn in section['video_remarks'])
+        source = next((s for s in item.get('stories', []) if s.get('draft_id') == section['id']), {})
+        video_status = ('видео выбрано' if section.get('video') else
+                        'видео найдено, не выбрано' if source.get('telegram_video_status') == 'available' else
+                        'видео неоднозначно' if source.get('telegram_video_status') == 'ambiguous' else 'без видео')
+        image_status = 'картинка' if section.get('image_b64') else 'нейтральный фон'
+        lines.append(f'Материалы: {image_status}, {video_status}.')
+    lines.append('\nОткрой номер новости для источника, цитат, картинки, видео и исправлений. '
+                 'Рендер потребует отдельного подтверждения.')
+    review_token, render_token = secrets.token_hex(8), secrets.token_hex(8)
+    expires = datetime.now(timezone.utc) + timedelta(days=2)
+    for token, action in ((review_token, 'review'), (render_token, 'render')):
+        await db.db.owner_bulletin_actions.insert_one({'_id': token, 'owner_id': owner_id,
+            'bulletin_id': item['bulletin_id'], 'revision': item['revision'], 'action': action, 'expires_at': expires})
+    b = InlineKeyboardBuilder()
+    for position in range(1, len(item['sections']) + 1):
+        b.button(text=str(position), callback_data=f'nb:detail:{review_token}:{position}')
+    b.adjust(5)
+    actions = InlineKeyboardBuilder()
+    actions.button(text='🎬 Подготовить рендер', callback_data=f'nb:render:{render_token}')
+    actions.button(text='📋 Все вестники', callback_data='nb:list')
+    actions.adjust(1); b.attach(actions)
+    chunks = list(_chunks('\n'.join(lines)))
+    for part in chunks[:-1]:
+        await message.answer(part, parse_mode=None, disable_web_page_preview=True)
+    sent = await message.answer(chunks[-1], reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
+    for token in (review_token, render_token):
+        await db.db.owner_bulletin_actions.update_one({'_id': token}, {'$set': {'message_id': sent.message_id}})
 
 
 async def prepare_selected(message, owner_id: int, data: dict):
@@ -431,7 +491,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                     if not result.modified_count: return await callback.answer('Выбор изменился, попробуй ещё раз.', show_alert=True)
                     session['selected'] = changed
                 else:
-                    if value >= max(1, (len(session['items']) + PAGE_SIZE - 1) // PAGE_SIZE): raise ValueError('Неверная страница')
+                    if value >= len(_selection_pages(session['items'])): raise ValueError('Неверная страница')
                     session['page'] = value
                     await db.db.owner_bulletin_selections.update_one({'_id': token, 'stage': 'open'}, {'$set': {'page': value}})
                 await callback.answer(); return await selection(callback.message, session)
@@ -439,18 +499,37 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             result = await db.db.owner_bulletin_selections.update_one({'_id': token, 'stage': 'open', 'selected': selected}, {'$set': {'stage': 'confirmed'}})
             if not result.modified_count: return await callback.answer('Выбор уже обрабатывается.', show_alert=True)
             entries = {i['number']: i for i in session['items']}
-            names = '\n'.join(f'{i}. {str(entries[n]["label"])[:50]} (№{n})' for i, n in enumerate(selected, 1))
+            names = '\n'.join(f'{i}. {" ".join(str(entries[n]["label"]).split())} (№{n})' for i, n in enumerate(selected, 1))
             await callback.answer()
+            intro = 'Выбранные новости в порядке выпуска:\n' + names
+            for part in _chunks(intro):
+                await callback.message.answer(part, parse_mode=None, disable_web_page_preview=True)
             if session.get('mode') == 'direct':
                 choices = [{'url': entries[n]['url'], 'title': entries[n]['label']} for n in selected]
                 return await tools.new_confirmation(callback.message, owner, 'collect_bulletin_sources',
-                    f'Прочитать источники и найти картинки для вестника?\n{names}\n'
-                    'Это не запускает редактор, озвучку или рендер. Запрос к Gemini потребует отдельного подтверждения.', choices=choices)
+                    'Прочитать выбранные источники и найти картинки? Это не запускает редактор, озвучку или рендер. '
+                    'Запрос к Gemini потребует отдельного подтверждения.', choices=choices)
             revisions = {str(i['number']): i['revision'] for i in session['items'] if i['number'] in selected}
             return await tools.new_confirmation(callback.message, owner, 'prepare_bulletin',
-                f'Подготовить один общий сценарий по этим новостям?\n{names}\n'
-                'Один запрос к Gemini расходует квоту. Видео и публикация не запускаются.',
-                draft_ids=selected, revisions=revisions)
+                'Подготовить один общий сценарий по выбранным новостям? Один запрос к Gemini расходует квоту. '
+                'Видео и публикация не запускаются.', draft_ids=selected, revisions=revisions)
+        if action == 'detail' and len(parts) == 4 and parts[3].isdigit():
+            card = await db.db.owner_bulletin_actions.find_one({'_id': token, 'owner_id': owner,
+                'action': 'review', 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})
+            if not card:
+                return await callback.answer('Кнопка устарела. Открой вестник заново.', show_alert=True)
+            item = await owner_bulletin.get(db.db, owner, card['bulletin_id'])
+            if not item or item.get('stage') != 'ready_for_review' or item.get('revision') != card['revision']:
+                return await callback.answer('Версия изменилась. Открой вестник заново.', show_alert=True)
+            try:
+                await owner_bulletin.approved_payload(db.db, owner, item['bulletin_id'], item['revision'])
+            except (ValueError, KeyError, TypeError):
+                return await callback.answer('Источники или версия изменились. Открой вестник заново.', show_alert=True)
+            position = int(parts[3])
+            if not 1 <= position <= len(item['sections']):
+                raise ValueError('Неверная новость')
+            await callback.answer()
+            return await show_section(callback.message, owner, item, item['sections'][position - 1])
         if action in ('render', 'shorten') and len(parts) == 3:
             card = await db.db.owner_bulletin_actions.find_one({'_id': token, 'owner_id': owner,
                 'action': action, 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})

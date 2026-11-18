@@ -212,6 +212,10 @@ async def run():
         assert await database.news_owner_bulletins.count_documents({'stage':'ready_for_review'}) == 1
         assert await database.news_owner_drafts.count_documents({}) == 0
         assert await database.news_owner_trial_jobs.count_documents({}) == 0
+        assert any(isinstance(m, SendMessage) and 'сценарий' in m.text for m in sent)
+        assert not any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
+        review = await database.owner_bulletin_actions.find_one({'action':'review'})
+        await cb(111, f'nb:detail:{review["_id"]}:1', review['message_id'])
         assert any(isinstance(m, SendMessage) and 'Цитата источника' in m.text for m in sent)
         card = await database.owner_bulletin_actions.find_one({'action':'render'})
         await cb(12, 'nb:render:' + card['_id'], card['message_id'])
