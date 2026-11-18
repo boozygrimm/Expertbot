@@ -133,6 +133,7 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
         elif action == 'tools':
             from handlers.owner_tools_panel import menu
             text, markup = menu('🧰 ИНСТРУМЕНТЫ ВЛАДЕЛЬЦА\n\nВыбери раздел или действие:', [
+                ('📤 Отправить видео в чат', 'ovideo:open'),
                 ('⏰ Расписания отчётов групп', 'owner_tools:reports'),
                 ('📖 Редактор наследий', 'owner_tools:lore'),
                 ('❔ Справка по наследиям', 'owner_tools:lorehelp'),

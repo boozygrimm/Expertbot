@@ -4,7 +4,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, ContentType
 from database import db
 from ai_logic import recognize_media
-from config import get_msk_now
+from config import ADMIN_ID, get_msk_now
 from handlers.admin_panel import is_feature_enabled
 from handlers.audio_transcription import start_transcription, _store_result
 
@@ -26,6 +26,14 @@ async def background_vision_update(bot, message_id, chat_id, file_id, is_animati
 
 class ChatLoggerMiddleware(BaseMiddleware):
     async def __call__(self, handler, event: Message, data: dict):
+        # Do not transcribe/log an owner's explicitly selected video for sending.
+        if (event.video_note and event.chat.type == 'private' and event.chat.id == ADMIN_ID
+                and event.from_user and event.from_user.id == ADMIN_ID and data.get('state')):
+            state = data['state']
+            from handlers.owner_tools_panel import OwnerInput
+            if (await state.get_state() == OwnerInput.waiting.state
+                    and (await state.get_data()).get('action') == 'owner_send_video'):
+                return await handler(event, data)
         # 1. Проверяем, нужно ли игнорировать этот тип контента
         # Убрали ContentType.ANIMATION, чтобы бот видел гифки!
         ignore_types = [
