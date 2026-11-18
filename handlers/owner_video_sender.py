@@ -5,6 +5,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import io
 import logging
+import math
+import re
 from pathlib import Path
 import secrets
 import tempfile
@@ -100,6 +102,14 @@ _TELEGRAM_ERRORS = (
     ('wrong file identifier', 'wrong_file_identifier', 'Telegram не смог распознать файл.'),
     ('file_id_invalid', 'file_id_invalid', 'Telegram не смог распознать файл.'),
     ('video_content_type_invalid', 'video_content_type_invalid', 'Telegram не принял формат видео.'),
+    ('video_note_length_invalid', 'video_note_length_invalid', 'Telegram не принял размер кружка.'),
+    ('wrong video note length', 'wrong_video_note_length', 'Telegram не принял размер кружка.'),
+    ('video_note_invalid', 'video_note_invalid', 'Telegram не принял кружок.'),
+    ('video_process_failed', 'video_process_failed', 'Telegram не смог обработать кружок.'),
+    ('video_file_invalid', 'video_file_invalid', 'Telegram не принял видеофайл.'),
+    ('media_empty', 'media_empty', 'Telegram получил пустой медиафайл.'),
+    ('media_invalid', 'media_invalid', 'Telegram не принял медиафайл.'),
+    ('there is no video note in the request', 'no_video_note', 'Telegram не получил видео для кружка.'),
     ('wrong type of the web page content', 'wrong_content_type', 'Telegram не принял формат видео.'),
     ('chat not found', 'chat_not_found', 'Telegram не нашёл чат.'),
     ('not enough rights', 'not_enough_rights', 'Telegram сообщает, что боту не хватает прав.'),
@@ -113,6 +123,38 @@ def _telegram_error(exc: TelegramBadRequest) -> tuple[str, str]:
         if phrase in message:
             return code, explanation
     return 'other', 'Telegram не сообщил распознаваемую причину.'
+
+
+# Only a fixed vocabulary of technical error words can reach the logs. Unknown
+# words, identifiers, URLs and numbers are discarded instead of logging the
+# arbitrary exception message, which may contain private data.
+_ERROR_WORDS = frozenset("""bad request error telegram failed fail invalid wrong
+    unsupported support not no is there the a an in on of for to from and or with
+    must be can cannot can't could unable too long short big large small empty
+    media video note file content type size length duration dimensions dimension
+    square format audio image upload download send sending sent input output
+    parse processing process processed message chat user bot rights permission
+    forbidden server internal timeout timed out available found specified missing
+    document parameter parameters field required value remote unknown exceeded
+    multipart attachment attach part entity data read write request body http url
+    photo voice stream streams detected corrupt corrupted codec mp4 unable to
+    access invalidated valid video_note video_note_invalid video_note_length_invalid
+    video_content_type_invalid video_process_failed video_file_invalid
+    media_invalid media_empty file_id_invalid
+""".split())
+
+
+def _safe_telegram_detail(exc: TelegramBadRequest) -> str:
+    # Tokenize rather than redact an arbitrary string: only fixed, public
+    # technical words are emitted, never arbitrary identifiers or URLs.
+    words = re.findall(r"[a-z_']+|[^a-z_']+", str(exc.message or '').lower()[:500])
+    result = []
+    for word in words:
+        if re.fullmatch(r"[a-z_']+", word):
+            result.append(word if word in _ERROR_WORDS else '[...]')
+        else:
+            result.append(' ')
+    return ' '.join(''.join(result).split())[:240] or '[...]'
 
 
 async def receive_video(message: types.Message, state: FSMContext, data: dict) -> None:
@@ -155,11 +197,12 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
                 stage = 'conversion'
                 if mode == 'note':
                     target = Path(temp) / 'note.mp4'
-                    await owner_video_media.make_note(source, target)
+                    duration = await owner_video_media.make_note(source, target)
                     payload = target.read_bytes()
                     stage = 'preview_note'
                     sent = await message.bot.send_video_note(chat_id=message.from_user.id,
-                        video_note=types.BufferedInputFile(payload, filename='note.mp4'))
+                        video_note=types.BufferedInputFile(payload, filename='note.mp4'),
+                        length=owner_video_media.SIZE, duration=math.ceil(duration))
                     file_id = sent.video_note.file_id
                 else:
                     await owner_video_media.probe(source)
@@ -174,7 +217,8 @@ async def receive_video(message: types.Message, state: FSMContext, data: dict) -
         title = await _group(message.bot, data['chat_id'])
     except TelegramBadRequest as exc:
         code, explanation = _telegram_error(exc)
-        logger.warning('Подготовка видео: TelegramBadRequest stage=%s reason=%s', stage, code)
+        logger.warning('Подготовка видео: TelegramBadRequest stage=%s reason=%s detail=%s',
+                       stage, code, _safe_telegram_detail(exc))
         steps = {'download': 'скачивании файла', 'preview_note': 'отправке предпросмотра кружка',
                  'preview_video': 'отправке предпросмотра видео', 'group_check': 'проверке группы',
                  'preparation_notice': 'отправке сообщения о подготовке'}
