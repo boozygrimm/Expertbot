@@ -86,6 +86,153 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
             await tools.receive_input(self.message, self.state)
             self.assertTrue(fn.await_args.args[0].text.startswith('/news_edit 12 ' + item['revision']))
 
+    async def test_compact_single_card_and_explicit_media_review(self):
+        from io import BytesIO
+        from PIL import Image
+        from news_prototype import news_image_codec
+        out = BytesIO(); Image.new('RGB', (40, 40), 'red').save(out, format='PNG')
+        image = news_image_codec.make_thumbnail(out.getvalue())
+        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12,
+            AsyncMock(return_value={'summary': SOURCE, 'media': {'kind':'photo', 'url':'https://cdn4.telesco.pe/file/x'}}),
+            AsyncMock(return_value=DRAFT), AsyncMock(return_value=image),
+            AsyncMock(return_value={'description':'На картинке красный квадрат.', 'regions': [[100, 100, 900, 900]]}))
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        self.message.from_user = self.user
+        self.message.panel_mode = True
+        await news_owner_drafts.show(self.message, 12, item=item)
+        self.assertEqual(self.message.answer.await_count, 1)
+        self.message.answer_photo.assert_not_awaited()
+        text = self.message.answer.await_args.args[0]
+        self.assertIn('Черновик №12 · сценарий', text)
+        self.assertIn('Источник:', text); self.assertIn('Бендер:', text)
+        self.assertIn('открой и проверь', text)
+        buttons = [b for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        media = next(b.callback_data for b in buttons if b.text == '🖼 Проверить картинку')
+        self.assertFalse(any('Убрать картинку' in b.text for b in buttons))
+        await self.action(media)
+        self.assertEqual(self.message.answer_photo.await_count, 2)
+        self.assertIn('красный квадрат', self.message.answer.await_args.args[0])
+        buttons = [b for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        self.assertTrue(any('Убрать картинку' in b.text for b in buttons))
+        back = next(b.callback_data for b in buttons if b.text == '↩️ К сценарию')
+        await self.action(back)
+        self.assertIn('Черновик №12 · сценарий', self.message.answer.await_args.args[0])
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+        await self.db.news_owner_drafts.update_one({'_id':item['_id']}, {'$set':{'revision':'b'*64}})
+        self.message.answer_photo.reset_mock()
+        await self.action(media)
+        self.message.answer_photo.assert_not_awaited()
+        self.assertIn('изменилось', self.callback.answer.await_args.args[0])
+
+    async def test_media_removal_confirmation_and_program_context(self):
+        from io import BytesIO
+        from PIL import Image
+        from news_prototype.news_image_codec import make_thumbnail
+        out = BytesIO(); Image.new('RGB', (40, 40), 'red').save(out, format='PNG')
+        image = make_thumbnail(out.getvalue())
+        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12,
+            AsyncMock(return_value={'summary': SOURCE, 'media': {'kind': 'photo', 'url': 'https://cdn4.telesco.pe/file/x'}}),
+            AsyncMock(return_value=DRAFT), AsyncMock(return_value=image),
+            AsyncMock(return_value={'description': 'Тест', 'regions': [[100, 100, 900, 900]]}))
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        self.message.from_user = self.user; self.message.panel_mode = True
+        await news_owner_drafts.show(self.message, 12, item=item, for_program=True)
+        media = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row if b.text == '🖼 Проверить картинку')
+        await self.action(media)
+        focus = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row if 'Убрать увеличенные' in b.text)
+        await self.action(focus)
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'nofocus'})
+        self.assertTrue(confirm['data']['for_program'])
+        self.assertTrue((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_regions'))
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        self.message.answer.reset_mock()
+        await tools.action(self.callback, self.state, None)
+        self.assertEqual(self.message.answer.await_count, 1)
+        self.assertIn('Автоматические области убраны', self.message.answer.await_args.args[0])
+        self.assertTrue(any(b.callback_data == 'newsact:choose' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+        updated = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        self.assertNotIn('image_regions', updated['script'])
+        self.assertTrue(updated['script']['image_b64'])
+        media = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row if b.text == '🖼 Проверить картинку')
+        await self.action(media)
+        remove = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row if b.text == '🖼 Убрать картинку')
+        await self.action(remove)
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'noimage'})
+        self.assertTrue((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_b64'))
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        self.message.answer.reset_mock()
+        await tools.action(self.callback, self.state, None)
+        self.assertEqual(self.message.answer.await_count, 1)
+        self.assertIn('Изображение убрано', self.message.answer.await_args.args[0])
+        self.assertFalse((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_b64'))
+        self.assertTrue(any(b.callback_data == 'newsact:choose' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_expired_and_foreign_media_card_are_rejected(self):
+        item = await self.ready(12)
+        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        doc = await self.db.owner_news_cards.find_one({})
+        media = 'newsact:media:' + doc['_id']
+        self.callback.from_user = SimpleNamespace(id=news.ADMIN_ID + 1)
+        await self.action(media)
+        self.message.answer_photo.assert_not_awaited()
+        self.callback.from_user = self.user
+        await self.db.owner_news_cards.update_one({'_id': doc['_id']}, {'$set': {'expires_at': datetime.now(timezone.utc)-timedelta(seconds=1)}})
+        await self.action(media)
+        self.assertIn('устарела', self.callback.answer.await_args.args[0])
+        self.message.answer_photo.assert_not_awaited()
+
+    async def test_edit_saves_one_card_and_program_context(self):
+        item = await self.ready(12)
+        self.message.from_user = self.user; self.message.panel_mode = True
+        await news_owner_drafts.show(self.message, 12, item=item, for_program=True)
+        edit = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row if b.text.startswith('✏️'))
+        self.message.answer.reset_mock()
+        await self.action(edit)
+        self.assertEqual(self.message.answer.await_count, 1)
+        data = self.state.update_data.await_args.kwargs
+        self.assertTrue(data['for_program'])
+        self.state.get_data.return_value = data
+        self.message.text = self.message.answer.await_args.args[0]
+        self.message.answer.reset_mock()
+        await tools.receive_input(self.message, self.state)
+        self.assertEqual(self.message.answer.await_count, 1)
+        self.assertIn('Текст не изменился.', self.message.answer.await_args.args[0])
+        self.assertTrue(any(b.callback_data == 'newsact:choose' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+
+    async def test_no_image_card_and_long_text_are_safe(self):
+        item = await self.ready(12)
+        self.message.from_user = self.user; self.message.panel_mode = True
+        await news_owner_drafts.show(self.message, 12, item=item)
+        self.assertEqual(self.message.answer.await_count, 1)
+        self.assertIn('Картинка не найдена или убрана', self.message.answer.await_args.args[0])
+        self.assertFalse(any(b.text == '🖼 Проверить картинку' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+        self.message.answer_photo.assert_not_awaited()
+        self.message.answer.reset_mock()
+        with patch.object(owner_drafts, 'editable_message', return_value='/news_edit\n' + '🦔' * 2050):
+            await news_owner_drafts.show(self.message, 12, item=item)
+        texts = [c.args[0] for c in self.message.answer.await_args_list]
+        self.assertGreater(len(texts), 1)
+        self.assertTrue(all(len(t.encode('utf-16-le')) // 2 <= 4096 for t in texts))
+        self.assertEqual(''.join(texts).count('🦔'), 2050)
+        self.assertIn('reply_markup', self.message.answer.await_args.kwargs)
+
+    async def test_media_description_split_by_utf16_limit(self):
+        item = await self.ready(12)
+        item['script']['image_b64'] = 'unused'
+        item['image_analysis'] = 'analyzed'
+        item['image_description'] = '🦔' * 2500
+        with patch('news_prototype.news_image_codec.decode_thumbnail', return_value=b'image'):
+            await news_owner_drafts.show_image_details(self.message, news.ADMIN_ID, item)
+        texts = [c.args[0] for c in self.message.answer.await_args_list]
+        self.assertGreater(len(texts), 1)
+        self.assertTrue(all(len(t.encode('utf-16-le')) // 2 <= 4096 for t in texts))
+        self.assertEqual(''.join(texts).count('🦔'), 2500)
+
     async def test_selection_builds_snapshot_once_and_never_renders(self):
         await self.ready(10); await self.ready(11)
         await self.action('newsact:choose')
@@ -155,7 +302,7 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(news_owner_panel, 'db', SimpleNamespace(db=self.db)):
             await news_owner_panel.news_panel_action(self.callback)
         texts = [call.args[0] for call in self.message.answer.await_args_list]
-        self.assertTrue(any('Действия с этой версией' in text for text in texts))
+        self.assertTrue(any('Черновик №12 · сценарий' in text for text in texts))
         self.assertFalse(any('/news_edit' in text or '/news_approve' in text for text in texts))
         card = await self.db.owner_news_cards.find_one({})
         self.assertEqual(card['revision'], item['revision'])
@@ -228,7 +375,7 @@ async def run():
                            'from':{'id':123456,'is_bot':True,'first_name':'Bot'}, 'text':'Panel'}}})
             await asyncio.wait_for(dp.feed_update(bot, update), 5)
         await cb(1, 'news_panel:view_drafts:10')
-        assert any(isinstance(m, SendMessage) and 'Действия с этой версией' in m.text for m in sent), sent
+        assert any(isinstance(m, SendMessage) and 'Черновик №10 · сценарий' in m.text for m in sent), sent
         await cb(2, 'newsact:choose')
         session = await database.owner_news_selections.find_one({})
         token = session['_id']

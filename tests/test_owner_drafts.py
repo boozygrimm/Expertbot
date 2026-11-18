@@ -57,6 +57,15 @@ class DraftFlowTests(unittest.IsolatedAsyncioTestCase):
         self.fetch.assert_awaited_once(); self.draft.assert_awaited_once()
         self.assertIsNone(await owner_drafts.get(self.db, 999, 10))
 
+    async def test_channel_name_is_preserved_and_spoken_in_new_single_story(self):
+        self.fetch.return_value['telegram_channel_name'] = 'Example News'
+        item = await self.create_ready()
+        self.assertEqual(item['telegram_channel_name'], 'Example News')
+        self.assertTrue(item['script']['turns'][0]['text'].startswith(
+            'В телеграм-канале «Example News» поделились новостью. '))
+        self.assertIn('Example News', owner_drafts.editable_message(10, URL, item['script']))
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
     async def test_missing_source_requests_text_and_never_calls_model_twice(self):
         self.fetch.side_effect = article_fetch.ArticleError('unavailable')
         await owner_drafts.create(self.db, 123, 10, URL, '')
@@ -205,7 +214,8 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         msg = self.msg(f'/news_approve 10 {item["revision"]}')
         with patch('news_prototype.news_worker_client.NewsWorkerClient', side_effect=ValueError('no worker')):
             await self.handler.approve_draft(msg)
-        self.assertIn('не подтвердил поддержку', msg.answer.await_args.args[0])
+        self.assertIn('Не удалось проверить воркер', msg.answer.await_args.args[0])
+        self.assertIn('картинка сохранена', msg.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         self.assertEqual(await owner_drafts.remove_image(self.db, 123, 10, item['revision']), 'saved')
         item = await owner_drafts.get(self.db, 123, 10)

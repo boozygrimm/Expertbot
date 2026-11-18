@@ -381,3 +381,27 @@ async def test_edit_warns_and_unmodified_edit_retains_video_and_render_warns():
         await panel.callback_action(callback, state)
         assert 'НЕТ выбранных видео' in message.answer.await_args.args[0]
         assert await db.news_owner_trial_jobs.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_verified_channel_name_survives_collection_and_revalidation():
+    from news_prototype import bulletin_editor
+    import json
+    db = AsyncMongoMockClient().test
+    await owner_bulletin_sources.create(db, 123, 47, [
+        {'url': 'https://t.me/ExampleNews/102', 'title': 'Видео'},
+        {'url': 'https://example.com/other', 'title': 'Сайт'}])
+    async def fetch(url):
+        return {'summary': SOURCE, 'telegram_channel_name': 'Проверенный канал'}
+    await owner_bulletin_sources.collect(db, 123, 47, fetch, AsyncMock())
+    source_item = await owner_bulletin.get(db, 123, 47)
+    assert source_item['stories'][0]['telegram_channel_name'] == 'Проверенный канал'
+    assert 'telegram_channel_name' not in source_item['stories'][1]
+    assert await owner_bulletin.prepare(db, 123, 47, AsyncMock(side_effect=response)) == 'ready_for_review'
+    item = await owner_bulletin.get(db, 123, 47)
+    first = item['sections'][0]['turns'][0]['text']
+    assert first.startswith('В телеграм-канале «Проверенный канал» поделились новостью.')
+    assert first.count('Проверенный канал') == 1
+    assert (await owner_bulletin.approved_payload(db, 123, 47, item['revision']))['sections'][0]['turns'][0]['text'] == first
+    checked = bulletin_editor.parse_draft(json.dumps({'decision': 'draft', 'sections': item['sections']}, ensure_ascii=False), item['stories'])
+    assert checked['sections'][0]['turns'][0]['text'] == first

@@ -46,6 +46,27 @@ class NewsWorkerClient:
         self.headers = {'Authorization': 'Bearer ' + secret}
         self.timeout = aiohttp.ClientTimeout(total=30)
 
+    async def capabilities(self, *, timeout: float = 45) -> set[str]:
+        """One bounded read-only health check; distinguish failure from an older worker.
+
+        The longer timeout lets a sleeping remote instance wake up. Never expose
+        HTTP diagnostics, URLs or credentials to the caller.
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.base_url + '/health', headers=self.headers,
+                                       allow_redirects=False, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                    if resp.status != 200:
+                        raise NewsWorkerError('Проверка воркера не удалась')
+                    data = await read_json(resp)
+                    if (not isinstance(data, dict) or data.get('status') != 'ok'
+                            or not isinstance(data.get('capabilities'), list)
+                            or any(not isinstance(x, str) for x in data['capabilities'])):
+                        raise NewsWorkerError('Проверка воркера не удалась')
+                    return set(data['capabilities'])
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            raise NewsWorkerError('Проверка воркера не удалась') from None
+
     async def _supports(self, capability: str) -> bool:
         try:
             async with aiohttp.ClientSession() as session:

@@ -153,7 +153,7 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         item = await self.prepare(10, AsyncMock(return_value={'description': DESCRIPTION, 'regions': REGIONS}))
         message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                   text=f'/news_approve 10 {item["revision"]}', answer=AsyncMock())
-        client = SimpleNamespace(supports_images=AsyncMock(return_value=True), supports_image_focus=AsyncMock(return_value=False))
+        client = SimpleNamespace(capabilities=AsyncMock(return_value={'news-story-image-v1'}))
         with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
              patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
              patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
@@ -161,6 +161,26 @@ class VisionFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Обновите воркер', message.answer.await_args.args[0])
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         self.assertEqual((await owner_drafts.get(self.db, 123, 10))['stage'], 'draft_ready')
+
+    async def test_draft_handler_preserves_image_when_health_unreachable_or_old(self):
+        from handlers import news_owner_drafts as handler
+        from news_prototype.news_worker_client import NewsWorkerError
+        item = await self.prepare(10, AsyncMock(return_value={'description': DESCRIPTION, 'regions': REGIONS}))
+        message = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
+                                  text=f'/news_approve 10 {item["revision"]}', answer=AsyncMock())
+        client = SimpleNamespace(capabilities=AsyncMock(side_effect=NewsWorkerError('secret diagnostic')))
+        with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
+             patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
+             patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=client):
+            await handler.approve_draft(message)
+            self.assertIn('может просыпаться', message.answer.await_args.args[0])
+            self.assertNotIn('secret diagnostic', message.answer.await_args.args[0])
+            client.capabilities.side_effect = None
+            client.capabilities.return_value = set()
+            await handler.approve_draft(message)
+            self.assertIn('Воркер ответил, но не поддерживает', message.answer.await_args.args[0])
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+        self.assertEqual((await owner_drafts.get(self.db, 123, 10))['script']['image_b64'], self.image)
 
     async def test_program_handler_checks_focus_before_approval(self):
         from handlers import news_owner_drafts as handler

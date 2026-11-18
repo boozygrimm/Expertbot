@@ -25,6 +25,8 @@ class NewsWorkerClientTests(unittest.IsolatedAsyncioTestCase):
             if self.mode == 'missing': return web.Response(status=404)
             return web.Response(body=b'video data',content_type='video/mp4')
         async def health(request):
+            if self.mode == 'unavailable': return web.Response(status=503)
+            if self.mode == 'invalid': return web.json_response({'status':'bad','capabilities':['news-story-image-v1']})
             if self.mode == 'unsupported': return web.json_response({'status':'ok','capabilities':[]})
             return web.json_response({'status':'ok','capabilities':['news-story-v1']})
         app=web.Application(); app.router.add_get('/health',health); app.router.add_post('/news-jobs',post); app.router.add_post('/news-digests',post); app.router.add_get('/news-jobs/{job}',get)
@@ -39,6 +41,15 @@ class NewsWorkerClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.client.supports_news())
         self.mode='unsupported'
         self.assertFalse(await self.client.supports_news())
+
+    async def test_capabilities_distinguish_unsupported_from_unreachable(self):
+        self.assertEqual(await self.client.capabilities(), {'news-story-v1'})
+        self.mode = 'unsupported'
+        self.assertEqual(await self.client.capabilities(), set())
+        for mode in ('unavailable', 'invalid'):
+            self.mode = mode
+            with self.assertRaises(NewsWorkerError):
+                await self.client.capabilities()
 
     async def test_submission_once_and_authenticated(self):
         state=await self.client.submit(self.job,{'turns': []})

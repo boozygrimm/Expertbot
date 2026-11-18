@@ -25,6 +25,8 @@ def _snapshot(item: dict) -> dict:
         snapshot['image_b64'] = script['image_b64']
     if item.get('image_kind'):
         snapshot['image_kind'] = item['image_kind']
+    if item.get('telegram_channel_name'):
+        snapshot['telegram_channel_name'] = item['telegram_channel_name']
     return snapshot
 
 

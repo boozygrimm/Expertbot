@@ -38,8 +38,10 @@ def _id(value: str) -> int:
     return int(value)
 
 
-async def show(message, draft_id: int, *, for_program: bool = False, item: dict | None = None, panel_mode: bool = False) -> None:
+async def show(message, draft_id: int, *, for_program: bool = False, item: dict | None = None,
+               panel_mode: bool = False, notice: str = '') -> None:
     panel_mode = panel_mode or getattr(message, 'panel_mode', False)
+    for_program = for_program or getattr(message, 'for_program', False)
     if item is None:
         item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
     if not item:
@@ -49,8 +51,21 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
     if stage == 'draft_ready':
         editable = owner_drafts.editable_message(draft_id, item['url'], item['script'])
         if panel_mode:
-            await message.answer('Черновик непроверен: сверь смысл, факты, шутки и строку с источником. Действия доступны кнопками ниже.', parse_mode=None)
-            await message.answer(editable.split('\n', 1)[1], parse_mode=None, disable_web_page_preview=True)
+            image = item['script'].get('image_b64')
+            status = ('Картинка найдена — открой и проверь её и кадрирование.' if image else
+                      'Картинка не найдена или убрана — сюжет будет без неё.')
+            text = (f'📰 Черновик №{draft_id} · сценарий\n'
+                    + (notice + '\n' if notice else '') + editable.split('\n', 1)[1]
+                    + '\n\n' + status + '\nСверь факты, шутки и строку с источником.')
+            from handlers.owner_bulletin_panel import _chunks
+            from handlers.owner_news_actions import card
+            # A near-limit UTF-16 script may need multiple messages, but common
+            # cases remain one card containing both review and controls.
+            chunks = list(_chunks(text)) if len(text.encode('utf-16-le')) // 2 > 4096 else [text]
+            for chunk in chunks[:-1]:
+                await message.answer(chunk, parse_mode=None, disable_web_page_preview=True)
+            await card(message, message.from_user.id, 'draft', item, for_program=for_program, text=chunks[-1])
+            return
         else:
             await message.answer('Черновик непроверен: сверьте смысл, факты, шутки и строку с источником. '
                                  'Для правки скопируйте следующее сообщение, исправьте и отправьте его боту. '
@@ -82,10 +97,7 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
                                                       f'/news_nofocus {draft_id} {item["revision"]}'), parse_mode=None)
         else:
             await message.answer('Картинка не найдена или недоступна — ролик будет без неё.', parse_mode=None)
-        if panel_mode:
-            from handlers.owner_news_actions import card
-            await card(message, message.from_user.id, 'draft', item, for_program=for_program)
-        elif not for_program:
+        if not for_program:
             await message.answer(f'/news_approve {draft_id} {item["revision"]}', parse_mode=None)
         return
     labels = {
@@ -107,6 +119,37 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
     if panel_mode:
         from handlers.owner_news_actions import card
         await card(message, message.from_user.id, 'draft', item)
+
+
+async def show_image_details(message, owner_id: int, item: dict, *, for_program: bool = False) -> None:
+    """Explicit review on request; never changes the draft or starts a job."""
+    from news_prototype.news_image_codec import decode_thumbnail, review_preview
+    from handlers.owner_news_actions import card
+    image = item['script'].get('image_b64')
+    if not image:
+        await message.answer('Картинка не выбрана.', parse_mode=None)
+        return
+    label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи'}.get(
+        item.get('image_kind'), 'изображение поста')
+    await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
+        caption=f'Найдено {label}. Проверь содержимое и право использования.', parse_mode=None)
+    regions = item['script'].get('image_regions')
+    if regions:
+        await message.answer_photo(types.BufferedInputFile(review_preview(image, regions), filename='focus.jpg'),
+            caption='Рамки показывают области для увеличения. Проверь кадрирование.', parse_mode=None)
+    analysis = item.get('image_analysis')
+    if analysis == 'analyzed':
+        description = item.get('image_description', '')
+        text = 'Распознавание картинки может ошибаться; сверь с оригиналом:\n' + description
+    elif analysis == 'unavailable':
+        text = 'Картинку не удалось распознать. Проверь, нет ли на ней важных сведений.'
+    else:
+        text = 'Проверь картинку и кадрирование перед рендером.'
+    from handlers.owner_bulletin_panel import _chunks
+    chunks = list(_chunks(text)) if len(text.encode('utf-16-le')) // 2 > 4096 else [text]
+    for chunk in chunks[:-1]:
+        await message.answer(chunk, parse_mode=None, disable_web_page_preview=True)
+    await card(message, owner_id, 'draft', item, for_program=for_program, text=chunks[-1], media_view=True)
 
 
 @router.message(Command('news_prepare'))
@@ -409,8 +452,12 @@ async def edit_draft(message: types.Message) -> None:
         if result == 'stale':
             await message.answer(f'Версия изменилась. Сначала откройте /news_draft {draft_id}.', parse_mode=None)
         else:
-            await message.answer('Изменения сохранены.' if result == 'saved' else 'Текст не изменился.', parse_mode=None)
-            await show(message, draft_id)
+            notice = 'Изменения сохранены.' if result == 'saved' else 'Текст не изменился.'
+            if getattr(message, 'panel_mode', False):
+                await show(message, draft_id, notice=notice)
+            else:
+                await message.answer(notice, parse_mode=None)
+                await show(message, draft_id)
     except ValueError:
         await message.answer('Проверьте формат, источник и реплики. Исходную ссылку менять нельзя.', parse_mode=None)
     except Exception as exc:
@@ -434,8 +481,12 @@ async def remove_focus(message: types.Message) -> None:
         if result == 'stale':
             await message.answer(f'Версия изменилась. Проверьте /news_draft {draft_id}.', parse_mode=None)
         else:
-            await message.answer('Автоматические области убраны.' if result == 'saved' else 'Областей не было.', parse_mode=None)
-            await show(message, draft_id)
+            notice = 'Автоматические области убраны.' if result == 'saved' else 'Областей не было.'
+            if getattr(message, 'panel_mode', False):
+                await show(message, draft_id, notice=notice)
+            else:
+                await message.answer(notice, parse_mode=None)
+                await show(message, draft_id)
     except ValueError:
         await message.answer('Скопируйте команду из черновика.', parse_mode=None)
     except Exception as exc:
@@ -459,8 +510,12 @@ async def remove_image(message: types.Message) -> None:
         if result == 'stale':
             await message.answer(f'Версия изменилась. Проверьте /news_draft {draft_id}.', parse_mode=None)
         else:
-            await message.answer('Изображение убрано.' if result == 'saved' else 'Изображения нет.', parse_mode=None)
-            await show(message, draft_id)
+            notice = 'Изображение убрано.' if result == 'saved' else 'Изображения нет.'
+            if getattr(message, 'panel_mode', False):
+                await show(message, draft_id, notice=notice)
+            else:
+                await message.answer(notice, parse_mode=None)
+                await show(message, draft_id)
     except ValueError:
         await message.answer('Скопируйте команду удаления картинки из черновика.', parse_mode=None)
     except Exception as exc:
@@ -482,20 +537,21 @@ async def approve_draft(message: types.Message) -> None:
         draft_id = _id(parts[1])
         item = await owner_drafts.get(db.db, message.from_user.id, draft_id)
         if item and item.get('stage') == 'draft_ready' and item.get('revision') == parts[2] and item.get('script', {}).get('image_b64'):
-            from news_prototype.news_worker_client import NewsWorkerClient
+            from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
             try:
                 client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-                supported = await client.supports_images()
-                focus_supported = (not item['script'].get('image_regions') or await client.supports_image_focus())
-            except (ValueError, OSError):
-                supported = False
-            if not supported:
-                await message.answer(f'Воркер не подтвердил поддержку картинки. Рендер не запущен. '
-                                     f'Можно убрать её командой /news_noimage {draft_id} {parts[2]} '
-                                     'или сначала обновить воркер.', parse_mode=None)
+                capabilities = await client.capabilities()
+            except (ValueError, OSError, NewsWorkerError):
+                await message.answer('Не удалось проверить воркер: он может просыпаться или быть недоступен. '
+                                     'Рендер не запущен, картинка сохранена. Проверь подключение и попробуй '
+                                     'подтвердить эту версию позже.', parse_mode=None)
                 return
-            if not focus_supported:
-                await message.answer('Воркер не подтвердил поддержку выбранных областей картинки. '
+            if 'news-story-image-v1' not in capabilities:
+                await message.answer('Воркер ответил, но не поддерживает картинки в одиночных сюжетах. '
+                                     'Рендер не запущен, картинка сохранена; сначала обновите воркер.', parse_mode=None)
+                return
+            if item['script'].get('image_regions') and 'news-image-focus-v1' not in capabilities:
+                await message.answer('Воркер ответил, но не поддерживает выбранные области картинки. '
                                      'Обновите воркер; рендер не запущен.', parse_mode=None)
                 return
         result = await owner_drafts.approve(db.db, message.from_user.id, draft_id, parts[2])
