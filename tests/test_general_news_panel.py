@@ -296,9 +296,9 @@ async def test_last_poll_failures_show_names_and_pages(context):
     await click(c, button(c.message, 'Недоступные источники'))
     assert sources[0]['name'] in c.message.edit_text.await_args.args[0]
     assert 'не означает' in c.message.edit_text.await_args.args[0]
-    if len(sources) > 20:
+    for _ in range((len(sources) - 1) // 20):
         await click(c, button(c.message, 'Дальше'))
-        assert sources[-1]['name'] in c.message.edit_text.await_args.args[0]
+    assert sources[-1]['name'] in c.message.edit_text.await_args.args[0]
 
 
 @pytest.mark.asyncio

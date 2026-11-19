@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
+from urllib.parse import urlsplit
 
 import aiohttp
 from news_prototype import article_fetch, news_sources, owner_discovery
@@ -52,10 +53,34 @@ FEEDS = {
     'quanta': ('Quanta Magazine', 'https://www.quantamagazine.org/feed/', 'science'),
     'who': ('ВОЗ', 'https://www.who.int/rss-feeds/news-english.xml?paged=1', 'health'),
     'sciencedaily_birds': ('ScienceDaily: птицы', 'https://www.sciencedaily.com/rss/plants_animals/birds.xml', 'animals'),
+    # International editorial sources across regions and topics, not a claim of
+    # uptime, complete texts, independent verification, or permission for media.
+    'verge': ('The Verge', 'https://www.theverge.com/rss/index.xml', 'internet'),
+    'techcrunch': ('TechCrunch', 'https://techcrunch.com/feed/', 'technology'),
+    'wired': ('WIRED', 'https://www.wired.com/feed/rss', 'technology'),
+    'engadget': ('Engadget', 'https://www.engadget.com/rss.xml', 'technology'),
+    'restofworld': ('Rest of World', 'https://restofworld.org/feed/latest', 'internet'),
+    'techcabal': ('TechCabal', 'https://techcabal.com/feed/', 'technology'),
+    'inc42': ('Inc42', 'https://inc42.com/feed/', 'technology'),
+    'science_japan': ('Science Japan', 'https://sj.jst.go.jp/feed/rss.xml', 'science'),
+    'scmp_tech': ('South China Morning Post: технологии', 'https://www.scmp.com/rss/36/feed', 'technology'),
+    'eurogamer': ('Eurogamer: новости', 'https://www.eurogamer.net/feed/news', 'games'),
+    'pcgamer': ('PC Gamer', 'https://www.pcgamer.com/feeds.xml', 'games'),
+    'polygon': ('Polygon: игры', 'https://www.polygon.com/rss/gaming/index.xml', 'games'),
+    'guardian_animals': ('The Guardian: животные', 'https://www.theguardian.com/world/animals/rss', 'animals'),
+    'mongabay': ('Mongabay', 'https://news.mongabay.com/feed/', 'nature'),
+    'pbs_nature': ('PBS Nature', 'https://www.pbs.org/wnet/nature/blog/feed/', 'animals'),
+    'space_com': ('Space.com', 'https://www.space.com/feeds/all', 'space'),
+    'variety_film': ('Variety: кино', 'https://variety.com/v/film/feed/', 'cinema'),
+    'billboard_music': ('Billboard: музыка', 'https://www.billboard.com/c/music/feed/', 'culture'),
+    'bbc_sport': ('BBC Sport', 'https://feeds.bbci.co.uk/sport/rss.xml', 'sport'),
+    'positive_news': ('Positive News', 'https://www.positive.news/feed/', 'general'),
 }
 PARSE_FEEDS = {key: (name, url) for key, (name, url, _) in FEEDS.items()}
 SOURCE_IDS = frozenset(CHANNELS) | frozenset(FEEDS)
 SOURCE_TIMEOUT = 12  # Overall per-source cap, including redirects and parsing.
+SOURCE_CONCURRENCY = 8
+PER_HOST_CONCURRENCY = 4
 
 
 async def collect(*, now: datetime | None = None, fetch=None, sources=None) -> tuple[list[dict], list[str]]:
@@ -80,8 +105,14 @@ async def collect(*, now: datetime | None = None, fetch=None, sources=None) -> t
         valid = general_sources.validate_source(source['kind'], source['name'], source['location'], source['topic_hint'])
         records.append(valid | {'id': source['id']})
     resolver = article_fetch.PublicResolver()
-    connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False)
-    semaphore = asyncio.Semaphore(4)
+    connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False,
+                                     limit=SOURCE_CONCURRENCY, limit_per_host=PER_HOST_CONCURRENCY)
+    semaphore = asyncio.Semaphore(SOURCE_CONCURRENCY)
+    host_semaphores = {
+        host: asyncio.Semaphore(PER_HOST_CONCURRENCY)
+        for host in {('t.me' if source['kind'] == 'telegram' else urlsplit(source['location']).hostname)
+                     for source in records}
+    }
     get = fetch or owner_discovery._fetch
     try:
         async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=15, connect=7, sock_read=8),
@@ -101,8 +132,12 @@ async def collect(*, now: datetime | None = None, fetch=None, sources=None) -> t
                 return [item | {'source_id': source_id, 'topic_hint': topic} for item in cleaned]
 
             async def one(source):
-                async with semaphore:
-                    return await asyncio.wait_for(read_source(source), timeout=SOURCE_TIMEOUT)
+                host = 't.me' if source['kind'] == 'telegram' else urlsplit(source['location']).hostname
+                # Do not occupy a global slot while waiting for the per-host
+                # limit: slow Telegram requests must not starve unrelated RSS.
+                async with host_semaphores[host]:
+                    async with semaphore:
+                        return await asyncio.wait_for(read_source(source), timeout=SOURCE_TIMEOUT)
             results = await asyncio.gather(*(one(source) for source in records), return_exceptions=True)
     finally:
         await resolver.close()
