@@ -8,7 +8,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
-from news_prototype import bulletin_contract, bulletin_editor, bulletin_limits, owner_drafts, owner_program
+import secrets
+from news_prototype import bulletin_contract, bulletin_editor, bulletin_limits, editor_client, owner_drafts, owner_program
 
 
 def _key(owner_id: int, number: int) -> str:
@@ -87,23 +88,32 @@ async def _sources_current(db, owner_id: int, item: dict) -> bool:
     return True
 
 
-async def prepare(db, owner_id: int, number: int, editor, *, expected_source: str | None = None) -> str:
+async def prepare(db, owner_id: int, number: int, editor, *, expected_source: str | None = None,
+                  retry: bool = False, failure_token: str | None = None) -> str:
     """One claimed external request; ambiguous/failed results are not retried."""
     key = _key(owner_id, number)
     item = await get(db, owner_id, number)
-    if not item or item.get('stage') != 'new':
+    target_stage = 'editor_failed' if retry else 'new'
+    if not item or item.get('stage') != target_stage:
+        return 'not_new'
+    if retry and (item.get('mode') != 'direct' or item.get('editor_failure_token') != failure_token):
         return 'not_new'
     if (expected_source is not None and item.get('source_revision') != expected_source) or not await _sources_current(db, owner_id, item):
         return 'stale'
-    query = {'_id': key, 'stage': 'new', 'owner_id': owner_id}
+    query = {'_id': key, 'stage': target_stage, 'owner_id': owner_id}
+    if retry:
+        # Legacy failures have no token; a new failure always gets a fresh one.
+        query['editor_failure_token'] = failure_token if failure_token is not None else {'$exists': False}
     if item.get('mode') == 'direct':
         query['source_revision'] = item['source_revision']
     claimed = await db.news_owner_bulletins.update_one(query,
-        {'$set': {'stage': 'editing'}})
+        {'$set': {'stage': 'editing'}, '$unset': {'editor_error': '', 'editor_failure_token': ''}})
     if not claimed.modified_count:
         return 'not_new'
+    phase = 'editor'
     try:
         generated = await editor(item['stories'])
+        phase = 'validation'
         # Validate every boundary even when the editor callback is injected.
         # Editor returns the already-validated result, but reconstructing the
         # response guarantees source/ordering checks here as well.
@@ -111,6 +121,7 @@ async def prepare(db, owner_id: int, number: int, editor, *, expected_source: st
             raise ValueError('Неверный результат редактора')
         if generated.get('decision') == 'insufficient':
             safe = bulletin_editor.parse_draft(json.dumps({'decision': 'insufficient', 'ids': generated.get('ids')}), item['stories'])
+            phase = 'save'
             await db.news_owner_bulletins.update_one({'_id': key, 'stage': 'editing'},
                 {'$set': {'stage': 'needs_source', 'missing_ids': safe['ids']}})
             return 'needs_source'
@@ -120,12 +131,30 @@ async def prepare(db, owner_id: int, number: int, editor, *, expected_source: st
         for section, source in zip(sections, item['stories']):
             if 'image_b64' in source:
                 section['image_b64'] = source['image_b64']
+        phase = 'save'
         result = await db.news_owner_bulletins.update_one({'_id': key, 'stage': 'editing'}, {'$set': {
             'stage': 'ready_for_review', 'sections': sections,
             'revision': revision(item['stories'], sections), 'verification': 'needs_review'}})
         return 'ready_for_review' if result.modified_count else 'changed'
-    except Exception:
-        await db.news_owner_bulletins.update_one({'_id': key, 'stage': 'editing'}, {'$set': {'stage': 'editor_failed'}})
+    except Exception as exc:
+        if isinstance(exc, editor_client.EditorialError):
+            allowed = {'configuration', 'http', 'timeout', 'network', 'response_too_large',
+                       'incomplete_response', 'invalid_response', 'invalid_json', 'missing_sections',
+                       'section_order', 'evidence', 'speakers', 'too_long', 'validation'}
+            code = exc.code if isinstance(exc.code, str) and exc.code in allowed else 'unknown'
+            status = exc.http_status if code == 'http' else None
+        elif isinstance(exc, TimeoutError):
+            code, status = 'timeout', None
+        elif phase == 'validation' and isinstance(exc, (ValueError, TypeError)):
+            code, status = editor_client.bulletin_validation_code(exc), None
+        else:
+            code, status = ('save' if phase == 'save' else 'unknown'), None
+        diagnostic = {'code': code}
+        if type(status) is int and 100 <= status <= 599:
+            diagnostic['http_status'] = status
+        # No source, provider response, credentials, or exception messages.
+        await db.news_owner_bulletins.update_one({'_id': key, 'stage': 'editing'}, {'$set': {
+            'stage': 'editor_failed', 'editor_error': diagnostic, 'editor_failure_token': secrets.token_hex(16)}})
         return 'editor_failed'
 
 

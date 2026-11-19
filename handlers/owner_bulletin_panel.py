@@ -287,21 +287,66 @@ async def collect_selected(message, owner_id: int, data: dict):
                              'автоматического повтора нет.', parse_mode=None)
 
 
+def editor_failure_message(item):
+    """Explain only saved, allowlisted diagnostics; older failures have no details."""
+    labels = {
+        'configuration': 'Не настроен ключ или модель Gemini.',
+        'timeout': 'Время ожидания Gemini истекло; результат запроса неизвестен.',
+        'network': 'Не удалось получить ответ Gemini; результат запроса неизвестен.',
+        'http': 'Gemini вернул HTTP-ошибку.',
+        'response_too_large': 'Ответ Gemini превысил допустимый размер.',
+        'incomplete_response': 'Gemini вернул незавершённый ответ.',
+        'invalid_response': 'Ответ Gemini имеет неподдерживаемый формат.',
+        'invalid_json': 'Редактор не вернул корректный JSON.',
+        'missing_sections': 'Редактор включил не все выбранные новости.',
+        'section_order': 'Редактор изменил порядок или номера новостей.',
+        'evidence': 'Цитата отсутствует или не совпала с текстом источника.',
+        'speakers': 'В сценарии должны участвовать оба ведущих.',
+        'too_long': 'Сценарий или число реплик превысили допустимый предел.',
+        'validation': 'Ответ редактора не прошёл проверку формата или ограничений.',
+        'save': 'Не удалось подтвердить сохранение результата.',
+        'unknown': 'Причину не удалось определить.',
+    }
+    error = item.get('editor_error')
+    if not isinstance(error, dict):
+        return 'Причина этой ошибки не записана предыдущей версией бота.'
+    code = error.get('code')
+    text = labels.get(code, 'Причину не удалось определить.') if isinstance(code, str) else 'Причину не удалось определить.'
+    status = error.get('http_status')
+    if error.get('code') == 'http' and type(status) is int and 100 <= status <= 599:
+        text += f' Код HTTP: {status}.'
+        if status == 429:
+            text += ' Возможно, исчерпана квота или превышен лимит запросов.'
+        elif status in (401, 403):
+            text += ' Проверь ключ и доступ к модели.'
+        elif status == 404:
+            text += ' Проверь доступность настроенной модели.'
+        elif 500 <= status <= 599:
+            text += ' Сервис временно недоступен или вернул ошибку.'
+    return text
+
+
 async def run_editor(message, owner_id: int, data: dict):
     if not await owner_trial.drafts_enabled(db.db):
         return await message.answer('Подготовка сценариев выключена; редактор не запускался.', parse_mode=None)
     item = await owner_bulletin.get(db.db, owner_id, data['number'])
-    if (not item or item.get('mode') != 'direct' or item.get('stage') != 'new' or
+    retry = data.get('retry') is True
+    expected_stage = 'editor_failed' if retry else 'new'
+    if (not item or item.get('mode') != 'direct' or item.get('stage') != expected_stage or
+            (retry and item.get('editor_failure_token') != data.get('failure_token')) or
             item.get('source_revision') != data['source_revision'] or
             not await owner_bulletin._sources_current(db.db, owner_id, item)):
         return await message.answer('Источники или состояние изменились; редактор не запускался.', parse_mode=None)
-    result = await owner_bulletin.prepare(db.db, owner_id, data['number'], make_bulletin, expected_source=data['source_revision'])
+    result = await owner_bulletin.prepare(db.db, owner_id, data['number'], make_bulletin,
+        expected_source=data['source_revision'], retry=retry, failure_token=data.get('failure_token'))
     item = await owner_bulletin.get(db.db, owner_id, data['number'])
     if result == 'ready_for_review':
         return await show_review(message, owner_id, item)
     if result == 'needs_source':
         return await message.answer('Редактору недостаточно данных: новости ' + ', '.join(map(str, item['missing_ids'])) +
                                     '. Для нового запроса потребуется создать новый вестник и подтвердить его.', parse_mode=None)
+    if result == 'editor_failed' and item:
+        return await show_review(message, owner_id, item)
     return await message.answer(f'Состояние вестника №{data["number"]}: {result}. '
                                 'Автоматического повтора запроса нет; проверь список вестников.', parse_mode=None)
 
@@ -402,6 +447,17 @@ async def show_review(message, owner_id: int, item: dict):
         if stage == 'audio_too_long':
             await action_card(message, owner_id, item, 'shorten', '✏️ Сократить сценарий')
         return
+    if item.get('stage') == 'editor_failed':
+        b = InlineKeyboardBuilder()
+        if item.get('mode') == 'direct':
+            b.button(text='🔁 Повторить подготовку', callback_data=f'nb:retry:{item["bulletin_id"]}')
+        b.button(text='📋 Все вестники', callback_data='nb:list')
+        b.adjust(1)
+        next_step = ('Новый запрос только после отдельного подтверждения; источники повторно не загружаются. '
+                     if item.get('mode') == 'direct' else 'Для новой попытки выбери новости заново. ')
+        return await message.answer(f'Вестник №{item["bulletin_id"]}: редактор не подготовил сценарий.\n'
+            + editor_failure_message(item) + '\nАвтоматического повтора нет. '
+            + next_step + 'Рендер не запускался.', reply_markup=b.as_markup(), parse_mode=None)
     if item.get('stage') != 'ready_for_review':
         labels = {'new':'ожидает подготовки', 'collect_new':'ожидает чтения источников',
                   'fetching_sources':'чтение источников не завершено или результат не подтверждён', 'editing':'редактор работает или ответ не подтверждён',
@@ -475,6 +531,8 @@ async def prepare_selected(message, owner_id: int, data: dict):
                              '. Уточни исходные черновики и создай новый вестник.', parse_mode=None)
     elif result == 'stale':
         await message.answer('Источник изменился до запуска редактора; выбери новости заново.', parse_mode=None)
+    elif result == 'editor_failed' and item:
+        await show_review(message, owner_id, item)
     else:
         await message.answer(f'Состояние вестника №{number}: {result}. Повторного запроса нет; проверь список вестников.', parse_mode=None)
 
@@ -513,7 +571,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                        'stage': 'open', 'expires_at': now + timedelta(hours=2)}
             await db.db.owner_bulletin_selections.insert_one(session)
             await callback.answer(); return await selection(callback.message, session)
-        if action in ('editor', 'source', 'more') and len(parts) in (3, 4) and parts[2].isdigit():
+        if action in ('editor', 'retry', 'source', 'more') and len(parts) in (3, 4) and parts[2].isdigit():
             if not await owner_trial.drafts_enabled(db.db):
                 return await callback.answer('Подготовка сценариев выключена.', show_alert=True)
             item = await owner_bulletin.get(db.db, owner, int(parts[2]))
@@ -526,6 +584,16 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                     'Пришли HTTPS-ссылки на статьи или публичные посты, по одной в строке. '
                     'Я прочитаю только новые источники. Редактор и рендер не запустятся.',
                     number=item['bulletin_id'], source_revision=item['source_revision'])
+            if action == 'retry' and len(parts) == 3:
+                if item.get('stage') != 'editor_failed' or not await owner_bulletin._sources_current(db.db, owner, item):
+                    return await callback.answer('Источники или состояние изменились.', show_alert=True)
+                await callback.answer()
+                return await tools.new_confirmation(callback.message, owner, 'run_bulletin_editor',
+                    'Повторить подготовку вестника по уже сохранённым источникам? '
+                    'Будет новый запрос к Gemini с расходом квоты, предыдущий запрос мог быть учтён. '
+                    'Рендер и публикация не запускаются.', number=item['bulletin_id'],
+                    source_revision=item['source_revision'], retry=True,
+                    failure_token=item.get('editor_failure_token'))
             if action == 'editor' and len(parts) == 3:
                 if item.get('stage') != 'new' or not await owner_bulletin._sources_current(db.db, owner, item):
                     return await callback.answer('Источники или состояние изменились.', show_alert=True)
