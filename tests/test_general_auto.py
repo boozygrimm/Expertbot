@@ -208,8 +208,8 @@ async def test_auto_respects_selected_categories_and_owner_override():
     await general_auto.set_category_enabled(db, 'games', False)
     assert await general_auto.pick(db, NOW) is None
     await db.news_general_candidates.update_one({'_id': politics}, {'$set': {'category_override': 'humor'}})
-    chosen = await general_auto.pick(db, NOW)
-    assert chosen['_id'] == politics and chosen['topic_basis'] == 'owner'
+    # A changed category cannot bypass the owner's explicit political veto.
+    assert await general_auto.pick(db, NOW) is None
     await general_auto.set_category_enabled(db, 'humor', False)
     assert await general_auto.pick(db, NOW) is None
     await general_auto.set_category_enabled(db, 'politics_society', True)

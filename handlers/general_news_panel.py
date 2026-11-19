@@ -19,7 +19,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_ID
 from database import db
 from handlers import owner_tools_panel as tools
-from news_prototype import general_auto, general_bulletin_selection as basket, general_editorial, general_queue, general_sources, news_scheduler, owner_drafts, owner_trial
+from news_prototype import general_auto, general_bulletin_selection as basket, general_editorial, general_queue, general_sources, general_translation, news_scheduler, owner_drafts, owner_trial
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -115,6 +115,7 @@ async def home(message):
     last_run = await db.db.news_general_state.find_one({'_id': 'one_shot_last'}) or {}
     text = ('📰 Общая подборка\n' + ('🟢 Автоотбор включён.\n' if automatic else '🔴 Автоотбор выключен.\n')
             + f'Источников: {len(sources)} · новостей: {total}.\n'
+            'Иноязычные заголовки при просмотре переводятся через Groq или OpenRouter (используется квота).\n'
             'Crypto Sensei остаётся отдельно. Рендер и публикация не запускаются.')
     if last_run.get('at'):
         text += '\nПоследний запуск кнопкой: ' + run_summary(last_run)
@@ -304,6 +305,7 @@ async def news_list(message, owner_id, page, kind='news'):
         pages = max(1, (total + NEWS_PAGE_SIZE - 1) // NEWS_PAGE_SIZE)
         page = max(0, min(page, pages - 1))
         visible = ordered[page * NEWS_PAGE_SIZE:(page + 1) * NEWS_PAGE_SIZE]
+    untranslated = await general_translation.translate_visible(db.db, [item for item, _ in visible])
     # Store only this page, so every button stays bound to the displayed item
     # even when collection or ranking changes before it is clicked.
     token = await _session(message, owner_id, kind, [item['_id'] for item, _ in visible], page=page)
@@ -315,7 +317,7 @@ async def news_list(message, owner_id, page, kind='news'):
         number = page * NEWS_PAGE_SIZE + index + 1
         source = _plain(item.get('source'), 45) or 'Источник не указан'
         label = general_editorial.LABELS.get(topic) if topic else None
-        lines.append(f'{number}. {short_headline(item.get("title"))}\n   {source}'
+        lines.append(f'{number}. {short_headline(general_translation.display_title(item))}\n   {source}'
                      + (f' · {label}' if label else ''))
         b.button(text=str(number), callback_data=f'gnews:item:{token}:{index}')
     if visible:
@@ -342,6 +344,10 @@ async def news_list(message, owner_id, page, kind='news'):
     b.attach(actions)
     lines.append('\nНажми номер, чтобы открыть новость.' +
                  (' Темы определяются приблизительно.' if not chronological else ''))
+    if any(general_translation.display_title(item) != item.get('title') for item, _ in visible):
+        lines.append('Иноязычные заголовки переведены автоматически; оригинал — в карточке.')
+    if untranslated:
+        lines.append('Часть заголовков показана в оригинале: перевод временно недоступен.')
     if not chronological and limited:
         lines.append(f'Подборка ограничена {NEWS_LIMIT} последними записями. Все сохранённые новости — в «Все по дате».')
     await _edit(message, '\n\n'.join(lines), reply_markup=b.as_markup(), parse_mode=None)
@@ -380,8 +386,9 @@ async def category_settings(message):
     b.attach(actions)
     await _edit(message, '⚙️ Категории отбора\n✅ — включена, ⛔️ — выключена. Нажми для изменения.\n'
         'Сбор и ручной просмотр сохраняют все категории. Выключение не отменяет уже начатую подготовку. '
-        'Многотемная новость может попасть по другой включённой категории. '
-        'Определение темы приблизительное; её можно исправить вручную.', reply_markup=b.as_markup(), parse_mode=None)
+        'Многотемная новость может попасть по другой включённой категории; исключение — политика: '
+        'при её выключении распознанная политика не попадёт в автоотбор даже при другой теме. '
+        'Определение приблизительное: возможны ошибки и пропуски. Вручную новости доступны.', reply_markup=b.as_markup(), parse_mode=None)
 
 
 async def category_list(message, owner_id, topic, page):
@@ -390,7 +397,7 @@ async def category_list(message, owner_id, topic, page):
     # Scan all saved records, not only a recent general-news window: a noisy
     # category must not crowd older entries out of another category's view.
     cursor = db.db.news_general_candidates.find({'hidden': {'$ne': True}},
-        {'title': 1, 'source': 1, 'topic_hint': 1, 'category_override': 1}).sort(
+        {'title': 1, 'translated_title': 1, 'translated_title_source': 1, 'translation_retry_at': 1, 'translation_retry_source': 1, 'source': 1, 'topic_hint': 1, 'category_override': 1}).sort(
         [('first_seen_at', -1), ('published_at', -1), ('_id', -1)])
     count = 0
     visible = []
@@ -406,17 +413,29 @@ async def category_list(message, owner_id, topic, page):
     if page >= pages:
         page = pages - 1
         visible = list(last)[-(count - page * NEWS_PAGE_SIZE):] if count else []
+    untranslated = await general_translation.translate_visible(db.db, visible)
     token = await _session(message, owner_id, 'category', [item['_id'] for item in visible], category=topic, page=page)
-    lines = [f'📂 {category_label(topic)} · {count} · {page + 1}/{pages}', '']
+    lines = [f'📂 {category_label(topic)} · {count} · {page + 1}/{pages}']
     b = InlineKeyboardBuilder()
     for index, item in enumerate(visible):
         number = page * NEWS_PAGE_SIZE + index + 1
-        lines.append(f'{number}. {short_headline(item.get("title"))}\n   {_plain(item.get("source"), 45) or "Источник не указан"}')
+        lines.append(f'{number}. {short_headline(general_translation.display_title(item))}\n   {_plain(item.get("source"), 45) or "Источник не указан"}')
         b.button(text=str(number), callback_data=f'gnews:item:{token}:{index}')
     if visible:
         b.adjust(len(visible))
     else:
-        lines.append('Пока нет новостей этой категории. Проверь источники и время последнего сбора.')
+        sources = await general_sources.list_sources(db.db)
+        relevant = sum(source.get('topic_hint') == topic for source in sources)
+        last = await db.db.news_general_state.find_one({'_id': 'last_poll'}) or {}
+        total = await db.db.news_general_candidates.count_documents({'hidden': {'$ne': True}})
+        details = f'Всего сохранено видимых новостей: {total}. Источников с этой темой по умолчанию: {relevant}.'
+        if last.get('at'):
+            details += (' Последний сбор: ' + last['at'].strftime('%d.%m %H:%M UTC') +
+                        f'; недоступных источников: {len(last.get("failed") or [])}.')
+        else:
+            details += ' Сбор ещё не завершался.'
+        lines.append('Пока нет новостей этой категории. ' + details)
+        lines.append('Категории определяются приблизительно; подходящие новости могут оказаться в других рубриках.')
     nav = InlineKeyboardBuilder()
     if page:
         nav.button(text='⬅️ Назад', callback_data=f'gnews:cat:{topic}:{page - 1}')
@@ -433,7 +452,12 @@ async def category_list(message, owner_id, topic, page):
     actions.button(text='⬅️ Общая подборка', callback_data='gnews:home')
     actions.adjust(1)
     b.attach(actions)
-    lines.append('Нажми номер, чтобы открыть новость. Категории могут определяться неточно.')
+    if visible:
+        lines.append('Нажми номер, чтобы открыть новость. Категории могут определяться неточно.')
+    if any(general_translation.display_title(item) != item.get('title') for item in visible):
+        lines.append('Иноязычные заголовки переведены автоматически; оригинал — в карточке.')
+    if untranslated:
+        lines.append('Часть заголовков показана в оригинале: перевод временно недоступен.')
     await _edit(message, '\n\n'.join(lines), reply_markup=b.as_markup(), parse_mode=None)
 
 
@@ -460,13 +484,18 @@ async def selected_news(callback, token, index):
 
 
 async def news_card(message, item, token, index):
+    untranslated = await general_translation.translate_visible(db.db, [item])
     hidden = item.get('hidden') is True
     stages = {'collected': 'ожидает подготовки', 'reserved': 'обрабатывается или нужна проверка состояния',
               'draft_ready': 'сценарий сохранён', 'needs_source': 'нужен текст источника',
               'skipped': 'редактор пропустил', 'editor_failed': 'не удалось подготовить', 'id_conflict': 'конфликт номера'}
-    text = (f'📰 {_plain(item.get("title"), 180)}\nИсточник: {_plain(item.get("source"), 100)}\n'
+    text = (f'📰 {_plain(general_translation.display_title(item), 180)}\nИсточник: {_plain(item.get("source"), 100)}\n'
             f'Состояние: {stages.get(item.get("stage"), "неизвестно")}.'
             + ('\nНовость убрана из общего списка.' if hidden else ''))
+    if general_translation.display_title(item) != item.get('title'):
+        text += '\nОригинал: ' + _plain(item.get('title'), 180) + '\nПеревод автоматический, возможны ошибки.'
+    elif untranslated:
+        text += '\nПеревод временно недоступен; показан оригинал.'
     assessment = general_editorial.assess_item(item)
     topics = ', '.join(general_editorial.LABELS.get(t, t) for t in assessment['topics'])
     text += ('\nКатегория выбрана вручную: ' + topics + '.' if assessment['basis'] == 'owner'
@@ -507,6 +536,7 @@ async def news_card(message, item, token, index):
 async def basket_screen(message, owner_id):
     ids = await basket.ids(db.db, owner_id)
     docs = await db.db.news_general_candidates.find({'_id': {'$in': ids}}).to_list(length=basket.LIMIT)
+    untranslated = await general_translation.translate_visible(db.db, docs)
     by_id = {item['_id']: item for item in docs}
     token = await _session(message, owner_id, 'basket', ids)
     lines = [f'📰 Новости для вестника · {len(ids)} из {basket.LIMIT}',
@@ -519,7 +549,7 @@ async def basket_screen(message, owner_id):
             warning = ''
         except ValueError:
             warning = ' · недоступна, убери из выбора'
-        title = _plain((item or {}).get('title'), 70) or 'Новость недоступна'
+        title = _plain(general_translation.display_title(item or {}), 70) or 'Новость недоступна'
         lines.append(f'{index + 1}. {title}{warning}')
         b.button(text=f'Убрать {index + 1}', callback_data=f'gnews:bremove:{token}:{index}')
     if not ids:
@@ -534,8 +564,10 @@ async def basket_screen(message, owner_id):
     actions.button(text='Общая подборка', callback_data='gnews:home')
     actions.adjust(1)
     b.attach(actions)
+    if untranslated:
+        lines.append('Часть заголовков показана в оригинале: перевод временно недоступен.')
     lines.append('Будет создан новый общий сценарий по источникам: готовые черновики и их проверки в него не переносятся. '
-                 'Добавление ничего не запускает; чтение источников, редактор и рендер потребуют отдельных подтверждений.')
+                 'Добавление не запускает сценарий или рендер; чтение источников, редактор и рендер потребуют отдельных подтверждений.')
     await _edit(message, '\n\n'.join(lines), reply_markup=b.as_markup(), parse_mode=None)
 
 
@@ -765,7 +797,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 await callback.answer()
                 await tools.new_confirmation(callback.message, callback.from_user.id, 'general_prepare',
                     'Подготовить сценарий и проверить его другим запросом? Используется квота Gemini и Groq. '
-                    'Рендер и публикация не запускаются.\n\n' + _plain(item.get('title'), 180), key=ident)
+                    'Рендер и публикация не запускаются.\n\n' + _plain(general_translation.display_title(item), 180), key=ident)
                 return
             elif action == 'draft':
                 if item.get('hidden') is True or item.get('owner_id') != callback.from_user.id or not item.get('draft_id'):

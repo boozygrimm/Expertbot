@@ -28,6 +28,9 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     
     await db.setup()
+    # Apply the owner-requested political auto-filter before jobs can start.
+    from news_prototype.general_auto import migrate_politics_preference
+    await migrate_politics_preference(db.db)
     await ensure_default_lore()
     await init_personas()
     await set_commands(bot)

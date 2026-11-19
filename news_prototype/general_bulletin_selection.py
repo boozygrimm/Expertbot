@@ -3,7 +3,7 @@
 Selecting/removing never changes news or performs network/model work.
 """
 from pymongo.errors import DuplicateKeyError
-from news_prototype import article_fetch
+from news_prototype import article_fetch, general_translation
 from news_prototype.telegram_post import widget_for
 
 LIMIT = 20
@@ -43,7 +43,7 @@ def choice(item):
         widget_for(url)
     except article_fetch.ArticleError:
         raise ValueError('Ссылка недоступна') from None
-    title = ' '.join(str(item.get('title') or '').split())[:180] or 'Новость по ссылке'
+    title = ' '.join(str(general_translation.display_title(item) or '').split())[:180] or 'Новость по ссылке'
     return {'url': url, 'title': title}
 
 
