@@ -223,15 +223,14 @@ async def show_section(message, owner_id: int, item: dict, section: dict):
 async def show_sources(message, item: dict):
     stage = item.get('stage')
     too_big = [str(story['draft_id']) for story in item.get('stories', []) if story.get('telegram_video_status') == 'too_big']
-    if too_big:
-        await message.answer('В новостях ' + ', '.join(too_big) + ' видео слишком большое для публичной страницы Telegram. '
-                             'После подготовки сценария открой новость и пришли нужный обрезанный фрагмент.', parse_mode=None)
+    video_hint = ('\n\nВ новостях ' + ', '.join(too_big) + ' видео слишком большое для публичной страницы Telegram. '
+                  'После подготовки сценария открой новость и пришли нужный обрезанный фрагмент.' if too_big else '')
     if stage == 'source_missing':
         b = InlineKeyboardBuilder()
         if len(item['stories']) < 20:
             b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
         await message.answer('Не удалось получить достаточно текста для некоторых новостей. '
-                             'Пришли текст или убери новость; редактор пока не запускался.',
+                             'Пришли текст или убери новость; редактор пока не запускался.' + video_hint,
                              reply_markup=b.as_markup() if len(item['stories']) < 20 else None, parse_mode=None)
         for story in item['stories']:
             if story['draft_id'] not in item['missing_ids']:
@@ -258,12 +257,12 @@ async def show_sources(message, item: dict):
             b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
         b.adjust(1)
         await message.answer('Все источники собраны. Картинки, если нашлись, будут показаны вместе со сценарием. '
-                             'Следующий шаг требует отдельного подтверждения запроса к Gemini.',
+                             'Следующий шаг требует отдельного подтверждения запроса к Gemini.' + video_hint,
                              reply_markup=b.as_markup(), parse_mode=None)
     elif stage == 'source_too_few':
         b = InlineKeyboardBuilder()
         b.button(text='➕ Добавить свои источники', callback_data=f'nb:more:{item["bulletin_id"]}')
-        await message.answer('Осталась одна новость. Добавь хотя бы один источник: в вестнике нужно минимум две новости.',
+        await message.answer('Осталась одна новость. Добавь хотя бы один источник: в вестнике нужно минимум две новости.' + video_hint,
                              reply_markup=b.as_markup(), parse_mode=None)
     else:
         return await show_review(message, item['owner_id'], item)
@@ -592,7 +591,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                     'Повторить подготовку вестника по уже сохранённым источникам? '
                     'Будет новый запрос к Gemini с расходом квоты, предыдущий запрос мог быть учтён. '
                     'Рендер и публикация не запускаются.', number=item['bulletin_id'],
-                    source_revision=item['source_revision'], retry=True,
+                    source_revision=item['source_revision'], retry=True, cleanup_messages=[callback.message.message_id],
                     failure_token=item.get('editor_failure_token'))
             if action == 'editor' and len(parts) == 3:
                 if item.get('stage') != 'new' or not await owner_bulletin._sources_current(db.db, owner, item):
@@ -600,7 +599,8 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 await callback.answer()
                 return await tools.new_confirmation(callback.message, owner, 'run_bulletin_editor',
                     'Подготовить один общий сценарий? Будет один запрос к Gemini с расходом квоты. '
-                    'Рендер и публикация не запускаются.', number=item['bulletin_id'], source_revision=item['source_revision'])
+                    'Рендер и публикация не запускаются.', number=item['bulletin_id'], source_revision=item['source_revision'],
+                    cleanup_messages=[callback.message.message_id])
             if action == 'source' and len(parts) == 4 and parts[3].isdigit():
                 source_id = int(parts[3])
                 if item.get('stage') != 'source_missing' or source_id not in item.get('missing_ids', []):
@@ -661,17 +661,23 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             names = '\n'.join(f'{i}. {" ".join(str(entries[n]["label"]).split())} (№{n})' for i, n in enumerate(selected, 1))
             await callback.answer()
             intro = 'Выбранные новости в порядке выпуска:\n' + names
-            for part in _chunks(intro):
-                await callback.message.answer(part, parse_mode=None, disable_web_page_preview=True)
-            if session.get('mode') == 'direct':
+            direct = session.get('mode') == 'direct'
+            prompt = ('Прочитать выбранные источники и найти картинки? Это не запускает редактор, озвучку или рендер. '
+                      'Запрос к Gemini потребует отдельного подтверждения.' if direct else
+                      'Подготовить один общий сценарий по выбранным новостям? Один запрос к Gemini расходует квоту. '
+                      'Видео и публикация не запускаются.')
+            chunks = list(_chunks(intro + '\n\n' + prompt))
+            temporary = [callback.message.message_id]
+            for part in chunks[:-1]:
+                sent = await callback.message.answer(part, parse_mode=None, disable_web_page_preview=True)
+                temporary.append(sent.message_id)
+            if direct:
                 choices = [{'url': entries[n]['url'], 'title': entries[n]['label']} for n in selected]
-                return await tools.new_confirmation(callback.message, owner, 'collect_bulletin_sources',
-                    'Прочитать выбранные источники и найти картинки? Это не запускает редактор, озвучку или рендер. '
-                    'Запрос к Gemini потребует отдельного подтверждения.', choices=choices)
+                return await tools.new_confirmation(callback.message, owner, 'collect_bulletin_sources', chunks[-1],
+                    choices=choices, cleanup_messages=temporary, selection_id=token)
             revisions = {str(i['number']): i['revision'] for i in session['items'] if i['number'] in selected}
-            return await tools.new_confirmation(callback.message, owner, 'prepare_bulletin',
-                'Подготовить один общий сценарий по выбранным новостям? Один запрос к Gemini расходует квоту. '
-                'Видео и публикация не запускаются.', draft_ids=selected, revisions=revisions)
+            return await tools.new_confirmation(callback.message, owner, 'prepare_bulletin', chunks[-1],
+                draft_ids=selected, revisions=revisions, cleanup_messages=temporary, selection_id=token)
         if action == 'remove_source' and len(parts) == 3:
             card = await db.db.owner_bulletin_cards.find_one({'_id': token, 'owner_id': owner,
                 'kind': 'remove_missing', 'message_id': callback.message.message_id, 'expires_at': {'$gt': now}})

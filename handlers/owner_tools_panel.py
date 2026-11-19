@@ -48,17 +48,36 @@ def menu(title, buttons):
     return title, builder.as_markup()
 
 
-async def new_confirmation(message, owner_id: int, action: str, text: str, **data):
+async def new_confirmation(message, owner_id: int, action: str, text: str, *,
+                           cleanup_messages=None, selection_id=None, **data):
     token = secrets.token_hex(8)
     now = datetime.now(timezone.utc)
     await db.db.owner_panel_confirmations.delete_many({'expires_at': {'$lt': now}})
-    await db.db.owner_panel_confirmations.insert_one({'_id': token, 'owner_id': owner_id,
-        'action': action, 'data': data, 'stage': 'ready', 'expires_at': now + timedelta(minutes=15)})
+    record = {'_id': token, 'owner_id': owner_id, 'action': action, 'data': data,
+              'stage': 'ready', 'expires_at': now + timedelta(minutes=15)}
+    if action in ('collect_bulletin_sources', 'prepare_bulletin', 'run_bulletin_editor'):
+        record['cleanup_messages'] = [i for i in (cleanup_messages or []) if type(i) is int and i > 0][:20]
+        if selection_id:
+            record['selection_id'] = selection_id
+    await db.db.owner_panel_confirmations.insert_one(record)
     builder = InlineKeyboardBuilder()
     builder.button(text='✅ Подтвердить', callback_data=f'owner_tools:run:{token}')
     builder.button(text='❌ Отмена', callback_data=f'owner_tools:cancel:{token}')
     builder.adjust(1)
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode=None)
+    await message.answer(text, reply_markup=builder.as_markup(), parse_mode=None, disable_web_page_preview=True)
+
+
+async def _cleanup_bulletin_messages(bot, chat_id, message_ids, *, keep=()):
+    """Best effort: only explicit bot-created messages for this flow, never chat history."""
+    if bot is None:
+        return
+    for ident in dict.fromkeys(message_ids or []):
+        if type(ident) is not int or ident <= 0 or ident in keep:
+            continue
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=ident)
+        except Exception as exc:
+            logger.debug('Не удалось убрать сообщение вестника: %s', type(exc).__name__)
 
 
 async def ask(callback, state: FSMContext, action: str, prompt: str, *, answer_text: str | None = None, **data):
@@ -667,6 +686,19 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     await callback.answer('Действие уже обрабатывается или обработано. Отменить его кнопкой нельзя.', show_alert=True)
                     return
                 cancelled = bool(changed.modified_count or (record and record.get('stage') == 'cancelled'))
+                if changed.modified_count:
+                    record = await db.db.owner_panel_confirmations.find_one({'_id': token, 'owner_id': callback.from_user.id})
+                    if record and record.get('selection_id'):
+                        # Cancellation restores the original selection; don't delete it.
+                        await db.db.owner_bulletin_selections.update_one(
+                            {'_id': record['selection_id'], 'owner_id': callback.from_user.id, 'stage': 'confirmed'},
+                            {'$set': {'stage': 'open'}})
+                    if record and record.get('selection_id'):
+                        selection = await db.db.owner_bulletin_selections.find_one(
+                            {'_id': record['selection_id'], 'owner_id': callback.from_user.id})
+                        keep = [selection['message_id']] if selection else []
+                        await _cleanup_bulletin_messages(bot, callback.message.chat.id,
+                            record.get('cleanup_messages', []), keep=keep + [callback.message.message_id])
                 try:
                     await callback.answer('Отменено' if cancelled else 'Подтверждение уже недоступно')
                 except Exception as exc:
@@ -853,6 +885,19 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             else:
                 raise ValueError('Неизвестное действие')
             await db.db.owner_panel_confirmations.update_one({'_id': token, 'stage': 'running'}, {'$set': {'stage': 'done'}})
+            if name in ('collect_bulletin_sources', 'prepare_bulletin', 'run_bulletin_editor'):
+                # Results have been sent; remove only this flow's obsolete bot
+                # messages. Failure to delete must never repeat the operation.
+                await _cleanup_bulletin_messages(bot, callback.message.chat.id,
+                    record.get('cleanup_messages', []), keep=[callback.message.message_id])
+                try:
+                    await callback.message.delete()
+                except Exception as exc:
+                    logger.debug('Не удалось убрать подтверждение вестника: %s', type(exc).__name__)
+                    try:
+                        await callback.message.edit_text('Действие завершено. Результат ниже.', reply_markup=None, parse_mode=None)
+                    except Exception:
+                        pass
             return
         await callback.answer('Неизвестное действие.', show_alert=True)
     except Exception as exc:
