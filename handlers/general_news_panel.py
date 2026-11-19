@@ -19,7 +19,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_ID
 from database import db
 from handlers import owner_tools_panel as tools
-from news_prototype import general_auto, general_editorial, general_queue, general_sources, news_scheduler, owner_drafts, owner_trial
+from news_prototype import general_auto, general_bulletin_selection as basket, general_editorial, general_queue, general_sources, news_scheduler, owner_drafts, owner_trial
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -66,6 +66,7 @@ def home_markup(has_failures=False):
     b = InlineKeyboardBuilder()
     b.button(text='▶️ Собрать и подготовить подборку', callback_data='gnews:runonce')
     b.button(text='📂 Новости по категориям', callback_data='gnews:categories')
+    b.button(text='📰 Собрать вестник', callback_data='gnews:basket')
     b.button(text='📚 Все новости', callback_data='gnews:news:0')
     b.button(text='📄 Готовые сценарии', callback_data='gnews:ready:0')
     b.button(text='🗂 Источники', callback_data='gnews:sources:0')
@@ -352,6 +353,7 @@ async def categories_screen(message):
         b.button(text=category_label(topic), callback_data=f'gnews:cat:{topic}:0')
     b.adjust(2)
     actions = InlineKeyboardBuilder()
+    actions.button(text='📰 Собрать вестник', callback_data='gnews:basket')
     actions.button(text='📚 Все новости', callback_data='gnews:news:0')
     actions.button(text='⚙️ Категории отбора', callback_data='gnews:catsettings')
     actions.button(text='⬅️ Общая подборка', callback_data='gnews:home')
@@ -424,6 +426,8 @@ async def category_list(message, owner_id, topic, page):
         nav.adjust(2)
         b.attach(nav)
     actions = InlineKeyboardBuilder()
+    selected = await basket.ids(db.db, owner_id)
+    actions.button(text=f'📰 Собрать вестник · {len(selected)}', callback_data='gnews:basket')
     actions.button(text='📂 Все категории', callback_data='gnews:categories')
     actions.button(text='📚 Все новости', callback_data='gnews:all:0')
     actions.button(text='⬅️ Общая подборка', callback_data='gnews:home')
@@ -476,6 +480,11 @@ async def news_card(message, item, token, index):
     b = InlineKeyboardBuilder()
     if item.get('url'):
         b.button(text='🔗 Открыть источник', url=item['url'])
+    if not hidden:
+        selected = item['_id'] in await basket.ids(db.db, ADMIN_ID)
+        b.button(text='✓ Добавлено к вестнику' if selected else '➕ Добавить к вестнику',
+                 callback_data=f'gnews:badd:{token}:{index}')
+        b.button(text='📰 Собрать вестник', callback_data='gnews:basket')
     if not hidden and item.get('stage') == 'collected':
         b.button(text='📝 Подготовить сценарий', callback_data=f'gnews:prepare:{token}:{index}')
     if not hidden and item.get('draft_id') and item.get('owner_id') == ADMIN_ID:
@@ -493,6 +502,56 @@ async def news_card(message, item, token, index):
     b.button(text='⬅️ Новости', callback_data=back)
     b.adjust(1)
     await _edit(message, text, reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
+
+
+async def basket_screen(message, owner_id):
+    ids = await basket.ids(db.db, owner_id)
+    docs = await db.db.news_general_candidates.find({'_id': {'$in': ids}}).to_list(length=basket.LIMIT)
+    by_id = {item['_id']: item for item in docs}
+    token = await _session(message, owner_id, 'basket', ids)
+    lines = [f'📰 Новости для вестника · {len(ids)} из {basket.LIMIT}',
+             'Порядок — по добавлению. Нажми на номер, чтобы убрать новость из вестника; сама новость сохранится.']
+    b = InlineKeyboardBuilder()
+    for index, ident in enumerate(ids):
+        item = by_id.get(ident)
+        try:
+            basket.choice(item)
+            warning = ''
+        except ValueError:
+            warning = ' · недоступна, убери из выбора'
+        title = _plain((item or {}).get('title'), 70) or 'Новость недоступна'
+        lines.append(f'{index + 1}. {title}{warning}')
+        b.button(text=f'Убрать {index + 1}', callback_data=f'gnews:bremove:{token}:{index}')
+    if not ids:
+        lines.append('Пока ничего не выбрано. Открой новость в категории и нажми «Добавить к вестнику».')
+    b.adjust(2)
+    actions = InlineKeyboardBuilder()
+    if len(ids) >= 2:
+        actions.button(text='Продолжить сборку', callback_data='gnews:bbuild')
+    else:
+        lines.append('Для вестника нужно минимум две новости.')
+    actions.button(text='‹ Категории', callback_data='gnews:categories')
+    actions.button(text='Общая подборка', callback_data='gnews:home')
+    actions.adjust(1)
+    b.attach(actions)
+    lines.append('Будет создан новый общий сценарий по источникам: готовые черновики и их проверки в него не переносятся. '
+                 'Добавление ничего не запускает; чтение источников, редактор и рендер потребуют отдельных подтверждений.')
+    await _edit(message, '\n\n'.join(lines), reply_markup=b.as_markup(), parse_mode=None)
+
+
+async def build_bulletin_selection(message, owner_id):
+    """Hand an ordered copy to the existing direct-source bulletin workflow."""
+    from handlers import owner_bulletin_panel
+    choices = await basket.choices(db.db, owner_id)
+    token = secrets.token_hex(8)
+    items = [{'number': n, 'url': choice['url'], 'label': choice['title']}
+             for n, choice in enumerate(choices, 1)]
+    session = {'_id': token, 'owner_id': owner_id, 'message_id': message.message_id,
+               'mode': 'direct', 'origin': 'general', 'items': items,
+               'selected': list(range(1, len(items) + 1)), 'page': 0, 'stage': 'open',
+               'expires_at': datetime.now(timezone.utc) + timedelta(hours=2)}
+    await db.db.owner_bulletin_selections.insert_one(session)
+    await owner_bulletin_panel.selection(message, session)
 
 
 @router.callback_query(F.data.startswith('gnews:'))
@@ -524,6 +583,19 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                 await source_list(callback.message, callback.from_user.id, page)
             else:
                 await news_list(callback.message, callback.from_user.id, page, action)
+            return
+        if action == 'basket' and len(parts) == 2:
+            await state.clear()
+            await callback.answer()
+            return await basket_screen(callback.message, callback.from_user.id)
+        if action == 'bbuild' and len(parts) == 2:
+            if not await owner_trial.drafts_enabled(db.db):
+                return await callback.answer('Включи подготовку сценариев в настройках новостей.', show_alert=True)
+            try:
+                await build_bulletin_selection(callback.message, callback.from_user.id)
+            except ValueError:
+                return await callback.answer('Выбор изменился или источник недоступен. Проверь и убери недоступные новости.', show_alert=True)
+            await callback.answer()
             return
         if action == 'call':
             if len(parts) != 3 or parts[2] not in ('0', '1'):
@@ -651,11 +723,33 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             await callback.answer('Сохранено.' if action != 'source' else '')
             await source_card(callback.message, source, token, index)
             return
-        if action in ('item', 'hide', 'restore', 'prepare', 'draft', 'ncat'):
+        if action == 'bremove':
+            ident = await _selected(callback, token, index, 'basket')
+            if not ident:
+                return await callback.answer('Выбор устарел. Открой его заново.', show_alert=True)
+            result = await basket.change(db.db, callback.from_user.id, ident, add=False)
+            await callback.answer('Убрано из вестника.' if result == 'saved' else 'Выбор изменился.')
+            return await basket_screen(callback.message, callback.from_user.id)
+        if action in ('item', 'hide', 'restore', 'prepare', 'draft', 'ncat', 'badd'):
+
             ident = await selected_news(callback, token, index)
             item = await db.db.news_general_candidates.find_one({'_id': ident}) if ident else None
             if not item:
                 return await callback.answer('Новость устарела. Открой список заново.', show_alert=True)
+            if action == 'badd':
+                try:
+                    choice = basket.choice(item)
+                except ValueError:
+                    return await callback.answer('Новость или её ссылка недоступна.', show_alert=True)
+                ids = await basket.ids(db.db, callback.from_user.id)
+                existing = await db.db.news_general_candidates.find({'_id': {'$in': ids}}).to_list(length=basket.LIMIT)
+                if any(row.get('url') == choice['url'] and row['_id'] != ident for row in existing):
+                    return await callback.answer('Эта ссылка уже добавлена.', show_alert=True)
+                result = await basket.change(db.db, callback.from_user.id, ident, add=True)
+                labels = {'saved': 'Добавлено к вестнику.', 'duplicate': 'Эта новость уже добавлена.',
+                          'full': 'В вестник можно добавить до 20 новостей.', 'busy': 'Выбор изменился. Попробуй ещё раз.'}
+                await callback.answer(labels[result], show_alert=result in ('full', 'busy'))
+                return await news_card(callback.message, item, token, index)
             if action == 'ncat':
                 await callback.answer()
                 return await category_picker(callback.message, token, index)
