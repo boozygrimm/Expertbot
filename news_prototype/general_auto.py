@@ -68,6 +68,22 @@ async def set_enabled(db, value: bool, *, expected_version=None) -> bool:
     return bool(changed.matched_count)
 
 
+async def migrate_politics_preference(db):
+    """One-time owner-requested default; later explicit changes are respected."""
+    coll = db.news_general_state
+    from pymongo.errors import DuplicateKeyError
+    try:
+        await coll.update_one({'_id': 'categories'}, {'$setOnInsert': {'disabled': []}}, upsert=True)
+    except DuplicateKeyError:
+        pass  # Another process initialized the document.
+    pending = {'_id': 'categories', 'politics_default_v1': {'$ne': True}}
+    await coll.update_one({**pending, 'disabled': {'$type': 'array'}},
+        {'$addToSet': {'disabled': 'politics_society'}, '$set': {'politics_default_v1': True}})
+    # Malformed old data has no recoverable category list; still fail closed.
+    await coll.update_one({**pending, 'disabled': {'$not': {'$type': 'array'}}},
+        {'$set': {'disabled': ['politics_society'], 'politics_default_v1': True}})
+
+
 async def disabled_categories(db) -> set[str]:
     row = await db.news_general_state.find_one({'_id': 'categories'}) or {}
     disabled = row.get('disabled')
@@ -180,6 +196,8 @@ async def pick(db, now):
         if candidate.get('source_id') not in active_ids or not recent(candidate):
             continue
         assessment = general_editorial.assess_item(candidate)
+        if 'politics_society' in disabled and general_editorial.political_signal(candidate):
+            continue
         allowed = [topic for topic in assessment['topics'] if topic not in disabled]
         if not allowed or _defer(candidate, history):
             continue

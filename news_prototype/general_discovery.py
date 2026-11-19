@@ -30,6 +30,16 @@ CHANNELS = {
     'kommersant': ('Коммерсантъ', 'kommersant', 'general'),
     'tass': ('ТАСС', 'tass_agency', 'general'),
     'doctor': ('Доктор', 'doctv_official', 'health'),
+    # Topic-focused additions; availability and editorial suitability must be
+    # monitored on the bot server, not assumed from the registry.
+    'habr_news': ('Хабр Новости', 'habr_com_news', 'technology'),
+    'rozetked': ('Rozetked', 'rozetked', 'technology'),
+    'd_code': ('Код Дурова', 'd_code', 'internet'),
+    'stopgame': ('StopGame', 'stopgamenews', 'games'),
+    'nakedscience': ('Naked Science', 'nsmag', 'science'),
+    'rgo': ('РГО', 'rgo1845', 'nature'),
+    'mospriroda': ('Природа Москвы', 'mospriroda', 'animals'),
+    'vetlife': ('Ветеринария и жизнь', 'vizhuvizh', 'animals'),
 }
 FEEDS = {
     'openai': (*news_sources.FEEDS['openai'], 'technology'),
@@ -41,9 +51,11 @@ FEEDS = {
     'nature': ('Nature', 'https://www.nature.com/nature.rss', 'science'),
     'quanta': ('Quanta Magazine', 'https://www.quantamagazine.org/feed/', 'science'),
     'who': ('ВОЗ', 'https://www.who.int/rss-feeds/news-english.xml?paged=1', 'health'),
+    'sciencedaily_birds': ('ScienceDaily: птицы', 'https://www.sciencedaily.com/rss/plants_animals/birds.xml', 'animals'),
 }
 PARSE_FEEDS = {key: (name, url) for key, (name, url, _) in FEEDS.items()}
 SOURCE_IDS = frozenset(CHANNELS) | frozenset(FEEDS)
+SOURCE_TIMEOUT = 12  # Overall per-source cap, including redirects and parsing.
 
 
 async def collect(*, now: datetime | None = None, fetch=None, sources=None) -> tuple[list[dict], list[str]]:
@@ -75,19 +87,22 @@ async def collect(*, now: datetime | None = None, fetch=None, sources=None) -> t
         async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=15, connect=7, sock_read=8),
                 trust_env=False, auto_decompress=False, cookie_jar=aiohttp.DummyCookieJar(),
                 headers={'User-Agent': 'Expertbot-NewsTrial/1.0', 'Accept-Encoding': 'identity'}) as session:
+            async def read_source(source):
+                source_id, name = source['id'], source['name']
+                topic, location = source['topic_hint'], source['location']
+                if source['kind'] == 'telegram':
+                    data = await get(session, 'https://t.me/s/' + location)
+                    items = owner_discovery.parse_channel(data, since=since, now=now, channel=location, source=name)
+                else:
+                    data = await get(session, location)
+                    items = news_sources.parse_feed(data, source_id, since=since, now=now,
+                        max_items=5000, feeds={source_id: (name, location)})
+                cleaned = owner_discovery._clean_feed(items, now)
+                return [item | {'source_id': source_id, 'topic_hint': topic} for item in cleaned]
+
             async def one(source):
                 async with semaphore:
-                    source_id, name = source['id'], source['name']
-                    topic, location = source['topic_hint'], source['location']
-                    if source['kind'] == 'telegram':
-                        data = await get(session, 'https://t.me/s/' + location)
-                        items = owner_discovery.parse_channel(data, since=since, now=now, channel=location, source=name)
-                    else:
-                        data = await get(session, location)
-                        items = news_sources.parse_feed(data, source_id, since=since, now=now,
-                            max_items=5000, feeds={source_id: (name, location)})
-                    cleaned = owner_discovery._clean_feed(items, now)
-                    return [item | {'source_id': source_id, 'topic_hint': topic} for item in cleaned]
+                    return await asyncio.wait_for(read_source(source), timeout=SOURCE_TIMEOUT)
             results = await asyncio.gather(*(one(source) for source in records), return_exceptions=True)
     finally:
         await resolver.close()

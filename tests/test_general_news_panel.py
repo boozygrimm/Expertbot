@@ -505,3 +505,21 @@ async def test_confirmed_button_full_category_collection_to_review_card(context)
         c.callback.data = 'owner_tools:run:' + confirmation['_id']
         await tools.action(c.callback, c.state, bot=None)
         collect.assert_awaited_once(); fetch.assert_awaited_once(); edit.assert_awaited_once(); review.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_empty_category_explains_saved_state_without_collecting(context):
+    from datetime import datetime, timezone
+    from news_prototype import general_discovery
+    c = context
+    await c.db.news_general_state.insert_one({'_id': 'last_poll', 'at': datetime(2026, 1, 2, 12, tzinfo=timezone.utc), 'failed': ['tass']})
+    await general_queue.add_news(c.db, 'https://example.com/item')
+    with patch.object(general_discovery, 'collect', AsyncMock()) as collect:
+        await click(c, 'gnews:cat:animals:0')
+        text = c.message.edit_text.await_args.args[0]
+        assert 'Пока нет новостей этой категории' in text
+        assert 'Всего сохранено видимых новостей: 1' in text
+        assert 'недоступных источников: 1' in text
+        assert 'Источников с этой темой по умолчанию:' in text
+        assert '\n\n\n' not in text
+        collect.assert_not_awaited()

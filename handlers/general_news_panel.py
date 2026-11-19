@@ -380,8 +380,9 @@ async def category_settings(message):
     b.attach(actions)
     await _edit(message, '⚙️ Категории отбора\n✅ — включена, ⛔️ — выключена. Нажми для изменения.\n'
         'Сбор и ручной просмотр сохраняют все категории. Выключение не отменяет уже начатую подготовку. '
-        'Многотемная новость может попасть по другой включённой категории. '
-        'Определение темы приблизительное; её можно исправить вручную.', reply_markup=b.as_markup(), parse_mode=None)
+        'Многотемная новость может попасть по другой включённой категории; исключение — политика: '
+        'при её выключении распознанная политика не попадёт в автоотбор даже при другой теме. '
+        'Определение приблизительное: возможны ошибки и пропуски. Вручную новости доступны.', reply_markup=b.as_markup(), parse_mode=None)
 
 
 async def category_list(message, owner_id, topic, page):
@@ -407,7 +408,7 @@ async def category_list(message, owner_id, topic, page):
         page = pages - 1
         visible = list(last)[-(count - page * NEWS_PAGE_SIZE):] if count else []
     token = await _session(message, owner_id, 'category', [item['_id'] for item in visible], category=topic, page=page)
-    lines = [f'📂 {category_label(topic)} · {count} · {page + 1}/{pages}', '']
+    lines = [f'📂 {category_label(topic)} · {count} · {page + 1}/{pages}']
     b = InlineKeyboardBuilder()
     for index, item in enumerate(visible):
         number = page * NEWS_PAGE_SIZE + index + 1
@@ -416,7 +417,18 @@ async def category_list(message, owner_id, topic, page):
     if visible:
         b.adjust(len(visible))
     else:
-        lines.append('Пока нет новостей этой категории. Проверь источники и время последнего сбора.')
+        sources = await general_sources.list_sources(db.db)
+        relevant = sum(source.get('topic_hint') == topic for source in sources)
+        last = await db.db.news_general_state.find_one({'_id': 'last_poll'}) or {}
+        total = await db.db.news_general_candidates.count_documents({'hidden': {'$ne': True}})
+        details = f'Всего сохранено видимых новостей: {total}. Источников с этой темой по умолчанию: {relevant}.'
+        if last.get('at'):
+            details += (' Последний сбор: ' + last['at'].strftime('%d.%m %H:%M UTC') +
+                        f'; недоступных источников: {len(last.get("failed") or [])}.')
+        else:
+            details += ' Сбор ещё не завершался.'
+        lines.append('Пока нет новостей этой категории. ' + details)
+        lines.append('Категории определяются приблизительно; подходящие новости могут оказаться в других рубриках.')
     nav = InlineKeyboardBuilder()
     if page:
         nav.button(text='⬅️ Назад', callback_data=f'gnews:cat:{topic}:{page - 1}')
@@ -433,7 +445,8 @@ async def category_list(message, owner_id, topic, page):
     actions.button(text='⬅️ Общая подборка', callback_data='gnews:home')
     actions.adjust(1)
     b.attach(actions)
-    lines.append('Нажми номер, чтобы открыть новость. Категории могут определяться неточно.')
+    if visible:
+        lines.append('Нажми номер, чтобы открыть новость. Категории могут определяться неточно.')
     await _edit(message, '\n\n'.join(lines), reply_markup=b.as_markup(), parse_mode=None)
 
 

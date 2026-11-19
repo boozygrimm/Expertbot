@@ -71,8 +71,20 @@ def identity(source: dict) -> str:
 async def list_sources(db, *, include_removed: bool = False) -> list[dict]:
     overrides = await db.news_general_sources.find({}).to_list(length=1000)
     by_id = {row['_id']: row for row in overrides}
+    # If a newly introduced built-in was already added manually, keep the
+    # owner's existing custom entry (including disabled state) authoritative.
+    custom_identities = set()
+    for row in overrides:
+        if not str(row.get('_id', '')).startswith('custom:'):
+            continue
+        try:
+            custom_identities.add(identity(validate_source(row['kind'], row['name'], row['location'], row['topic_hint'])))
+        except (KeyError, ValueError, TypeError):
+            continue
     sources = []
     for builtin in builtin_sources():
+        if identity(builtin) in custom_identities:
+            continue
         state = by_id.get('builtin:' + builtin['id'], {})
         builtin['enabled'] = state.get('enabled') is not False
         from news_prototype import general_editorial
@@ -93,13 +105,17 @@ async def list_sources(db, *, include_removed: bool = False) -> list[dict]:
 
 async def add_source(db, kind: str, name: str, location: str, topic_hint: str = 'general') -> str:
     source = validate_source(kind, name, location, topic_hint)
+    key = 'custom:' + hashlib.sha256(identity(source).encode()).hexdigest()
+    existing = await db.news_general_sources.find_one({'_id': key})
+    if existing:
+        await db.news_general_sources.update_one({'_id': key}, {'$set': {**source, 'enabled': True}})
+        return key
     for builtin in builtin_sources():
         if identity(builtin) == identity(source):
             # Re-add a removed built-in, keeping its original name and topic.
             await db.news_general_sources.update_one({'_id': 'builtin:' + builtin['id']},
                                                        {'$set': {'enabled': True}}, upsert=True)
             return builtin['id']
-    key = 'custom:' + hashlib.sha256(identity(source).encode()).hexdigest()
     await db.news_general_sources.update_one({'_id': key},
         {'$set': {**source, 'enabled': True}}, upsert=True)
     return key
