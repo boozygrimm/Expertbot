@@ -481,3 +481,138 @@ asyncio.run(run())
 '''
     result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
+
+
+class BulletinChatCleanupTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = DirectBulletinPanelTests.asyncSetUp
+    click = DirectBulletinPanelTests.click
+    choose = DirectBulletinPanelTests.choose
+
+    async def test_selection_confirmation_and_results_remove_only_flow_messages(self):
+        sent_ids = iter([400, 401, 402, 403])
+        self.message.answer.side_effect = lambda *args, **kwargs: SimpleNamespace(message_id=next(sent_ids))
+        confirm = await self.choose(2)
+        # A short selection and its confirmation occupy one message, not two.
+        confirmation_call = self.message.answer.await_args_list[-1]
+        self.assertIn('Выбранные новости в порядке выпуска', confirmation_call.args[0])
+        self.assertIn('Прочитать выбранные источники', confirmation_call.args[0])
+        self.assertEqual(confirm['cleanup_messages'], [321])
+        self.message.message_id = 400
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock())
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})), \
+             patch.object(news_image_fetch, 'fetch_thumbnail', AsyncMock()):
+            await tools.action(self.callback, self.state, bot)
+        bot.delete_message.assert_awaited_once_with(chat_id=self.user.id, message_id=321)
+        self.message.delete.assert_awaited_once()
+        item = await owner_bulletin.get(self.db, self.user.id, 400)
+        self.assertEqual(item['stage'], 'new')
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_cancel_keeps_original_selection_usable(self):
+        confirm = await self.choose(2)
+        selection = await self.db.owner_bulletin_selections.find_one({'_id': confirm['selection_id']})
+        self.assertEqual(selection['stage'], 'confirmed')
+        self.message.message_id = 777
+        self.callback.data = 'owner_tools:cancel:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock())
+        await tools.action(self.callback, self.state, bot)
+        self.assertEqual((await self.db.owner_bulletin_selections.find_one({'_id': selection['_id']}))['stage'], 'open')
+        bot.delete_message.assert_not_awaited()
+        self.message.message_id = 321
+        await self.click(f'nb:sel:{selection["_id"]}:1')
+        self.assertEqual((await self.db.owner_bulletin_selections.find_one({'_id': selection['_id']}))['selected'], [2])
+
+    async def test_cancel_editor_confirmation_does_not_remove_source_screen(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        self.message.message_id = 500
+        await self.click('nb:editor:321')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'run_bulletin_editor', 'stage': 'ready'})
+        self.assertEqual(confirm['cleanup_messages'], [500])
+        self.message.message_id = 600
+        self.callback.data = 'owner_tools:cancel:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock())
+        await tools.action(self.callback, self.state, bot)
+        bot.delete_message.assert_not_awaited()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'new')
+
+    async def test_failed_deletion_does_not_repeat_editor_or_remove_result(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        self.message.message_id = 500
+        await self.click('nb:editor:321')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'run_bulletin_editor', 'stage': 'ready'})
+        self.message.message_id = 600
+        self.message.delete.side_effect = RuntimeError('not allowed')
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock(side_effect=RuntimeError('not allowed')))
+        with patch.object(panel, 'make_bulletin', AsyncMock(side_effect=lambda stories: response(stories))) as editor:
+            await tools.action(self.callback, self.state, bot)
+            await tools.action(self.callback, self.state, bot)
+        editor.assert_awaited_once()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'ready_for_review')
+        self.assertEqual(self.message.edit_text.await_args.args[0], 'Действие завершено. Результат ниже.')
+        self.assertTrue(any('сценарий' in call.args[0] for call in self.message.answer.await_args_list))
+
+    async def test_long_selected_list_cancel_cleans_only_overflow_and_retains_selection(self):
+        from datetime import datetime, timedelta, timezone
+        entries = [{'number': n, 'label': f'{n} ' + 'длинный заголовок ' * 16,
+                    'url': f'https://example.com/{n}'} for n in range(1, 21)]
+        token = 'abcdef0123456789'
+        await self.db.owner_bulletin_selections.insert_one({'_id': token, 'owner_id': self.user.id,
+            'message_id': 321, 'mode': 'direct', 'stage': 'open', 'selected': list(range(1, 21)),
+            'items': entries, 'page': 0, 'expires_at': datetime.now(timezone.utc) + timedelta(hours=1)})
+        sent = iter(range(500, 520))
+        self.message.answer.side_effect = lambda *args, **kwargs: SimpleNamespace(message_id=next(sent))
+        await self.click(f'nb:prepare:{token}')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'collect_bulletin_sources'})
+        self.assertGreater(len(confirm['cleanup_messages']), 1)
+        all_text = '\n'.join(call.args[0] for call in self.message.answer.await_args_list)
+        for entry in entries:
+            self.assertIn(entry['label'], all_text)
+        for call in self.message.answer.await_args_list:
+            self.assertLessEqual(len(call.args[0].encode('utf-16-le')) // 2, 3600)
+        self.message.message_id = 999
+        self.callback.data = 'owner_tools:cancel:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock())
+        await tools.action(self.callback, self.state, bot)
+        removed = {call.kwargs['message_id'] for call in bot.delete_message.await_args_list}
+        self.assertEqual(removed, set(confirm['cleanup_messages']) - {321})
+        self.assertEqual((await self.db.owner_bulletin_selections.find_one({'_id': token}))['stage'], 'open')
+
+    async def test_large_video_warning_shares_source_status_message(self):
+        item = {'owner_id': self.user.id, 'bulletin_id': 123, 'stage': 'new',
+                'stories': [{'draft_id': 1}, {'draft_id': 2, 'telegram_video_status': 'too_big'}]}
+        await panel.show_sources(self.message, item)
+        self.assertEqual(self.message.answer.await_count, 1)
+        text = self.message.answer.await_args.args[0]
+        self.assertIn('Все источники собраны', text)
+        self.assertIn('видео слишком большое', text)
+        self.assertIn('обрезанный фрагмент', text)
+
+    async def test_editor_failure_keeps_diagnostic_result_and_cleans_progress(self):
+        from news_prototype import editor_client
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        self.message.message_id = 500
+        await self.click('nb:editor:321')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'run_bulletin_editor', 'stage': 'ready'})
+        self.message.message_id = 600
+        self.message.delete.reset_mock()
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        bot = SimpleNamespace(delete_message=AsyncMock())
+        with patch.object(panel, 'make_bulletin', AsyncMock(side_effect=editor_client.EditorialError(
+                'private', code='http', http_status=429))) as editor:
+            await tools.action(self.callback, self.state, bot)
+        editor.assert_awaited_once()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'editor_failed')
+        self.assertIn('429', self.message.answer.await_args.args[0])
+        bot.delete_message.assert_awaited_once_with(chat_id=self.user.id, message_id=500)
+        self.message.delete.assert_awaited_once()
