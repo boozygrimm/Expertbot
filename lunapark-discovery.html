@@ -23,13 +23,33 @@
 .element.landed{animation:orb-land .28s ease-out}
 @keyframes orb-land{0%{transform:scale(.85)}65%{transform:scale(1.08)}100%{transform:scale(1)}}
 .token-wrap.receiving .favorite{opacity:0}
+/* The two ingredients and result form three windows on the front of the pot. */
+.hero-top{position:relative;z-index:4;align-items:center;gap:4px;padding:7px}
+.hero-action{flex:none;display:flex;align-items:center;gap:4px;border:1px solid #e2be7a85;border-radius:8px;background:#211628d9;color:#f8dfa9;padding:5px 8px;font-size:10px;font-weight:750;box-shadow:0 2px 8px #0008}
+.hero-action span{font-size:14px;color:#ffda92;line-height:1}
+.hero-caption{color:#f5ddab;font-size:8px;font-weight:800;letter-spacing:.12em;text-shadow:0 2px 5px #000;text-align:center;white-space:nowrap}
+.mix-space{left:13%;width:74%;bottom:5%;z-index:2}
+.slots{display:grid;grid-template-columns:1fr 1.2fr 1fr;justify-items:center;align-items:center;width:100%;gap:3px;margin:0}
+.slot,.result-slot{flex:none;width:clamp(42px,7.8dvh,58px);height:clamp(42px,7.8dvh,58px);border-radius:50%;border:2px solid #c4a373;background:radial-gradient(circle at 34% 20%,#80647a,#302039 65%,#1d1325);color:#ffe4aa;box-shadow:inset 0 1px 3px #fff8,inset 0 -4px 7px #110a17aa,0 2px 7px #100608dc}
+.result-slot{position:relative;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;width:clamp(51px,9.4dvh,70px);height:clamp(51px,9.4dvh,70px);border:3px solid #e3bd79;background:radial-gradient(circle at 35% 22%,#ffedb8,#d69b56 58%,#80502c);box-shadow:inset 0 2px 4px #fff9,inset 0 -4px 8px #7541288c,0 0 15px #f9d58970;color:#4a2530}
+.result-slot>span:not(.symbol){font-size:21px;line-height:.9}.result-slot small{font-size:7px;letter-spacing:.03em;font-weight:900;line-height:1.1}
+.result-slot.flying-result{pointer-events:none;background:radial-gradient(circle at 30% 18%,#b59eb0,#8e718f 18%,#584666 44%,#332945 72%,#1d182c);border-color:#ecd09a;box-shadow:inset 0 2px 4px #fff9,0 0 18px #d8ffbfbb}
+.result-slot .symbol{position:relative;display:grid;place-items:center;line-height:1}
+.mix-message{height:21px;margin-top:4px;color:#fff0d3;font-weight:700;font-size:9px}
+.shelf{padding-bottom:4px}.pager{margin-top:5px}.workspace{padding-bottom:3px}
+@media(max-height:650px){.hero-top{padding:5px}.hero-action{padding:4px 6px;font-size:9px}.hero-caption{font-size:7px}.mix-space{bottom:4%}.mix-message{font-size:8px;height:18px;margin-top:2px}}
+@media(max-height:510px){.hero{min-height:82px}.hero-caption{display:none}.slot{width:35px;height:35px;font-size:20px}.result-slot{width:43px;height:43px}.result-slot>span:not(.symbol){font-size:16px}.result-slot small{font-size:6px}.result-slot .symbol,.slot .symbol{transform:scale(.7)}.mix-message{height:13px;white-space:nowrap;text-overflow:ellipsis}.mix-space{bottom:1%;width:76%;left:12%}}
+@media(max-height:450px) and (orientation:landscape){.workspace{display:grid;grid-template-columns:1fr 1.1fr;grid-template-rows:1fr;gap:5px}.hero{grid-column:1;grid-row:1}.shelf{grid-column:2;grid-row:1}.mix-space{bottom:6%}.hero-caption{display:none}}
+#mix.flying-origin{visibility:hidden}.flight-clone{position:fixed;z-index:100;pointer-events:none;margin:0;will-change:transform,opacity}
+.mix-space{bottom:clamp(2px,calc(23% - 20px),50px)}
 </style></head>
 <body><main class="shell">
 <header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button></header>
 <div class="notice">✦ ПРОБНЫЙ ДИЗАЙН · ПРОГРЕСС НЕ СОХРАНЯЕТСЯ</div>
 <section class="workspace" id="workspace">
-  <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div><div class="hero-top"><span class="plate">✧ КОТЁЛ ОТКРЫТИЙ</span><span class="number">01 / АЛХИМИЯ</span></div><div class="intro"><h1>Из чего<br><em>рождается чудо?</em></h1><p>Смешивай открытые элементы —<br>находи новые сочетания.</p></div>
-    <div class="mix-space" id="mix-space"><div class="mix-label">ВЫБЕРИ ДВА ЭЛЕМЕНТА</div><div class="slots"><button class="slot" data-slot="0" aria-label="Первый слот">+</button><span class="plus">+</span><button class="slot" data-slot="1" aria-label="Второй слот">+</button></div><div id="mix-message" class="mix-message" role="status">Нажми или перетащи элемент в котёл</div></div>
+  <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div>
+    <div class="hero-top"><button class="hero-action" type="button" data-view="history"><span>◷</span> История</button><span class="hero-caption">✧ КОТЁЛ ОТКРЫТИЙ</span><button class="hero-action" type="button" data-view="album"><span>▤</span> Рецепты</button></div>
+    <div class="mix-space" id="mix-space"><div class="slots"><button class="slot" data-slot="0" aria-label="Первый слот">+</button><button id="mix" class="result-slot" type="button" aria-label="Смешать элементы"><span>✦</span><small>СМЕШАТЬ</small></button><button class="slot" data-slot="1" aria-label="Второй слот">+</button></div><div id="mix-message" class="mix-message" role="status">Выбери или перетащи два элемента</div></div>
     <div class="glitter g1">✧</div><div class="glitter g2">✦</div>
   </div>
   <div class="shelf">
@@ -40,8 +60,6 @@
     <div class="element-grid" id="elements" aria-label="Открытые элементы"></div>
     <div class="pager"><button id="prev" aria-label="Предыдущая страница">‹</button><span id="page-label">1 / 1</span><button id="next" aria-label="Следующая страница">›</button></div>
   </div>
-  <div class="collection-tip">✧ Выбирай элементы и пробуй сочетания. Звёздочка добавит элемент в избранное.</div>
-  <div class="bottom"><button class="secondary" data-view="history"><span>◷</span> История</button><button class="mix" id="mix" type="button">Смешать <span>✦</span></button><button class="secondary" data-view="album"><span>▤</span> Альбом</button></div>
 </section>
 <section class="overlay" id="overlay" hidden><div class="overlay-head"><button id="back" class="back">‹ <span>К котлу</span></button><div><small id="overlay-kicker">КОЛЛЕКЦИЯ</small><h2 id="overlay-title">Альбом открытий</h2></div></div><div class="overlay-body" id="overlay-body"></div><div class="overlay-bottom"><button id="overlay-prev" aria-label="Предыдущая страница">‹</button><span id="overlay-page"></span><button id="overlay-next" aria-label="Следующая страница">›</button></div></section>
 <footer>Лаборатория исследует рецепты · производство не подключено</footer>
@@ -50,6 +68,7 @@
 const data = window.DISCOVERY_DATA;
 const $ = s => document.querySelector(s);
 const basics = ['w','f','e','a'];
+const PAGE_SIZE = 12;
 const categories = {
   nature:new Set('steam stone moss energy lava rain cloud lake sea ocean river swamp forest tree grass flower sand dust wind pressure ice snow mountain desert soil earth fire water air'.split(' ')),
   animals:new Set('beast bird fish worm insect ant bee butterfly bat bear whale wolf snake spider crab squid octopus turtle penguin panda monkey pig cow horse'.split(' ')),
@@ -93,12 +112,12 @@ function selectedItems() {
 }
 function renderElements() {
  stopFlight();
- const all=selectedItems(), pages=Math.max(1,Math.ceil(all.length/8)); state.page=Math.min(state.page,pages-1);
+ const all=selectedItems(), pages=Math.max(1,Math.ceil(all.length/PAGE_SIZE)); state.page=Math.min(state.page,pages-1);
  $('#open-count').textContent=String(state.opened.length).padStart(2,'0');
  $('#page-label').textContent=`${state.page+1} / ${pages}`; $('#prev').disabled=state.page===0; $('#next').disabled=state.page===pages-1;
  document.querySelectorAll('#tabs button').forEach(b=>{b.classList.toggle('active',b.dataset.filter===state.filter);b.setAttribute('aria-pressed',String(b.dataset.filter===state.filter));});
  const grid=$('#elements');grid.replaceChildren();
- for(const id of all.slice(state.page*8,state.page*8+8)) {
+ for(const id of all.slice(state.page*PAGE_SIZE,state.page*PAGE_SIZE+PAGE_SIZE)) {
   const wrap=document.createElement('div');wrap.className='token-wrap';
   const el=document.createElement('button');el.type='button';el.className='element'+(!usedIngredients.has(id)?' dead':'');el.dataset.id=id;el.title=label(id);el.setAttribute('aria-label',label(id)+(usedIngredients.has(id)?'':', тупиковый элемент')+', выбрать или перетащить');
   el.append(icon(id),curvedLabel(id));
@@ -125,29 +144,42 @@ function choose(id, target=null){
 }
 function tone(success){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;const c=new C(),o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(success?530:240,c.currentTime);o.frequency.exponentialRampToValueAtTime(success?800:160,c.currentTime+.2);g.gain.setValueAtTime(.035,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.25);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.26);o.onended=()=>c.close();}catch(_) {}}
 let flying=null;
-function stopFlight(){if(!flying)return;flying.animation.cancel();flying.target?.classList.remove('in-flight');flying.target?.closest('.token-wrap')?.classList.remove('receiving');flying.orb.remove();flying=null;}
+function resetResult(){
+ const result=$('#mix');result.replaceChildren();result.classList.remove('flying-origin');
+ const mark=document.createElement('span');mark.textContent='✦';const caption=document.createElement('small');caption.textContent='СМЕШАТЬ';
+ result.append(mark,caption);result.setAttribute('aria-label','Смешать элементы');
+}
+function stopFlight(){
+ if(!flying)return;
+ flying.animation.cancel();flying.target?.classList.remove('in-flight');flying.target?.closest('.token-wrap')?.classList.remove('receiving');
+ flying.orb.remove();resetResult();flying=null;
+}
 function flyToCollection(id){
  stopFlight();
  const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
  const target=[...document.querySelectorAll('#elements .element')].find(el=>el.dataset.id===id);
- const grid=$('#elements');
- if(reduced || typeof grid.animate!=='function')return;
- const area=grid.getBoundingClientRect(), sample=grid.querySelector('.element')?.getBoundingClientRect();
+ const grid=$('#elements'),result=$('#mix');
+ if(reduced || typeof result.animate!=='function')return;
+ const area=grid.getBoundingClientRect(),sample=grid.querySelector('.element')?.getBoundingClientRect();
  const size=sample?.width || 55;
  const dest=target ? target.getBoundingClientRect() : {left:area.left+area.width/2-size/2,top:area.top+area.height/2-size/2,width:size,height:size};
- const hero=$('#hero').getBoundingClientRect();
- if(!dest.width || !hero.width)return;
- const orb=document.createElement('div');orb.className='element flying-orb';orb.append(icon(id),curvedLabel(id));
- orb.style.width=dest.width+'px';orb.style.height=dest.height+'px';document.body.append(orb);target?.classList.add('in-flight');target?.closest('.token-wrap')?.classList.add('receiving');
- const fromX=hero.left+hero.width*.51-dest.width/2, fromY=hero.top+hero.height*.55-dest.height/2;
- const endX=dest.left,endY=dest.top,midX=fromX+(endX-fromX)*.45,midY=Math.min(fromY,endY)-36;
+ const start=result.getBoundingClientRect();if(!dest.width || !start.width)return;
+ const orb=document.createElement('div');orb.className='result-slot flying-result flight-clone';orb.append(icon(id));
+ orb.style.left=start.left+'px';orb.style.top=start.top+'px';orb.style.width=start.width+'px';orb.style.height=start.height+'px';document.body.append(orb);
+ result.classList.add('flying-origin');target?.classList.add('in-flight');target?.closest('.token-wrap')?.classList.add('receiving');
+ const dx=dest.left+dest.width/2-start.left-start.width/2,dy=dest.top+dest.height/2-start.top-start.height/2;
+ const scale=dest.width/start.width;
  const anim=orb.animate([
-  {transform:`translate(${fromX}px,${fromY}px) scale(.25)`,opacity:0,offset:0},
-  {transform:`translate(${midX}px,${midY}px) scale(.88)`,opacity:1,offset:.5},
-  {transform:`translate(${endX}px,${endY}px) scale(1)`,opacity:target?1:0,offset:1}
- ],{duration:1100,easing:'ease-in-out',fill:'forwards'});
+  {transform:'translate(0,0) scale(1)',opacity:1,offset:0},
+  {transform:'translate(0,0) scale(1.1)',opacity:1,offset:.18},
+  {transform:`translate(${dx*.45}px,${Math.min(0,dy*.3)-25}px) scale(${(1+scale)/2})`,opacity:1,offset:.55},
+  {transform:`translate(${dx}px,${dy}px) scale(${scale})`,opacity:target?1:0,offset:1}
+ ],{duration:1150,easing:'ease-in-out',fill:'forwards'});
  flying={animation:anim,target,orb};
- anim.onfinish=()=>{target?.classList.remove('in-flight');target?.closest('.token-wrap')?.classList.remove('receiving');target?.classList.add('landed');orb.remove();if(flying?.animation===anim)flying=null;};
+ anim.onfinish=()=>{
+  target?.classList.remove('in-flight');target?.closest('.token-wrap')?.classList.remove('receiving');target?.classList.add('landed');
+  if(flying?.animation===anim){anim.cancel();orb.remove();flying=null;resetResult();}
+ };
 }
 function mix(){
  if(state.slots.some(x=>!x)){ $('#mix-message').textContent='Сначала выбери два элемента';return; }
@@ -161,17 +193,17 @@ function mix(){
   if(newElement){
    state.opened.push(r.result);remember(r.result);state.lastNew=r.result;state.filter='all';state.category='all';state.search='';
    $('#search').value='';$('#category').value='all';
-   const index=selectedItems().indexOf(r.result);state.page=index<0?0:Math.floor(index/8);
+   const index=selectedItems().indexOf(r.result);state.page=index<0?0:Math.floor(index/PAGE_SIZE);
   }
   state.target=null;state.nextAfterMix=0;
   $('#mix-message').textContent=newElement?'Открыт элемент: '+label(r.result):fresh?'Новый рецепт: '+label(r.result):'Уже открыто: '+label(r.result);
   hero.classList.add('success');tone(true);
  } else {
-  state.target=null;state.nextAfterMix=0;
+  state.slots=[null,null];state.target=null;state.nextAfterMix=null;
   $('#mix-message').textContent=previous?'Эту пару уже пробовали':'Реакции нет — попробуй другую пару';hero.classList.add('fail');tone(false);
  }
  renderSlots();renderElements();
- if(newElement)flyToCollection(r.result);
+ if(r)flyToCollection(r.result);
 }
 function go(view){stopFlight();state.view=view;state.viewPage=0;state.detail=null;$('#workspace').hidden=true;$('#overlay').hidden=false;renderOverlay();}
 function goBack(){state.view='';state.detail=null;$('#overlay').hidden=true;$('#workspace').hidden=false;}
@@ -196,10 +228,10 @@ $('#elements').addEventListener('pointerup',e=>endDrag(e,false));$('#elements').
 document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
 $('#mix').addEventListener('click',mix);$('#prev').onclick=()=>{state.page--;renderElements();};$('#next').onclick=()=>{state.page++;renderElements();};
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;state.page=0;renderElements();});
-$('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden)$('#search').focus();};
+$('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#options-box').hidden=true;$('#options-toggle').setAttribute('aria-expanded','false');$('#search').focus();}};
 $('#search-close').onclick=()=>{$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');$('#search').value='';state.search='';state.page=0;renderElements();};
 $('#search').oninput=e=>{state.search=e.target.value.trim();state.page=0;renderElements();};
-$('#options-toggle').onclick=()=>{const box=$('#options-box');box.hidden=!box.hidden;$('#options-toggle').setAttribute('aria-expanded',String(!box.hidden));};
+$('#options-toggle').onclick=()=>{const box=$('#options-box');box.hidden=!box.hidden;$('#options-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');}};
 $('#category').onchange=e=>{state.category=e.target.value;state.page=0;renderElements();};$('#sort').onchange=e=>{state.sort=e.target.value;state.page=0;renderElements();};$('#hide-dead').onchange=e=>{state.hideDead=e.target.checked;state.page=0;renderElements();};
 $('#sound').onclick=()=>{state.sound=!state.sound;$('#sound').setAttribute('aria-pressed',String(state.sound));$('#sound span').textContent=state.sound?'вкл':'выкл';};
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));$('#back').onclick=()=>{if(state.detail){state.detail=null;renderOverlay();}else goBack();};$('#overlay-prev').onclick=()=>{state.viewPage--;renderOverlay();};$('#overlay-next').onclick=()=>{state.viewPage++;renderOverlay();};
