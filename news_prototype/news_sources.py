@@ -104,8 +104,9 @@ def _text(item: ET.Element, *paths: str) -> str:
 
 
 def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime,
-               max_items: int = MAX_ITEMS) -> list[dict]:
-    if source_id not in FEEDS or len(data) > MAX_BYTES:
+               max_items: int = MAX_ITEMS, feeds: dict | None = None) -> list[dict]:
+    feeds = FEEDS if feeds is None else feeds
+    if source_id not in feeds or len(data) > MAX_BYTES:
         raise FeedError('Неизвестный или слишком большой источник')
     if since.tzinfo is None or now.tzinfo is None or since > now:
         raise ValueError('Нужен корректный интервал с часовым поясом')
@@ -124,7 +125,7 @@ def parse_feed(data: bytes, source_id: str, *, since: datetime, now: datetime,
     # Never silently advance the source cursor past entries we did not inspect.
     if type(max_items) is not int or not 1 <= max_items <= 5000 or len(items) > max_items:
         raise FeedError('Слишком много записей в ленте')
-    name, _ = FEEDS[source_id]
+    name, _ = feeds[source_id]
     result, seen = [], set()
     for item in items:
         title = clean_text(_text(item, 'title', ATOM+'title'), 300)

@@ -68,6 +68,7 @@ async def panel_content():
                    callback_data='news_panel:off' if active else 'news_panel:on')
     builder.button(text='📝 Выключить сценарии' if drafts_active else '📝 Включить сценарии',
                    callback_data='news_panel:modeoff' if drafts_active else 'news_panel:modeon')
+    builder.button(text='🌍 Общая подборка', callback_data='gnews:home')
     builder.button(text='📚 Собранные новости', callback_data='news_panel:list')
     builder.button(text='🔎 Найти свежие новости сейчас', callback_data='news_panel:discover')
     builder.button(text='🔗 Подготовить по ссылкам', callback_data='owner_tools:prepare')

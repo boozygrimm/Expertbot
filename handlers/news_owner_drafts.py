@@ -49,6 +49,8 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         return
     stage = item.get('stage')
     if stage == 'draft_ready':
+        from news_prototype import story_review
+        review_text = story_review.display(item)
         editable = owner_drafts.editable_message(draft_id, item['url'], item['script'])
         if panel_mode:
             image = item['script'].get('image_b64')
@@ -56,7 +58,8 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
                       'Картинка не найдена или убрана — сюжет будет без неё.')
             text = (f'📰 Черновик №{draft_id} · сценарий\n'
                     + (notice + '\n' if notice else '') + editable.split('\n', 1)[1]
-                    + '\n\n' + status + '\nСверь факты, шутки и строку с источником.')
+                    + '\n\n' + status + '\nСверь факты, шутки и строку с источником.'
+                    + ('\n\n' + review_text if review_text else ''))
             from handlers.owner_bulletin_panel import _chunks
             from handlers.owner_news_actions import card
             # A near-limit UTF-16 script may need multiple messages, but common
@@ -67,7 +70,8 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
             await card(message, message.from_user.id, 'draft', item, for_program=for_program, text=chunks[-1])
             return
         else:
-            await message.answer('Черновик непроверен: сверьте смысл, факты, шутки и строку с источником. '
+            await message.answer(('Черновик непроверен: сверьте смысл, факты, шутки и строку с источником. '
+                                  + (review_text + '\n' if review_text else '')) +
                                  'Для правки скопируйте следующее сообщение, исправьте и отправьте его боту. '
                                  + ('После проверки соберите выпуск из нужных черновиков.' if for_program else
                                     'Для рендера подтвердите текущую версию отдельной командой.'), parse_mode=None)

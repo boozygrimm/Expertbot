@@ -96,10 +96,11 @@ def configure_dispatcher() -> Dispatcher:
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
     # Owner-only handlers are always registered; persistent settings gate their
     # actions so the owner can change modes without restarting the bot.
-    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel, owner_control_panel, owner_news_actions, owner_bulletin_panel, owner_legacy_news, owner_video_sender
+    from handlers import news_owner_trial, news_owner_drafts, news_owner_panel, owner_control_panel, owner_news_actions, owner_bulletin_panel, owner_legacy_news, owner_video_sender, general_news_panel
     dp.include_router(news_owner_trial.router)
     dp.include_router(news_owner_drafts.router)
     dp.include_router(news_owner_panel.router)
+    dp.include_router(general_news_panel.router)
     dp.include_router(owner_control_panel.router)
     dp.include_router(owner_video_sender.router)
     dp.include_router(owner_news_actions.router)
@@ -182,6 +183,24 @@ async def deliver_owner_daily_news():
         logging.warning('Не удалось подготовить ежедневную подборку: %s', type(exc).__name__)
 
 
+async def collect_general_news():
+    try:
+        from database import db
+        from news_prototype import general_auto
+        await general_auto.collect(db.db)
+    except Exception as exc:
+        logging.warning('Не удалось собрать общие новости: %s', type(exc).__name__)
+
+
+async def prepare_general_news():
+    try:
+        from database import db
+        from news_prototype import general_auto
+        await general_auto.tick(db.db, ADMIN_ID)
+    except Exception as exc:
+        logging.warning('Не удалось обработать общие новости: %s', type(exc).__name__)
+
+
 async def deliver_owner_news_trial():
     try:
         from database import db
@@ -217,6 +236,9 @@ def create_scheduler() -> AsyncIOScheduler:
                       coalesce=True, next_run_time=get_msk_now())
     scheduler.add_job(deliver_owner_daily_news, 'cron', minute='*', timezone=MSK, max_instances=1,
                       coalesce=True, next_run_time=get_msk_now())
+    # Registered but inert unless explicitly enabled in the owner panel.
+    scheduler.add_job(collect_general_news, 'interval', minutes=30, max_instances=1, coalesce=True)
+    scheduler.add_job(prepare_general_news, 'interval', minutes=15, max_instances=1, coalesce=True)
     if os.getenv('NEWS_COLLECTION_ENABLED', '').strip() == '1':
         scheduler.add_job(poll_news_sources, 'interval', minutes=30, max_instances=1, coalesce=True)
     if os.getenv('NEWS_EDITOR_ENABLED', '').strip() == '1':
