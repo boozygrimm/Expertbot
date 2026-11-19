@@ -23,7 +23,7 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
     async def test_buttons_and_access(self):
         with patch.object(owner_control_panel, 'db', SimpleNamespace(db=self.db, settings=self.db.settings)):
             _, markup = await owner_control_panel.home_content()
-            self.assertIn('owner_panel:tools', [b.callback_data for row in markup.inline_keyboard for b in row])
+            self.assertIn('owner_panel:alchemy', [b.callback_data for row in markup.inline_keyboard for b in row])
         self.cb.data = 'owner_tools:regen'
         self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID + 1)
         await tools.action(self.cb, self.state, None)

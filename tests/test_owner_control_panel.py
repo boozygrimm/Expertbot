@@ -49,7 +49,7 @@ class OwnerControlTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, flags):
             await panel.open_owner_panel(self.message)
         text = self.message.answer.await_args.args[0]
-        self.assertIn('ПУЛЬТ ВЛАДЕЛЬЦА', text)
+        self.assertIn('Пульт владельца', text)
         self.assertIn('Cloudflare + OVHcloud', text)
         self.assertIn('включены', text)
         self.assertIn('во всех чатах', text)
@@ -59,9 +59,9 @@ class OwnerControlTests(unittest.IsolatedAsyncioTestCase):
             prefs = await owner_preferences.get(self.db.settings)
             self.assertEqual(prefs, {'image_provider':'cloudflare', 'search_images':True})
             await self.action('news')
-            self.assertIn('ПАНЕЛЬ НОВОСТЕЙ', self.message.edit_text.await_args.args[0])
+            self.assertIn('📰 Новости', self.message.edit_text.await_args.args[0])
             await self.action('home')
-            self.assertIn('ПУЛЬТ ВЛАДЕЛЬЦА', self.message.edit_text.await_args.args[0])
+            self.assertIn('Пульт владельца', self.message.edit_text.await_args.args[0])
 
     async def test_changes_are_owner_only_and_persistent_with_explicit_options(self):
         with patch.dict(os.environ, {'IMAGE_PROVIDER_MODE':'legacy', 'SEARCH_IMAGES':''}):
@@ -113,7 +113,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from aiogram import Bot
-from aiogram.methods import SendMessage, EditMessageText
+from aiogram.methods import SendMessage, EditMessageText, DeleteMessage
 from aiogram.types import Update
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
@@ -135,14 +135,26 @@ async def run():
         msg = {'message_id':1, 'date':1760000000, 'chat':{'id':ADMIN_ID, 'type':'private'},
                'from':{'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}, 'text':'/panel'}
         await dp.feed_update(bot, Update.model_validate({'update_id':1, 'message':msg}))
-        assert any(isinstance(m, SendMessage) and 'ПУЛЬТ ВЛАДЕЛЬЦА' in m.text for m in sent)
-        for i, data in enumerate(('owner_panel:images', 'owner_panel:search', 'owner_panel:news'), 2):
+        assert any(isinstance(m, SendMessage) and 'Пульт владельца' in m.text for m in sent)
+        for i, data in enumerate(('owner_panel:group_menu', 'owner_panel:alchemy', 'owner_panel:alchemy_admin',
+                                  'owner_panel:media', 'owner_panel:images', 'owner_panel:search',
+                                  'owner_panel:news', 'news_panel:collection', 'news_panel:scripts',
+                                  'news_panel:editions', 'news_panel:settings', 'owner_panel:status'), 2):
             cb = {'id':str(i), 'chat_instance':'owner', 'from':msg['from'], 'data':data,
                   'message':{'message_id':2, 'date':1760000000, 'chat':msg['chat'],
                              'from':{'id':123456,'is_bot':True,'first_name':'Bot'}, 'text':'Panel'}}
             await dp.feed_update(bot, Update.model_validate({'update_id':i, 'callback_query':cb}))
         edits = [m.text for m in sent if isinstance(m, EditMessageText)]
-        assert len(edits) == 3 and 'РИСОВАНИЕ' in edits[0] and 'ПОИСКЕ' in edits[1] and 'ПАНЕЛЬ НОВОСТЕЙ' in edits[2], edits
+        assert len(edits) == 12, edits
+        for text, expected in zip(edits, ('Группы', 'Алхимия', 'Управление алхимией',
+                                          'Картинки и поиск', 'Рисование', 'поиске',
+                                          '📰 Новости', 'Crypto Sensei', 'Сценарии',
+                                          'Вестники и выпуски', 'Настройки новостей', 'Статус пульта')):
+            assert expected in text, (text, expected)
+        cb['id'] = 'close'
+        cb['data'] = 'owner_panel:close'
+        await dp.feed_update(bot, Update.model_validate({'update_id':100, 'callback_query':cb}))
+        assert any(isinstance(m, DeleteMessage) for m in sent)
     await bot.session.close()
 
 asyncio.run(run())
@@ -166,3 +178,65 @@ asyncio.run(run())
 
 
 if __name__ == '__main__': unittest.main()
+
+
+def callbacks(markup):
+    return {button.callback_data for row in markup.inline_keyboard for button in row if button.callback_data}
+
+
+class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = AsyncMongoMockClient().test
+        fake = SimpleNamespace(db=self.db, settings=self.db.settings)
+        self.patches = [patch.object(panel, 'db', fake), patch.object(news_owner_panel, 'db', fake)]
+        for p in self.patches:
+            p.start(); self.addCleanup(p.stop)
+        self.message = SimpleNamespace(chat=SimpleNamespace(type='private', id=panel.ADMIN_ID), message_id=55,
+                                       answer=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
+        self.callback = SimpleNamespace(from_user=SimpleNamespace(id=panel.ADMIN_ID), message=self.message, data='', answer=AsyncMock())
+        self.state = SimpleNamespace(clear=AsyncMock())
+
+    async def click(self, data):
+        self.callback.data = data
+        await panel.control_action(self.callback, self.state)
+        return self.message.edit_text.await_args.kwargs['reply_markup']
+
+    async def test_main_sections_and_backward_compatibility(self):
+        markup = (await panel.home_content())[1]
+        self.assertEqual([len(row) for row in markup.inline_keyboard], [2, 2, 1, 2, 2])
+        self.assertEqual(callbacks(markup), {'owner_panel:news', 'ovideo:open', 'owner_panel:group_menu',
+                         'owner_panel:alchemy', 'owner_panel:media', 'owner_panel:help',
+                         'owner_panel:home', 'owner_panel:close', 'owner_panel:status'})
+        for route, expected, back in [
+            ('group_menu', {'owner_panel:groups', 'owner_tools:reports', 'owner_tools:points'}, 'owner_panel:home'),
+            ('alchemy', {'owner_tools:base', 'owner_panel:alchemy_ref', 'owner_panel:alchemy_admin'}, 'owner_panel:home'),
+            ('alchemy_ref', {'owner_tools:recipes', 'owner_tools:recipe', 'owner_tools:lorehelp'}, 'owner_panel:alchemy'),
+            ('alchemy_admin', {'owner_tools:lore', 'owner_tools:regen', 'owner_tools:seed', 'owner_tools:pack',
+                               'owner_tools:clear', 'owner_tools:reset'}, 'owner_panel:alchemy'),
+            ('media', {'owner_panel:images', 'owner_panel:search'}, 'owner_panel:home'),
+            ('help', {'owner_tools:help'}, 'owner_panel:home'),
+            ('tools', {'ovideo:open', 'owner_panel:alchemy', 'owner_panel:group_menu'}, 'owner_panel:home'),
+        ]:
+            markup = await self.click('owner_panel:' + route)
+            self.assertEqual(callbacks(markup), expected | {back, 'owner_panel:close'})
+        self.assertGreaterEqual(self.state.clear.await_count, 7)
+
+    async def test_sections_are_owner_only_and_do_not_launch_any_actions(self):
+        from handlers import auth
+        from news_prototype import general_queue
+        with patch.object(auth, 'admin_chats_menu', AsyncMock()) as groups, \
+             patch.object(general_queue, 'poll', AsyncMock()) as poll:
+            for route in ('group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help', 'tools'):
+                await self.click('owner_panel:' + route)
+            groups.assert_not_awaited(); poll.assert_not_awaited()
+            self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
+            self.message.edit_text.reset_mock()
+            self.callback.from_user.id += 1
+            await panel.control_action(self.callback, self.state)
+            self.message.edit_text.assert_not_awaited()
+            self.assertIn('только владельцу', self.callback.answer.await_args.args[0])
+
+    async def test_media_subscreens_have_back_navigation(self):
+        for route in ('images', 'search'):
+            markup = await self.click('owner_panel:' + route)
+            self.assertIn('owner_panel:media', callbacks(markup))

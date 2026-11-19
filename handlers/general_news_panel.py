@@ -37,7 +37,24 @@ def category_label(topic):
     return label[:1].upper() + label[1:]
 
 
+def _with_close(markup):
+    """Add a close button to navigation screens, never to a pending confirmation."""
+    if not isinstance(markup, types.InlineKeyboardMarkup):
+        return markup
+    rows = [list(row) for row in markup.inline_keyboard]
+    if any(button.callback_data == 'owner_panel:close' for row in rows for button in row):
+        return markup
+    close = types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close')
+    if rows and len(rows[-1]) == 1 and rows[-1][0].text.startswith(('⬅️', '↩️', '‹')):
+        rows[-1].append(close)
+    else:
+        rows.append([close])
+    return markup.model_copy(update={'inline_keyboard': rows})
+
+
 async def _edit(message, text, **kwargs):
+    if kwargs.get('reply_markup') is not None:
+        kwargs['reply_markup'] = _with_close(kwargs['reply_markup'])
     try:
         await message.edit_text(text, **kwargs)
     except TelegramBadRequest as exc:
@@ -219,7 +236,8 @@ async def source_card(message, source, token, index):
     b.button(text='🗑 Убрать источник' if source['enabled'] else '↩️ Вернуть источник',
              callback_data=f'gnews:{action}:{token}:{index}')
     b.button(text='🏷 Категория источника', callback_data=f'gnews:scat:{token}:{index}')
-    b.button(text='⬅️ Источники', callback_data='gnews:sources:0')
+    page = int(index) // PAGE_SIZE
+    b.button(text='⬅️ Источники', callback_data=f'gnews:sources:{page}')
     b.adjust(1)
     label = 'Telegram' if source['kind'] == 'telegram' else 'RSS'
     await _edit(message, f'{_plain(source["name"], 100)} · {label}\n{_plain(source["location"], 500)}\n'
@@ -287,7 +305,7 @@ async def news_list(message, owner_id, page, kind='news'):
         visible = ordered[page * NEWS_PAGE_SIZE:(page + 1) * NEWS_PAGE_SIZE]
     # Store only this page, so every button stays bound to the displayed item
     # even when collection or ranking changes before it is clicked.
-    token = await _session(message, owner_id, kind, [item['_id'] for item, _ in visible])
+    token = await _session(message, owner_id, kind, [item['_id'] for item, _ in visible], page=page)
     title = {'removed': 'Убранные новости', 'ready': 'Готовые сценарии',
              'news': 'Новости общей подборки', 'all': 'Все новости по дате сбора'}[kind]
     lines = [f'📚 {title} · {total} · {page + 1}/{pages}', '']
@@ -468,6 +486,8 @@ async def news_card(message, item, token, index):
     session = await db.db.news_general_panel_sessions.find_one({'_id': token}) or {}
     if session.get('kind') == 'category' and session.get('category') in general_editorial.LABELS:
         back = f"gnews:cat:{session['category']}:{session.get('page', 0)}"
+    elif session.get('kind') in ('news', 'all', 'removed', 'ready'):
+        back = f"gnews:{session['kind']}:{session.get('page', 0)}"
     else:
         back = 'gnews:removed:0' if hidden else 'gnews:news:0'
     b.button(text='⬅️ Новости', callback_data=back)
