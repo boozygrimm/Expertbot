@@ -154,7 +154,7 @@ class LegacyPanelTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_home_buttons_status_and_list(self):
         with patch.object(owner_trial, 'migrate_panel_defaults', AsyncMock()):
-            _, markup = await news_owner_panel.panel_content()
+            _, markup = await news_owner_panel.section_content('settings')
         self.assertIn('legacynews:home', [button.callback_data for row in markup.inline_keyboard for button in row])
         await self.db.news_candidates.insert_one({'source_id':'manual', 'owner_id':tools.ADMIN_ID,
                                                    'text':'Ручная новость', 'collected_at':'2026-01-01'})

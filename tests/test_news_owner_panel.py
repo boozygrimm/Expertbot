@@ -37,7 +37,7 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
         state = SimpleNamespace(clear=AsyncMock())
         private = SimpleNamespace(chat=SimpleNamespace(type='private'), from_user=self.owner, answer=AsyncMock())
         await admin_panel.open_feature_panel(private, None, state)
-        self.assertIn('ПУЛЬТ ВЛАДЕЛЬЦА', private.answer.await_args.args[0])
+        self.assertIn('Пульт владельца', private.answer.await_args.args[0])
         buttons = private.answer.await_args.kwargs['reply_markup'].inline_keyboard
         self.assertEqual(buttons[0][0].text, '📰 Новости')
         private.from_user = SimpleNamespace(id=panel.ADMIN_ID+1)
@@ -181,3 +181,70 @@ class PanelTests(unittest.IsolatedAsyncioTestCase):
                     self.assertLessEqual(len(button.callback_data.encode()), 64)
 
 if __name__ == '__main__': unittest.main()
+
+
+class NewsSectionsTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = AsyncMongoMockClient().test
+        p = patch.object(panel, 'db', SimpleNamespace(db=self.db))
+        p.start(); self.addCleanup(p.stop)
+        self.message = SimpleNamespace(chat=SimpleNamespace(type='private', id=panel.ADMIN_ID), message_id=44,
+                                       edit_text=AsyncMock(), answer=AsyncMock(), delete=AsyncMock())
+        self.callback = SimpleNamespace(from_user=SimpleNamespace(id=panel.ADMIN_ID), message=self.message,
+                                        data='', answer=AsyncMock())
+        self.state = SimpleNamespace(clear=AsyncMock())
+
+    async def test_sections_reach_every_original_action_without_starting_work(self):
+        from news_prototype import general_queue
+        def buttons(markup):
+            return {b.callback_data for row in markup.inline_keyboard for b in row if b.callback_data}
+        with patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=False)), \
+             patch.object(owner_daily, 'enabled', AsyncMock(return_value=False)), \
+             patch.object(owner_discovery, 'collect', AsyncMock()) as collect, \
+             patch.object(general_queue, 'poll', AsyncMock()) as poll:
+            expected = {
+                'collection': {'news_panel:list', 'news_panel:discover', 'news_panel:on'},
+                'scripts': {'news_panel:drafts', 'owner_tools:prepare', 'owner_tools:trial'},
+                'editions': {'nb:daily', 'nb:choose', 'nb:list', 'newsact:choose', 'news_panel:programs'},
+                'settings': {'news_panel:modeon', 'owner_tools:trial_status', 'legacynews:home'},
+            }
+            for section, actions in expected.items():
+                self.callback.data = 'news_panel:' + section
+                await panel.news_panel_action(self.callback, self.state)
+                markup = self.message.edit_text.await_args.kwargs['reply_markup']
+                self.assertEqual(buttons(markup), actions | {'news_panel:home', 'owner_panel:close'})
+            collect.assert_not_awaited(); poll.assert_not_awaited()
+            self.assertEqual(await self.db.news_owner_drafts.count_documents({}), 0)
+            self.assertGreaterEqual(self.state.clear.await_count, 4)
+        self.callback.from_user.id += 1
+        self.message.edit_text.reset_mock()
+        self.callback.data = 'news_panel:settings'
+        await panel.news_panel_action(self.callback, self.state)
+        self.message.edit_text.assert_not_awaited()
+        self.assertIn('только владельцу', self.callback.answer.await_args.args[0])
+
+    async def test_news_home_distinguishes_the_two_collections(self):
+        text, markup = await panel.panel_content()
+        buttons = {b.callback_data for row in markup.inline_keyboard for b in row if b.callback_data}
+        self.assertIn('gnews:home', buttons)
+        self.assertIn('news_panel:collection', buttons)
+        self.assertIn('отдельные сборы', text)
+        self.assertIn('Общая подборка', text)
+
+
+class NewsStatusDisplayTests(unittest.IsolatedAsyncioTestCase):
+    async def test_collection_diagnostics_are_kept_in_their_section(self):
+        db = AsyncMongoMockClient().test
+        now = datetime.now(timezone.utc)
+        await db.news_owner_daily_state.insert_one({'_id': 'last_poll', 'at': now, 'failed': ['telegram']})
+        await db.news_owner_daily_items.insert_one({'_id': 'item', 'published_at': now.isoformat()})
+        await db.news_owner_daily_deliveries.insert_one({'owner_id': panel.ADMIN_ID, 'day': '2026-01-02', 'stage': 'uncertain'})
+        with patch.object(panel, 'db', SimpleNamespace(db=db)), \
+             patch.object(owner_daily, 'enabled', AsyncMock(return_value=True)):
+            text, markup = await panel.section_content('collection')
+        self.assertIn('Собрано за сутки · 1', text)
+        self.assertIn('Недоступны при проверке · telegram', text)
+        self.assertIn('Последняя проверка', text)
+        self.assertIn('отправка не подтверждена', text)
+        self.assertIn('03:00 МСК', text)
+        self.assertIn('news_panel:off', {b.callback_data for row in markup.inline_keyboard for b in row})

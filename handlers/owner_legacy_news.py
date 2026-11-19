@@ -59,8 +59,9 @@ def home():
         b.button(text='📋 Ручные новости', callback_data='legacynews:list')
         b.button(text='🎞 Готовые сюжеты и дайджест', callback_data='legacynews:ready')
         b.button(text='📊 Статус дайджестов', callback_data='legacynews:status')
-    b.button(text='⬅️ Новости', callback_data='news_panel:home')
     b.adjust(1)
+    b.row(types.InlineKeyboardButton(text='⬅️ Настройки новостей', callback_data='news_panel:settings'),
+          types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
     if not enabled():
         return ('🗂 ДОПОЛНИТЕЛЬНЫЙ СТАРЫЙ РЕЖИМ\n\nОн сейчас выключен и не нужен для обычной '
                 'ежедневной подборки и сценариев. Пульт не включает его и не меняет настройки Render.'), b.as_markup()
@@ -89,8 +90,9 @@ async def render_selection(message, session):
     bottom = InlineKeyboardBuilder()
     if len(chosen) >= 2:
         bottom.button(text='🎬 Собрать дайджест', callback_data=f'legacynews:build:{session["_id"]}')
-    bottom.button(text='⬅️ Старый режим', callback_data='legacynews:home')
     bottom.adjust(1)
+    bottom.row(types.InlineKeyboardButton(text='⬅️ Старый режим', callback_data='legacynews:home'),
+               types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
     b.attach(bottom)
     await message.edit_text(f'Готовые сюжеты · страница {page+1}/{pages}\n'
         f'Показаны до {MAX_ITEMS} последних. Выбрано: {len(chosen)} из {MAX_CHOICE}. '

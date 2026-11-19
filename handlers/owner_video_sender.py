@@ -126,7 +126,8 @@ async def _list(callback, page: int, *, bot=None, replace: bool = False) -> None
         b.button(text='⬅️ Предыдущая страница', callback_data=f'ovideo:page:{page - 1}')
     if len(rows) > PAGE_SIZE:
         b.button(text='➡️ Следующая страница', callback_data=f'ovideo:page:{page + 1}')
-    b.button(text='⬅️ Пульт', callback_data='owner_panel:tools')
+    b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
+    b.button(text='Закрыть', callback_data='owner_panel:close')
     await callback.answer()
     text = ('Выбери разрешённую группу. Состав бота в ней будет проверен перед отправкой.' if displayed else
             'На этой странице нет доступных групп. Проверь другие страницы или доступ к группам в пульте.' if rows else
@@ -351,6 +352,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 b.button(text='🎬 Обычное видео', callback_data=f'ovideo:format:{chat_id}:video')
                 b.button(text='⭕ Кружок', callback_data=f'ovideo:format:{chat_id}:note')
                 b.button(text='⬅️ К списку чатов', callback_data='ovideo:back')
+                b.button(text='Закрыть', callback_data='owner_panel:close')
                 await callback.answer()
                 await callback.message.answer(f'Группа «{title}» (ID {chat_id}). Выбери формат:',
                                               reply_markup=_buttons(b), parse_mode=None)

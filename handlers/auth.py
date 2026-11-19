@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 from aiogram import Router, types, F, Bot, BaseMiddleware
 from aiogram.filters import Command, or_f
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, IS_NOT_MEMBER, MEMBER, ADMINISTRATOR
@@ -84,9 +85,10 @@ async def admin_chats_menu(message: types.Message):
             )
 
     chats = await db.auth_chats.find().to_list(length=100)
-    if not chats:
+    private_owner = (getattr(getattr(message, 'chat', None), 'type', None) == 'private'
+                     and message.chat.id == ADMIN_ID)
+    if not chats and not private_owner:
         return await message.answer("Список чатов пуст.")
-
     builder = InlineKeyboardBuilder()
     for c in chats:
         status = "🟢" if c.get("status") == "approved" else ("🔴" if c.get("status") == "denied" else "🟡")
@@ -96,7 +98,11 @@ async def admin_chats_menu(message: types.Message):
         builder.button(text=f"{status} {display_name}", callback_data=f"manage_chat:{c['chat_id']}")
     
     builder.adjust(1)
-    await message.answer("📂 **Управление доступом чатов:**", reply_markup=builder.as_markup())
+    if private_owner:
+        builder.row(types.InlineKeyboardButton(text='‹ Группы', callback_data='owner_panel:group_menu'),
+                    types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    text = "📂 **Управление доступом чатов:**" if chats else "Список чатов пуст."
+    await message.answer(text, reply_markup=builder.as_markup())
 
 # --- ДЕЙСТВИЯ (ЗАПРОС / ПОДТВЕРДИТЬ / ОТКЛОНИТЬ) ---
 @router.callback_query(F.data.startswith("req_acc:"))
@@ -117,6 +123,9 @@ async def request_access(callback: types.CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("manage_chat:"))
 async def manage_chat_item(callback: types.CallbackQuery):
+    if not callback.from_user or callback.from_user.id != ADMIN_ID:
+        await callback.answer("Только для владельца.", show_alert=True)
+        return
     chat_id = int(callback.data.split(":")[1])
     doc = await db.auth_chats.find_one({"chat_id": chat_id})
 
@@ -129,6 +138,8 @@ async def manage_chat_item(callback: types.CallbackQuery):
     builder.button(text="❌ Отключить", callback_data=f"auth_deny:{chat_id}")
     builder.button(text="🔙 Назад", callback_data="back_to_list")
     builder.adjust(2, 1)
+    if callback.message.chat.type == 'private' and callback.message.chat.id == ADMIN_ID:
+        builder.row(types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
 
     chat_title = doc.get('title') or "Неизвестный чат"
     await callback.message.edit_text(
@@ -138,7 +149,13 @@ async def manage_chat_item(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "back_to_list")
 async def back_to_list(callback: types.CallbackQuery):
-    await admin_chats_menu(callback.message)
+    if not callback.from_user or callback.from_user.id != ADMIN_ID:
+        await callback.answer("Только для владельца.", show_alert=True)
+        return
+    message = SimpleNamespace(from_user=callback.from_user, chat=callback.message.chat,
+                              answer=callback.message.answer)
+    await admin_chats_menu(message)
+    await callback.answer()
     await callback.message.delete()
 
 @router.callback_query(F.data.startswith("auth_allow:"))
