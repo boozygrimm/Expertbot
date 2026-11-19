@@ -13,6 +13,8 @@ import re
 RULES = {
     'ai': ('нейросет', r'искусственн\w* интеллект', r'языков\w* модел', r'генеративн\w* ии', r'\bllm\b', r'\bchatgpt\b', r'\bmachine learning\b', r'\bartificial intelligence\b', r'\bai\b'),
     'technology': ('кибербезопас', 'хакер', r'программн\w* обеспеч', 'процессор', 'смартфон', 'компьютер', 'микросхем', r'\bsoftware\b', r'\bcybersecurity\b', r'\bsmartphone\b'),
+    'internet': (r'\bинтернет\w*\b', r'\bсоцсет\w*\b', r'\bсоциальн\w* сет\w*', r'\bблогер\w*\b', r'\bмессенджер\w*\b', r'\btelegram\b', r'\byoutube\b', r'\btiktok\b', r'\binternet\b', r'\bsocial media\b'),
+    'humor': (r'\bюмор\w*\b', r'\bшутк\w*\b', r'\bмем\w*\b', r'\bкомик(?:и|а|у|ом|е|ов|ами|ах)?\b', r'\bкомеди\w*\b', r'\bhumo[u]?r\b', r'\bmemes?\b', r'\bcomedy\b'),
     'games': ('видеоигр', r'компьютерн\w* игр', 'геймплей', r'игров\w* студи', r'\bsteam\b', r'\bplaystation\b', r'\bxbox\b', r'\bvideo ?game'),
     'cinema': ('фильм', 'кинотеатр', 'кинофестивал', 'сериал', 'режиссёр', 'режиссер', r'\banime\b', r'\bfilm\b', r'\bcinema\b', r'\bmovie\b'),
     'culture': ('музык', 'певец', 'певиц', 'альбом', 'концерт', 'театр', 'спектакл', 'выставк', 'музей', 'литератур', r'\bmusic\b', r'\bconcert\b', r'\bmuseum\b'),
@@ -24,7 +26,7 @@ RULES = {
     'crypto': ('криптовалют', 'биткоин', 'блокчейн', 'крипторын', r'\bbitcoin\b', r'\bcrypto\b', r'\bblockchain\b', r'\bethereum\b'),
     'business': ('экономик', 'инфляци', 'бизнес', r'бирж\w', 'центробанк', r'процентн\w* ставк', 'инвестиц', r'\beconomy\b', r'\binflation\b', r'\bbusiness\b', r'\binvestment\b'),
     'industry_transport': ('промышленн', 'завод', 'автомобил', 'электромобил', r'железн\w* дорог', 'самолёт', 'самолет', 'транспорт', r'\bautomotive\b', r'\belectric vehicles?\b', r'\bindustry\b'),
-    'politics_society': ('политик', r'выбор\w* президент', 'парламент', 'правительств', 'президент', 'общественн', r'\belections?\b', r'\bparliament\b', r'\bgovernment\b'),
+    'politics_society': ('политик', r'выбор\w* президент', 'парламент', 'правительств', 'президент', 'общественн', r'\bпутин\w*\b', r'\bкремл\w*\b', r'\bтрамп\w*\b', r'\bзеленск\w*\b', r'\bмид\b', r'\bнато\b', 'госдум', 'спецоперац', r'\bсво\b', r'\belections?\b', r'\bparliament\b', r'\bgovernment\b'),
     'law_investigations': ('расследован', 'судебн', 'прокуратур', 'законопроект', r'суд\w* дел\w', r'\binvestigation\b', r'\bcourt\b', r'\blawsuit\b'),
     'sport': ('футбол', 'хоккей', 'олимпиад', 'чемпионат', 'теннис', 'спортсмен', r'\bfootball\b', r'\bhockey\b', r'\bolympics\b', r'\btennis\b'),
     'travel_life': ('путешеств', 'туризм', 'турист', 'авиарейс', 'гостиниц', r'бытов\w* техник', r'\btravel\b', r'\btourism\b'),
@@ -32,7 +34,7 @@ RULES = {
     'history': ('археолог', r'древн\w* цивилизац', r'историческ\w* артефакт', 'раскопк', r'античн\w* город', r'\barcheolog', r'\barchaeolog', r'\bancient\b'),
 }
 LABELS = {
-    'ai': 'ИИ', 'technology': 'технологии', 'games': 'игры', 'cinema': 'кино и сериалы',
+    'ai': 'ИИ', 'technology': 'технологии', 'internet': 'Интернет', 'humor': 'Юмор', 'games': 'ИгроМир', 'cinema': 'кино и сериалы',
     'culture': 'музыка и культура', 'science': 'наука', 'health': 'медицина', 'space': 'космос',
     'nature': 'природа и экология', 'animals': 'животные', 'crypto': 'крипта',
     'business': 'экономика и бизнес', 'industry_transport': 'промышленность и транспорт',
@@ -64,3 +66,12 @@ def assess(title: str, source_hint: str = 'general') -> dict:
 def choose_topic(assessment: dict, topic_counts: Counter) -> str:
     topics = assessment.get('topics') or ['general']
     return min(topics, key=lambda topic: (topic_counts[topic], topics.index(topic)))
+
+
+def assess_item(item: dict) -> dict:
+    """An explicit owner category overrides provisional headline/source hints."""
+    assessment = assess(item.get('title', ''), item.get('topic_hint', 'general'))
+    override = item.get('category_override')
+    if isinstance(override, str) and override in LABELS:
+        assessment = {**assessment, 'topics': [override], 'basis': 'owner'}
+    return assessment

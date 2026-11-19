@@ -15,7 +15,6 @@ from urllib.parse import urlsplit
 from pymongo import ReturnDocument
 from news_prototype import general_discovery, general_sources, owner_discovery
 
-KEEP_DAYS = 7
 
 
 def _utc(now: datetime | None) -> datetime:
@@ -71,11 +70,8 @@ async def poll(db, *, now: datetime | None = None, fetch=None) -> tuple[int, lis
         result = await db.news_general_candidates.update_one(
             {'_id': key}, {'$setOnInsert': {**candidate, 'stage': 'collected', 'first_seen_at': now}}, upsert=True)
         inserted += int(result.upserted_id is not None)
-    # Keep owner-removed entries as tombstones so they cannot silently reappear.
-    # Never remove manual entries or work that has left the initial stage.
-    await db.news_general_candidates.delete_many(
-        {'stage': 'collected', 'manual': {'$ne': True}, 'hidden': {'$ne': True},
-         'published_at': {'$lt': (now - timedelta(days=KEEP_DAYS)).isoformat()}})
+    # Collected records are retained until the owner hides them; never purge by age.
+    # Hidden records remain tombstones and prevent the same URL reappearing.
     await db.news_general_state.update_one({'_id': 'last_poll'},
         {'$set': {'at': now, 'failed': [s for s in failed if s in active],
                   'inserted': inserted}}, upsert=True)

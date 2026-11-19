@@ -75,6 +75,9 @@ async def list_sources(db, *, include_removed: bool = False) -> list[dict]:
     for builtin in builtin_sources():
         state = by_id.get('builtin:' + builtin['id'], {})
         builtin['enabled'] = state.get('enabled') is not False
+        from news_prototype import general_editorial
+        if isinstance(state.get('topic_hint'), str) and state['topic_hint'] in general_editorial.LABELS:
+            builtin['topic_hint'] = state['topic_hint']
         sources.append(builtin)
     for row in overrides:
         if not str(row.get('_id', '')).startswith('custom:'):
@@ -115,3 +118,18 @@ async def remove_source(db, source_id: str) -> bool:
         return False
     result = await db.news_general_sources.update_one({'_id': source_id}, {'$set': {'enabled': False}})
     return bool(result.matched_count)
+
+
+async def set_source_topic(db, source_id: str, topic: str) -> bool:
+    """Set a provisional category for the source and its collected records."""
+    from news_prototype import general_editorial
+    if topic not in general_editorial.LABELS:
+        raise ValueError('Неверная категория')
+    sources = await list_sources(db, include_removed=True)
+    source = next((s for s in sources if s['id'] == source_id), None)
+    if not source:
+        return False
+    key = 'builtin:' + source_id if source['builtin'] else source_id
+    await db.news_general_sources.update_one({'_id': key}, {'$set': {'topic_hint': topic}}, upsert=source['builtin'])
+    await db.news_general_candidates.update_many({'source_id': source_id}, {'$set': {'topic_hint': topic}})
+    return True
