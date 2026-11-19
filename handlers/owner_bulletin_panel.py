@@ -73,6 +73,9 @@ async def selection(message, session):
     if len(selected) >= 2:
         actions.button(text=('📥 Прочитать выбранные источники' if session.get('mode') == 'direct' else
                              '📝 Подготовить один вестник'), callback_data=f'nb:prepare:{session["_id"]}')
+    if session.get('origin') == 'general':
+        actions.button(text='‹ Выбор для вестника', callback_data='gnews:basket')
+        actions.button(text='Закрыть', callback_data='owner_panel:close')
     actions.button(text='📰 Панель новостей', callback_data='news_panel:home')
     actions.adjust(1); b.attach(actions)
     lines = []
@@ -80,7 +83,9 @@ async def selection(message, session):
         number = item['number']
         mark = f'✅ {selected.index(number) + 1} ·' if number in selected else '▫️'
         lines.append(f'{mark} {number}. ' + ' '.join(str(item['label']).split()))
-    description = ('Новости за последние сутки.' if session.get('mode') == 'direct' else 'Готовые черновики.')
+    description = ('Новости из общей подборки. Это отдельная копия выбора; исходный список сохранён.'
+                   if session.get('origin') == 'general' else
+                   'Новости за последние сутки.' if session.get('mode') == 'direct' else 'Готовые черновики.')
     await message.edit_text(
         f'📰 Выбор новостей · {page + 1}/{len(pages)}\n'
         f'{description} Выбрано {len(selected)} из 20; порядок — по нажатию.\n\n'
