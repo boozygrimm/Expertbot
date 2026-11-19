@@ -176,7 +176,22 @@ async def receive_input(message: types.Message, state: FSMContext):
     if not text:
         return await message.answer('Нужно текстовое сообщение. Можно отменить ввод кнопкой.', parse_mode=None)
     try:
-        if action == 'prepare':
+        if action in ('gnews_addtg', 'gnews_addrss', 'gnews_addnews'):
+            from news_prototype import general_queue, general_sources
+            from handlers import general_news_panel
+            if action == 'gnews_addnews':
+                await general_queue.add_news(db.db, text)
+                result = 'Новость добавлена или возвращена. Сценарий не запускался.'
+            else:
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                if len(lines) != 2:
+                    raise ValueError('Нужно название и адрес')
+                kind = 'telegram' if action == 'gnews_addtg' else 'rss'
+                await general_sources.add_source(db.db, kind, lines[0], lines[1])
+                result = 'Источник добавлен или возвращён. Сбор автоматически не запускался.'
+            await state.clear()
+            await message.answer(result, parse_mode=None, reply_markup=general_news_panel.home_markup())
+        elif action == 'prepare':
             # Accept one or several links, plus an optional accent line.
             lines = [line.strip() for line in text.splitlines() if line.strip()]
             count = len(lines) - int(bool(lines and lines[-1].casefold().startswith('акцент:')))
@@ -797,6 +812,21 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 from handlers import owner_bulletin_panel
                 fn = owner_bulletin_panel.render_confirmed if name == 'render_bulletin' else owner_bulletin_panel.shorten_confirmed
                 await fn(message, callback.from_user.id, data)
+            elif name == 'general_auto_on':
+                from news_prototype import general_auto
+                from handlers import general_news_panel
+                try:
+                    changed = await general_auto.set_enabled(db.db, True, expected_version=data['version'])
+                except ValueError:
+                    await message.answer('Автоотбор не включён: нужны работающий режим сценариев и настроенные ключи Gemini и Groq.', parse_mode=None)
+                else:
+                    await message.answer(
+                        'Автоотбор включён. Рендер и публикация по-прежнему требуют отдельного решения.'
+                        if changed else 'Подтверждение устарело. Открой настройки автоотбора заново.',
+                        parse_mode=None, reply_markup=general_news_panel.home_markup())
+            elif name == 'general_prepare':
+                from handlers import general_news_panel
+                await general_news_panel.prepare_confirmed(message, callback.from_user.id, data['key'])
             elif name == 'prepare_bulletin':
                 from handlers import owner_bulletin_panel
                 await owner_bulletin_panel.prepare_selected(message, callback.from_user.id, data)

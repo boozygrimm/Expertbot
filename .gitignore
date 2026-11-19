@@ -5,3 +5,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Local agent tooling and disposable environments
+.arena/

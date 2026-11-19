@@ -34,8 +34,11 @@ class DiscoveryFetchError(ValueError):
 
 class ChannelParser(HTMLParser):
     """Read only the post's own message and timestamp, never replies/neighbours."""
-    def __init__(self):
+    def __init__(self, channel='SenseiDurova'):
+        if not isinstance(channel, str) or not re.fullmatch(r'[A-Za-z0-9_]{4,32}', channel):
+            raise ValueError('Неверный канал')
         super().__init__(convert_charrefs=True)
+        self.channel = channel
         self.stack = []
         self.current = None
         self.posts = []
@@ -50,7 +53,7 @@ class ChannelParser(HTMLParser):
         root = False
         if 'tgme_widget_message' in classes and self.current is None:
             post = attrs.get('data-post', '')
-            if re.fullmatch(r'SenseiDurova/[1-9][0-9]{0,19}', post, re.I):
+            if re.fullmatch(re.escape(self.channel) + r'/[1-9][0-9]{0,19}', post, re.I):
                 self.current = {'post': post, 'parts': [], 'date': None}
                 root = True
                 body = False
@@ -87,10 +90,11 @@ class ChannelParser(HTMLParser):
             self.current['parts'].append(data)
 
 
-def parse_channel(data: bytes, *, since: datetime, now: datetime) -> list[dict]:
+def parse_channel(data: bytes, *, since: datetime, now: datetime,
+                  channel: str = 'SenseiDurova', source: str = 'Crypto Sensei') -> list[dict]:
     if len(data) > MAX_BYTES:
         raise ValueError('Слишком большая страница')
-    parser = ChannelParser()
+    parser = ChannelParser(channel)
     parser.feed(data.decode('utf-8', errors='replace'))
     if not parser.posts:
         raise ValueError('Не удалось прочитать публикации канала')
@@ -99,11 +103,11 @@ def parse_channel(data: bytes, *, since: datetime, now: datetime) -> list[dict]:
         date = news_sources.parse_date(post.get('date') or '')
         title = re.sub(r'\s+', ' ', ''.join(post['parts'])).strip()[:180]
         number = post['post'].split('/')[1]
-        url = 'https://t.me/SenseiDurova/' + number
+        url = f'https://t.me/{channel}/' + number
         if not title or not date or not since <= date <= now or url in seen:
             continue
         seen.add(url)
-        result.append({'source': 'Crypto Sensei', 'title': title, 'url': url,
+        result.append({'source': source, 'title': title, 'url': url,
                        'published_at': date.isoformat()})
     return result
 
