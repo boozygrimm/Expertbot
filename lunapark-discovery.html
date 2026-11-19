@@ -42,6 +42,35 @@
 @media(max-height:450px) and (orientation:landscape){.workspace{display:grid;grid-template-columns:1fr 1.1fr;grid-template-rows:1fr;gap:5px}.hero{grid-column:1;grid-row:1}.shelf{grid-column:2;grid-row:1}.mix-space{bottom:6%}.hero-caption{display:none}}
 #mix.flying-origin{visibility:hidden}.flight-clone{position:fixed;z-index:100;pointer-events:none;margin:0;will-change:transform,opacity}
 .mix-space{bottom:clamp(2px,calc(23% - 20px),50px)}
+/* The central window changes with the selected pair and becomes the result. */
+.result-slot{width:clamp(62px,11.8dvh,82px);height:clamp(62px,11.8dvh,82px);border:3px solid #e7c27f;background:radial-gradient(circle at 34% 20%,#fff3cf 0%,#f2cf92 20%,#bf8045 58%,#754427 100%);box-shadow:inset 0 2px 5px #fff9,inset 0 -5px 10px #663a287d,0 0 0 3px #6f422d,0 0 18px #f5c97380;color:#412330;overflow:hidden}
+.result-slot:disabled{opacity:1;cursor:default}
+.result-slot[data-state="empty"]{background:radial-gradient(circle at 34% 18%,#bba49d,#674c60 32%,#322337 75%);box-shadow:inset 0 2px 5px #fffd,inset 0 -5px 10px #1c1424aa,0 0 0 3px #664631,0 2px 10px #120c19bb}
+.result-slot[data-state="waiting"],.result-slot[data-state="known"]{background:radial-gradient(circle at 35% 24%,#dec6b8,#9a7586 34%,#513b55 80%);color:#fff5dd}
+.result-slot[data-state="clear"],.result-slot[data-state="known-fail"]{background:radial-gradient(circle at 35% 22%,#ffc9a6,#d58961 46%,#8b4c44);color:#40212c}
+.result-slot[data-state="reacting"]{background:radial-gradient(circle,#e8ffe0,#a6eaaa 30%,#368c6c 75%);color:#183d31;box-shadow:0 0 25px #9fffb9,inset 0 1px 5px #fff}
+.result-slot .result-primary{font-size:clamp(9px,1.5dvh,12px);font-weight:900;line-height:1.1;text-align:center;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result-slot .result-caption{font-size:clamp(8px,1.25dvh,10px);line-height:1.12;font-weight:900;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result-slot[data-state="mix"] .result-primary{font-size:22px;color:#8a3c6a;line-height:.85}
+.result-slot[data-state="known"] .result-caption{font-size:clamp(10px,1.6dvh,13px);text-transform:none;color:#fff4cf}
+.slot{position:relative;overflow:hidden;isolation:isolate}.slot .orb-curve{z-index:2}.slot .symbol{position:relative;z-index:1;transform:scale(.8) translateY(-10%)}
+.flight-clone .orb-curve{z-index:3}.flight-clone{isolation:isolate;overflow:hidden}
+.reaction-fx{position:absolute;inset:0;z-index:3;overflow:hidden;pointer-events:none;opacity:0}.hero.reacting .reaction-fx{opacity:1}
+.reaction-ring{position:absolute;left:23%;top:34%;width:54%;height:23%;border:3px solid #d5ffc9;border-radius:50%;box-shadow:0 0 20px 8px #83ffab,inset 0 0 22px #a5ffd3;opacity:0}
+.reaction-bubble{position:absolute;top:49%;width:10px;height:10px;border:1px solid #efffec;border-radius:50%;background:#b3ffddac;box-shadow:0 0 12px #84ffaf;opacity:0}.b1{left:38%}.b2{left:46%;width:15px;height:15px}.b3{left:57%;width:8px;height:8px}.b4{left:65%;width:12px;height:12px}
+.reaction-spark{position:absolute;color:#fff8c1;text-shadow:0 0 12px #bbffc1;font-style:normal;font-size:22px;opacity:0}.s1{left:24%;top:26%}.s2{left:70%;top:19%;font-size:25px}.s3{left:52%;top:13%;font-size:14px}
+.hero.reacting .reaction-ring{animation:reaction-ring .7s ease-out}.hero.reacting .reaction-bubble{animation:reaction-rise .7s ease-out}.hero.reacting .b2{animation-delay:.07s}.hero.reacting .b3{animation-delay:.13s}.hero.reacting .b4{animation-delay:.04s}.hero.reacting .reaction-spark{animation:reaction-spark .7s ease-out}
+@keyframes reaction-ring{0%{opacity:0;transform:scale(.55)}30%{opacity:1}100%{opacity:0;transform:scale(1.3)}}
+@keyframes reaction-rise{0%{opacity:0;transform:translateY(0) scale(.4)}25%{opacity:1}100%{opacity:0;transform:translateY(-70px) scale(1.5)}}
+@keyframes reaction-spark{0%{opacity:0;transform:scale(.3) rotate(0)}35%{opacity:1}100%{opacity:0;transform:scale(1.4) rotate(80deg)}}
+@media(max-height:510px){.result-slot{width:52px;height:52px}.result-slot .result-primary{font-size:8px}.result-slot .result-caption{font-size:7px}.result-slot[data-state="known"] .result-caption{font-size:9px}.result-slot[data-state="mix"] .result-primary{font-size:16px}.slot .orb-curve text{font-size:15px}}
+/* Keep situation text readable rather than clipping it inside the medallion. */
+.result-slot{padding:2px}
+#mix .result-primary{font-size:clamp(9px,1.5dvh,12px);line-height:1.08}
+#mix .result-caption{font-size:clamp(8px,1.3dvh,10px);line-height:1.1}
+#mix[data-state="mix"] .result-primary{font-size:22px}
+#mix[data-state="known"] .result-caption{font-size:clamp(10px,1.6dvh,13px)}
+@media(max-height:510px){.result-slot{width:58px;height:58px}#mix .result-primary{font-size:8px}#mix .result-caption{font-size:7px}#mix[data-state="mix"] .result-primary{font-size:17px}#mix[data-state="known"] .result-caption{font-size:9px}}
 </style></head>
 <body><main class="shell">
 <header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button></header>
@@ -49,7 +78,8 @@
 <section class="workspace" id="workspace">
   <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div>
     <div class="hero-top"><button class="hero-action" type="button" data-view="history"><span>◷</span> История</button><span class="hero-caption">✧ КОТЁЛ ОТКРЫТИЙ</span><button class="hero-action" type="button" data-view="album"><span>▤</span> Рецепты</button></div>
-    <div class="mix-space" id="mix-space"><div class="slots"><button class="slot" data-slot="0" aria-label="Первый слот">+</button><button id="mix" class="result-slot" type="button" aria-label="Смешать элементы"><span>✦</span><small>СМЕШАТЬ</small></button><button class="slot" data-slot="1" aria-label="Второй слот">+</button></div><div id="mix-message" class="mix-message" role="status">Выбери или перетащи два элемента</div></div>
+    <div class="mix-space" id="mix-space"><div class="slots"><button class="slot" data-slot="0" aria-label="Первый слот">+</button><button id="mix" class="result-slot" type="button" aria-label="Выбери элементы" disabled></button><button class="slot" data-slot="1" aria-label="Второй слот">+</button></div><div id="mix-message" class="mix-message" role="status">Выбери или перетащи два элемента</div></div>
+    <div class="reaction-fx" aria-hidden="true"><i class="reaction-ring"></i><i class="reaction-bubble b1"></i><i class="reaction-bubble b2"></i><i class="reaction-bubble b3"></i><i class="reaction-bubble b4"></i><i class="reaction-spark s1">✦</i><i class="reaction-spark s2">✧</i><i class="reaction-spark s3">✦</i></div>
     <div class="glitter g1">✧</div><div class="glitter g2">✦</div>
   </div>
   <div class="shelf">
@@ -82,7 +112,7 @@ const usedIngredients = new Set(recipes.flatMap(r => r.ingredients));
 const label = id => (names[id] || id).replace(/^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\uFE0F\u200D]+\s+/u, '');
 const DRAWN = new Set(['w','f','e','a','steam','stone','moss','energy']);
 const symbol = id => label(id).slice(0,1).toUpperCase() || '✦';
-const state = {opened:[...basics], found:[], attempts:[], favorites:new Set(), recent:[], slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, lastNew:null};
+const state = {opened:[...basics], found:[], attempts:[], tried:new Map(), failedNow:null, reacting:false, favorites:new Set(), recent:[], slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, lastNew:null};
 function cat(id) { if (basics.includes(id)) return 'basic'; for (const c of ['nature','animals','machines']) if (categories[c].has(id)) return c; return 'other'; }
 function icon(id) { const s=document.createElement('span'); s.className='symbol' + (DRAWN.has(id)?' draw-'+id:' symbol-letter'); if(!DRAWN.has(id)) s.textContent=symbol(id); return s; }
 function button(text, cls, handler) { const el=document.createElement('button'); el.type='button'; el.className=cls; el.textContent=text; el.addEventListener('click',handler); return el; }
@@ -126,12 +156,38 @@ function renderElements() {
  }
  if(!all.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Здесь пока ничего нет. Попробуй другой фильтр.';grid.append(empty);}
 }
+function renderCenter(){
+ const result=$('#mix');result.replaceChildren();
+ const ids=state.slots, count=ids.filter(Boolean).length;
+ let kind='empty', accessible='Выбери элементы', lines=[];
+ if(state.reacting){kind='reacting';accessible='Идёт реакция';lines=['РЕАКЦИЯ','✦'];}
+ else if(count===1){kind='waiting';accessible=ids[0]?'Добавь второй элемент':'Добавь первый элемент';lines=['ДОБАВЬ',ids[0]?'ВТОРОЙ':'ПЕРВЫЙ'];}
+ else if(count===2){
+  const key=pairKey(ids);
+  if(state.tried.has(key)){
+   const outcome=state.tried.get(key);
+   if(outcome){kind='known';accessible='Было: '+label(outcome);lines=['БЫЛО',label(outcome)];}
+   else {kind=state.failedNow===key?'clear':'known-fail';accessible='Нет реакции. Очистить выбранные элементы';lines=kind==='clear'?['НЕТ','РЕАКЦИИ','ОЧИСТИТЬ']:['БЫЛО','НЕТ РЕАКЦИИ','ОЧИСТИТЬ'];}
+  } else {kind='mix';accessible='Смешать элементы';lines=['✦','СМЕШАТЬ'];}
+ }
+ result.dataset.state=kind;result.disabled=!['mix','clear','known-fail'].includes(kind);
+ result.setAttribute('aria-label',accessible);result.title=accessible;
+ for(const [i,line] of lines.entries()){const el=document.createElement(i===0?'span':'small');el.className=i===0?'result-primary':'result-caption';el.textContent=line;result.append(el);}
+}
 function renderSlots() {
- document.querySelectorAll('[data-slot]').forEach(el=>{const i=Number(el.dataset.slot),id=state.slots[i];el.replaceChildren();if(id)el.append(icon(id));else el.textContent='+';el.classList.toggle('active',state.target===i || (state.target===null && state.nextAfterMix===i));el.setAttribute('aria-label',id?`${label(id)}. Нажми для замены`:`Пустой слот ${i+1}`);el.title=id?label(id)+' — нажми для замены':'Пустой слот';});
+ document.querySelectorAll('[data-slot]').forEach(el=>{
+  const i=Number(el.dataset.slot),id=state.slots[i];el.replaceChildren();
+  if(id)el.append(icon(id),curvedLabel(id));else el.textContent='+';
+  el.disabled=state.reacting;
+  el.classList.toggle('active',state.target===i || (state.target===null && state.nextAfterMix===i));
+  el.setAttribute('aria-label',id?`${label(id)}. Нажми для замены`:`Пустой слот ${i+1}`);el.title=id?label(id)+' — нажми для замены':'Пустой слот';
+ });
+ renderCenter();
 }
 function remember(id){state.recent=[id,...state.recent.filter(x=>x!==id)].slice(0,24);}
 function choose(id, target=null){
- if(!state.opened.includes(id))return;
+ if(state.reacting || !state.opened.includes(id))return;
+ state.failedNow=null;
  const explicit=target!==null || state.target!==null;
  let i=target ?? state.target ?? state.nextAfterMix;
  if(i===null)i=state.slots.indexOf(null);if(i<0)i=1;
@@ -145,9 +201,7 @@ function choose(id, target=null){
 function tone(success){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;const c=new C(),o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(success?530:240,c.currentTime);o.frequency.exponentialRampToValueAtTime(success?800:160,c.currentTime+.2);g.gain.setValueAtTime(.035,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.25);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.26);o.onended=()=>c.close();}catch(_) {}}
 let flying=null;
 function resetResult(){
- const result=$('#mix');result.replaceChildren();result.classList.remove('flying-origin');
- const mark=document.createElement('span');mark.textContent='✦';const caption=document.createElement('small');caption.textContent='СМЕШАТЬ';
- result.append(mark,caption);result.setAttribute('aria-label','Смешать элементы');
+ const result=$('#mix');result.classList.remove('flying-origin');renderCenter();
 }
 function stopFlight(){
  if(!flying)return;
@@ -164,7 +218,7 @@ function flyToCollection(id){
  const size=sample?.width || 55;
  const dest=target ? target.getBoundingClientRect() : {left:area.left+area.width/2-size/2,top:area.top+area.height/2-size/2,width:size,height:size};
  const start=result.getBoundingClientRect();if(!dest.width || !start.width)return;
- const orb=document.createElement('div');orb.className='result-slot flying-result flight-clone';orb.append(icon(id));
+ const orb=document.createElement('div');orb.className='result-slot flying-result flight-clone';orb.append(icon(id),curvedLabel(id));
  orb.style.left=start.left+'px';orb.style.top=start.top+'px';orb.style.width=start.width+'px';orb.style.height=start.height+'px';document.body.append(orb);
  result.classList.add('flying-origin');target?.classList.add('in-flight');target?.closest('.token-wrap')?.classList.add('receiving');
  const dx=dest.left+dest.width/2-start.left-start.width/2,dy=dest.top+dest.height/2-start.top-start.height/2;
@@ -181,29 +235,40 @@ function flyToCollection(id){
   if(flying?.animation===anim){anim.cancel();orb.remove();flying=null;resetResult();}
  };
 }
+function clearMix(){
+ state.slots=[null,null];state.target=null;state.nextAfterMix=null;state.failedNow=null;
+ $('#mix-message').textContent='Выбери или перетащи два элемента';renderSlots();
+}
 function mix(){
- if(state.slots.some(x=>!x)){ $('#mix-message').textContent='Сначала выбери два элемента';return; }
- const ids=[...state.slots], key=pairKey(ids), r=byPair.get(key), previous=state.attempts.some(a=>a.key===key);
- state.attempts.unshift({key,ids,result:r?.result||null});state.attempts=state.attempts.slice(0,100);
- const hero=$('#hero');hero.classList.remove('success','fail');void hero.offsetWidth;
- let newElement=false;
- if(r){
-  const fresh=!state.found.some(x=>x.key===key);newElement=!state.opened.includes(r.result);
-  if(fresh)state.found.push({key,ids,result:r.result});
-  if(newElement){
-   state.opened.push(r.result);remember(r.result);state.lastNew=r.result;state.filter='all';state.category='all';state.search='';
-   $('#search').value='';$('#category').value='all';
-   const index=selectedItems().indexOf(r.result);state.page=index<0?0:Math.floor(index/PAGE_SIZE);
+ if(state.reacting)return;
+ const action=$('#mix').dataset.state;
+ if(action==='clear'||action==='known-fail'){clearMix();return;}
+ if(action!=='mix')return;
+ const ids=[...state.slots], key=pairKey(ids), r=byPair.get(key);
+ state.reacting=true;state.failedNow=null;
+ const hero=$('#hero');hero.classList.remove('success','fail','reacting');void hero.offsetWidth;hero.classList.add('reacting');
+ $('#mix-message').textContent='Котёл творит магию…';renderSlots();
+ const resolve=()=>{
+  state.reacting=false;hero.classList.remove('reacting');
+  state.attempts.unshift({key,ids,result:r?.result||null});state.attempts=state.attempts.slice(0,100);state.tried.set(key,r?.result||null);
+  if(r){
+   const fresh=!state.found.some(x=>x.key===key),newElement=!state.opened.includes(r.result);
+   if(fresh)state.found.push({key,ids,result:r.result});
+   if(newElement){
+    state.opened.push(r.result);remember(r.result);state.lastNew=r.result;state.filter='all';state.category='all';state.search='';
+    $('#search').value='';$('#category').value='all';const index=selectedItems().indexOf(r.result);state.page=index<0?0:Math.floor(index/PAGE_SIZE);
+   }
+   state.target=null;state.nextAfterMix=0;
+   $('#mix-message').textContent=newElement?'Открыт элемент: '+label(r.result):fresh?'Новый рецепт: '+label(r.result):'Уже открыто: '+label(r.result);
+   hero.classList.add('success');tone(true);
+  } else {
+   state.failedNow=key;state.target=null;state.nextAfterMix=null;
+   $('#mix-message').textContent='Нет реакции — очисти или замени элемент';hero.classList.add('fail');tone(false);
   }
-  state.target=null;state.nextAfterMix=0;
-  $('#mix-message').textContent=newElement?'Открыт элемент: '+label(r.result):fresh?'Новый рецепт: '+label(r.result):'Уже открыто: '+label(r.result);
-  hero.classList.add('success');tone(true);
- } else {
-  state.slots=[null,null];state.target=null;state.nextAfterMix=null;
-  $('#mix-message').textContent=previous?'Эту пару уже пробовали':'Реакции нет — попробуй другую пару';hero.classList.add('fail');tone(false);
- }
- renderSlots();renderElements();
- if(r)flyToCollection(r.result);
+  renderSlots();renderElements();
+  if(r)flyToCollection(r.result);
+ };
+ if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)resolve();else window.setTimeout(resolve,700);
 }
 function go(view){stopFlight();state.view=view;state.viewPage=0;state.detail=null;$('#workspace').hidden=true;$('#overlay').hidden=false;renderOverlay();}
 function goBack(){state.view='';state.detail=null;$('#overlay').hidden=true;$('#workspace').hidden=false;}
@@ -225,7 +290,7 @@ $('#elements').addEventListener('pointerdown',e=>{const el=e.target.closest('.el
 $('#elements').addEventListener('pointermove',e=>{if(!drag)return;if(!drag.moved&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)>8){drag.moved=true;drag.ghost=document.createElement('div');drag.ghost.className='drag-ghost';drag.ghost.append(icon(drag.id));document.body.append(drag.ghost);}if(drag.ghost){drag.ghost.style.left=(e.clientX-14)+'px';drag.ghost.style.top=(e.clientY-14)+'px';}});
 function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;if(d.ghost)d.ghost.remove();if(!d.moved)return;suppress=true;setTimeout(()=>suppress=false,100);const under=document.elementFromPoint(e.clientX,e.clientY);if(!cancel&&under?.closest('#hero')){const slot=under.closest('[data-slot]');choose(d.id,slot?Number(slot.dataset.slot):null);}}
 $('#elements').addEventListener('pointerup',e=>endDrag(e,false));$('#elements').addEventListener('pointercancel',e=>endDrag(e,true));
-document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
+document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{if(state.reacting)return;const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
 $('#mix').addEventListener('click',mix);$('#prev').onclick=()=>{state.page--;renderElements();};$('#next').onclick=()=>{state.page++;renderElements();};
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;state.page=0;renderElements();});
 $('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#options-box').hidden=true;$('#options-toggle').setAttribute('aria-expanded','false');$('#search').focus();}};
