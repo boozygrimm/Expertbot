@@ -140,6 +140,70 @@ class DirectBulletinPanelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'editor_failed')
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
 
+    async def test_old_failure_can_retry_only_after_confirmation_without_refetch(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        # A production failure predating diagnostics has neither field.
+        await self.db.news_owner_bulletins.update_one({'bulletin_id': 321}, {'$set': {'stage': 'editor_failed'}})
+        await self.click('nb:view:321')
+        self.assertIn('не записана предыдущей версией', self.message.answer.await_args.args[0])
+        self.assertTrue(any(b.callback_data == 'nb:retry:321' for row in
+                            self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+        with patch.object(panel, 'make_bulletin', AsyncMock(side_effect=lambda stories: response(stories))) as editor, \
+             patch.object(article_fetch, 'fetch_article', AsyncMock()) as fetch:
+            await self.click('nb:retry:321')
+            editor.assert_not_awaited()
+            confirm = await self.db.owner_panel_confirmations.find_one({'action': 'run_bulletin_editor', 'stage': 'ready'})
+            self.assertTrue(confirm['data']['retry'])
+            self.callback.data = 'owner_tools:run:' + confirm['_id']
+            await asyncio.gather(tools.action(self.callback, self.state, None), tools.action(self.callback, self.state, None))
+            editor.assert_awaited_once()
+            fetch.assert_not_awaited()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'ready_for_review')
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_failed_retry_invalidates_old_confirmation_and_keeps_safe_reason(self):
+        from news_prototype import editor_client
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        item = await owner_bulletin.get(self.db, self.user.id, 321)
+        fail = AsyncMock(side_effect=editor_client.EditorialError('sensitive body', code='http', http_status=429))
+        self.assertEqual(await owner_bulletin.prepare(self.db, self.user.id, 321, fail), 'editor_failed')
+        failed = await owner_bulletin.get(self.db, self.user.id, 321)
+        self.assertEqual(failed['editor_error'], {'code': 'http', 'http_status': 429})
+        self.assertNotIn('sensitive', str(failed.get('editor_error')))
+        self.assertIn('429', panel.editor_failure_message(failed))
+        old = failed['editor_failure_token']
+        fetch = AsyncMock(side_effect=RuntimeError('private content'))
+        self.assertEqual(await owner_bulletin.prepare(self.db, self.user.id, 321, fetch,
+            expected_source=item['source_revision'], retry=True, failure_token=old), 'editor_failed')
+        failed2 = await owner_bulletin.get(self.db, self.user.id, 321)
+        self.assertNotEqual(old, failed2['editor_failure_token'])
+        self.assertEqual(failed2['editor_error'], {'code': 'unknown'})
+        self.assertEqual(await owner_bulletin.prepare(self.db, self.user.id, 321, fetch,
+            expected_source=item['source_revision'], retry=True, failure_token=old), 'not_new')
+        fetch.assert_awaited_once()
+        self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
+
+    async def test_retry_confirmation_rechecks_sources_before_new_request(self):
+        confirm = await self.choose(2)
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        with patch.object(article_fetch, 'fetch_article', AsyncMock(return_value={'summary': SOURCE})):
+            await tools.action(self.callback, self.state, None)
+        await self.db.news_owner_bulletins.update_one({'bulletin_id': 321}, {'$set': {'stage': 'editor_failed'}})
+        await self.click('nb:retry:321')
+        confirm = await self.db.owner_panel_confirmations.find_one({'action': 'run_bulletin_editor', 'stage': 'ready'})
+        self.callback.data = 'owner_tools:run:' + confirm['_id']
+        await self.db.news_owner_bulletins.update_one({'bulletin_id': 321}, {'$set': {'source_revision': 'x' * 64}})
+        with patch.object(panel, 'make_bulletin', AsyncMock()) as editor:
+            await tools.action(self.callback, self.state, None)
+            editor.assert_not_awaited()
+        self.assertEqual((await owner_bulletin.get(self.db, self.user.id, 321))['stage'], 'editor_failed')
+
     async def test_add_links_at_selection_then_confirm_without_premature_fetch(self):
         with patch.object(owner_daily, 'recent_items', AsyncMock(return_value=[])):
             await self.click('nb:daily')
