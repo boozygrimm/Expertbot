@@ -523,3 +523,42 @@ async def test_empty_category_explains_saved_state_without_collecting(context):
         assert 'Источников с этой темой по умолчанию:' in text
         assert '\n\n\n' not in text
         collect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_translated_news_page_card_and_basket_reuse_cached_title(context):
+    from news_prototype import general_translation
+    c = context
+    key = await general_queue.add_news(c.db, 'https://example.com/bird')
+    await c.db.news_general_candidates.update_one({'_id': key}, {'$set': {
+        'title': 'Rare birds return', 'topic_hint': 'animals'}})
+    translate = AsyncMock(return_value=['Редкие птицы вернулись'])
+    with patch.object(general_translation, 'translate_batch', translate):
+        await click(c, 'gnews:cat:animals:0')
+        assert 'Редкие птицы вернулись' in c.message.edit_text.await_args.args[0]
+        await click(c, news_button(c.message, 'Редкие птицы вернулись'))
+        text = c.message.edit_text.await_args.args[0]
+        assert 'Редкие птицы вернулись' in text and 'Оригинал: Rare birds return' in text
+        await click(c, button(c.message, 'Добавить к вестнику'))
+        await click(c, 'gnews:basket')
+        assert 'Редкие птицы вернулись' in c.message.edit_text.await_args.args[0]
+        await click(c, 'gnews:all:0')
+        assert 'Редкие птицы вернулись' in c.message.edit_text.await_args.args[0]
+        translate.assert_awaited_once_with(['Rare birds return'])
+    assert (await c.db.news_general_candidates.find_one({'_id': key}))['title'] == 'Rare birds return'
+    assert await c.db.news_owner_drafts.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_translation_failure_shows_original_and_does_not_break_navigation(context):
+    from news_prototype import general_translation
+    c = context
+    key = await general_queue.add_news(c.db, 'https://example.com/english')
+    await c.db.news_general_candidates.update_one({'_id': key}, {'$set': {'title': 'English headline'}})
+    with patch.object(general_translation, 'translate_batch', AsyncMock(return_value=None)) as translate:
+        await click(c, 'gnews:all:0')
+        assert 'English headline' in c.message.edit_text.await_args.args[0]
+        assert 'перевод временно недоступен' in c.message.edit_text.await_args.args[0]
+        await click(c, news_button(c.message, 'English headline'))
+        assert 'Перевод временно недоступен' in c.message.edit_text.await_args.args[0]
+        translate.assert_awaited_once()
