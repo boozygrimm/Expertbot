@@ -121,3 +121,33 @@ async def test_telegram_missing_display_name_uses_verified_post_username():
     assert await general_queue.prepare_reserved(db, key, 123, fetch, draft) == 'draft_ready'
     item = await owner_drafts.get(db, 123, general_queue.draft_id_for(key))
     assert 'телеграм-канале «Good_Channel»' in item['script']['turns'][0]['text']
+
+
+@pytest.mark.asyncio
+async def test_one_button_real_queue_editor_review_and_category_selection():
+    db = AsyncMongoMockClient().test
+    game = await general_queue.add_news(db, 'https://example.com/game')
+    politics = await general_queue.add_news(db, 'https://example.com/politics')
+    await db.news_general_candidates.update_one({'_id': game}, {'$set': {'title': 'Видеоигра вышла'}})
+    await db.news_general_candidates.update_one({'_id': politics}, {'$set': {'title': 'Путин выступил'}})
+    await general_auto.set_category_enabled(db, 'politics_society', False)
+    fetch = AsyncMock(return_value={'title': 'Игра', 'summary': TEXT, 'resolved_url': 'https://example.com/game'})
+    edit = AsyncMock(return_value={'decision': 'draft', 'verification': 'needs_review',
+        'script': {'ticker': 'Игра', 'turns': [{'speaker': 'Бендер', 'text': 'Новость.'},
+                                               {'speaker': 'Киберсенсей', 'text': 'Принято.'}]}, 'evidence': []})
+    review_request = AsyncMock(return_value='{"status":"issues","issues":[{"location":"Строка","reason":"Сверить","quote":""}]}')
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
+         patch.object(article_fetch, 'fetch_article', fetch), \
+         patch.object(news_owner_drafts, 'make_draft', edit), \
+         patch.object(story_review, 'request_groq', review_request):
+        result = await general_auto.run_once(db, 123, poll=AsyncMock(return_value=(0, [])))
+    assert result['status'] == 'no_candidates' and result['ready'] == 1
+    draft = await owner_drafts.get(db, 123, general_queue.draft_id_for(game))
+    assert draft['independent_review']['status'] == 'issues'
+    assert draft['verification'] == 'needs_review'
+    assert 'example.com' in draft['script']['turns'][0]['text']
+    assert (await db.news_general_candidates.find_one({'_id': politics}))['stage'] == 'collected'
+    assert not await general_auto.enabled(db)
+    assert await db.news_owner_trial_jobs.count_documents({}) == 0
+    fetch.assert_awaited_once(); edit.assert_awaited_once(); review_request.assert_awaited_once()

@@ -84,11 +84,11 @@ async def test_storage_dedup_claim_and_old_cleanup():
 
 
 @pytest.mark.asyncio
-async def test_cleanup_only_unclaimed_and_bad_inputs():
+async def test_collected_news_is_retained_and_bad_inputs_rejected():
     db = AsyncMongoMockClient().test
     await queue.poll(db, now=NOW, fetch=AsyncMock(return_value=([item('https://example.com/a')], [])))
     await queue.poll(db, now=NOW+timedelta(days=8), fetch=AsyncMock(return_value=([], [])))
-    assert await db.news_general_candidates.count_documents({}) == 0
+    assert await db.news_general_candidates.count_documents({}) == 1
     with pytest.raises(ValueError):
         await queue.reserve(db, 'bad', 123)
     with pytest.raises(ValueError):

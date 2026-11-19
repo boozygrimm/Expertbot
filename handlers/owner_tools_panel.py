@@ -824,6 +824,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                         'Автоотбор включён. Рендер и публикация по-прежнему требуют отдельного решения.'
                         if changed else 'Подтверждение устарело. Открой настройки автоотбора заново.',
                         parse_mode=None, reply_markup=general_news_panel.home_markup())
+            elif name == 'general_run_once':
+                from handlers import general_news_panel
+                await general_news_panel.run_once_confirmed(callback.message, callback.from_user.id)
             elif name == 'general_prepare':
                 from handlers import general_news_panel
                 await general_news_panel.prepare_confirmed(message, callback.from_user.id, data['key'])

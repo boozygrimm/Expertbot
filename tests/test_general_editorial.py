@@ -96,3 +96,22 @@ def test_similarity_conservatively_respects_numbers_and_negations():
     assert not general_auto.similar_title('Учёные обнаружили 10 новых редких минералов на Луне',
                                            'Учёные обнаружили 20 новых редких минералов на Луне')
     assert not general_auto.similar_title('Новости сегодня', 'Новости сегодня')
+
+
+@pytest.mark.parametrize('title', [
+    'Путин встретился с лидерами', 'В Кремле обсудили встречу',
+    'Трамп ответил журналистам', 'Зеленский выступил с заявлением',
+    'МИД сделал заявление', 'В НАТО ответили', 'Госдума рассмотрит предложение',
+])
+def test_obvious_political_headlines_get_preliminary_label(title):
+    assert 'politics_society' in general_editorial.assess(title)['topics']
+
+
+@pytest.mark.parametrize('title,topic', [
+    ('YouTube обновил приложение', 'internet'),
+    ('Интернет и социальные сети изменились', 'internet'),
+    ('Комик рассказал шутку', 'humor'),
+    ('Мем стал популярным', 'humor'),
+])
+def test_additional_categories(title, topic):
+    assert topic in general_editorial.assess(title)['topics']

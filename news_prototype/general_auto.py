@@ -16,6 +16,7 @@ from news_prototype import general_editorial, general_queue, general_sources, ne
 
 MSK = timezone(timedelta(hours=3))
 DAILY_ATTEMPTS = 10
+ONE_SHOT_ATTEMPTS = 3
 WORK_TIMEOUT = 150
 LEASE = timedelta(minutes=10)
 STOPWORDS = frozenset(('этот', 'это', 'этого', 'которая', 'который', 'которые', 'стало', 'the', 'and', 'with', 'that', 'this', 'from', 'новости', 'новость'))
@@ -67,6 +68,30 @@ async def set_enabled(db, value: bool, *, expected_version=None) -> bool:
     return bool(changed.matched_count)
 
 
+async def disabled_categories(db) -> set[str]:
+    row = await db.news_general_state.find_one({'_id': 'categories'}) or {}
+    disabled = row.get('disabled')
+    if not isinstance(disabled, list):
+        return set()
+    return {topic for topic in disabled if isinstance(topic, str) and topic in general_editorial.LABELS}
+
+
+async def set_category_enabled(db, topic: str, value: bool):
+    if topic not in general_editorial.LABELS or type(value) is not bool:
+        raise ValueError('Неверная категория')
+    operation = '$pull' if value else '$addToSet'
+    await db.news_general_state.update_one({'_id': 'categories'},
+        {operation: {'disabled': topic}}, upsert=True)
+
+
+async def set_all_categories_enabled(db, value: bool):
+    if type(value) is not bool:
+        raise ValueError('Неверная настройка')
+    disabled = [] if value else list(general_editorial.LABELS)
+    await db.news_general_state.update_one({'_id': 'categories'},
+        {'$set': {'disabled': disabled}}, upsert=True)
+
+
 async def usage(db, now=None) -> int:
     record = await db.news_general_budget.find_one({'_id': day_key(_now(now))}) or {}
     return record.get('used', 0)
@@ -110,7 +135,7 @@ def similar_title(a: str, b: str) -> bool:
 
 
 def _defer(item, history):
-    assessment = general_editorial.assess(item.get('title', ''), item.get('topic_hint', 'general'))
+    assessment = general_editorial.assess_item(item)
     if assessment['defer_reason']:
         return assessment['defer_reason']
     if any(similar_title(item.get('title', ''), h.get('title', '')) for h in history if item['_id'] != h['_id']):
@@ -133,8 +158,9 @@ async def pick(db, now):
     reliably identify every story or all translations/reports of it.
     """
     since = now - timedelta(days=3)
-    candidates = await db.news_general_candidates.find({'stage': 'collected', 'hidden': {'$ne': True},
-        'first_seen_at': {'$gte': since}}).sort('first_seen_at', -1).limit(250).to_list(length=250)
+    candidates = db.news_general_candidates.find({'stage': 'collected', 'hidden': {'$ne': True},
+        'first_seen_at': {'$gte': since}}).sort(
+            [('first_seen_at', -1), ('published_at', -1), ('_id', -1)])
     history = await db.news_general_candidates.find({'first_seen_at': {'$gte': since},
         '$or': [{'stage': {'$ne': 'collected'}}, {'hidden': True}]}).sort('first_seen_at', -1).limit(500).to_list(length=500)
     active_ids = {source['id'] for source in await general_sources.list_sources(db)} | {'manual'}
@@ -146,17 +172,28 @@ async def pick(db, now):
             return True  # Publication date for a manually supplied URL is unknown.
         published = news_sources.parse_date(item.get('published_at', ''))
         return bool(published and now - timedelta(days=1) <= published <= now)
-    eligible = []
-    for candidate in candidates:
-        if candidate.get('source_id') not in active_ids or not recent(candidate) or _defer(candidate, history):
+    disabled = await disabled_categories(db)
+    best = None
+    best_score = None
+    eligible_count = 0
+    async for candidate in candidates:
+        if candidate.get('source_id') not in active_ids or not recent(candidate):
             continue
-        assessment = general_editorial.assess(candidate.get('title', ''), candidate.get('topic_hint', 'general'))
-        topic = general_editorial.choose_topic(assessment, topics)
-        eligible.append(candidate | {'topic_hint': topic, 'topic_basis': assessment['basis']})
-    if not eligible:
-        return None
-    # Input order is newest-first and preserves recency on equal scores.
-    return min(eligible, key=lambda c: (topics[c.get('topic_hint', 'general')], sources[c.get('source_id', '')]))
+        assessment = general_editorial.assess_item(candidate)
+        allowed = [topic for topic in assessment['topics'] if topic not in disabled]
+        if not allowed or _defer(candidate, history):
+            continue
+        topic = general_editorial.choose_topic({**assessment, 'topics': allowed}, topics)
+        score = (topics[topic], sources[candidate.get('source_id', '')])
+        if best_score is None or score < best_score:
+            best_score = score
+            best = candidate | {'topic_hint': topic, 'topic_basis': assessment['basis']}
+        eligible_count += 1
+        # Bound expensive selection while letting disabled/noisy categories be
+        # skipped rather than crowding chosen categories out of the window.
+        if eligible_count >= 1000:
+            break
+    return best
 
 
 
@@ -186,17 +223,17 @@ async def _take_interval(db, now):
     return claimed is not None
 
 
-async def _claim_lock(db, now):
-    await db.news_general_locks.update_one({'_id': 'auto-editor'},
+async def _claim_lock(db, now, name='auto-editor', lease=LEASE):
+    await db.news_general_locks.update_one({'_id': name},
         {'$setOnInsert': {'until': datetime(1970, 1, 1, tzinfo=timezone.utc)}}, upsert=True)
     token = secrets.token_hex(16)
     locked = await db.news_general_locks.find_one_and_update(
-        {'_id': 'auto-editor', 'until': {'$lte': now}},
-        {'$set': {'until': now + LEASE, 'token': token}}, return_document=ReturnDocument.AFTER)
+        {'_id': name, 'until': {'$lte': now}},
+        {'$set': {'until': now + lease, 'token': token}}, return_document=ReturnDocument.AFTER)
     return token if locked else None
 
 
-async def tick(db, owner_id: int, *, now=None, prepare=None) -> str:
+async def tick(db, owner_id: int, *, now=None, prepare=None, manual=False) -> str:
     """At most one candidate per tick and ten attempts per Moscow day.
 
     The lock outlives the 150s work timeout. A crashed process eventually
@@ -208,7 +245,7 @@ async def tick(db, owner_id: int, *, now=None, prepare=None) -> str:
     now = _now(now)
     if not isinstance(owner_id, int) or isinstance(owner_id, bool) or owner_id <= 0:
         raise ValueError('Неверный владелец')
-    if not await enabled(db):
+    if not manual and not await enabled(db):
         return 'off'
     if not await owner_trial.drafts_enabled(db):
         await _status(db, 'drafts_off', now)
@@ -220,20 +257,21 @@ async def tick(db, owner_id: int, *, now=None, prepare=None) -> str:
     if not token:
         return 'busy'
     async def work():
-        if not await enabled(db) or not await owner_trial.drafts_enabled(db) or not keys_ready():
+        if (not manual and not await enabled(db)) or not await owner_trial.drafts_enabled(db) or not keys_ready():
             return 'off'
         candidate = await pick(db, now)
         if not candidate:
             return 'no_candidates'
         if await usage(db, now) >= DAILY_ATTEMPTS:
             return 'budget_exhausted'
-        if not await _take_interval(db, now):
+        if not manual and not await _take_interval(db, now):
             return 'throttled'
         if not await _take_budget(db, now):
             return 'budget_exhausted'
         # The attempt is consumed before any possibly ambiguous external call.
         await db.news_general_attempts.insert_one({'_id': token, 'candidate_id': candidate['_id'],
-            'at': now, 'source_id': candidate.get('source_id', ''), 'topic_hint': candidate.get('topic_hint', 'general')})
+            'at': now, 'source_id': candidate.get('source_id', ''), 'topic_hint': candidate.get('topic_hint', 'general'),
+            'mode': 'button' if manual else 'automatic'})
         if prepare is None:
             from handlers import news_owner_drafts
             from news_prototype import article_fetch, news_image_fetch, story_review
@@ -252,4 +290,67 @@ async def tick(db, owner_id: int, *, now=None, prepare=None) -> str:
         return 'timeout_uncertain'
     finally:
         await db.news_general_locks.update_one({'_id': 'auto-editor', 'token': token},
+            {'$set': {'until': datetime(1970, 1, 1, tzinfo=timezone.utc)}, '$unset': {'token': ''}})
+
+
+async def run_once(db, owner_id: int, *, poll=None, prepare=None):
+    """One confirmed, bounded collection and batch; never enables the scheduler.
+
+    Shares editor lock and daily budget with automatic ticks. An ambiguous
+    attempt stops the batch and is never replayed. Collection has its own
+    shared lock and is skipped if another collection is running.
+    """
+    if type(owner_id) is not int or owner_id <= 0:
+        raise ValueError('Неверный владелец')
+    if not await owner_trial.drafts_enabled(db):
+        return {'status': 'drafts_off'}
+    if not keys_ready():
+        return {'status': 'keys_missing'}
+    token = await _claim_lock(db, _now(), name='one-shot', lease=timedelta(minutes=15))
+    if not token:
+        return {'status': 'busy'}
+    result = {'status': 'running', 'inserted': 0, 'failed': [], 'attempts': 0, 'ready': 0, 'outcomes': []}
+    async def save():
+        await db.news_general_state.update_one({'_id': 'one_shot_last', 'token': token},
+            {'$set': {**result, 'updated_at': _now()}})
+    try:
+        await db.news_general_state.update_one({'_id': 'one_shot_last'},
+            {'$set': {**result, 'token': token, 'at': _now()}}, upsert=True)
+        collected = {}
+        async def work():
+            collected['result'] = await asyncio.wait_for((poll or general_queue.poll)(db), timeout=140)
+        try:
+            await news_scheduler._locked(db.news_general_locks, 'manual-collect', work)
+        except Exception:
+            result['status'] = 'collect_failed'
+            await save()
+            return result
+        if 'result' not in collected:
+            result['status'] = 'collect_busy'
+            await save()
+            return result
+        result['inserted'], result['failed'] = collected['result']
+        await save()
+        for _ in range(ONE_SHOT_ATTEMPTS):
+            status = await tick(db, owner_id, manual=True, prepare=prepare)
+            if status in ('off', 'drafts_off', 'keys_missing', 'busy', 'no_candidates', 'budget_exhausted', 'throttled'):
+                result['status'] = status
+                break
+            result['attempts'] += 1
+            result['outcomes'].append(status)
+            result['ready'] += int(status == 'draft_ready')
+            await save()
+            if status in ('timeout_uncertain', 'uncertain', 'already_claimed'):
+                result['status'] = status
+                break
+        else:
+            result['status'] = 'done'
+        await save()
+        return result
+    except Exception:
+        result['status'] = 'uncertain'
+        await save()
+        return result
+    finally:
+        await db.news_general_locks.update_one({'_id': 'one-shot', 'token': token},
             {'$set': {'until': datetime(1970, 1, 1, tzinfo=timezone.utc)}, '$unset': {'token': ''}})

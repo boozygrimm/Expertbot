@@ -176,3 +176,155 @@ async def test_background_creates_one_draft_and_runs_independent_review():
     assert draft['verification'] == 'needs_review'
     fetch.assert_awaited_once(); editor.assert_awaited_once(); review_request.assert_awaited_once()
     assert await db.news_owner_trial_jobs.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_considers_diverse_candidate_beyond_first_250():
+    db = AsyncMongoMockClient().test
+    bulk = [{'_id': f'politics-{i}', 'stage': 'collected', 'source_id': 'tass',
+             'title': 'Путин рассказал о решении', 'topic_hint': 'general',
+             'first_seen_at': NOW - timedelta(seconds=i), 'published_at': NOW.isoformat()}
+            for i in range(260)]
+    bulk.append({'_id': 'science', 'stage': 'collected', 'source_id': 'nplusone',
+                 'title': 'Учёные провели эксперимент', 'topic_hint': 'science',
+                 'first_seen_at': NOW - timedelta(seconds=300), 'published_at': NOW.isoformat()})
+    await db.news_general_candidates.insert_many(bulk)
+    await db.news_general_attempts.insert_one({'_id': 'previous', 'at': NOW,
+                                                'source_id': 'tass', 'topic_hint': 'politics_society'})
+    chosen = await general_auto.pick(db, NOW)
+    assert chosen['_id'] == 'science'
+    assert await db.news_general_candidates.count_documents({}) == 261
+
+
+@pytest.mark.asyncio
+async def test_auto_respects_selected_categories_and_owner_override():
+    db = AsyncMongoMockClient().test
+    politics = await add(db, 1, title='Путин сделал заявление', topic='general', source='tass')
+    game = await add(db, 2, title='Новая видеоигра вышла', topic='games', source='igromania')
+    await general_auto.set_category_enabled(db, 'politics_society', False)
+    chosen = await general_auto.pick(db, NOW)
+    assert chosen['_id'] == game
+    assert await db.news_general_candidates.count_documents({}) == 2
+    await general_auto.set_category_enabled(db, 'games', False)
+    assert await general_auto.pick(db, NOW) is None
+    await db.news_general_candidates.update_one({'_id': politics}, {'$set': {'category_override': 'humor'}})
+    chosen = await general_auto.pick(db, NOW)
+    assert chosen['_id'] == politics and chosen['topic_basis'] == 'owner'
+    await general_auto.set_category_enabled(db, 'humor', False)
+    assert await general_auto.pick(db, NOW) is None
+    await general_auto.set_category_enabled(db, 'politics_society', True)
+    assert await general_auto.pick(db, NOW) is None  # explicit override is authoritative
+    await db.news_general_candidates.update_one({'_id': politics}, {'$unset': {'category_override': ''}})
+    assert (await general_auto.pick(db, NOW))['_id'] == politics
+
+
+@pytest.mark.asyncio
+async def test_disabled_category_cannot_crowd_out_selected_category():
+    db = AsyncMongoMockClient().test
+    await db.news_general_candidates.insert_many([
+        {'_id': f'p{i}', 'stage': 'collected', 'source_id': 'tass',
+         'title': 'Путин ответил', 'topic_hint': 'general', 'first_seen_at': NOW - timedelta(seconds=i),
+         'published_at': NOW.isoformat()} for i in range(1001)
+    ] + [{'_id': 'game', 'stage': 'collected', 'source_id': 'igromania',
+          'title': 'Видеоигра вышла', 'topic_hint': 'games',
+          'first_seen_at': NOW - timedelta(seconds=1100), 'published_at': NOW.isoformat()}])
+    await general_auto.set_category_enabled(db, 'politics_society', False)
+    assert (await general_auto.pick(db, NOW))['_id'] == 'game'
+
+
+@pytest.mark.asyncio
+async def test_multi_topic_eligible_if_one_category_is_enabled():
+    db = AsyncMongoMockClient().test
+    key = await add(db, 1, title='Вакцина для животных', source='nplusone')
+    await general_auto.set_category_enabled(db, 'health', False)
+    choice = await general_auto.pick(db, NOW)
+    assert choice['_id'] == key and choice['topic_hint'] == 'animals'
+    await general_auto.set_category_enabled(db, 'animals', False)
+    assert await general_auto.pick(db, NOW) is None
+
+
+@pytest.mark.asyncio
+async def test_button_batch_collects_and_prepares_selected_categories_without_enabling_auto():
+    db = AsyncMongoMockClient().test
+    for i in range(5):
+        key = await general_queue.add_news(db, f'https://example.com/batch{i}')
+        await db.news_general_candidates.update_one({'_id': key}, {'$set': {
+            'title': 'Вышла новая видеоигра' if i < 4 else 'Путин ответил', 'source_id': 'igromania' if i < 4 else 'tass'}})
+    await general_auto.set_category_enabled(db, 'politics_society', False)
+    poll = AsyncMock(return_value=(5, ['space']))
+    prepare = AsyncMock(side_effect=mark_done)
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+        result = await general_auto.run_once(db, 123, poll=poll, prepare=prepare)
+    assert result['status'] == 'done'
+    assert (result['inserted'], result['attempts'], result['ready'], result['failed']) == (5, 3, 3, ['space'])
+    assert not await general_auto.enabled(db)
+    assert await general_auto.usage(db) == 3
+    assert await db.news_general_attempts.count_documents({'mode': 'button'}) == 3
+    assert await db.news_general_candidates.count_documents({'stage': 'draft_ready'}) == 3
+    assert (await db.news_general_state.find_one({'_id': 'one_shot_last'}))['status'] == 'done'
+    poll.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_button_batch_shared_budget_and_no_implicit_retry_of_ambiguous_work():
+    db = AsyncMongoMockClient().test
+    for i in range(3):
+        await general_queue.add_news(db, f'https://example.com/limited{i}')
+    today = general_auto.day_key(datetime.now(timezone.utc))
+    await db.news_general_budget.insert_one({'_id': today, 'used': 9})
+    prepare = AsyncMock(side_effect=mark_done)
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+        result = await general_auto.run_once(db, 123, poll=AsyncMock(return_value=(0, [])), prepare=prepare)
+    assert result['status'] == 'budget_exhausted' and result['attempts'] == 1
+    assert await general_auto.usage(db) == 10
+    prepare.assert_awaited_once()
+    db2 = AsyncMongoMockClient().test
+    key = await general_queue.add_news(db2, 'https://example.com/uncertain')
+    async def unknown(db, ident, owner):
+        await general_queue.reserve(db, ident, owner)
+        return 'uncertain'
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+        outcome = await general_auto.run_once(db2, 123, poll=AsyncMock(return_value=(0, [])), prepare=unknown)
+    assert outcome['status'] == 'uncertain' and outcome['attempts'] == 1
+    assert (await db2.news_general_candidates.find_one({'_id': key}))['stage'] == 'reserved'
+    assert await general_auto.usage(db2) == 1
+
+
+@pytest.mark.asyncio
+async def test_button_batch_no_overlap_and_no_drafts_when_collection_fails():
+    db = AsyncMongoMockClient().test
+    await general_queue.add_news(db, 'https://example.com/concurrent')
+    entered, release = asyncio.Event(), asyncio.Event()
+    async def collect(db):
+        entered.set()
+        await release.wait()
+        return 0, []
+    prepare = AsyncMock(side_effect=mark_done)
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+        first = asyncio.create_task(general_auto.run_once(db, 123, poll=collect, prepare=prepare))
+        await entered.wait()
+        assert (await general_auto.run_once(db, 123, poll=collect, prepare=prepare))['status'] == 'busy'
+        release.set()
+        assert (await first)['ready'] == 1
+        failed = await general_auto.run_once(db, 123, poll=AsyncMock(side_effect=RuntimeError()), prepare=prepare)
+        assert failed['status'] == 'collect_failed'
+        assert prepare.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_button_and_automatic_editor_share_lock():
+    db = AsyncMongoMockClient().test
+    await general_queue.add_news(db, 'https://example.com/locked')
+    lock = await general_auto._claim_lock(db, datetime.now(timezone.utc))
+    assert lock
+    prepare = AsyncMock(side_effect=mark_done)
+    with patch.object(general_auto, 'keys_ready', return_value=True), \
+         patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)):
+        result = await general_auto.run_once(db, 123, poll=AsyncMock(return_value=(0, [])), prepare=prepare)
+    assert result['status'] == 'busy' and result['ready'] == 0
+    prepare.assert_not_awaited()
+    assert await general_auto.usage(db) == 0
