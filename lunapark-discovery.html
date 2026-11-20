@@ -453,33 +453,12 @@ let labelId=0;
 function curvedLabel(id) {
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
- const chars=Array.from(label(id)),fontSize=14;
- // Keep the complete name at one fixed size, centered on an inset lower arc.
- const p0=[8,35],p1=[50,150],p2=[92,35],samples=100,cum=[0];
- const point=t=>[(1-t)*(1-t)*p0[0]+2*(1-t)*t*p1[0]+t*t*p2[0],(1-t)*(1-t)*p0[1]+2*(1-t)*t*p1[1]+t*t*p2[1]];
- for(let i=1;i<=samples;i++){const a=point((i-1)/samples),b=point(i/samples);cum.push(cum[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1]));}
- const arcLen=cum[cum.length-1];
- const canvas=document.createElement('canvas'),ctx=canvas.getContext?.('2d');
- if(ctx)ctx.font=`800 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
- const widths=chars.map(ch=>ctx?ctx.measureText(ch).width:(/[\u0400-\u04ff]/.test(ch)?9:7));
- // Use each glyph's natural advance. No tracking or font-size adjustments.
- const textWidth=widths.reduce((a,b)=>a+b,0);
- let pos=(arcLen-textWidth)/2;
- const atLength=len=>{
-  let i=1;while(i<cum.length&&cum[i]<len)i++;
-  if(i>=cum.length)return [...point(1),p2[0]-p1[0],p2[1]-p1[1]];
-  const f=(len-cum[i-1])/(cum[i]-cum[i-1]||1),t=(i-1+f)/samples,[x,y]=point(t);
-  return [x,y,2*((1-t)*(p1[0]-p0[0])+t*(p2[0]-p1[0])),2*((1-t)*(p1[1]-p0[1])+t*(p2[1]-p1[1]))];
- };
- for(let i=0;i<chars.length;i++){
-  const [x,y,dx,dy]=atLength(pos+widths[i]/2),text=document.createElementNS(ns,'text');
-  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y-2).toFixed(2));
-  text.setAttribute('text-anchor','middle');text.setAttribute('font-size',String(fontSize));
-  text.setAttribute('font-weight','850');text.setAttribute('dominant-baseline','central');
-  text.setAttribute('transform',`rotate(${(Math.atan2(dy,dx)*180/Math.PI).toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`);
-  text.textContent=chars[i];svg.append(text);pos+=widths[i];
- }
- return svg;
+ const arcId=`orb-label-arc-${++labelId}`;
+ const defs=document.createElementNS(ns,'defs'),path=document.createElementNS(ns,'path');
+ path.setAttribute('id',arcId);path.setAttribute('d','M 8 37 Q 50 146 92 37');path.setAttribute('fill','none');defs.append(path);
+ const text=document.createElementNS(ns,'text');text.setAttribute('font-size','14');text.setAttribute('font-weight','850');text.setAttribute('text-anchor','middle');
+ const textPath=document.createElementNS(ns,'textPath');textPath.setAttribute('href',`#${arcId}`);textPath.setAttribute('startOffset','50%');textPath.textContent=label(id);
+ text.append(textPath);svg.append(defs,text);return svg;
 }
 
 function selectedItems() {
