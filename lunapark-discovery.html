@@ -202,10 +202,21 @@ const data = window.DISCOVERY_DATA;
 const $ = s => document.querySelector(s);
 const basics = ['w','f','e','a'];
 const PAGE_SIZE = 16;
+// Hand-curated themes. Only ids listed here take part in themed contracts; food,
+// dishes, spirits and other ambiguous entries stay out on purpose.
 const categories = {
-  nature:new Set('steam stone moss energy lava rain cloud lake sea ocean river swamp forest tree grass flower sand dust wind pressure ice snow mountain desert soil earth fire water air'.split(' ')),
-  animals:new Set('beast bird fish worm insect ant bee butterfly bat bear whale wolf snake spider crab squid octopus turtle penguin panda monkey pig cow horse'.split(' ')),
-  machines:new Set('wheel cart car motor plane robot steam_boiler steam_engine steamboat bicycle motorcycle tractor train tool metal weapon'.split(' '))
+  nature:new Set(('steam cloud ice cold lake sea ocean swamp dust wind pressure energy '+
+    'lava stone sand desert forest tree grass flower moss lichen algae mushroom fern bamboo cactus palm bush '+
+    'grove vine reed cane seed peat coal oil salt sulphur silicon limestone clay dirt ashes sky sun moon '+
+    'star rainbow storm thunder geyser volcano').split(' ')),
+  animals:new Set(('beast cat catdog dog chicken livestock pig mouse bear beaver bat bird hummingbird parrot '+
+    'penguin vulture woodpecker fish fugu_fish stingray electric_eel whale crab lobster squid octopus jellyfish '+
+    'starfish clam mussels snail slug worm leech tick spider scorpion ant bee butterfly beetle insect dragonfly '+
+    'firefly termites cochineal scarab frog lizard salamander snake turtle dinosaur pterodactyl elephant '+
+    'kangaroo monkey panda camel wolf dragon phoenix').split(' ')),
+  machines:new Set(('wheel cart chariot car motor plane hydroplane robot mech drone steam_boiler steam_engine '+
+    'steamboat locomotive bicycle motorcycle tractor lawnmower tool weapon firearm artillery watch magnet bulb '+
+    'hover space_shuttle submarine motorboat clipper wooden_ship tesla_tank flame_tank juggernaut').split(' '))
 };
 const names = data.elements;
 const recipes = data.recipes;
@@ -654,11 +665,11 @@ function renderCenter(){
   const key=pairKey(ids);
   if(state.tried.has(key)){
    const outcome=state.tried.get(key);
-   if(outcome){kind='known';accessible='Было: '+label(outcome);lines=['БЫЛО',label(outcome)];}
+   if(outcome){kind='known';accessible='Уже открыто: '+label(outcome)+'. Очистить';lines=['БЫЛО',label(outcome)];}
    else {kind=state.failedNow===key?'clear':'known-fail';accessible='Нет реакции. Очистить выбранные элементы';lines=kind==='clear'?['НЕТ','РЕАКЦИИ','ОЧИСТИТЬ']:['БЫЛО','НЕТ РЕАКЦИИ','ОЧИСТИТЬ'];}
   } else {kind='mix';accessible='Смешать элементы';lines=['✦','СМЕШАТЬ'];}
  }
- result.dataset.state=kind;result.disabled=!['mix','clear','known-fail'].includes(kind);
+ result.dataset.state=kind;result.disabled=!['mix','clear','known','known-fail'].includes(kind);
  result.setAttribute('aria-label',accessible);result.title=accessible;
  for(const [i,line] of lines.entries()){const el=document.createElement(i===0?'span':'small');el.className=i===0?'result-primary':'result-caption';el.textContent=line;result.append(el);}
 }
@@ -732,6 +743,7 @@ function mix(){
  if(state.reacting)return;
  const action=$('#mix').dataset.state;
  if(action==='clear'||action==='known-fail'){clearMix();return;}
+ if(action==='known'){const outcome=state.tried.get(pairKey(state.slots));clearMix();$('#mix-message').textContent='Уже открыто: '+(outcome?label(outcome):'рецепт')+' · выбери новую пару';return;}
  if(action!=='mix')return;
  const ids=[...state.slots], key=pairKey(ids), r=byPair.get(key);
  state.reacting=true;state.failedNow=null;
@@ -756,8 +768,12 @@ function mix(){
    $('#mix-message').textContent='Нет реакции — очисти или замени элемент';hero.classList.add('fail');tone(false);
   }
   if(r&&!recordResearchDiscovery(fresh,newElement,r.result)&&state.research.progress<state.research.goal.count){
-   const feedback=$('#research-feedback');
-   if(feedback&&!newElement){feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent=`Рецепт записан, но «${label(r.result)}» уже открыт: контракту нужен новый элемент.`;}
+   const feedback=$('#research-feedback'),goal=state.research.goal;
+   if(feedback){
+    if(!newElement)feedback.textContent=`Рецепт записан, но «${label(r.result)}» уже открыт: контракту нужен новый элемент.`;
+    else if(goal.kind==='category')feedback.textContent=`«${label(r.result)}» — не из темы «${goalText(goal).title}»: нужен новый ${goalText(goal).noun}.`;
+    if(!newElement||goal.kind==='category'){feedback.hidden=false;feedback.dataset.transient='0';}
+   }
   }
   saveLabProgress();
   renderSlots();renderElements();renderResearch();

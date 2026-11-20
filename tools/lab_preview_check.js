@@ -41,9 +41,18 @@ function load(beforeParse) {
 // Category sets mirrored from the page on purpose: if they change there, this
 // test fails loudly instead of silently accepting an unreachable contract.
 const CATEGORIES = {
-  nature: new Set('steam stone moss energy lava rain cloud lake sea ocean river swamp forest tree grass flower sand dust wind pressure ice snow mountain desert soil earth fire water air'.split(' ')),
-  animals: new Set('beast bird fish worm insect ant bee butterfly bat bear whale wolf snake spider crab squid octopus turtle penguin panda monkey pig cow horse'.split(' ')),
-  machines: new Set('wheel cart car motor plane robot steam_boiler steam_engine steamboat bicycle motorcycle tractor train tool metal weapon'.split(' '))
+  nature: new Set(('steam cloud ice cold lake sea ocean swamp dust wind pressure energy ' +
+    'lava stone sand desert forest tree grass flower moss lichen algae mushroom fern bamboo cactus palm bush ' +
+    'grove vine reed cane seed peat coal oil salt sulphur silicon limestone clay dirt ashes sky sun moon ' +
+    'star rainbow storm thunder geyser volcano').split(' ')),
+  animals: new Set(('beast cat catdog dog chicken livestock pig mouse bear beaver bat bird hummingbird parrot ' +
+    'penguin vulture woodpecker fish fugu_fish stingray electric_eel whale crab lobster squid octopus jellyfish ' +
+    'starfish clam mussels snail slug worm leech tick spider scorpion ant bee butterfly beetle insect dragonfly ' +
+    'firefly termites cochineal scarab frog lizard salamander snake turtle dinosaur pterodactyl elephant ' +
+    'kangaroo monkey panda camel wolf dragon phoenix').split(' ')),
+  machines: new Set(('wheel cart chariot car motor plane hydroplane robot mech drone steam_boiler steam_engine ' +
+    'steamboat locomotive bicycle motorcycle tractor lawnmower tool weapon firearm artillery watch magnet bulb ' +
+    'hover space_shuttle submarine motorboat clipper wooden_ship tesla_tank flame_tank juggernaut').split(' '))
 };
 const TITLES = {'Природный след': 'nature', 'Живая лаборатория': 'animals', 'Механический цех': 'machines'};
 const pairKey = ids => JSON.stringify([...ids].sort());
@@ -76,10 +85,11 @@ function pick(win, doc, id) {
 async function mixPair(win, doc, a, b) {
   pick(win, doc, a); pick(win, doc, b);
   const mix = doc.querySelector('#mix');
-  if (mix.disabled) return {state: mix.dataset.state, disabled: true};
+  const before = mix.dataset.state;
+  if (mix.disabled) return {before, state: before, disabled: true};
   mix.click();
   await sleep(900);
-  return {state: doc.querySelector('#mix').dataset.state, disabled: false};
+  return {before, state: doc.querySelector('#mix').dataset.state, disabled: false};
 }
 
 function frontier(win, saved) {
@@ -209,7 +219,7 @@ async function solveContract(win, doc, labelText) {
   check(d2.querySelectorAll('#elements .element').length > 4, 'discovered elements restored on reload', d2.querySelectorAll('#elements .element').length);
   const beforeKnown = save(w2).found.length;
   const knownPair = await mixPair(w2, d2, 'w', 'w');
-  check(knownPair.state === 'known', 'previously discovered pair recognised as known after reload', knownPair);
+  check(knownPair.before === 'known', 'previously discovered pair recognised as known after reload', knownPair);
   check(save(w2).found.length === beforeKnown && save(w2).research.progress === reloaded.research.progress, 'known pair after reload does not count as a new discovery', save(w2).research);
 
   // ---------- a broader collection rotates to another theme ----------
@@ -224,6 +234,35 @@ async function solveContract(win, doc, labelText) {
   check(broadTitle === 'Механический цех', 'board rotates away from the previous theme when another one is reachable', texts(d5));
   const broadSolved = await solveContract(w5, d5, broadTitle);
   check(broadSolved === 1 && isDone(d5), 'rotated contract is solvable', texts(d5));
+
+  // ---------- an animal discovery must satisfy the animal brief ----------
+  errors = [];
+  const animalSeed = JSON.stringify({v: 2, opened: ['w', 'f', 'e', 'a', 'swamp', 'egg', 'life'], found: [], attempts: [], recent: [],
+    research: {contract: 7, progress: 0, mastery: 1, hintsUsed: 0, goal: null, lastCategory: 'nature'}});
+  const dom6 = load(win => win.localStorage.setItem(SAVE_KEY, animalSeed));
+  const w6 = dom6.window, d6 = w6.document;
+  await sleep(50);
+  check(errors.length === 0, 'animal brief loads without errors', errors);
+  check(texts(d6).title === 'Живая лаборатория', 'animal brief is offered when a creature is reachable', texts(d6));
+
+  // a new element outside the theme is explained and does not count
+  await mixPair(w6, d6, 'a', 'a');
+  let t6 = texts(d6);
+  check(!t6.feedbackHidden && t6.feedback.includes('не из темы'), 'off-theme discovery explains why it does not count', t6);
+  check(t6.progress.startsWith('Прогресс 0 / 1'), 'off-theme discovery leaves the brief at 0/1', t6);
+
+  await mixPair(w6, d6, 'egg', 'life');
+  t6 = texts(d6);
+  check(t6.title.includes('выполнен'), 'chicken satisfies the animal brief', t6);
+
+  // a known pair keeps the golden circle tappable and clears the cauldron
+  pick(w6, d6, 'egg'); pick(w6, d6, 'life');
+  check(d6.querySelector('#mix').dataset.state === 'known', 'known pair is recognised again', d6.querySelector('#mix').dataset.state);
+  check(d6.querySelector('#mix').disabled === false, 'known pair leaves the golden circle tappable', d6.querySelector('#mix').dataset.state);
+  d6.querySelector('#mix').click();
+  await sleep(30);
+  const cleared = [...d6.querySelectorAll('[data-slot]')].map(s => s.getAttribute('aria-label'));
+  check(cleared.every(x => /Пустой слот/.test(x)), 'tapping the known pair clears the cauldron', cleared);
 
   // ---------- corrupted save must not break the page ----------
   errors = [];
