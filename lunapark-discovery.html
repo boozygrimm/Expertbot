@@ -453,40 +453,30 @@ let labelId=0;
 function curvedLabel(id) {
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
- const full=label(id), fontSize=14;
- // A broad lower arc follows the inside rim of the orb; text stays fixed-size.
- const p0=[5,56], p1=[50,130], p2=[95,56];
- const samples=100, cum=[0];
+ const chars=Array.from(label(id)),fontSize=14;
+ // Keep the complete name at one fixed size, centered on an inset lower arc.
+ const p0=[0,48],p1=[50,130],p2=[100,48],samples=100,cum=[0];
  const point=t=>[(1-t)*(1-t)*p0[0]+2*(1-t)*t*p1[0]+t*t*p2[0],(1-t)*(1-t)*p0[1]+2*(1-t)*t*p1[1]+t*t*p2[1]];
  for(let i=1;i<=samples;i++){const a=point((i-1)/samples),b=point(i/samples);cum.push(cum[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1]));}
- const arcLen=cum[cum.length-1], margin=4, usable=arcLen-margin*2;
+ const arcLen=cum[cum.length-1],margin=8,usable=arcLen-margin*2;
  const canvas=document.createElement('canvas'),ctx=canvas.getContext?.('2d');
  if(ctx)ctx.font=`800 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
- const widthOf=ch=>ctx?ctx.measureText(ch).width:(/[\u0400-\u04ff]/.test(ch)?9:7);
- const ellipsis='…', chars=Array.from(full);let shown=[],total=0;
- for(let i=0;i<chars.length;i++){
-  const candidate=chars[i], extra=widthOf(candidate);
-  const more= i<chars.length-1 ? widthOf(ellipsis) : 0;
-  if(total+extra+more>usable){shown.push(ellipsis);break;}
-  shown.push(candidate);total+=extra;
- }
- if(!shown.length)shown=[...Array.from(full).slice(0,1)];
- // Recalculate exact advance widths including the truncation mark and center as a unit.
- const widths=shown.map(widthOf), textWidth=widths.reduce((a,b)=>a+b,0), startAt=(arcLen-textWidth)/2;
- let pos=startAt;
+ const widths=chars.map(ch=>ctx?ctx.measureText(ch).width:(/[\u0400-\u04ff]/.test(ch)?9:7));
+ const textWidth=widths.reduce((a,b)=>a+b,0),gap=chars.length>1?Math.max(-1.4,(usable-textWidth)/(chars.length-1)):0;
+ const totalAdvance=textWidth+gap*Math.max(0,chars.length-1);let pos=(arcLen-totalAdvance)/2;
  const atLength=len=>{
   let i=1;while(i<cum.length&&cum[i]<len)i++;
   if(i>=cum.length)return [...point(1),p2[0]-p1[0],p2[1]-p1[1]];
   const f=(len-cum[i-1])/(cum[i]-cum[i-1]||1),t=(i-1+f)/samples,[x,y]=point(t);
   return [x,y,2*((1-t)*(p1[0]-p0[0])+t*(p2[0]-p1[0])),2*((1-t)*(p1[1]-p0[1])+t*(p2[1]-p1[1]))];
  };
- for(let i=0;i<shown.length;i++){
+ for(let i=0;i<chars.length;i++){
   const [x,y,dx,dy]=atLength(pos+widths[i]/2),text=document.createElementNS(ns,'text');
-  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y+fontSize*.32).toFixed(2));
+  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',y.toFixed(2));
   text.setAttribute('text-anchor','middle');text.setAttribute('font-size',String(fontSize));
   text.setAttribute('font-weight','850');text.setAttribute('dominant-baseline','central');
   text.setAttribute('transform',`rotate(${(Math.atan2(dy,dx)*180/Math.PI).toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`);
-  text.textContent=shown[i];svg.append(text);pos+=widths[i];
+  text.textContent=chars[i];svg.append(text);pos+=widths[i]+gap;
  }
  return svg;
 }
