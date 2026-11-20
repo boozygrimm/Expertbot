@@ -100,22 +100,22 @@
 @media(max-height:510px){.result-slot{width:58px;height:58px}#mix .result-primary{font-size:8px}#mix .result-caption{font-size:7px}#mix[data-state="mix"] .result-primary{font-size:17px}#mix[data-state="known"] .result-caption{font-size:9px}}
 /* Aggregate-state texture fill; toggled by the #effect button. */
 .element{overflow:hidden}
-.element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;opacity:.85;z-index:0}
+.element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;opacity:.95;z-index:0}
 .element .symbol,.slot .symbol,.flight-clone .symbol{position:relative;z-index:1}
 .element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
-.fx.state-fire::after{background:conic-gradient(from 0deg, rgba(255,120,60,.65), rgba(255,80,40,.55), rgba(255,210,120,.5), rgba(255,120,60,.65));animation:fxSpin 2.4s linear infinite,fxFlicker 1.4s ease-in-out infinite}
-.fx.state-gas::after{background:conic-gradient(from 0deg, rgba(200,235,255,.5), rgba(235,250,255,.35), rgba(180,220,255,.45), rgba(200,235,255,.5));animation:fxSpin 7s linear infinite,fxMist 4.5s ease-in-out infinite}
-.fx.state-liquid::after{background:conic-gradient(from 0deg, rgba(77,184,255,.55), rgba(120,220,255,.4), rgba(40,120,220,.5), rgba(77,184,255,.55));animation:fxSpin 5s linear infinite,fxWave 3.2s ease-in-out infinite}
-.fx.state-sand::after{background:radial-gradient(circle at 28% 28%, rgba(230,196,105,.4) 1.5px, transparent 3px), radial-gradient(circle at 72% 62%, rgba(230,196,105,.34) 1.5px, transparent 3px), radial-gradient(circle at 50% 45%, rgba(230,196,105,.28) 1.5px, transparent 3px);animation:fxSand 6s ease-in-out infinite}
-.fx.state-solid::after{background:conic-gradient(from 0deg, rgba(180,200,220,.35), rgba(220,230,245,.22), rgba(140,160,180,.35), rgba(180,200,220,.35));animation:fxSpin 9s linear infinite,fxShimmer 4s ease-in-out infinite}
-.fx.state-organic::after{background:radial-gradient(circle at 50% 50%, rgba(120,220,120,.45), transparent 60%);animation:fxOrganic 3s ease-in-out infinite}
+.fx.state-fire::after{background:conic-gradient(from 0deg, rgba(255,120,60,.85), rgba(255,60,30,.75), rgba(255,210,120,.65), rgba(255,90,40,.85));animation:fxSpin 1.6s linear infinite,fxFlicker .9s ease-in-out infinite}
+.fx.state-gas::after{background:conic-gradient(from 0deg, rgba(200,235,255,.75), rgba(235,250,255,.55), rgba(170,215,255,.65), rgba(200,235,255,.75));animation:fxSpin 4.5s linear infinite,fxMist 3s ease-in-out infinite}
+.fx.state-liquid::after{background:conic-gradient(from 0deg, rgba(77,184,255,.8), rgba(120,220,255,.6), rgba(40,120,220,.75), rgba(77,184,255,.8));animation:fxSpin 3.2s linear infinite,fxWave 2s ease-in-out infinite}
+.fx.state-sand::after{background-image:radial-gradient(circle at 50% 50%, rgba(230,196,105,.55) 1px, transparent 2px);background-size:8px 8px;animation:fxSand 4s linear infinite}
+.fx.state-solid::after{background:conic-gradient(from 0deg, rgba(180,200,220,.55), rgba(220,230,245,.38), rgba(140,160,180,.55), rgba(180,200,220,.55));animation:fxSpin 6s linear infinite,fxShimmer 2.6s ease-in-out infinite}
+.fx.state-organic::after{background:radial-gradient(circle at 50% 50%, rgba(120,220,120,.6), transparent 60%);animation:fxOrganic 2.2s ease-in-out infinite}
 @keyframes fxSpin{to{transform:rotate(360deg)}}
-@keyframes fxFlicker{0%,100%{opacity:.7}50%{opacity:.95}}
-@keyframes fxMist{0%,100%{opacity:.65}50%{opacity:.9}}
-@keyframes fxWave{0%,100%{opacity:.75}50%{opacity:.95}}
-@keyframes fxSand{0%,100%{transform:translate(0,0)}50%{transform:translate(1px,1px)}}
-@keyframes fxShimmer{0%,100%{opacity:.55}50%{opacity:.85}}
-@keyframes fxOrganic{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:.9;transform:scale(1.04)}}
+@keyframes fxFlicker{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
+@keyframes fxMist{0%,100%{opacity:.7;transform:translate(0,0)}50%{opacity:.95;transform:translate(2px,-2px)}}
+@keyframes fxWave{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.03)}}
+@keyframes fxSand{to{background-position:8px 0}}
+@keyframes fxShimmer{0%,100%{opacity:.6}50%{opacity:.9}}
+@keyframes fxOrganic{0%,100%{opacity:.65;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
 </style></head>
 <body><main class="shell">
 <header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button><button class="sound" id="effect" type="button" aria-pressed="true" title="Включить текстурный эффект">✦ <span>вкл</span></button></header>
