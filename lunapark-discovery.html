@@ -98,9 +98,26 @@
 #mix[data-state="mix"] .result-primary{font-size:22px}
 #mix[data-state="known"] .result-caption{font-size:clamp(10px,1.6dvh,13px)}
 @media(max-height:510px){.result-slot{width:58px;height:58px}#mix .result-primary{font-size:8px}#mix .result-caption{font-size:7px}#mix[data-state="mix"] .result-primary{font-size:17px}#mix[data-state="known"] .result-caption{font-size:9px}}
+/* Aggregate-state texture fill; toggled by the #effect button. */
+.element{overflow:hidden}
+.element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;opacity:.85;z-index:0}
+.element .symbol,.slot .symbol,.flight-clone .symbol{position:relative;z-index:1}
+.element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
+.fx.state-fire::after{background:radial-gradient(circle at 50% 68%, rgba(255,120,60,.55), transparent 60%), radial-gradient(circle at 42% 38%, rgba(255,210,120,.35), transparent 55%);animation:fxFire 1.6s ease-in-out infinite}
+.fx.state-gas::after{background:radial-gradient(circle at 50% 50%, rgba(200,235,255,.45), transparent 60%);animation:fxGas 5s ease-in-out infinite}
+.fx.state-liquid::after{background:repeating-linear-gradient(115deg, rgba(90,180,255,.28) 0 8px, transparent 8px 16px);animation:fxLiquid 4s linear infinite}
+.fx.state-sand::after{background:radial-gradient(circle at 28% 28%, rgba(230,196,105,.38) 1px, transparent 2px), radial-gradient(circle at 72% 62%, rgba(230,196,105,.32) 1px, transparent 2px), radial-gradient(circle at 50% 45%, rgba(230,196,105,.25) 1px, transparent 2px);animation:fxSand 6s ease-in-out infinite}
+.fx.state-solid::after{background:linear-gradient(45deg, rgba(180,200,220,.18) 25%, transparent 25%, transparent 50%, rgba(180,200,220,.18) 50%, rgba(180,200,220,.18) 75%, transparent 75%);background-size:12px 12px;animation:fxSolid 5s ease-in-out infinite}
+.fx.state-organic::after{background:radial-gradient(circle at 50% 50%, rgba(120,220,120,.38), transparent 60%);animation:fxOrganic 3s ease-in-out infinite}
+@keyframes fxFire{0%,100%{opacity:.7;transform:translateY(0) scale(1)}50%{opacity:.95;transform:translateY(-2px) scale(1.03)}}
+@keyframes fxGas{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,-2px)}}
+@keyframes fxLiquid{0%{background-position:0 0}100%{background-position:32px 0}}
+@keyframes fxSand{0%,100%{transform:translate(0,0)}50%{transform:translate(1px,1px)}}
+@keyframes fxSolid{0%,100%{opacity:.5}50%{opacity:.8}}
+@keyframes fxOrganic{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:.9;transform:scale(1.04)}}
 </style></head>
 <body><main class="shell">
-<header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button></header>
+<header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button><button class="sound" id="effect" type="button" aria-pressed="true" title="Включить текстурный эффект">✦ <span>вкл</span></button></header>
 <div class="notice">✦ ПРОБНЫЙ ДИЗАЙН · ПРОГРЕСС НЕ СОХРАНЯЕТСЯ</div>
 <section class="workspace" id="workspace">
   <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div>
@@ -268,7 +285,7 @@ wheel:'wheel', cart:'cart', car:'car', motor:'motor', plane:'plane', robot:'robo
 book:'book', library:'library', paper:'paper', pen:'pen', coin:'coin', money:'money', gold:'gold', silver:'silver', diamond:'diamond', gem:'gem', crystal:'crystal', idea:'idea', sound:'sound', music:'music', love:'love', life:'life', death:'death', ghost:'ghost', space:'space', star:'star', moon:'moon', sun:'sun', planet:'planet', city:'city', country:'country', house:'house', hospital:'hospital',
 alcohol:'alcohol', beer:'alcohol', wine:'alcohol', vodka:'alcohol', milk:'milk', cheese:'cheese', bread:'bread', meat:'meat', egg:'egg', fruit:'fruit', vegetable:'vegetable', medicine:'medicine', poison:'poison', acid:'acid', salt:'salt', mineral:'mineral', lava:'lava'
 };
-const state = {opened:[...basics], found:[], attempts:[], tried:new Map(), failedNow:null, reacting:false, favorites:new Set(), recent:[], slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, lastNew:null};
+const state = {opened:[...basics], found:[], attempts:[], tried:new Map(), failedNow:null, reacting:false, favorites:new Set(), recent:[], slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
 function cat(id) { if (basics.includes(id)) return 'basic'; for (const c of ['nature','animals','machines']) if (categories[c].has(id)) return c; return 'other'; }
 function hash(id) { let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return h; }
 function abstractGlyph(id) {
@@ -293,13 +310,46 @@ function symbolMarkup(id) {
  const key=glyphKey(id);
  return key && GLYPH[key] ? GLYPH[key] : abstractGlyph(id);
 }
-function stateComposition() {
- const order=['fire','gas','liquid','sand','solid','organic'];
+function blendRecipe(recipes, seed) {
+ const profiles=new Map(seed);
+ const sum=new Map(), count=new Map();
+ for(const r of recipes){
+  const out=r.result;if(!profiles.has(out))continue;
+  const ins=(r.ingredients||[]).filter(x=>profiles.has(x));if(!ins.length)continue;
+  const avg=ins.reduce((a,x)=>{const p=profiles.get(x);return a.map((v,i)=>v+p[i]);},Array(seed.get(out).length).fill(0)).map(v=>v/ins.length);
+  const prev=sum.get(out)||Array(avg.length).fill(0);
+  sum.set(out,prev.map((v,i)=>v+avg[i]));
+  count.set(out,(count.get(out)||0)+1);
+ }
+ for(const [out,s] of sum){const n=count.get(out)||1;sum.set(out,s.map(v=>v/n));}
+ for(const [id,base] of profiles){
+  const r=sum.get(id);
+  if(r)profiles.set(id,base.map((v,i)=>v*.7+r[i]*.3));
+ }
+ for(const [id,p] of profiles){const total=p.reduce((a,b)=>a+b,0)||1;profiles.set(id,p.map(v=>v/total));}
+ return profiles;
+}
+function elementComposition() {
+ const direct={w:[1,0,0,0],f:[0,1,0,0],e:[0,0,1,0],a:[0,0,0,1]};
  function heuristic(id) {
-  if(id==='w')return [0,0,1,0,0,0];
-  if(id==='f')return [1,0,0,0,0,0];
-  if(id==='e')return [0,0,0,0,1,0];
-  if(id==='a')return [0,1,0,0,0,0];
+  if(direct[id])return [...direct[id]];
+  const key=glyphKey(id);
+  if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='cloud'||key==='steam'||key==='swamp')return [1,0,0,0];
+  if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun')return [0,1,0,0];
+  if(key==='earth'||key==='stone'||key==='mountain'||key==='sand'||key==='dust'||key==='metal'||key==='mineral'||key==='salt')return [0,0,1,0];
+  if(key==='air')return [0,0,0,1];
+  if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest')return [.15,0,.6,.25];
+  if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl')return [.1,0,.6,.3];
+  if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital')return [.1,.25,.55,.1];
+  if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid')return [.25,.05,.7,0];
+  return [.25,.25,.25,.25];
+ }
+ return blendRecipe(recipes,new Map(Object.keys(names).map(id=>[id,heuristic(id)])));
+}
+function stateComposition() {
+ const direct={w:[0,0,1,0,0,0],f:[1,0,0,0,0,0],e:[0,0,0,0,1,0],a:[0,1,0,0,0,0]};
+ function heuristic(id) {
+  if(direct[id])return [...direct[id]];
   const key=glyphKey(id);
   if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun')return [1,0,0,0,0,0];
   if(key==='air'||key==='cloud'||key==='steam'||key==='wind'||key==='pressure')return [0,1,0,0,0,0];
@@ -312,53 +362,47 @@ function stateComposition() {
   if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid')return [0,0,0,0,0,1];
   return [.12,.12,.12,.12,.26,.26];
  }
- const profiles=new Map();
- for(const id of Object.keys(names))profiles.set(id,heuristic(id));
- const recipeSum=new Map(),recipeCount=new Map();
- for(const r of recipes){
-  const out=r.result;if(!profiles.has(out))continue;
-  const ins=(r.ingredients||[]).filter(x=>profiles.has(x));if(!ins.length)continue;
-  const avg=[0,0,0,0,0,0];
-  for(const x of ins){const p=profiles.get(x);for(let i=0;i<6;i++)avg[i]+=p[i];}
-  for(let i=0;i<6;i++)avg[i]/=ins.length;
-  const prev=recipeSum.get(out)||[0,0,0,0,0,0];
-  recipeSum.set(out,prev.map((v,i)=>v+avg[i]));
-  recipeCount.set(out,(recipeCount.get(out)||0)+1);
- }
- for(const [out,sum] of recipeSum){const n=recipeCount.get(out)||1;recipeSum.set(out,sum.map(v=>v/n));}
- for(const [id,p] of profiles){
-  const r=recipeSum.get(id);
-  if(r)profiles.set(id,p.map((v,i)=>v*.7+r[i]*.3));
- }
- for(const [id,p] of profiles){const sum=p.reduce((a,b)=>a+b,0)||1;profiles.set(id,p.map(v=>v/sum));}
- return profiles;
+ return blendRecipe(recipes,new Map(Object.keys(names).map(id=>[id,heuristic(id)])));
 }
-const COMPOSITION=stateComposition();
-function composition(id){return COMPOSITION.get(id)||[0,0,0,0,0,0];}
+const ELEMENT_COMPOSITION=elementComposition();
+const STATE_COMPOSITION=stateComposition();
+function elemental(id){return ELEMENT_COMPOSITION.get(id)||[.25,.25,.25,.25];}
+function stateProfile(id){return STATE_COMPOSITION.get(id)||[0,0,0,0,0,0];}
 function rgb(hex){const n=parseInt(hex.slice(1),16);return [n>>16&255,n>>8&255,n&255];}
 function blend(colors,weights){const out=[0,0,0];for(let i=0;i<3;i++){let s=0;for(let j=0;j<colors.length;j++)s+=colors[j][i]*weights[j];out[i]=Math.round(s);}return out;}
+function hex(rgb){return '#'+rgb.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');}
+const ELEMENT_TINTS={water:'#4db8ff',fire:'#ff5252',earth:'#a9743f',air:'#d8f0ff'};
 const STATE_ORDER=['fire','gas','liquid','sand','solid','organic'];
-const STATE_TINTS={fire:'#ff7a45',gas:'#cfe9ff',liquid:'#4db8ff',sand:'#e6c469',solid:'#8f9aa8',organic:'#7ce07a'};
-const STATE_POS={fire:'70% 30%',gas:'65% 68%',liquid:'30% 28%',sand:'35% 72%',solid:'50% 55%',organic:'60% 70%'};
-function rgba(hex,a){const c=rgb(hex);return `rgba(${c[0]},${c[1]},${c[2]},${a})`;}
-function orbLayers(id){
- const w=composition(id);
- const layers=[`radial-gradient(circle at 36% 23%, rgba(255,255,255,.10), transparent 55%)`];
- for(let i=0;i<STATE_ORDER.length;i++){
-  const key=STATE_ORDER[i], weight=w[i];
-  if(weight<0.08)continue;
-  const alpha=Math.min(.55,.18+weight*.6);
-  layers.push(`radial-gradient(circle at ${STATE_POS[key]}, ${rgba(STATE_TINTS[key],alpha)}, transparent 62%)`);
- }
- return layers.join(',');
+function orbColor(id){
+ const w=elemental(id);
+ const t=blend(Object.values(ELEMENT_TINTS).map(rgb),w);
+ const pale=blend([t,[255,255,255]],[.68,.32]);
+ const mid=blend([t,[41,35,60]],[.55,.45]);
+ return `radial-gradient(circle at 36% 23%, ${hex(pale)} 0%, ${hex(mid)} 58%, #29233c 82%)`;
+}
+function dominantState(id){
+ const w=stateProfile(id);
+ let best=0;
+ for(let i=1;i<w.length;i++)if(w[i]>w[best])best=i;
+ return STATE_ORDER[best];
+}
+function clearOrb(el){
+ if(!el)return;
+ el.style.background='';
+ el.style.backgroundImage='';
+ el.style.backgroundColor='';
+ el.style.backgroundBlendMode='';
+ for(const k of STATE_ORDER)el.classList.remove('state-'+k);
+ el.classList.remove('fx');
 }
 function applyOrb(el,id){
  if(!el)return;
- el.style.backgroundImage=orbLayers(id);
- el.style.backgroundColor='#29233c';
- el.style.backgroundBlendMode='screen';
+ clearOrb(el);
+ el.style.background=orbColor(id);
+ if(state.effect){
+  el.classList.add('fx','state-'+dominantState(id));
+ }
 }
-function orbBackground(id){return orbLayers(id);}
 function icon(id) {
  const span=document.createElement('span');
  span.className='symbol';
@@ -462,7 +506,7 @@ function renderCenter(){
 function renderSlots() {
  document.querySelectorAll('[data-slot]').forEach(el=>{
   const i=Number(el.dataset.slot),id=state.slots[i];el.replaceChildren();
-  if(id){applyOrb(el,id);el.append(icon(id),curvedLabel(id));}else{el.style.backgroundImage='';el.style.backgroundColor='';el.style.backgroundBlendMode='';el.textContent='+';}
+  if(id){applyOrb(el,id);el.append(icon(id),curvedLabel(id));}else{clearOrb(el);el.textContent='+';}
   el.disabled=state.reacting;
   el.classList.toggle('active',state.target===i || (state.target===null && state.nextAfterMix===i));
   el.setAttribute('aria-label',id?`${label(id)}. Нажми для замены`:`Пустой слот ${i+1}`);el.title=id?label(id)+' — нажми для замены':'Пустой слот';
@@ -584,6 +628,7 @@ $('#search').oninput=e=>{state.search=e.target.value.trim();state.page=0;renderE
 $('#options-toggle').onclick=()=>{const box=$('#options-box');box.hidden=!box.hidden;$('#options-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');}};
 $('#category').onchange=e=>{state.category=e.target.value;state.page=0;renderElements();};$('#sort').onchange=e=>{state.sort=e.target.value;state.page=0;renderElements();};$('#hide-dead').onchange=e=>{state.hideDead=e.target.checked;state.page=0;renderElements();};
 $('#sound').onclick=()=>{state.sound=!state.sound;$('#sound').setAttribute('aria-pressed',String(state.sound));$('#sound span').textContent=state.sound?'вкл':'выкл';};
+$('#effect').onclick=()=>{state.effect=!state.effect;$('#effect').setAttribute('aria-pressed',String(state.effect));$('#effect span').textContent=state.effect?'вкл':'выкл';renderElements();renderSlots();};
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));$('#back').onclick=()=>{if(state.detail){state.detail=null;renderOverlay();}else goBack();};$('#overlay-prev').onclick=()=>{state.viewPage--;renderOverlay();};$('#overlay-next').onclick=()=>{state.viewPage++;renderOverlay();};
 renderSlots();renderElements();
 })();
