@@ -82,6 +82,18 @@ function pick(win, doc, id) {
   el.click();
 }
 
+async function takeBrief(win, doc) {
+  const next = doc.querySelector('#research-next');
+  if (!next.hidden) { next.click(); await sleep(20); }
+  const box = doc.querySelector('#research-choices');
+  if (!box || box.hidden) return null;
+  const button = box.querySelector('button');
+  if (!button) return null;
+  button.click();
+  await sleep(20);
+  return button.querySelector('strong').textContent;
+}
+
 async function mixPair(win, doc, a, b) {
   pick(win, doc, a); pick(win, doc, b);
   const mix = doc.querySelector('#mix');
@@ -177,8 +189,16 @@ async function solveContract(win, doc, labelText) {
   d1.querySelector('#research-next').click();
   await sleep(20);
   t = texts(d1);
+  check(t.title === 'Куда идём дальше?', 'finishing a contract opens the brief board', t);
+  const board = [...d1.querySelectorAll('#research-choices button')];
+  check(board.length >= 2 && board.length <= 3, 'board offers two or three briefs', board.length);
+  check(board.every(b => b.querySelector('strong') && b.querySelector('small')), 'every brief shows a goal and what counts', board.length);
+  const pickedLabel = board[0].querySelector('strong').textContent;
+  board[0].click();
+  await sleep(20);
+  t = texts(d1);
   const secondTitle = t.title;
-  check(/Природный след|Живая лаборатория|Механический цех|Открой две новые реакции/.test(secondTitle), 'second contract has a known brief', t);
+  check(secondTitle === pickedLabel, 'the chosen brief becomes the active contract', {picked: pickedLabel, shown: secondTitle});
   check(t.nextHidden === true, 'second contract starts clean', t);
   check(t.hintMode.includes('×2') && t.hintDisabled === false, 'analyzer grants a second hint after mastery', t);
 
@@ -194,10 +214,10 @@ async function solveContract(win, doc, labelText) {
   check(solvedSecond > 0 && isDone(d1), `second contract (${secondTitle}) can be completed`, texts(d1));
 
   // ---------- several contracts in a row stay solvable ----------
-  let contractsPlayed = 1;
+  let contractsPlayed = 2;
   for (let i = 0; i < 4; i++) {
-    d1.querySelector('#research-next').click();
-    await sleep(20);
+    const taken = await takeBrief(w1, d1);
+    check(taken !== null, `brief board appears before contract ${contractsPlayed + 1}`, texts(d1));
     const title = texts(d1).title;
     const solved = await solveContract(w1, d1, TITLES[title] ? title : 'Открой две новые реакции');
     contractsPlayed++;
@@ -273,6 +293,20 @@ async function solveContract(win, doc, labelText) {
   await sleep(30);
   const cleared = [...d6.querySelectorAll('[data-slot]')].map(s => s.getAttribute('aria-label'));
   check(cleared.every(x => /Пустой слот/.test(x)), 'tapping the known pair clears the cauldron', cleared);
+
+  // ---------- the brief board survives a reload ----------
+  errors = [];
+  const boardSave = JSON.stringify({v: 2, opened: ['w', 'f', 'e', 'a', 'lava', 'stone', 'steam', 'metal'], found: [], attempts: [], recent: [],
+    research: {contract: 4, progress: 0, mastery: 1, hintsUsed: 0, phase: 'choose', goal: {kind: 'new', count: 2, category: null}, lastCategory: 'nature'}});
+  const dom7 = load(win => win.localStorage.setItem(SAVE_KEY, boardSave));
+  const w7 = dom7.window, d7 = w7.document;
+  await sleep(50);
+  check(errors.length === 0, 'board state loads without errors', errors);
+  check(texts(d7).title === 'Куда идём дальше?' && d7.querySelectorAll('#research-choices button').length >= 2, 'open brief board is restored after reload', texts(d7));
+  const restored = d7.querySelectorAll('#research-choices button');
+  restored[restored.length - 1].click();
+  await sleep(30);
+  check(texts(d7).title !== 'Куда идём дальше?' && !isDone(d7), 'the last offered brief can be taken from a restored board', texts(d7));
 
   // ---------- corrupted save must not break the page ----------
   errors = [];

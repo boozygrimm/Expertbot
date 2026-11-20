@@ -170,6 +170,12 @@
 .research-card{display:flex;align-items:center;gap:8px;margin:4px 0 7px;padding:7px 9px;border:1px solid #b7d8bd55;border-radius:10px;background:linear-gradient(100deg,#253c39dd,#30233edb);box-shadow:inset 0 1px 0 #ffffff12}
 .research-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.research-copy small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#b6e0be}.research-copy strong{font:700 13px Georgia,serif;color:#fff1d8}.research-copy span{font-size:9px;line-height:1.2;color:#d4c5cf}.research-actions{display:flex;flex:none;gap:5px}.research-actions button{border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px;font-size:9px;font-weight:750}.research-actions button:disabled{opacity:.5}.research-actions button[hidden]{display:none}
 @media(max-height:650px){.research-card{margin:2px 0 4px;padding:5px 7px}.research-copy strong{font-size:12px}.research-actions button{padding:5px 6px}}
+.research-card{flex-wrap:wrap}
+.research-choices{flex-basis:100%;display:flex;flex-direction:column;gap:5px;margin-top:6px}
+.research-choices button{display:block;width:100%;text-align:left;border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px}
+.research-choices button strong{display:block;font-size:10px;font-weight:800}
+.research-choices button small{display:block;margin-top:2px;font-size:8px;font-weight:600;color:#d4c5cf;line-height:1.25}
+.research-choices button:active{background:#55416a}
 @media (orientation:portrait){
  .workspace{display:flex;flex-direction:column;justify-content:flex-start;gap:6px}
  .shelf{order:1;flex:1 1 auto;min-height:0}
@@ -195,6 +201,7 @@
     <section class="research-card" aria-label="Исследовательский контракт">
       <div class="research-copy"><small>КОНТРАКТ ЛАБОРАТОРИИ</small><strong id="research-title">Открой две новые реакции</strong><span id="research-progress">Прогресс 0 / 2 · исследования бесплатны</span><span id="research-feedback" role="status" hidden></span></div>
       <div class="research-actions"><button type="button" id="research-hint">Улика ✦</button><button type="button" id="research-next" hidden>Новый контракт</button></div>
+      <div class="research-choices" id="research-choices" hidden></div>
     </section>
     <div class="shelf-heading"><div><small>ТВОЯ КОЛЛЕКЦИЯ</small><h2>Элементы <span id="open-count">04</span></h2></div><button class="tool-btn" id="search-toggle" type="button" aria-label="Поиск элементов" aria-expanded="false">⌕</button><button class="tool-btn" id="options-toggle" type="button" aria-label="Сортировка и категории" aria-expanded="false">☷</button></div>
     <div id="search-box" class="search-box" hidden><input id="search" type="search" placeholder="Название элемента…" aria-label="Поиск по названию"><button type="button" id="search-close" aria-label="Закрыть поиск">×</button></div>
@@ -370,7 +377,7 @@ wheel:'wheel', cart:'cart', car:'car', motor:'motor', plane:'plane', robot:'robo
 book:'book', library:'library', paper:'paper', pen:'pen', coin:'coin', money:'money', gold:'gold', silver:'silver', diamond:'diamond', gem:'gem', crystal:'crystal', idea:'idea', sound:'sound', music:'music', love:'love', life:'life', death:'death', ghost:'ghost', space:'space', star:'star', moon:'moon', sun:'sun', planet:'planet', city:'city', country:'country', house:'house', hospital:'hospital',
 alcohol:'alcohol', beer:'alcohol', wine:'alcohol', vodka:'alcohol', milk:'milk', cheese:'cheese', bread:'bread', meat:'meat', egg:'egg', fruit:'fruit', vegetable:'vegetable', medicine:'medicine', poison:'poison', acid:'acid', salt:'salt', mineral:'mineral', lava:'lava'
 };
-const state = {opened:[...new Set([...basics,...savedOpened])], found:savedFound, attempts:savedAttempts, tried:new Map(), failedNow:null, reacting:false, recent:Array.isArray(savedLab.recent)?savedLab.recent.filter(validId).slice(0,24):[], research:{contract:Math.max(1,Math.floor(Number(savedResearch.contract)||1)),progress:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.progress)||0))),mastery:Math.max(0,Math.floor(Number(savedResearch.mastery)||0)),hintsUsed:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.hintsUsed)||0))),goal:savedResearch.goal,lastCategory:['nature','animals','machines'].includes(savedResearch.lastCategory)?savedResearch.lastCategory:null}, slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
+const state = {opened:[...new Set([...basics,...savedOpened])], found:savedFound, attempts:savedAttempts, tried:new Map(), failedNow:null, reacting:false, recent:Array.isArray(savedLab.recent)?savedLab.recent.filter(validId).slice(0,24):[], research:{contract:Math.max(1,Math.floor(Number(savedResearch.contract)||1)),progress:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.progress)||0))),mastery:Math.max(0,Math.floor(Number(savedResearch.mastery)||0)),hintsUsed:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.hintsUsed)||0))),phase:savedResearch.phase==='choose'?'choose':'active',goal:savedResearch.goal,lastCategory:['nature','animals','machines'].includes(savedResearch.lastCategory)?savedResearch.lastCategory:null}, slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
 for(const attempt of [...state.attempts].reverse())state.tried.set(pairKey(attempt.ids),attempt.result||null);
 function cat(id) { if (basics.includes(id)) return 'basic'; for (const c of ['nature','animals','machines']) if (categories[c].has(id)) return c; return 'other'; }
 function hash(id) { let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return h; }
@@ -603,6 +610,24 @@ function makeGoal(contract,lastCategory=state.research.lastCategory){
  }
  return newGoal();
 }
+function makeChoices(){
+ const out=[],anchor=CATEGORY_ORDER.indexOf(state.research.lastCategory);
+ for(let i=0;i<CATEGORY_ORDER.length;i++){
+  const category=CATEGORY_ORDER[(anchor+1+i)%CATEGORY_ORDER.length];
+  const goal={kind:'category',count:1,category};
+  if(goalTargets(goal).length)out.push(goal);
+ }
+ const freeCount=goalTargets({kind:'new',count:2,category:null}).length>=2?2:(goalTargets({kind:'new',count:1,category:null}).length?1:0);
+ if(freeCount)out.push({kind:'new',count:freeCount,category:null});
+ return out.slice(0,3);
+}
+function chooseGoal(goal){
+ const r=state.research;
+ r.contract++;r.goal=goal;r.progress=0;r.hintsUsed=0;r.phase='active';
+ r.lastCategory=goal.category||r.lastCategory;
+ const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent=`Бриф взят: ${goalText(goal).title}. Ищи в котле.`;
+ saveLabProgress();renderResearch();
+}
 function validGoal(goal){
  if(!goal||typeof goal!=='object')return false;
  if(goal.kind==='new')return (goal.count===1||goal.count===2)&&goal.category===null;
@@ -611,12 +636,36 @@ function validGoal(goal){
 }
 function ensureGoal(){
  const r=state.research;
+ if(r.phase==='choose')return r.goal;
  // Repair a missing/foreign goal or one that can no longer be finished from the current collection.
  if(!validGoal(r.goal)||(r.progress<r.goal.count&&goalTargets(r.goal).length<r.goal.count-r.progress))r.goal=makeGoal(r.contract);
  return r.goal;
 }
 function renderResearch(){
  const r=state.research;ensureGoal();
+ const choices=$('#research-choices');
+ if(r.phase==='choose'){
+  const list=makeChoices();
+  if(!list.length)list.push({kind:'new',count:1,category:null});
+  $('#research-title').textContent='Куда идём дальше?';
+  $('#research-progress').textContent='Выбери бриф · награда: мастерство лаборатории';
+  choices.replaceChildren();
+  for(const goal of list){
+   const text=goalText(goal);
+   const b=document.createElement('button');b.type='button';
+   const strong=document.createElement('strong');strong.textContent=text.title;
+   const small=document.createElement('small');small.textContent=text.scope;
+   b.append(strong,small);b.title=`${text.title}: ${text.scope}`;
+   b.onclick=()=>chooseGoal(goal);
+   choices.append(b);
+  }
+  choices.hidden=false;
+  $('#research-hint').hidden=true;$('#research-next').hidden=true;
+  $('#research-feedback').hidden=true;
+  return;
+ }
+ choices.hidden=true;choices.replaceChildren();
+ $('#research-hint').hidden=false;
  const goal=r.goal,text=goalText(goal),done=r.progress>=goal.count;
  $('#research-title').textContent=done?`Контракт ${r.contract} выполнен`:text.title;
  $('#research-progress').textContent=done?`Мастерство ${r.mastery} · ${r.mastery>=1?'Анализатор улучшен':'бонус: мастерство лаборатории'}`:`Прогресс ${r.progress} / ${goal.count} · ${text.noun}`;
@@ -639,8 +688,8 @@ function showResearchHint(){
 function advanceResearch(){
  const r=state.research;
  if(r.progress<r.goal.count)return;
- r.lastCategory=r.goal.category;r.contract++;r.progress=0;r.hintsUsed=0;r.goal=makeGoal(r.contract);
- const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent='Новый бриф готов. Проверь гипотезы в котле.';
+ r.lastCategory=r.goal.category||r.lastCategory;r.phase='choose';r.progress=0;r.hintsUsed=0;
+ const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent='Выбери следующий бриф.';
  saveLabProgress();renderResearch();
 }
 function recordResearchDiscovery(isFresh,isNewElement,result){
