@@ -43,7 +43,7 @@
 .element::after{content:'';position:absolute;z-index:0;pointer-events:none;right:10%;bottom:14%;width:14%;height:24%;border-radius:50%;transform:rotate(34deg);border-right:1.5px solid #ffffff80;filter:blur(.4px)}
 .element .symbol{position:relative;z-index:1;height:34px;transform:translateY(-12%)}
 .orb-curve{position:absolute;z-index:3;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
-.orb-curve text{fill:#fff8eb;font-family:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;font-weight:500;letter-spacing:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.orb-curve text{fill:#fff5d7;stroke:#160d20;stroke-width:2.5px;stroke-linejoin:round;paint-order:stroke fill;font-family:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;font-weight:850;letter-spacing:.01em;filter:drop-shadow(0 1px 2px #000)}
 .element.in-flight{opacity:0}
 .flying-orb{position:fixed;left:0;top:0;z-index:100;pointer-events:none;will-change:transform,opacity;margin:0}
 @media(max-height:510px){.element .symbol{transform:scale(.82) translateY(-5%)}}
@@ -453,43 +453,40 @@ let labelId=0;
 function curvedLabel(id) {
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
- const chars=Array.from(label(id).slice(0,14)), count=chars.length||1;
- const p0=[11,72], p1=[50,81], p2=[89,72];
- // Approximate each glyph width, then space letters along the arc so they cannot crowd.
- const widths=chars.map(ch=>{
-  if(/\s/.test(ch))return 0.3;
-  const code=ch.codePointAt(0), wide=/[А-ЯЁА-ЯЁ]/.test(ch)||code>=0x400&&code<=0x4FF;
-  return wide?1.1:0.72;
- });
- const total=widths.reduce((a,b)=>a+b,0)||1;
- const maxWidth=66, fontSize=Math.max(7,Math.min(12,maxWidth/total));
- const arcLen=78.7, margin=3, usable=arcLen-margin*2;
- const scale=Math.min(1,usable/(total*fontSize));
- const stepFont=fontSize*scale; const start=Math.max(0,(usable-total*stepFont)/2); let pos=start; const positions=[];
- for(let i=0;i<count;i++){positions.push(pos+widths[i]*stepFont/2);pos+=widths[i]*stepFont;}
- const samples=80, cum=[0];
- for(let i=1;i<=samples;i++){
-  const t=i/samples, x=(1-t)*(1-t)*p0[0]+2*(1-t)*t*p1[0]+t*t*p2[0], y=(1-t)*(1-t)*p0[1]+2*(1-t)*t*p1[1]+t*t*p2[1];
-  const px=(1-(i-1)/samples)*(1-(i-1)/samples)*p0[0]+2*(1-(i-1)/samples)*((i-1)/samples)*p1[0]+((i-1)/samples)**2*p2[0];
-  const py=(1-(i-1)/samples)*(1-(i-1)/samples)*p0[1]+2*(1-(i-1)/samples)*((i-1)/samples)*p1[1]+((i-1)/samples)**2*p2[1];
-  cum.push(cum[i-1]+Math.hypot(x-px,y-py));
+ const full=label(id), fontSize=14;
+ // A broad lower arc follows the inside rim of the orb; text stays fixed-size.
+ const p0=[5,56], p1=[50,130], p2=[95,56];
+ const samples=100, cum=[0];
+ const point=t=>[(1-t)*(1-t)*p0[0]+2*(1-t)*t*p1[0]+t*t*p2[0],(1-t)*(1-t)*p0[1]+2*(1-t)*t*p1[1]+t*t*p2[1]];
+ for(let i=1;i<=samples;i++){const a=point((i-1)/samples),b=point(i/samples);cum.push(cum[i-1]+Math.hypot(b[0]-a[0],b[1]-a[1]));}
+ const arcLen=cum[cum.length-1], margin=4, usable=arcLen-margin*2;
+ const canvas=document.createElement('canvas'),ctx=canvas.getContext?.('2d');
+ if(ctx)ctx.font=`800 ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+ const widthOf=ch=>ctx?ctx.measureText(ch).width:(/[\u0400-\u04ff]/.test(ch)?9:7);
+ const ellipsis='…', chars=Array.from(full);let shown=[],total=0;
+ for(let i=0;i<chars.length;i++){
+  const candidate=chars[i], extra=widthOf(candidate);
+  const more= i<chars.length-1 ? widthOf(ellipsis) : 0;
+  if(total+extra+more>usable){shown.push(ellipsis);break;}
+  shown.push(candidate);total+=extra;
  }
+ if(!shown.length)shown=[...Array.from(full).slice(0,1)];
+ // Recalculate exact advance widths including the truncation mark and center as a unit.
+ const widths=shown.map(widthOf), textWidth=widths.reduce((a,b)=>a+b,0), startAt=(arcLen-textWidth)/2;
+ let pos=startAt;
  const atLength=len=>{
-  for(let i=1;i<cum.length;i++)if(len<=cum[i]){
-   const frac=i===0?0:(len-cum[i-1])/(cum[i]-cum[i-1]||1), t=(i-1+frac)/samples;
-   return [(1-t)*(1-t)*p0[0]+2*(1-t)*t*p1[0]+t*t*p2[0],(1-t)*(1-t)*p0[1]+2*(1-t)*t*p1[1]+t*t*p2[1],
-    2*((1-t)*(p1[0]-p0[0])+t*(p2[0]-p1[0])),2*((1-t)*(p1[1]-p0[1])+t*(p2[1]-p1[1]))];
-  }
-  return [p2[0],p2[1],p2[0]-p1[0],p2[1]-p1[1]];
+  let i=1;while(i<cum.length&&cum[i]<len)i++;
+  if(i>=cum.length)return [...point(1),p2[0]-p1[0],p2[1]-p1[1]];
+  const f=(len-cum[i-1])/(cum[i]-cum[i-1]||1),t=(i-1+f)/samples,[x,y]=point(t);
+  return [x,y,2*((1-t)*(p1[0]-p0[0])+t*(p2[0]-p1[0])),2*((1-t)*(p1[1]-p0[1])+t*(p2[1]-p1[1]))];
  };
- for(let i=0;i<count;i++){
-  const [x,y,dx,dy]=atLength(positions[i]*arcLen/usable);
-  const text=document.createElementNS(ns,'text');
-  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y+stepFont*.32).toFixed(2));
-  text.setAttribute('text-anchor','middle');text.setAttribute('font-size',stepFont.toFixed(2));
-  text.setAttribute('dominant-baseline','central');
+ for(let i=0;i<shown.length;i++){
+  const [x,y,dx,dy]=atLength(pos+widths[i]/2),text=document.createElementNS(ns,'text');
+  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y+fontSize*.32).toFixed(2));
+  text.setAttribute('text-anchor','middle');text.setAttribute('font-size',String(fontSize));
+  text.setAttribute('font-weight','850');text.setAttribute('dominant-baseline','central');
   text.setAttribute('transform',`rotate(${(Math.atan2(dy,dx)*180/Math.PI).toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`);
-  text.textContent=chars[i];svg.append(text);
+  text.textContent=shown[i];svg.append(text);pos+=widths[i];
  }
  return svg;
 }
