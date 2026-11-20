@@ -455,7 +455,7 @@ function curvedLabel(id) {
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
  const arcId=`orb-label-arc-${++labelId}`;
  const defs=document.createElementNS(ns,'defs'),path=document.createElementNS(ns,'path');
- path.setAttribute('id',arcId);path.setAttribute('d','M 1 48 Q 50 140 99 48');path.setAttribute('fill','none');defs.append(path);
+ path.setAttribute('id',arcId);path.setAttribute('d','M 6 50 A 44 44 0 0 0 94 50');path.setAttribute('fill','none');defs.append(path);
  const text=document.createElementNS(ns,'text');text.setAttribute('font-size','13');text.setAttribute('font-weight','760');text.setAttribute('text-anchor','middle');
  const textPath=document.createElementNS(ns,'textPath');textPath.setAttribute('href',`#${arcId}`);textPath.setAttribute('startOffset','50%');textPath.setAttribute('text-anchor','middle');textPath.setAttribute('method','align');textPath.setAttribute('spacing','exact');textPath.textContent=label(id);
  text.append(textPath);svg.append(defs,text);return svg;
