@@ -171,10 +171,11 @@
 .research-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.research-copy small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#b6e0be}.research-copy strong{font:700 13px Georgia,serif;color:#fff1d8}.research-copy span{font-size:9px;line-height:1.2;color:#d4c5cf}.research-actions{display:flex;flex:none;gap:5px}.research-actions button{border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px;font-size:9px;font-weight:750}.research-actions button:disabled{opacity:.5}.research-actions button[hidden]{display:none}
 @media(max-height:650px){.research-card{margin:2px 0 4px;padding:5px 7px}.research-copy strong{font-size:12px}.research-actions button{padding:5px 6px}}
 .research-card{flex-wrap:wrap}
-.research-choices{flex-basis:100%;display:flex;flex-direction:column;gap:5px;margin-top:6px}
-.research-choices button{display:block;width:100%;text-align:left;border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px}
-.research-choices button strong{display:block;font-size:10px;font-weight:800}
-.research-choices button small{display:block;margin-top:2px;font-size:8px;font-weight:600;color:#d4c5cf;line-height:1.25}
+.research-choices{flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:5px}
+.research-choices button{display:flex;align-items:baseline;gap:6px;width:100%;text-align:left;border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:5px 7px}
+.research-choices button strong{flex:none;font-size:10px;font-weight:800}
+.research-choices button small{flex:1;min-width:0;margin:0;font-size:8px;font-weight:600;color:#cdbbd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.research-choices button::after{content:'›';flex:none;margin-left:auto;color:#cbb1d6;font-size:11px;line-height:1}
 .research-choices button:active{background:#55416a}
 .project-card{flex:none;margin:0 0 7px;border:1px solid #d9b47c55;border-radius:10px;background:linear-gradient(100deg,#33243fdd,#2a2338db)}
 .project-head{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;padding:6px 9px;text-align:left}
