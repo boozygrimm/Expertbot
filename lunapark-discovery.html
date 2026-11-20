@@ -103,17 +103,18 @@
 .element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;opacity:.85;z-index:0}
 .element .symbol,.slot .symbol,.flight-clone .symbol{position:relative;z-index:1}
 .element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
-.fx.state-fire::after{background:radial-gradient(circle at 50% 68%, rgba(255,120,60,.55), transparent 60%), radial-gradient(circle at 42% 38%, rgba(255,210,120,.35), transparent 55%);animation:fxFire 1.6s ease-in-out infinite}
-.fx.state-gas::after{background:radial-gradient(circle at 50% 50%, rgba(200,235,255,.45), transparent 60%);animation:fxGas 5s ease-in-out infinite}
-.fx.state-liquid::after{background:repeating-linear-gradient(115deg, rgba(90,180,255,.28) 0 8px, transparent 8px 16px);animation:fxLiquid 4s linear infinite}
-.fx.state-sand::after{background:radial-gradient(circle at 28% 28%, rgba(230,196,105,.38) 1px, transparent 2px), radial-gradient(circle at 72% 62%, rgba(230,196,105,.32) 1px, transparent 2px), radial-gradient(circle at 50% 45%, rgba(230,196,105,.25) 1px, transparent 2px);animation:fxSand 6s ease-in-out infinite}
-.fx.state-solid::after{background:linear-gradient(45deg, rgba(180,200,220,.18) 25%, transparent 25%, transparent 50%, rgba(180,200,220,.18) 50%, rgba(180,200,220,.18) 75%, transparent 75%);background-size:12px 12px;animation:fxSolid 5s ease-in-out infinite}
-.fx.state-organic::after{background:radial-gradient(circle at 50% 50%, rgba(120,220,120,.38), transparent 60%);animation:fxOrganic 3s ease-in-out infinite}
-@keyframes fxFire{0%,100%{opacity:.7;transform:translateY(0) scale(1)}50%{opacity:.95;transform:translateY(-2px) scale(1.03)}}
-@keyframes fxGas{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,-2px)}}
-@keyframes fxLiquid{0%{background-position:0 0}100%{background-position:32px 0}}
+.fx.state-fire::after{background:conic-gradient(from 0deg, rgba(255,120,60,.65), rgba(255,80,40,.55), rgba(255,210,120,.5), rgba(255,120,60,.65));animation:fxSpin 2.4s linear infinite,fxFlicker 1.4s ease-in-out infinite}
+.fx.state-gas::after{background:conic-gradient(from 0deg, rgba(200,235,255,.5), rgba(235,250,255,.35), rgba(180,220,255,.45), rgba(200,235,255,.5));animation:fxSpin 7s linear infinite,fxMist 4.5s ease-in-out infinite}
+.fx.state-liquid::after{background:conic-gradient(from 0deg, rgba(77,184,255,.55), rgba(120,220,255,.4), rgba(40,120,220,.5), rgba(77,184,255,.55));animation:fxSpin 5s linear infinite,fxWave 3.2s ease-in-out infinite}
+.fx.state-sand::after{background:radial-gradient(circle at 28% 28%, rgba(230,196,105,.4) 1.5px, transparent 3px), radial-gradient(circle at 72% 62%, rgba(230,196,105,.34) 1.5px, transparent 3px), radial-gradient(circle at 50% 45%, rgba(230,196,105,.28) 1.5px, transparent 3px);animation:fxSand 6s ease-in-out infinite}
+.fx.state-solid::after{background:conic-gradient(from 0deg, rgba(180,200,220,.35), rgba(220,230,245,.22), rgba(140,160,180,.35), rgba(180,200,220,.35));animation:fxSpin 9s linear infinite,fxShimmer 4s ease-in-out infinite}
+.fx.state-organic::after{background:radial-gradient(circle at 50% 50%, rgba(120,220,120,.45), transparent 60%);animation:fxOrganic 3s ease-in-out infinite}
+@keyframes fxSpin{to{transform:rotate(360deg)}}
+@keyframes fxFlicker{0%,100%{opacity:.7}50%{opacity:.95}}
+@keyframes fxMist{0%,100%{opacity:.65}50%{opacity:.9}}
+@keyframes fxWave{0%,100%{opacity:.75}50%{opacity:.95}}
 @keyframes fxSand{0%,100%{transform:translate(0,0)}50%{transform:translate(1px,1px)}}
-@keyframes fxSolid{0%,100%{opacity:.5}50%{opacity:.8}}
+@keyframes fxShimmer{0%,100%{opacity:.55}50%{opacity:.85}}
 @keyframes fxOrganic{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:.9;transform:scale(1.04)}}
 </style></head>
 <body><main class="shell">
@@ -417,15 +418,16 @@ function curvedLabel(id) {
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
  const chars=Array.from(label(id).slice(0,14)), count=chars.length||1;
- const p0=[12,68], p1=[50,88], p2=[88,68];
+ const p0=[11,72], p1=[50,81], p2=[89,72];
  // Approximate each glyph width, then space letters along the arc so they cannot crowd.
  const widths=chars.map(ch=>{
+  if(/\s/.test(ch))return 0.3;
   const code=ch.codePointAt(0), wide=/[А-ЯЁА-ЯЁ]/.test(ch)||code>=0x400&&code<=0x4FF;
-  return wide?1.0:0.68;
+  return wide?1.1:0.72;
  });
  const total=widths.reduce((a,b)=>a+b,0)||1;
- const maxWidth=62, fontSize=Math.max(8,Math.min(13,maxWidth/total));
- const arcLen=81, margin=3, usable=arcLen-margin*2;
+ const maxWidth=66, fontSize=Math.max(7,Math.min(12,maxWidth/total));
+ const arcLen=78.7, margin=3, usable=arcLen-margin*2;
  const scale=Math.min(1,usable/(total*fontSize));
  const stepFont=fontSize*scale; const start=Math.max(0,(usable-total*stepFont)/2); let pos=start; const positions=[];
  for(let i=0;i<count;i++){positions.push(pos+widths[i]*stepFont/2);pos+=widths[i]*stepFont;}
@@ -447,7 +449,7 @@ function curvedLabel(id) {
  for(let i=0;i<count;i++){
   const [x,y,dx,dy]=atLength(positions[i]*arcLen/usable);
   const text=document.createElementNS(ns,'text');
-  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y+stepFont*.36).toFixed(2));
+  text.setAttribute('x',x.toFixed(2));text.setAttribute('y',(y+stepFont*.32).toFixed(2));
   text.setAttribute('text-anchor','middle');text.setAttribute('font-size',stepFont.toFixed(2));
   text.setAttribute('dominant-baseline','central');
   text.setAttribute('transform',`rotate(${(Math.atan2(dy,dx)*180/Math.PI).toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`);
