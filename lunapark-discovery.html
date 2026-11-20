@@ -331,12 +331,27 @@ function blend(colors,weights){const out=[0,0,0];for(let i=0;i<3;i++){let s=0;fo
 const TINTS={water:'#8ed1ff',fire:'#ffb48f',earth:'#e0bd8b',air:'#d8edff'};
 function orbTint(id){const w=composition(id);const colors=Object.values(TINTS).map(rgb);return blend(colors,w);}
 function hex(rgb){return '#'+rgb.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');}
-function orbBackground(id){
- const t=orbTint(id);
- const pale=blend([t,[255,255,255]],[.72,.28]);
- const mid=blend([t,[41,35,60]],[.58,.42]);
- return `radial-gradient(circle at 36% 23%, ${hex(pale)} 0%, ${hex(mid)} 58%, #29233c 82%)`;
+function rgba(hex,a){const c=rgb(hex);return `rgba(${c[0]},${c[1]},${c[2]},${a})`;}
+function orbLayers(id){
+ const w=composition(id);
+ const pos={water:'30% 26%',fire:'68% 27%',earth:'35% 72%',air:'65% 69%'};
+ const order=['water','fire','earth','air'];
+ const layers=[`radial-gradient(circle at 36% 23%, rgba(255,255,255,.10), transparent 55%)`];
+ for(let i=0;i<4;i++){
+  const key=order[i], weight=w[i];
+  if(weight<0.08)continue;
+  const alpha=Math.min(.52,.16+weight*.58);
+  layers.push(`radial-gradient(circle at ${pos[key]}, ${rgba(TINTS[key],alpha)}, transparent 62%)`);
+ }
+ return layers.join(',');
 }
+function applyOrb(el,id){
+ if(!el)return;
+ el.style.backgroundImage=orbLayers(id);
+ el.style.backgroundColor='#29233c';
+ el.style.backgroundBlendMode='screen';
+}
+function orbBackground(id){return orbLayers(id);}
 function icon(id) {
  const span=document.createElement('span');
  span.className='symbol';
@@ -413,7 +428,7 @@ function renderElements() {
  for(const id of all.slice(state.page*PAGE_SIZE,state.page*PAGE_SIZE+PAGE_SIZE)) {
   const wrap=document.createElement('div');wrap.className='token-wrap';
   const el=document.createElement('button');el.type='button';el.className='element'+(!usedIngredients.has(id)?' dead':'');el.dataset.id=id;el.title=label(id);el.setAttribute('aria-label',label(id)+(usedIngredients.has(id)?'':', тупиковый элемент')+', выбрать или перетащить');
-  el.style.background=orbBackground(id);el.append(icon(id),curvedLabel(id));
+  applyOrb(el,id);el.append(icon(id),curvedLabel(id));
   const fav=button(state.favorites.has(id)?'★':'☆','favorite'+(state.favorites.has(id)?' on':''),()=>{if(state.favorites.has(id))state.favorites.delete(id);else state.favorites.add(id);renderElements();});fav.setAttribute('aria-label',(state.favorites.has(id)?'Убрать из избранного: ':'В избранное: ')+label(id));
   wrap.append(el,fav);grid.append(wrap);
  }
@@ -440,7 +455,7 @@ function renderCenter(){
 function renderSlots() {
  document.querySelectorAll('[data-slot]').forEach(el=>{
   const i=Number(el.dataset.slot),id=state.slots[i];el.replaceChildren();
-  if(id){el.style.background=orbBackground(id);el.append(icon(id),curvedLabel(id));}else{el.style.background='';el.textContent='+';}
+  if(id){applyOrb(el,id);el.append(icon(id),curvedLabel(id));}else{el.style.backgroundImage='';el.style.backgroundColor='';el.style.backgroundBlendMode='';el.textContent='+';}
   el.disabled=state.reacting;
   el.classList.toggle('active',state.target===i || (state.target===null && state.nextAfterMix===i));
   el.setAttribute('aria-label',id?`${label(id)}. Нажми для замены`:`Пустой слот ${i+1}`);el.title=id?label(id)+' — нажми для замены':'Пустой слот';
