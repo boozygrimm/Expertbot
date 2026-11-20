@@ -104,34 +104,39 @@
 .element,.slot{border-color:var(--orb-accent,#d7b683);box-shadow:inset 0 0 0 1px #fff4,inset 0 2px 6px #ffffff38,0 0 0 2px color-mix(in srgb,var(--orb-accent,#d7b683) 46%,transparent),0 3px 10px #0009}
 .element .symbol,.slot .symbol,.flight-clone .symbol{position:relative;z-index:1}
 .element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
-.fx.state-fire::after{background:conic-gradient(from 0deg,rgba(255,174,48,.96),rgba(255,54,24,.78),rgba(255,238,128,.95),rgba(255,92,28,.9));mask:radial-gradient(circle,transparent 22%,#000 25% 82%,transparent 86%);animation:fxSpin 1.6s linear infinite,fxFlicker .9s ease-in-out infinite}
-.fx.state-gas::after{background:radial-gradient(ellipse at 30% 40%,#ffffffbb 0 8%,transparent 29%),radial-gradient(ellipse at 68% 62%,#d3f2ffbb 0 12%,transparent 38%),conic-gradient(from 0deg,#d8f4ff88,#b6d7ff33,#f7feff99,#d8f4ff88);filter:blur(1px);animation:fxSpin 7s linear infinite,fxMist 2.2s ease-in-out infinite}
-.fx.state-liquid::after{background:repeating-radial-gradient(ellipse at 50% 120%,transparent 0 7px,#dbf6ffb0 8px 10px,transparent 11px 17px);animation:fxWave 1.8s ease-in-out infinite,fxLiquidFlow 3s linear infinite}
-.fx.swamp::after{background:repeating-radial-gradient(ellipse at 50% 115%,transparent 0 7px,#d4f29d 8px 10px,transparent 11px 17px),radial-gradient(ellipse at 50% 68%,#789d3c66,transparent 70%);animation:fxWave 1.8s ease-in-out infinite,fxLiquidFlow 3s linear infinite}
-.fx.swamp{animation:fxGlowOrganic 2.4s ease-in-out infinite}
-.fx.state-sand::after{background-image:radial-gradient(circle at 50% 50%, rgba(255,222,125,.95) 1.3px, transparent 2.6px);background-size:8px 8px;animation:fxSand 2.2s linear infinite}
-.fx.state-solid::after{background:conic-gradient(from 0deg, rgba(180,200,220,.6), rgba(220,230,245,.42), rgba(140,160,180,.6), rgba(180,200,220,.6));animation:fxSpin 6s linear infinite,fxShimmer 2.6s ease-in-out infinite}
-.fx.state-organic::after{background:radial-gradient(ellipse at 50% 50%,rgba(120,255,145,.72) 0 12%,transparent 64%),repeating-radial-gradient(ellipse at 50% 50%,transparent 0 7px,rgba(145,255,155,.72) 8px 10px,transparent 11px 17px);animation:fxOrganic 2.2s ease-in-out infinite}
-.fx.state-fire{animation:fxGlowFire 1.4s ease-in-out infinite}
-.fx.state-gas{animation:fxGlowGas 3s ease-in-out infinite}
-.fx.state-liquid{animation:fxGlowLiquid 2s ease-in-out infinite}
-.fx.state-sand{animation:fxGlowSand 2.6s ease-in-out infinite}
-.fx.state-solid{animation:fxGlowSolid 3.4s ease-in-out infinite}
-.fx.state-organic{animation:fxGlowOrganic 2.4s ease-in-out infinite}
+.fx.state-fire::after{background:radial-gradient(ellipse at 50% 82%,#fff4c966 0 5%,transparent 26%),radial-gradient(ellipse at 34% 65%,#ffb84b88 0 8%,transparent 38%),radial-gradient(ellipse at 68% 54%,#ff704488 0 10%,transparent 42%);filter:blur(2px);animation:luxFire 4.8s ease-in-out infinite}
+.fx.state-gas::after{background:radial-gradient(ellipse at 30% 42%,#fff9 0 8%,transparent 36%),radial-gradient(ellipse at 70% 58%,#d3edff99 0 13%,transparent 43%),radial-gradient(ellipse at 48% 76%,#fff5 0 12%,transparent 40%);filter:blur(5px);animation:luxVapor 7s ease-in-out infinite}
+.fx.state-liquid::after{background:radial-gradient(ellipse at 22% 28%,#ffffff70 0 3%,transparent 22%),radial-gradient(ellipse at 74% 69%,#b9f3ff66 0 6%,transparent 26%),linear-gradient(128deg,transparent 18%,#ffffff25 34%,transparent 49%,#91e6ff35 63%,transparent 78%);background-size:130% 130%;filter:blur(1px);animation:luxLiquid 6.5s ease-in-out infinite}
+.fx.swamp::after{background:radial-gradient(ellipse at 28% 65%,#d4e99b88 0 4%,transparent 30%),radial-gradient(ellipse at 71% 34%,#9fe29a77 0 7%,transparent 34%),linear-gradient(130deg,transparent 25%,#e5f3bb33 43%,transparent 60%);background-size:130% 130%;filter:blur(2px);animation:luxLiquid 7s ease-in-out infinite}
+.fx.swamp{animation:fxGlowOrganic 4.8s ease-in-out infinite}
+.fx.state-sand::after{background:radial-gradient(ellipse at 25% 72%,#f8df9a70 0 2%,transparent 24%),radial-gradient(ellipse at 68% 35%,#fff3bf80 0 1.5%,transparent 19%),linear-gradient(145deg,transparent 32%,#fff2bd35 45%,transparent 57%);filter:blur(1.4px);animation:luxSand 8s ease-in-out infinite}
+.fx.state-solid::after{background:linear-gradient(132deg,transparent 28%,#ffffff77 38%,#d9efff55 41%,transparent 49%),linear-gradient(42deg,transparent 45%,#f8fbff55 51%,transparent 57%),radial-gradient(ellipse at 50% 50%,#ffffff20,transparent 65%);background-size:220% 220%;animation:luxFacet 7.5s ease-in-out infinite}
+.fx.state-organic::after{background:radial-gradient(ellipse at 30% 40%,#b9ff9c88 0 7%,transparent 34%),radial-gradient(ellipse at 70% 64%,#66e9b677 0 10%,transparent 38%),radial-gradient(ellipse at 52% 50%,#e9ffc933,transparent 58%);filter:blur(3px);animation:luxBloom 6s ease-in-out infinite}
+.fx.state-fire{animation:fxGlowFire 6s ease-in-out infinite}
+.fx.state-gas{animation:fxGlowGas 7s ease-in-out infinite}
+.fx.state-liquid{animation:fxGlowLiquid 6.5s ease-in-out infinite}
+.fx.state-sand{animation:fxGlowSand 8s ease-in-out infinite}
+.fx.state-solid{animation:fxGlowSolid 7.5s ease-in-out infinite}
+.fx.state-organic{animation:fxGlowOrganic 6s ease-in-out infinite}
 @keyframes fxSpin{to{transform:rotate(360deg)}}
 @keyframes fxFlicker{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
 @keyframes fxMist{0%,100%{opacity:.75;transform:translate(0,0)}50%{opacity:1;transform:translate(2px,-2px)}}
 @keyframes fxWave{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
-@keyframes fxLiquidFlow{to{background-position:0 17px}}
+@keyframes luxFire{0%,100%{transform:scale(.94) translateY(2%);opacity:.72}50%{transform:scale(1.04) translateY(-3%);opacity:1}}
+@keyframes luxVapor{0%,100%{transform:translate(-4%,3%) scale(.96);opacity:.55}50%{transform:translate(5%,-4%) scale(1.08);opacity:.9}}
+@keyframes luxLiquid{0%,100%{background-position:0% 35%;transform:scale(1)}50%{background-position:100% 65%;transform:scale(1.035)}}
+@keyframes luxSand{0%,100%{background-position:0% 0%;opacity:.62}50%{background-position:35% 45%;opacity:.92}}
+@keyframes luxFacet{0%,100%{background-position:0% 0%;opacity:.55}50%{background-position:100% 100%;opacity:.95}}
+@keyframes luxBloom{0%,100%{transform:scale(.94);opacity:.58}50%{transform:scale(1.08);opacity:.9}}
 @keyframes fxSand{to{background-position:8px 0}}
 @keyframes fxShimmer{0%,100%{opacity:.65}50%{opacity:.95}}
 @keyframes fxOrganic{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
-@keyframes fxGlowFire{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(255,120,60,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 24px rgba(255,120,60,.6)}}
-@keyframes fxGlowGas{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(200,235,255,.25)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 24px rgba(200,235,255,.55)}}
-@keyframes fxGlowLiquid{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(77,184,255,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 24px rgba(77,184,255,.6)}}
-@keyframes fxGlowSand{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(230,196,105,.25)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 24px rgba(230,196,105,.55)}}
-@keyframes fxGlowSolid{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(180,200,220,.22)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 22px rgba(180,200,220,.5)}}
-@keyframes fxGlowOrganic{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(120,220,120,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 24px rgba(120,220,120,.6)}}
+@keyframes fxGlowFire{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(255,120,60,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(255,120,60,.38)}}
+@keyframes fxGlowGas{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(200,235,255,.25)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(200,235,255,.34)}}
+@keyframes fxGlowLiquid{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(77,184,255,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(77,184,255,.38)}}
+@keyframes fxGlowSand{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(230,196,105,.25)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(230,196,105,.34)}}
+@keyframes fxGlowSolid{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(180,200,220,.22)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(180,200,220,.32)}}
+@keyframes fxGlowOrganic{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(120,220,120,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(120,220,120,.38)}}
 </style></head>
 <body><main class="shell">
 <header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button><button class="sound" id="effect" type="button" aria-pressed="true" title="Включить текстурный эффект">✦ <span>вкл</span></button></header>
