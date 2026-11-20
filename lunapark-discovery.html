@@ -112,6 +112,16 @@
 .fx.state-sand::after{background:radial-gradient(circle at 18% 26%,#fff1ba 0 1px,transparent 2px),radial-gradient(circle at 72% 58%,#ffe7a0 0 1.3px,transparent 2.3px),radial-gradient(circle at 48% 82%,#fff8d4 0 1px,transparent 2px),radial-gradient(ellipse at 30% 65%,#f7db9170,transparent 45%);background-size:100% 100%,100% 100%,100% 100%,100% 100%;filter:drop-shadow(0 0 2px #ffe3a088);animation:luxSand 2.6s ease-in-out infinite}
 .fx.state-solid::after{background:radial-gradient(ellipse at 38% 32%,#ffffff55,transparent 52%),radial-gradient(ellipse at 70% 68%,#e8e1ff40,transparent 58%);background-size:160% 160%;background-position:10% 15%;filter:blur(5px);animation:solidShimmer 2.6s ease-in-out infinite}
 .fx.state-organic::after{background:radial-gradient(ellipse at 30% 40%,#c7ff9caa 0 7%,transparent 34%),radial-gradient(ellipse at 70% 64%,#66e9b688 0 10%,transparent 38%),radial-gradient(circle at 48% 28%,#eaffbd 0 1px,transparent 2px),radial-gradient(circle at 72% 46%,#d7ffaf 0 1px,transparent 2px),radial-gradient(ellipse at 52% 50%,#e9ffc944,transparent 58%);filter:blur(1.5px);animation:luxBloom 2s ease-in-out infinite}
+.fx.state-lava::after{background:radial-gradient(ellipse at 24% 68%,#fff0a0 0 4%,#ff8d21 9%,#dc3718 20%,transparent 42%),radial-gradient(ellipse at 69% 40%,#ffe36a 0 3%,#ff7420 12%,#a9281b 25%,transparent 46%),radial-gradient(ellipse at 48% 52%,#65232a 0 16%,transparent 62%);background-size:160% 150%;filter:blur(1.2px);animation:lavaFlow 4.2s ease-in-out infinite}
+.fx.state-lava{animation:fxGlowFire 3.5s ease-in-out infinite}
+.fx.state-ice,.fx.state-snow,.fx.state-mud,.fx.state-viscous,.fx.state-geyser,.fx.state-plant,.fx.state-animal{animation:fxGlowOrganic 3.2s ease-in-out infinite}
+.fx.state-ice::after{background:linear-gradient(132deg,transparent 36%,#effcffbb 46%,#a9eaff77 50%,transparent 57%),radial-gradient(ellipse at 30% 25%,#fff7,transparent 45%);background-size:220% 220%;filter:drop-shadow(0 0 2px #b8efff99);animation:iceGlimmer 3.2s ease-in-out infinite}
+.fx.state-snow::after{background:radial-gradient(circle at 18% 10%,#fff 0 1.2px,transparent 2px),radial-gradient(circle at 70% 30%,#f7fdff 0 1.5px,transparent 2.4px),radial-gradient(circle at 44% 62%,#fff 0 1px,transparent 1.8px),radial-gradient(circle at 84% 80%,#ecf9ff 0 1.2px,transparent 2px);background-size:100% 100%;filter:drop-shadow(0 0 2px #fff);animation:snowDrift 2.8s linear infinite}
+.fx.state-mud::after{background:radial-gradient(ellipse at 28% 70%,#a47a49aa 0 8%,transparent 38%),radial-gradient(ellipse at 73% 42%,#30251fbb 0 12%,transparent 44%),radial-gradient(ellipse at 50% 50%,#d1ae7666,transparent 64%);background-size:150% 150%;filter:blur(2px);animation:mudSlump 4.4s ease-in-out infinite}
+.fx.state-viscous::after{background:radial-gradient(ellipse at 28% 58%,#ffe08a 0 3%,#efa83d99 12%,transparent 38%),radial-gradient(ellipse at 72% 40%,#fff0b1 0 3%,#c77b3099 14%,transparent 42%),linear-gradient(125deg,transparent 28%,#fff8cf55 48%,transparent 66%);background-size:160% 150%;filter:blur(1.5px);animation:viscousFlow 4s ease-in-out infinite}
+.fx.state-geyser::after{background:radial-gradient(ellipse at 50% 58%,#dbffff 0 4%,#78e5f1bb 12%,transparent 38%),radial-gradient(ellipse at 50% 25%,#fff 0 3%,#c8faff88 15%,transparent 42%),radial-gradient(ellipse at 50% 82%,#79e7ee88,transparent 50%);filter:blur(1.5px);animation:geyserPulse 2.3s ease-in-out infinite}
+.fx.state-plant::after{background:radial-gradient(ellipse at 31% 52%,#bbff9b88 0 7%,transparent 36%),radial-gradient(ellipse at 67% 45%,#65d88a77 0 8%,transparent 38%),radial-gradient(ellipse at 52% 60%,#e7ffb633,transparent 56%);filter:blur(2px);animation:plantSway 3s ease-in-out infinite}
+.fx.state-animal::after{background:radial-gradient(ellipse at 50% 60%,#d8ffcd55,transparent 58%);filter:blur(3px);animation:animalBreath 2.1s ease-in-out infinite}
 .liquid-drops{position:absolute;inset:0;border-radius:50%;overflow:hidden;pointer-events:none;z-index:1}
 .liquid-drops i{position:absolute;top:-12px;left:var(--x);width:var(--w);height:var(--h);border-radius:50% 50% 52% 52% / 40% 40% 60% 60%;background:linear-gradient(125deg,#f7ffff 0%,#c9fbff 36%,#70dced 72%,#efffff 100%);box-shadow:inset -1px -1px 2px #188caa66,0 0 4px #d9ffff88;animation:dropFall var(--duration) linear var(--delay) infinite}
 .liquid-drops i::after{content:"";position:absolute;left:20%;top:17%;width:27%;height:22%;border-radius:50%;background:#fff;opacity:.88}
@@ -129,6 +139,15 @@
 @keyframes gasVortex{0%{transform:rotate(0) scale(.9);opacity:.65}50%{transform:rotate(180deg) scale(1.08);opacity:1}100%{transform:rotate(360deg) scale(.9);opacity:.65}}
 @keyframes liquidDrip{0%{background-position:25% -25%,58% -70%,80% -5%,0 0;opacity:.35}55%{background-position:25% 50%,58% 20%,80% 68%,0 0;opacity:1}100%{background-position:25% 125%,58% 105%,80% 140%,0 0;opacity:.25}}
 @keyframes waterLight{0%,100%{opacity:.45;transform:scale(.96)}50%{opacity:.85;transform:scale(1.04)}}
+@keyframes lavaFlow{0%,100%{background-position:0% 52%;filter:blur(1.2px) brightness(.92)}50%{background-position:100% 48%;filter:blur(1.2px) brightness(1.18)}}
+@keyframes iceGlimmer{0%,100%{background-position:0% 20%;opacity:.42}50%{background-position:100% 80%;opacity:.95}}
+@keyframes snowDrift{0%{background-position:18% -35%,70% -10%,44% 25%,84% 0%;opacity:.3}50%{background-position:20% 48%,66% 50%,47% 75%,81% 62%;opacity:.95}100%{background-position:22% 130%,62% 120%,50% 135%,78% 128%;opacity:.3}}
+@keyframes mudSlump{0%,100%{background-position:0% 50%;transform:scale(.96);opacity:.55}50%{background-position:100% 45%;transform:scale(1.04);opacity:.9}}
+@keyframes viscousFlow{0%,100%{background-position:0% 50%;transform:scale(.97);opacity:.58}50%{background-position:100% 45%;transform:scale(1.04);opacity:.95}}
+@keyframes geyserPulse{0%,100%{transform:scaleY(.72) translateY(8%);opacity:.45}55%{transform:scaleY(1.12) translateY(-5%);opacity:1}}
+@keyframes plantSway{0%,100%{transform:rotate(-3deg) scale(.96);opacity:.5}50%{transform:rotate(3deg) scale(1.06);opacity:.9}}
+@keyframes animalBreath{0%,100%{transform:scale(.94);opacity:.42}50%{transform:scale(1.06);opacity:.78}}
+
 @keyframes dropFall{0%{top:-12px;opacity:0;transform:scale(.72)}8%{opacity:.95;transform:scale(1)}88%{opacity:.9}100%{top:100%;opacity:0;transform:scale(.9)}}
 @keyframes solidShimmer{0%,100%{background-position:10% 15%;opacity:.35}50%{background-position:90% 85%;opacity:.78}}
 @keyframes luxVapor{0%,100%{transform:translate(-12%,8%) scale(.84);opacity:.35}50%{transform:translate(12%,-10%) scale(1.16);opacity:1}}
@@ -417,9 +436,29 @@ function orbColor(id){
  const mid=blend([t,[29,20,43]],[.78,.22]);
  return `radial-gradient(circle at 36% 23%, ${hex(pale)} 0%, ${hex(t)} 34%, ${hex(mid)} 76%, #171121 100%)`;
 }
+const WATER_DROP_IDS=new Set(['w','rain','lake','sea','ocean','wave','river','salt_water','sweet_water']);
+const LIQUID_IDS=new Set(['acid','alcohol','ale','beer','blood','borscht','coca_cola','cocktail','cocoa','champagne','gasoline','juice','kefir','liquor','milk','moonshine','oil','perfume','pina_colada','poison','rum','soda','sunflower_oil','tea','tequila','vinegar','vodka','whiskey','wine','swamp']);
+const GAS_IDS=new Set(['a','carbon_dioxide','explosive_gas','hydrogen','oxygen','ozone','pressure','smoke','steam','wind','cloud','sky','storm']);
+const POWDER_IDS=new Set(['ashes','dust','flour','gunpowder','sand','soil','saltpeter']);
+const PLANT_KEYS=new Set(['plant','tree','flower','seed','grass','forest','reed','moss','fern','algae','vine','cane','bamboo','cactus','palm','lichen','mushroom','sunflower']);
+const ANIMAL_KEYS=new Set(['bird','fish','beast','insect','beetle','worm','snake','lizard','turtle','frog','bat','bear','wolf','mouse','elephant','whale','crab','squid','octopus','spider','scorpion','bee','butterfly','ant','termite','tick','leech','slug','snail','shell','clam','pearl','cat','dog','horse','chicken','camel','dinosaur','dragon','dragonfly','electric_eel','firefly','jellyfish','kangaroo','lobster','monkey','panda','penguin','pig','phoenix','salamander','scarab','starfish','vulture','woodpecker','beaver','hummingbird','mussels','parrot','salmon']);
+const EXTRA_STATES=['lava','ice','snow','mud','viscous','geyser','plant','animal'];
 function dominantState(id){
- const w=stateProfile(id);
- let best=0;
+ const key=glyphKey(id);
+ // Explicit material overrides keep special substances from inheriting the
+ // generic state of their recipe ingredients (notably lava from fire).
+ if(id==='lava'||id==='volcano')return 'lava';
+ if(id==='ice'||key==='ice')return 'ice';
+ if(id==='snow'||key==='snow')return 'snow';
+ if(id==='dirt')return 'mud';
+ if(['oil','honey','fat','gasoline'].includes(id))return 'viscous';
+ if(id==='geyser')return 'geyser';
+ if(POWDER_IDS.has(id))return 'sand';
+ if(WATER_DROP_IDS.has(id)||LIQUID_IDS.has(id))return 'liquid';
+ if(GAS_IDS.has(id))return 'gas';
+ if(PLANT_KEYS.has(key))return 'plant';
+ if(ANIMAL_KEYS.has(key)||categories.animals.has(id))return 'animal';
+ const w=stateProfile(id);let best=0;
  for(let i=1;i<w.length;i++)if(w[i]>w[best])best=i;
  return STATE_ORDER[best];
 }
@@ -432,7 +471,7 @@ function clearOrb(el){
  el.style.removeProperty('--orb-accent');
  el.classList.remove('swamp');
  el.querySelectorAll('.state-fx').forEach(node=>node.remove());
- for(const k of STATE_ORDER)el.classList.remove('state-'+k);
+ for(const k of [...STATE_ORDER,...EXTRA_STATES])el.classList.remove('state-'+k);
  el.classList.remove('fx');
 }
 function applyOrb(el,id){
@@ -447,7 +486,7 @@ function applyOrb(el,id){
  if(key==='swamp'||key==='bog'||key==='marsh')el.classList.add('swamp');
  if(state.effect){
   const phase=dominantState(id);el.classList.add('fx','state-'+phase);
-  if(phase==='liquid'){
+  if(phase==='liquid'&&WATER_DROP_IDS.has(id)){
    const field=document.createElement('span');field.className='state-fx liquid-drops';field.setAttribute('aria-hidden','true');
    [[21,5,7,'0s'],[42,5,6,'-.52s'],[63,6,8,'-1.04s'],[81,5,7,'-1.56s']].forEach(([x,w,h,delay])=>{const drop=document.createElement('i');drop.style.setProperty('--x',x+'%');drop.style.setProperty('--w',w+'px');drop.style.setProperty('--h',h+'px');drop.style.setProperty('--duration','2.08s');drop.style.setProperty('--delay',delay);field.append(drop);});
    el.append(field);
