@@ -106,14 +106,14 @@
 .element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
 .fx.state-fire::after{background:radial-gradient(ellipse at 48% 80%,#fff4cae8 0 3%,transparent 18%),radial-gradient(ellipse at 35% 62%,#ffb84bbb 0 9%,transparent 38%),radial-gradient(ellipse at 68% 55%,#ff7044aa 0 12%,transparent 43%),radial-gradient(circle at 24% 31%,#fff3b8 0 1px,transparent 2px),radial-gradient(circle at 77% 38%,#ffd978 0 1px,transparent 2px);filter:blur(1.4px);animation:luxFire 1.7s ease-in-out infinite}
 .fx.state-gas::after{background:radial-gradient(circle at 24% 28%,#f5fdff 0 1.5px,transparent 2.7px),radial-gradient(circle at 68% 42%,#e4f7ff 0 2px,transparent 3.2px),radial-gradient(circle at 42% 76%,#fff 0 1.4px,transparent 2.5px),radial-gradient(circle at 78% 78%,#d7f2ff 0 1px,transparent 2px),conic-gradient(from 12deg at 50% 52%,transparent 0 14%,#e4f6ff55 19%,transparent 28% 43%,#d9f4ff66 50%,transparent 61% 78%,#fff4 84%,transparent 92%);background-size:100% 100%;filter:blur(1.2px);transform-origin:center;animation:gasVortex 4.2s linear infinite}
-.fx.state-liquid::after{background:radial-gradient(ellipse at 30% 35%,#ffffff40,transparent 45%),radial-gradient(ellipse at 72% 62%,#aaf5ff35,transparent 52%);filter:blur(2px);animation:waterLight 3.2s ease-in-out infinite}
+.fx.state-liquid::after{background:radial-gradient(ellipse at 30% 35%,#ffffff40,transparent 45%),radial-gradient(ellipse at 72% 62%,#aaf5ff35,transparent 52%),linear-gradient(112deg,transparent 34%,#e7ffff28 48%,transparent 62%);background-size:160% 150%;filter:blur(2px);animation:liquidFlow 3.6s ease-in-out infinite}
 .fx.swamp::after{background:radial-gradient(ellipse at 28% 65%,#d4e99b88 0 4%,transparent 30%),radial-gradient(ellipse at 71% 34%,#9fe29a77 0 7%,transparent 34%),linear-gradient(130deg,transparent 25%,#e5f3bb33 43%,transparent 60%);background-size:130% 130%;filter:blur(2px);animation:luxLiquid 2.5s ease-in-out infinite}
 .fx.swamp{animation:fxGlowOrganic 2.4s ease-in-out infinite}
 .fx.state-sand::after{background:radial-gradient(circle at 18% 26%,#fff1ba 0 1px,transparent 2px),radial-gradient(circle at 72% 58%,#ffe7a0 0 1.3px,transparent 2.3px),radial-gradient(circle at 48% 82%,#fff8d4 0 1px,transparent 2px),radial-gradient(ellipse at 30% 65%,#f7db9170,transparent 45%);background-size:100% 100%,100% 100%,100% 100%,100% 100%;filter:drop-shadow(0 0 2px #ffe3a088);animation:luxSand 2.6s ease-in-out infinite}
 .fx.state-solid::after{background:radial-gradient(ellipse at 38% 32%,#ffffff55,transparent 52%),radial-gradient(ellipse at 70% 68%,#e8e1ff40,transparent 58%);background-size:160% 160%;background-position:10% 15%;filter:blur(5px);animation:solidShimmer 2.6s ease-in-out infinite}
 .fx.state-organic::after{background:radial-gradient(ellipse at 30% 40%,#c7ff9caa 0 7%,transparent 34%),radial-gradient(ellipse at 70% 64%,#66e9b688 0 10%,transparent 38%),radial-gradient(circle at 48% 28%,#eaffbd 0 1px,transparent 2px),radial-gradient(circle at 72% 46%,#d7ffaf 0 1px,transparent 2px),radial-gradient(ellipse at 52% 50%,#e9ffc944,transparent 58%);filter:blur(1.5px);animation:luxBloom 2s ease-in-out infinite}
 .fx.state-lava::after{background:radial-gradient(ellipse at 24% 68%,#fff0a0 0 4%,#ff8d21 9%,#dc3718 20%,transparent 42%),radial-gradient(ellipse at 69% 40%,#ffe36a 0 3%,#ff7420 12%,#a9281b 25%,transparent 46%),radial-gradient(ellipse at 48% 52%,#65232a 0 16%,transparent 62%);background-size:160% 150%;filter:blur(1.2px);animation:lavaFlow 4.2s ease-in-out infinite}
-.fx.state-lava{animation:fxGlowFire 3.5s ease-in-out infinite}
+.fx.state-lava{animation:lavaGlow 4.2s ease-in-out infinite}
 .fx.state-ice,.fx.state-snow,.fx.state-mud,.fx.state-viscous,.fx.state-geyser,.fx.state-plant,.fx.state-animal{animation:fxGlowOrganic 3.2s ease-in-out infinite}
 .fx.state-ice::after{background:linear-gradient(132deg,transparent 36%,#effcffbb 46%,#a9eaff77 50%,transparent 57%),radial-gradient(ellipse at 30% 25%,#fff7,transparent 45%);background-size:220% 220%;filter:drop-shadow(0 0 2px #b8efff99);animation:iceGlimmer 3.2s ease-in-out infinite}
 .fx.state-snow::after{background:radial-gradient(circle at 18% 10%,#fff 0 1.2px,transparent 2px),radial-gradient(circle at 70% 30%,#f7fdff 0 1.5px,transparent 2.4px),radial-gradient(circle at 44% 62%,#fff 0 1px,transparent 1.8px),radial-gradient(circle at 84% 80%,#ecf9ff 0 1.2px,transparent 2px);background-size:100% 100%;filter:drop-shadow(0 0 2px #fff);animation:snowDrift 2.8s linear infinite}
@@ -140,6 +140,8 @@
 @keyframes liquidDrip{0%{background-position:25% -25%,58% -70%,80% -5%,0 0;opacity:.35}55%{background-position:25% 50%,58% 20%,80% 68%,0 0;opacity:1}100%{background-position:25% 125%,58% 105%,80% 140%,0 0;opacity:.25}}
 @keyframes waterLight{0%,100%{opacity:.45;transform:scale(.96)}50%{opacity:.85;transform:scale(1.04)}}
 @keyframes lavaFlow{0%,100%{background-position:0% 52%;filter:blur(1.2px) brightness(.92)}50%{background-position:100% 48%;filter:blur(1.2px) brightness(1.18)}}
+@keyframes lavaGlow{0%,100%{filter:brightness(.94) saturate(1.02)}50%{filter:brightness(1.08) saturate(1.12)}}
+@keyframes liquidFlow{0%,100%{background-position:0% 48%;opacity:.48;transform:scale(.97)}50%{background-position:100% 52%;opacity:.9;transform:scale(1.03)}}
 @keyframes iceGlimmer{0%,100%{background-position:0% 20%;opacity:.42}50%{background-position:100% 80%;opacity:.95}}
 @keyframes snowDrift{0%{background-position:18% -35%,70% -10%,44% 25%,84% 0%;opacity:.3}50%{background-position:20% 48%,66% 50%,47% 75%,81% 62%;opacity:.95}100%{background-position:22% 130%,62% 120%,50% 135%,78% 128%;opacity:.3}}
 @keyframes mudSlump{0%,100%{background-position:0% 50%;transform:scale(.96);opacity:.55}50%{background-position:100% 45%;transform:scale(1.04);opacity:.9}}
@@ -451,7 +453,7 @@ function dominantState(id){
  if(id==='ice'||key==='ice')return 'ice';
  if(id==='snow'||key==='snow')return 'snow';
  if(id==='dirt')return 'mud';
- if(['oil','honey','fat','gasoline'].includes(id))return 'viscous';
+ if(['oil','sunflower_oil','honey','fat','gasoline'].includes(id))return 'viscous';
  if(id==='geyser')return 'geyser';
  if(POWDER_IDS.has(id))return 'sand';
  if(WATER_DROP_IDS.has(id)||LIQUID_IDS.has(id))return 'liquid';
