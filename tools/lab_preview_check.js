@@ -244,11 +244,12 @@ async function solveContract(win, doc, labelText) {
   await sleep(50);
   check(errors.length === 0, 'animal brief loads without errors', errors);
   check(texts(d6).title === 'Живая лаборатория', 'animal brief is offered when a creature is reachable', texts(d6));
+  check(texts(d6).progress.includes('животное'), 'animal brief names what it looks for', texts(d6));
 
   // a new element outside the theme is explained and does not count
   await mixPair(w6, d6, 'a', 'a');
   let t6 = texts(d6);
-  check(!t6.feedbackHidden && t6.feedback.includes('не из темы'), 'off-theme discovery explains why it does not count', t6);
+  check(!t6.feedbackHidden && t6.feedback.includes('не подходит') && t6.feedback.includes('животное'), 'off-theme discovery explains why it does not count', t6);
   check(t6.progress.startsWith('Прогресс 0 / 1'), 'off-theme discovery leaves the brief at 0/1', t6);
 
   await mixPair(w6, d6, 'egg', 'life');

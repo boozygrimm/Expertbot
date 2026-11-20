@@ -560,9 +560,12 @@ function selectedItems() {
  return result;
 }
 const CATEGORY_GOALS={
- nature:{title:'Природный след',noun:'явление природы',theme:'результат должен быть явлением природы: вода, камень, пар, лёд, болото.'},
- animals:{title:'Живая лаборатория',noun:'живое существо',theme:'результат должен быть живым существом, а не веществом или вещью.'},
- machines:{title:'Механический цех',noun:'механизм',theme:'результат должен быть механизмом, транспортом или инструментом.'}
+ nature:{title:'Природный след',noun:'явление природы',need:'нужно новое явление природы',short:'вода, камень, пар, лёд, огонь, лес',
+  theme:'считаются стихии и явления: вода, камень, пар, лёд, огонь, лес, песок.'},
+ animals:{title:'Живая лаборатория',noun:'животное',need:'нужно новое животное',short:'звери, птицы, рыбы, насекомые, моллюски',
+  theme:'считаются звери, птицы, рыбы, насекомые и моллюски; растения и микробы — нет.'},
+ machines:{title:'Механический цех',noun:'механизм',need:'нужен новый механизм',short:'машины, транспорт, инструменты',
+  theme:'считаются машины, транспорт, инструменты и техника.'}
 };
 const CATEGORY_ORDER=Object.keys(CATEGORY_GOALS);
 const newGoal=()=>({kind:'new',count:goalTargets({kind:'new',count:2,category:null}).length>1?2:1,category:null});
@@ -771,7 +774,7 @@ function mix(){
    const feedback=$('#research-feedback'),goal=state.research.goal;
    if(feedback){
     if(!newElement)feedback.textContent=`Рецепт записан, но «${label(r.result)}» уже открыт: контракту нужен новый элемент.`;
-    else if(goal.kind==='category')feedback.textContent=`«${label(r.result)}» — не из темы «${goalText(goal).title}»: нужен новый ${goalText(goal).noun}.`;
+    else if(goal.kind==='category')feedback.textContent=`«${label(r.result)}» не подходит: ${goalText(goal).need} — ${goalText(goal).short}.`;
     if(!newElement||goal.kind==='category'){feedback.hidden=false;feedback.dataset.transient='0';}
    }
   }
