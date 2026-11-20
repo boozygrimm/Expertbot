@@ -141,6 +141,8 @@ async function solveContract(win, doc, labelText) {
   check(t.nextHidden === true, 'next-contract button hidden initially', t);
   check(t.hintDisabled === false && t.hintMode.includes('×1'), 'single hint available before mastery', t);
   check(d1.querySelectorAll('#elements .element').length === 4, 'starter collection has 4 elements', d1.querySelectorAll('#elements .element').length);
+  check(d1.querySelector('#page-label') === null && d1.querySelector('#prev') === null, 'collection has no page switcher any more', true);
+  check(w1.getComputedStyle(d1.querySelector('#elements')).overflowY === 'auto', 'collection is a vertical scroll container', w1.getComputedStyle(d1.querySelector('#elements')).overflowY);
 
   d1.querySelector('#research-hint').click();
   await sleep(20);
@@ -201,6 +203,13 @@ async function solveContract(win, doc, labelText) {
     contractsPlayed++;
     check(solved > 0 && isDone(d1), `contract ${contractsPlayed} (${title}) is solvable and counted`, texts(d1));
   }
+
+  check(d1.querySelectorAll('#elements .element').length === save(w1).opened.length, 'every owned element is rendered inside the scrolling list', {rendered: d1.querySelectorAll('#elements .element').length, owned: save(w1).opened.length});
+
+  // album overlay keeps its own paging and still opens
+  d1.querySelector('[data-view="album"]').click();
+  check(d1.querySelector('#overlay').hidden === false && d1.querySelector('#overlay-title').textContent.includes('Альбом'), 'album overlay opens with its own pager', d1.querySelector('#overlay-title').textContent);
+  d1.querySelector('#back').click();
 
   const saved = save(w1);
   check(saved.research.contract > 1 && saved.found.length >= 4 && saved.opened.length >= 6, 'progress accumulates across contracts', {research: saved.research, found: saved.found.length});
