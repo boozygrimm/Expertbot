@@ -113,8 +113,8 @@
 .fx.state-solid::after{background:radial-gradient(ellipse at 38% 32%,#ffffff55,transparent 52%),radial-gradient(ellipse at 70% 68%,#e8e1ff40,transparent 58%);background-size:160% 160%;background-position:10% 15%;filter:blur(5px);animation:solidShimmer 2.6s ease-in-out infinite}
 .fx.state-organic::after{background:radial-gradient(ellipse at 30% 40%,#c7ff9caa 0 7%,transparent 34%),radial-gradient(ellipse at 70% 64%,#66e9b688 0 10%,transparent 38%),radial-gradient(circle at 48% 28%,#eaffbd 0 1px,transparent 2px),radial-gradient(circle at 72% 46%,#d7ffaf 0 1px,transparent 2px),radial-gradient(ellipse at 52% 50%,#e9ffc944,transparent 58%);filter:blur(1.5px);animation:luxBloom 2s ease-in-out infinite}
 .liquid-drops{position:absolute;inset:0;border-radius:50%;overflow:hidden;pointer-events:none;z-index:1}
-.liquid-drops i{position:absolute;top:-12px;left:var(--x);width:var(--w);height:var(--h);border-radius:60% 42% 62% 48% / 28% 32% 72% 70%;background:linear-gradient(120deg,#f7ffff 0%,#c9fbff 34%,#70dced 72%,#efffff 100%);box-shadow:inset -1px -1px 2px #188caa77,0 0 4px #d9ffffaa;animation:dropFall var(--duration) linear var(--delay) infinite}
-.liquid-drops i::after{content:"";position:absolute;left:42%;top:-55%;width:18%;height:72%;border-radius:99px;background:linear-gradient(transparent,#e1ffffaa)}
+.liquid-drops i{position:absolute;top:-12px;left:var(--x);width:var(--w);height:var(--h);border-radius:50% 50% 52% 52% / 40% 40% 60% 60%;background:linear-gradient(125deg,#f7ffff 0%,#c9fbff 36%,#70dced 72%,#efffff 100%);box-shadow:inset -1px -1px 2px #188caa66,0 0 4px #d9ffff88;animation:dropFall var(--duration) linear var(--delay) infinite}
+.liquid-drops i::after{content:"";position:absolute;left:20%;top:17%;width:27%;height:22%;border-radius:50%;background:#fff;opacity:.88}
 .fx.state-fire{animation:fxGlowFire 1.8s ease-in-out infinite}
 .fx.state-gas{animation:fxGlowGas 2.7s ease-in-out infinite}
 .fx.state-liquid{animation:fxGlowLiquid 2.2s ease-in-out infinite}
@@ -449,7 +449,7 @@ function applyOrb(el,id){
   const phase=dominantState(id);el.classList.add('fx','state-'+phase);
   if(phase==='liquid'){
    const field=document.createElement('span');field.className='state-fx liquid-drops';field.setAttribute('aria-hidden','true');
-   [[21,5,9,'0s'],[42,4,7,'-.52s'],[63,6,11,'-1.04s'],[81,4,8,'-1.56s']].forEach(([x,w,h,delay])=>{const drop=document.createElement('i');drop.style.setProperty('--x',x+'%');drop.style.setProperty('--w',w+'px');drop.style.setProperty('--h',h+'px');drop.style.setProperty('--duration','2.08s');drop.style.setProperty('--delay',delay);field.append(drop);});
+   [[21,5,7,'0s'],[42,5,6,'-.52s'],[63,6,8,'-1.04s'],[81,5,7,'-1.56s']].forEach(([x,w,h,delay])=>{const drop=document.createElement('i');drop.style.setProperty('--x',x+'%');drop.style.setProperty('--w',w+'px');drop.style.setProperty('--h',h+'px');drop.style.setProperty('--duration','2.08s');drop.style.setProperty('--delay',delay);field.append(drop);});
    el.append(field);
   }
  }
