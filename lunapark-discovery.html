@@ -7,7 +7,25 @@
 .symbol{display:inline-grid;place-items:center;color:#ffe9a9;filter:drop-shadow(0 2px 4px #0009)}
 .symbol-svg{width:100%;height:100%;line-height:0}
 .symbol-svg svg{display:block;width:100%;height:100%;fill:currentColor}
+.symbol.tone-water{color:#5ccdff}
+.symbol.tone-fire{color:#ff7a45}
+.symbol.tone-earth{color:#d8a252}
+.symbol.tone-air{color:#d7f5ff}
+.symbol.tone-plant{color:#7ce07a}
+.symbol.tone-animal{color:#f0b870}
+.symbol.tone-machine{color:#b9c8e0}
+.symbol.tone-food{color:#ffc56b}
+.symbol.tone-abstract{color:#e7b8ff}
 .slot .symbol,.element .symbol,.medallion .symbol,.detail-card .large .symbol,.drag-ghost .symbol{color:#ffe9a9}
+.element .symbol.tone-water,.slot .symbol.tone-water,.medallion .symbol.tone-water,.detail-card .large .symbol.tone-water,.drag-ghost .symbol.tone-water{color:#5ccdff}
+.element .symbol.tone-fire,.slot .symbol.tone-fire,.medallion .symbol.tone-fire,.detail-card .large .symbol.tone-fire,.drag-ghost .symbol.tone-fire{color:#ff7a45}
+.element .symbol.tone-earth,.slot .symbol.tone-earth,.medallion .symbol.tone-earth,.detail-card .large .symbol.tone-earth,.drag-ghost .symbol.tone-earth{color:#d8a252}
+.element .symbol.tone-air,.slot .symbol.tone-air,.medallion .symbol.tone-air,.detail-card .large .symbol.tone-air,.drag-ghost .symbol.tone-air{color:#d7f5ff}
+.element .symbol.tone-plant,.slot .symbol.tone-plant,.medallion .symbol.tone-plant,.detail-card .large .symbol.tone-plant,.drag-ghost .symbol.tone-plant{color:#7ce07a}
+.element .symbol.tone-animal,.slot .symbol.tone-animal,.medallion .symbol.tone-animal,.detail-card .large .symbol.tone-animal,.drag-ghost .symbol.tone-animal{color:#f0b870}
+.element .symbol.tone-machine,.slot .symbol.tone-machine,.medallion .symbol.tone-machine,.detail-card .large .symbol.tone-machine,.drag-ghost .symbol.tone-machine{color:#b9c8e0}
+.element .symbol.tone-food,.slot .symbol.tone-food,.medallion .symbol.tone-food,.detail-card .large .symbol.tone-food,.drag-ghost .symbol.tone-food{color:#ffc56b}
+.element .symbol.tone-abstract,.slot .symbol.tone-abstract,.medallion .symbol.tone-abstract,.detail-card .large .symbol.tone-abstract,.drag-ghost .symbol.tone-abstract{color:#e7b8ff}
 .element .symbol{filter:drop-shadow(0 2px 3px #0009)}
 .slot .symbol{transform:scale(.82) translateY(-8%)}
 .medallion .symbol{transform:scale(.82)}
@@ -275,9 +293,21 @@ function symbolMarkup(id) {
  const key=glyphKey(id);
  return key && GLYPH[key] ? GLYPH[key] : abstractGlyph(id);
 }
+function symbolTone(id) {
+ const key=glyphKey(id);
+ if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='cloud'||key==='steam'||key==='swamp') return 'water';
+ if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun') return 'fire';
+ if(key==='earth'||key==='stone'||key==='mountain'||key==='sand'||key==='dust'||key==='metal'||key==='mineral'||key==='salt') return 'earth';
+ if(key==='air') return 'air';
+ if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest') return 'plant';
+ if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl') return 'animal';
+ if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital') return 'machine';
+ if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid') return 'food';
+ return 'abstract';
+}
 function icon(id) {
  const span=document.createElement('span');
- span.className='symbol symbol-svg';
+ span.className='symbol symbol-svg tone-'+symbolTone(id);
  span.innerHTML=`<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">${symbolMarkup(id)}<\/svg>`;
  return span;
 }
@@ -287,15 +317,15 @@ function curvedLabel(id) {
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');
  svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('orb-curve');
  const chars=Array.from(label(id).slice(0,14)), count=chars.length||1;
- const p0=[9,68], p1=[50,114], p2=[91,68];
+ const p0=[12,68], p1=[50,88], p2=[88,68];
  // Approximate each glyph width, then space letters along the arc so they cannot crowd.
  const widths=chars.map(ch=>{
   const code=ch.codePointAt(0), wide=/[А-ЯЁА-ЯЁ]/.test(ch)||code>=0x400&&code<=0x4FF;
   return wide?1.0:0.68;
  });
  const total=widths.reduce((a,b)=>a+b,0)||1;
- const maxWidth=72, fontSize=Math.max(7,Math.min(17,maxWidth/total));
- const arcLen=94, margin=4, usable=arcLen-margin*2;
+ const maxWidth=52, fontSize=Math.max(7,Math.min(11,maxWidth/total));
+ const arcLen=81, margin=3, usable=arcLen-margin*2;
  const scale=Math.min(1,usable/(total*fontSize));
  const stepFont=fontSize*scale; let pos=margin; const positions=[];
  for(let i=0;i<count;i++){positions.push(pos+widths[i]*stepFont/2);pos+=widths[i]*stepFont;}
