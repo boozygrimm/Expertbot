@@ -293,55 +293,62 @@ function symbolMarkup(id) {
  const key=glyphKey(id);
  return key && GLYPH[key] ? GLYPH[key] : abstractGlyph(id);
 }
-function elementComposition() {
- const direct={w:[1,0,0,0],f:[0,1,0,0],e:[0,0,1,0],a:[0,0,0,1]};
+function stateComposition() {
+ const order=['fire','gas','liquid','sand','solid','organic'];
  function heuristic(id) {
-  if(direct[id])return [...direct[id]];
+  if(id==='w')return [0,0,1,0,0,0];
+  if(id==='f')return [1,0,0,0,0,0];
+  if(id==='e')return [0,0,0,0,1,0];
+  if(id==='a')return [0,1,0,0,0,0];
   const key=glyphKey(id);
-  if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='cloud'||key==='steam'||key==='swamp')return [1,0,0,0];
-  if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun')return [0,1,0,0];
-  if(key==='earth'||key==='stone'||key==='mountain'||key==='sand'||key==='dust'||key==='metal'||key==='mineral'||key==='salt')return [0,0,1,0];
-  if(key==='air')return [0,0,0,1];
-  if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest')return [.35,0,.65,0];
-  if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl')return [.1,0,.6,.3];
-  if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital')return [.15,.5,.35,0];
-  if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid')return [.35,.05,.6,0];
-  return [.25,.25,.25,.25];
+  if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun')return [1,0,0,0,0,0];
+  if(key==='air'||key==='cloud'||key==='steam'||key==='wind'||key==='pressure')return [0,1,0,0,0,0];
+  if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='swamp')return [0,0,1,0,0,0];
+  if(key==='sand'||key==='dust'||key==='soil')return [0,0,0,1,0,0];
+  if(key==='earth'||key==='stone'||key==='mountain'||key==='metal'||key==='mineral'||key==='salt')return [0,0,0,0,1,0];
+  if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest')return [0,0,0,0,0,1];
+  if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl')return [0,0,0,0,0,1];
+  if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital')return [0,0,0,0,1,0];
+  if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid')return [0,0,0,0,0,1];
+  return [.12,.12,.12,.12,.26,.26];
  }
  const profiles=new Map();
  for(const id of Object.keys(names))profiles.set(id,heuristic(id));
- for(let pass=0;pass<18;pass++){
-  for(const r of recipes){
-   const out=r.result;if(!profiles.has(out))continue;
-   const ins=(r.ingredients||[]).filter(x=>profiles.has(x));if(!ins.length)continue;
-   const avg=[0,0,0,0];
-   for(const x of ins){const p=profiles.get(x);for(let i=0;i<4;i++)avg[i]+=p[i];}
-   for(let i=0;i<4;i++)avg[i]/=ins.length;
-   const old=profiles.get(out);
-   profiles.set(out,old.map((v,i)=>v*.55+avg[i]*.45));
-  }
+ const recipeSum=new Map(),recipeCount=new Map();
+ for(const r of recipes){
+  const out=r.result;if(!profiles.has(out))continue;
+  const ins=(r.ingredients||[]).filter(x=>profiles.has(x));if(!ins.length)continue;
+  const avg=[0,0,0,0,0,0];
+  for(const x of ins){const p=profiles.get(x);for(let i=0;i<6;i++)avg[i]+=p[i];}
+  for(let i=0;i<6;i++)avg[i]/=ins.length;
+  const prev=recipeSum.get(out)||[0,0,0,0,0,0];
+  recipeSum.set(out,prev.map((v,i)=>v+avg[i]));
+  recipeCount.set(out,(recipeCount.get(out)||0)+1);
+ }
+ for(const [out,sum] of recipeSum){const n=recipeCount.get(out)||1;recipeSum.set(out,sum.map(v=>v/n));}
+ for(const [id,p] of profiles){
+  const r=recipeSum.get(id);
+  if(r)profiles.set(id,p.map((v,i)=>v*.7+r[i]*.3));
  }
  for(const [id,p] of profiles){const sum=p.reduce((a,b)=>a+b,0)||1;profiles.set(id,p.map(v=>v/sum));}
  return profiles;
 }
-const COMPOSITION=elementComposition();
-function composition(id){return COMPOSITION.get(id)||[.25,.25,.25,.25];}
+const COMPOSITION=stateComposition();
+function composition(id){return COMPOSITION.get(id)||[0,0,0,0,0,0];}
 function rgb(hex){const n=parseInt(hex.slice(1),16);return [n>>16&255,n>>8&255,n&255];}
 function blend(colors,weights){const out=[0,0,0];for(let i=0;i<3;i++){let s=0;for(let j=0;j<colors.length;j++)s+=colors[j][i]*weights[j];out[i]=Math.round(s);}return out;}
-const TINTS={water:'#8ed1ff',fire:'#ffb48f',earth:'#e0bd8b',air:'#d8edff'};
-function orbTint(id){const w=composition(id);const colors=Object.values(TINTS).map(rgb);return blend(colors,w);}
-function hex(rgb){return '#'+rgb.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');}
+const STATE_ORDER=['fire','gas','liquid','sand','solid','organic'];
+const STATE_TINTS={fire:'#ff7a45',gas:'#cfe9ff',liquid:'#4db8ff',sand:'#e6c469',solid:'#8f9aa8',organic:'#7ce07a'};
+const STATE_POS={fire:'70% 30%',gas:'65% 68%',liquid:'30% 28%',sand:'35% 72%',solid:'50% 55%',organic:'60% 70%'};
 function rgba(hex,a){const c=rgb(hex);return `rgba(${c[0]},${c[1]},${c[2]},${a})`;}
 function orbLayers(id){
  const w=composition(id);
- const pos={water:'30% 26%',fire:'68% 27%',earth:'35% 72%',air:'65% 69%'};
- const order=['water','fire','earth','air'];
  const layers=[`radial-gradient(circle at 36% 23%, rgba(255,255,255,.10), transparent 55%)`];
- for(let i=0;i<4;i++){
-  const key=order[i], weight=w[i];
+ for(let i=0;i<STATE_ORDER.length;i++){
+  const key=STATE_ORDER[i], weight=w[i];
   if(weight<0.08)continue;
-  const alpha=Math.min(.52,.16+weight*.58);
-  layers.push(`radial-gradient(circle at ${pos[key]}, ${rgba(TINTS[key],alpha)}, transparent 62%)`);
+  const alpha=Math.min(.55,.18+weight*.6);
+  layers.push(`radial-gradient(circle at ${STATE_POS[key]}, ${rgba(STATE_TINTS[key],alpha)}, transparent 62%)`);
  }
  return layers.join(',');
 }
