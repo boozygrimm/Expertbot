@@ -293,17 +293,49 @@ function symbolMarkup(id) {
  const key=glyphKey(id);
  return key && GLYPH[key] ? GLYPH[key] : abstractGlyph(id);
 }
-function symbolTone(id) {
- const key=glyphKey(id);
- if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='cloud'||key==='steam'||key==='swamp') return 'water';
- if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun') return 'fire';
- if(key==='earth'||key==='stone'||key==='mountain'||key==='sand'||key==='dust'||key==='metal'||key==='mineral'||key==='salt') return 'earth';
- if(key==='air') return 'air';
- if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest') return 'plant';
- if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl') return 'animal';
- if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital') return 'machine';
- if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid') return 'food';
- return 'abstract';
+function elementComposition() {
+ const direct={w:[1,0,0,0],f:[0,1,0,0],e:[0,0,1,0],a:[0,0,0,1]};
+ function heuristic(id) {
+  if(direct[id])return [...direct[id]];
+  const key=glyphKey(id);
+  if(key==='water'||key==='rain'||key==='snow'||key==='ice'||key==='sea'||key==='wave'||key==='cloud'||key==='steam'||key==='swamp')return [1,0,0,0];
+  if(key==='fire'||key==='energy'||key==='lava'||key==='light'||key==='sun')return [0,1,0,0];
+  if(key==='earth'||key==='stone'||key==='mountain'||key==='sand'||key==='dust'||key==='metal'||key==='mineral'||key==='salt')return [0,0,1,0];
+  if(key==='air')return [0,0,0,1];
+  if(key==='plant'||key==='tree'||key==='flower'||key==='seed'||key==='grass'||key==='moss'||key==='forest')return [.35,0,.65,0];
+  if(key==='bird'||key==='fish'||key==='beast'||key==='insect'||key==='beetle'||key==='worm'||key==='snake'||key==='lizard'||key==='turtle'||key==='frog'||key==='bat'||key==='bear'||key==='wolf'||key==='mouse'||key==='elephant'||key==='whale'||key==='crab'||key==='squid'||key==='octopus'||key==='spider'||key==='scorpion'||key==='bee'||key==='butterfly'||key==='ant'||key==='termite'||key==='tick'||key==='leech'||key==='slug'||key==='snail'||key==='shell'||key==='clam'||key==='pearl')return [.1,0,.6,.3];
+  if(key==='wheel'||key==='cart'||key==='car'||key==='motor'||key==='plane'||key==='robot'||key==='boiler'||key==='engine'||key==='ship'||key==='bicycle'||key==='motorcycle'||key==='tractor'||key==='tool'||key==='weapon'||key==='electricity'||key==='magnet'||key==='bulb'||key==='clock'||key==='watch'||key==='hourglass'||key==='time'||key==='book'||key==='library'||key==='paper'||key==='pen'||key==='coin'||key==='money'||key==='gold'||key==='silver'||key==='diamond'||key==='gem'||key==='crystal'||key==='idea'||key==='sound'||key==='music'||key==='love'||key==='life'||key==='death'||key==='ghost'||key==='space'||key==='star'||key==='moon'||key==='planet'||key==='city'||key==='country'||key==='house'||key==='hospital')return [.15,.5,.35,0];
+  if(key==='alcohol'||key==='beer'||key==='wine'||key==='vodka'||key==='milk'||key==='cheese'||key==='bread'||key==='meat'||key==='egg'||key==='fruit'||key==='vegetable'||key==='medicine'||key==='poison'||key==='acid')return [.35,.05,.6,0];
+  return [.25,.25,.25,.25];
+ }
+ const profiles=new Map();
+ for(const id of Object.keys(names))profiles.set(id,heuristic(id));
+ for(let pass=0;pass<18;pass++){
+  for(const r of recipes){
+   const out=r.result;if(!profiles.has(out))continue;
+   const ins=(r.ingredients||[]).filter(x=>profiles.has(x));if(!ins.length)continue;
+   const avg=[0,0,0,0];
+   for(const x of ins){const p=profiles.get(x);for(let i=0;i<4;i++)avg[i]+=p[i];}
+   for(let i=0;i<4;i++)avg[i]/=ins.length;
+   const old=profiles.get(out);
+   profiles.set(out,old.map((v,i)=>v*.55+avg[i]*.45));
+  }
+ }
+ for(const [id,p] of profiles){const sum=p.reduce((a,b)=>a+b,0)||1;profiles.set(id,p.map(v=>v/sum));}
+ return profiles;
+}
+const COMPOSITION=elementComposition();
+function composition(id){return COMPOSITION.get(id)||[.25,.25,.25,.25];}
+function rgb(hex){const n=parseInt(hex.slice(1),16);return [n>>16&255,n>>8&255,n&255];}
+function blend(colors,weights){const out=[0,0,0];for(let i=0;i<3;i++){let s=0;for(let j=0;j<colors.length;j++)s+=colors[j][i]*weights[j];out[i]=Math.round(s);}return out;}
+const TINTS={water:'#8ed1ff',fire:'#ffb48f',earth:'#e0bd8b',air:'#d8edff'};
+function orbTint(id){const w=composition(id);const colors=Object.values(TINTS).map(rgb);return blend(colors,w);}
+function hex(rgb){return '#'+rgb.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');}
+function orbBackground(id){
+ const t=orbTint(id);
+ const pale=blend([t,[255,255,255]],[.72,.28]);
+ const mid=blend([t,[41,35,60]],[.58,.42]);
+ return `radial-gradient(circle at 36% 23%, ${hex(pale)} 0%, ${hex(mid)} 58%, #29233c 82%)`;
 }
 function icon(id) {
  const span=document.createElement('span');
@@ -381,7 +413,7 @@ function renderElements() {
  for(const id of all.slice(state.page*PAGE_SIZE,state.page*PAGE_SIZE+PAGE_SIZE)) {
   const wrap=document.createElement('div');wrap.className='token-wrap';
   const el=document.createElement('button');el.type='button';el.className='element'+(!usedIngredients.has(id)?' dead':'');el.dataset.id=id;el.title=label(id);el.setAttribute('aria-label',label(id)+(usedIngredients.has(id)?'':', тупиковый элемент')+', выбрать или перетащить');
-  el.append(icon(id),curvedLabel(id));
+  el.style.background=orbBackground(id);el.append(icon(id),curvedLabel(id));
   const fav=button(state.favorites.has(id)?'★':'☆','favorite'+(state.favorites.has(id)?' on':''),()=>{if(state.favorites.has(id))state.favorites.delete(id);else state.favorites.add(id);renderElements();});fav.setAttribute('aria-label',(state.favorites.has(id)?'Убрать из избранного: ':'В избранное: ')+label(id));
   wrap.append(el,fav);grid.append(wrap);
  }
@@ -408,7 +440,7 @@ function renderCenter(){
 function renderSlots() {
  document.querySelectorAll('[data-slot]').forEach(el=>{
   const i=Number(el.dataset.slot),id=state.slots[i];el.replaceChildren();
-  if(id)el.append(icon(id),curvedLabel(id));else el.textContent='+';
+  if(id){el.style.background=orbBackground(id);el.append(icon(id),curvedLabel(id));}else{el.style.background='';el.textContent='+';}
   el.disabled=state.reacting;
   el.classList.toggle('active',state.target===i || (state.target===null && state.nextAfterMix===i));
   el.setAttribute('aria-label',id?`${label(id)}. Нажми для замены`:`Пустой слот ${i+1}`);el.title=id?label(id)+' — нажми для замены':'Пустой слот';
