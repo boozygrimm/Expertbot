@@ -329,7 +329,7 @@ function curvedLabel(id) {
  const maxWidth=52, fontSize=Math.max(7,Math.min(11,maxWidth/total));
  const arcLen=81, margin=3, usable=arcLen-margin*2;
  const scale=Math.min(1,usable/(total*fontSize));
- const stepFont=fontSize*scale; let pos=margin; const positions=[];
+ const stepFont=fontSize*scale; const start=Math.max(0,(usable-total*stepFont)/2); let pos=start; const positions=[];
  for(let i=0;i<count;i++){positions.push(pos+widths[i]*stepFont/2);pos+=widths[i]*stepFont;}
  const samples=80, cum=[0];
  for(let i=1;i<=samples;i++){
