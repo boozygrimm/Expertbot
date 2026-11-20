@@ -176,6 +176,18 @@
 .research-choices button strong{display:block;font-size:10px;font-weight:800}
 .research-choices button small{display:block;margin-top:2px;font-size:8px;font-weight:600;color:#d4c5cf;line-height:1.25}
 .research-choices button:active{background:#55416a}
+.project-card{flex:none;margin:0 0 7px;border:1px solid #d9b47c55;border-radius:10px;background:linear-gradient(100deg,#33243fdd,#2a2338db)}
+.project-head{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;padding:6px 9px;text-align:left}
+.project-head small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#d9bd8c;flex:none}
+.project-head strong{font:700 12px Georgia,serif;color:#ffe9c4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-head span#project-progress{flex:none;font-size:9px;font-weight:800;color:#bfe6c2}
+.project-chevron{flex:none;font-size:12px;color:#cbb1d6;transition:transform .15s}
+.project-head[aria-expanded="true"] .project-chevron{transform:rotate(180deg)}
+.project-need{display:flex;flex-wrap:wrap;gap:4px;padding:0 9px 7px}
+.project-need button{border:1px solid #e0bd8055;border-radius:6px;background:#241c30;color:#e8d4b4;font-size:9px;padding:3px 6px}
+.project-need .done{color:#bdf0c4;border-color:#8fd39a66;background:#22392b}
+.project-need .project-note{flex-basis:100%;font-size:8px;color:#cdbbd2;line-height:1.3}
+.project-need .project-new{border-color:#e6c786;background:#e6c386;color:#34202c;font-weight:800}
 @media (orientation:portrait){
  .workspace{display:flex;flex-direction:column;justify-content:flex-start;gap:6px}
  .shelf{order:1;flex:1 1 auto;min-height:0}
@@ -202,6 +214,13 @@
       <div class="research-copy"><small>КОНТРАКТ ЛАБОРАТОРИИ</small><strong id="research-title">Открой две новые реакции</strong><span id="research-progress">Прогресс 0 / 2 · исследования бесплатны</span><span id="research-feedback" role="status" hidden></span></div>
       <div class="research-actions"><button type="button" id="research-hint">Улика ✦</button><button type="button" id="research-next" hidden>Новый контракт</button></div>
       <div class="research-choices" id="research-choices" hidden></div>
+    </section>
+    <section class="project-card" id="project-card" aria-label="Проект парка">
+      <button type="button" class="project-head" id="project-toggle" aria-expanded="false">
+        <small>ПРОЕКТ ПАРКА</small><strong id="project-title">Новая карусель</strong>
+        <span id="project-progress">0 / 3</span><span class="project-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="project-need" id="project-need" hidden></div>
     </section>
     <div class="shelf-heading"><div><small>ТВОЯ КОЛЛЕКЦИЯ</small><h2>Элементы <span id="open-count">04</span></h2></div><button class="tool-btn" id="search-toggle" type="button" aria-label="Поиск элементов" aria-expanded="false">⌕</button><button class="tool-btn" id="options-toggle" type="button" aria-label="Сортировка и категории" aria-expanded="false">☷</button></div>
     <div id="search-box" class="search-box" hidden><input id="search" type="search" placeholder="Название элемента…" aria-label="Поиск по названию"><button type="button" id="search-close" aria-label="Закрыть поиск">×</button></div>
@@ -377,7 +396,7 @@ wheel:'wheel', cart:'cart', car:'car', motor:'motor', plane:'plane', robot:'robo
 book:'book', library:'library', paper:'paper', pen:'pen', coin:'coin', money:'money', gold:'gold', silver:'silver', diamond:'diamond', gem:'gem', crystal:'crystal', idea:'idea', sound:'sound', music:'music', love:'love', life:'life', death:'death', ghost:'ghost', space:'space', star:'star', moon:'moon', sun:'sun', planet:'planet', city:'city', country:'country', house:'house', hospital:'hospital',
 alcohol:'alcohol', beer:'alcohol', wine:'alcohol', vodka:'alcohol', milk:'milk', cheese:'cheese', bread:'bread', meat:'meat', egg:'egg', fruit:'fruit', vegetable:'vegetable', medicine:'medicine', poison:'poison', acid:'acid', salt:'salt', mineral:'mineral', lava:'lava'
 };
-const state = {opened:[...new Set([...basics,...savedOpened])], found:savedFound, attempts:savedAttempts, tried:new Map(), failedNow:null, reacting:false, recent:Array.isArray(savedLab.recent)?savedLab.recent.filter(validId).slice(0,24):[], research:{contract:Math.max(1,Math.floor(Number(savedResearch.contract)||1)),progress:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.progress)||0))),mastery:Math.max(0,Math.floor(Number(savedResearch.mastery)||0)),hintsUsed:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.hintsUsed)||0))),phase:savedResearch.phase==='choose'?'choose':'active',goal:savedResearch.goal,lastCategory:['nature','animals','machines'].includes(savedResearch.lastCategory)?savedResearch.lastCategory:null}, slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
+const state = {opened:[...new Set([...basics,...savedOpened])], found:savedFound, attempts:savedAttempts, tried:new Map(), failedNow:null, reacting:false, recent:Array.isArray(savedLab.recent)?savedLab.recent.filter(validId).slice(0,24):[], project:(savedLab.project&&typeof savedLab.project==='object'?savedLab.project:null),research:{contract:Math.max(1,Math.floor(Number(savedResearch.contract)||1)),progress:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.progress)||0))),mastery:Math.max(0,Math.floor(Number(savedResearch.mastery)||0)),hintsUsed:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.hintsUsed)||0))),phase:savedResearch.phase==='choose'?'choose':'active',goal:savedResearch.goal,lastCategory:['nature','animals','machines'].includes(savedResearch.lastCategory)?savedResearch.lastCategory:null}, slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
 for(const attempt of [...state.attempts].reverse())state.tried.set(pairKey(attempt.ids),attempt.result||null);
 function cat(id) { if (basics.includes(id)) return 'basic'; for (const c of ['nature','animals','machines']) if (categories[c].has(id)) return c; return 'other'; }
 function hash(id) { let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return h; }
@@ -585,7 +604,7 @@ const CATEGORY_GOALS={
 const CATEGORY_ORDER=Object.keys(CATEGORY_GOALS);
 const newGoal=()=>({kind:'new',count:goalTargets({kind:'new',count:2,category:null}).length>1?2:1,category:null});
 function saveLabProgress(){
- try{localStorage.setItem(LAB_SAVE_KEY,JSON.stringify({v:2,opened:state.opened,found:state.found,attempts:state.attempts,recent:state.recent,research:state.research}));}
+ try{localStorage.setItem(LAB_SAVE_KEY,JSON.stringify({v:3,opened:state.opened,found:state.found,attempts:state.attempts,recent:state.recent,research:state.research,project:state.project}));}
  catch(_){const feedback=$('#research-feedback');if(feedback){feedback.hidden=false;feedback.textContent='Локальное сохранение недоступно в этом браузере.';}}
 }
 function researchFrontier(){
@@ -699,6 +718,77 @@ function recordResearchDiscovery(isFresh,isNewElement,result){
  r.progress++;
  if(r.progress>=r.goal.count){r.mastery++;return true;}
  return true;
+}
+
+const PROJECT_TITLES={nature:'Оранжерея',animals:'Зверинец',machines:'Мастерская',mixed:'Новая карусель'};
+function derivationDepths(){
+ const depth=new Map(state.opened.map(id=>[id,0]));
+ let changed=true,guard=0;
+ while(changed&&guard++<40){
+  changed=false;
+  for(const r of recipes){
+   if(depth.has(r.result)||!r.ingredients.every(id=>depth.has(id)))continue;
+   depth.set(r.result,Math.max(...r.ingredients.map(id=>depth.get(id)))+1);changed=true;
+  }
+ }
+ return depth;
+}
+function projectCategoryOf(id){
+ for(const c of CATEGORY_ORDER)if(categories[c].has(id))return c;
+ return 'mixed';
+}
+function makeProject(){
+ const depth=derivationDepths(),salt=state.research.mastery+state.research.contract;
+ const pool=[...depth.entries()].filter(([id,d])=>d>=2&&d<=6&&!state.opened.includes(id))
+  .map(([id])=>id).sort((a,b)=>(hash(a+salt)%997)-(hash(b+salt)%997));
+ const picked=[];
+ for(const id of pool){
+  if(picked.some(p=>projectCategoryOf(p)===projectCategoryOf(id)))continue;
+  picked.push(id);
+  if(picked.length===3)break;
+ }
+ for(const id of pool){if(picked.length>=3)break;if(!picked.includes(id))picked.push(id);}
+ const themes=[...new Set(picked.map(projectCategoryOf))];
+ return {title:PROJECT_TITLES[themes.length===1?themes[0]:'mixed'],need:picked,rewarded:false};
+}
+function ensureProject(){
+ const p=state.project;
+ const ok=p&&Array.isArray(p.need)&&p.need.length&&p.need.every(validId)&&typeof p.title==='string';
+ if(!ok)state.project=makeProject();
+ return state.project;
+}
+function projectProgress(){return state.project?state.project.need.filter(id=>state.opened.includes(id)).length:0;}
+function projectDone(){return !!state.project&&state.project.need.length>0&&state.project.need.every(id=>state.opened.includes(id));}
+function claimProject(){
+ const p=state.project;
+ if(!p||p.rewarded||!projectDone())return;
+ p.rewarded=true;state.research.mastery++;
+ const feedback=$('#research-feedback');
+ if(feedback){feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent=`Проект «${p.title}» закрыт: мастерство +1.`;}
+}
+function renderProject(){
+ const p=ensureProject(),done=projectDone();
+ $('#project-title').textContent=p.title;
+ $('#project-progress').textContent=done?'готово':`${projectProgress()} / ${p.need.length}`;
+ const box=$('#project-need');
+ $('#project-toggle').setAttribute('aria-expanded',String(!box.hidden));
+ if(box.hidden&&!done)return;
+ box.replaceChildren();
+ for(const id of p.need){
+  const chip=document.createElement('button');chip.type='button';chip.disabled=true;
+  const opened=state.opened.includes(id);
+  chip.textContent=(opened?'✓ ':'· ')+label(id);
+  if(opened)chip.classList.add('done');
+  box.append(chip);
+ }
+ const note=document.createElement('span');note.className='project-note';
+ note.textContent=done?'Проект закрыт, награда начислена. Возьми следующий — прогресс не сгорает.':`Найди эти элементы в любых реакциях. Осталось: ${p.need.length-projectProgress()}.`;
+ box.append(note);
+ if(done){
+  const again=document.createElement('button');again.type='button';again.className='project-new';again.textContent='Новый проект';
+  again.onclick=()=>{state.project=makeProject();saveLabProgress();renderProject();};
+  box.append(again);
+ }
 }
 function renderElements() {
  stopFlight();
@@ -834,8 +924,9 @@ function mix(){
     if(!newElement||goal.kind==='category'){feedback.hidden=false;feedback.dataset.transient='0';}
    }
   }
+  if(r)claimProject();
   saveLabProgress();
-  renderSlots();renderElements();renderResearch();
+  renderSlots();renderElements();renderResearch();renderProject();
   if(r){
    const opened=[...document.querySelectorAll('#elements .element')].find(el=>el.dataset.id===r.result);
    opened?.scrollIntoView({block:'nearest'});
@@ -865,7 +956,7 @@ $('#elements').addEventListener('pointermove',e=>{if(!drag)return;if(!drag.moved
 function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;if(d.ghost)d.ghost.remove();if(!d.moved)return;suppress=true;setTimeout(()=>suppress=false,100);const under=document.elementFromPoint(e.clientX,e.clientY);if(!cancel&&under?.closest('#hero')){const slot=under.closest('[data-slot]');choose(d.id,slot?Number(slot.dataset.slot):null);}}
 $('#elements').addEventListener('pointerup',e=>endDrag(e,false));$('#elements').addEventListener('pointercancel',e=>endDrag(e,true));
 document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{if(state.reacting)return;const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
-$('#mix').addEventListener('click',mix);$('#research-hint').onclick=showResearchHint;$('#research-next').onclick=advanceResearch;
+$('#mix').addEventListener('click',mix);$('#project-toggle').onclick=()=>{const box=$('#project-need');box.hidden=!box.hidden;renderProject();};$('#research-hint').onclick=showResearchHint;$('#research-next').onclick=advanceResearch;
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;renderElements();});
 $('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#options-box').hidden=true;$('#options-toggle').setAttribute('aria-expanded','false');$('#search').focus();}};
 $('#search-close').onclick=()=>{$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');$('#search').value='';state.search='';renderElements();};
@@ -875,6 +966,6 @@ $('#category').onchange=e=>{state.category=e.target.value;renderElements();};$('
 $('#sound').onclick=()=>{state.sound=!state.sound;$('#sound').setAttribute('aria-pressed',String(state.sound));$('#sound span').textContent=state.sound?'вкл':'выкл';};
 $('#effect').onclick=()=>{state.effect=!state.effect;$('#effect').setAttribute('aria-pressed',String(state.effect));$('#effect span').textContent=state.effect?'вкл':'выкл';renderElements();renderSlots();};
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));$('#back').onclick=()=>{if(state.detail){state.detail=null;renderOverlay();}else goBack();};$('#overlay-prev').onclick=()=>{state.viewPage--;renderOverlay();};$('#overlay-next').onclick=()=>{state.viewPage++;renderOverlay();};
-renderSlots();renderElements();renderResearch();
+ensureProject();renderSlots();renderElements();renderResearch();renderProject();
 })();
 </script></body></html>

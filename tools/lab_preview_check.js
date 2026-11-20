@@ -308,6 +308,67 @@ async function solveContract(win, doc, labelText) {
   await sleep(30);
   check(texts(d7).title !== 'Куда идём дальше?' && !isDone(d7), 'the last offered brief can be taken from a restored board', texts(d7));
 
+  // ---------- long-term park project ----------
+  errors = [];
+  const projectSave = JSON.stringify({v: 3, opened: ['w', 'f', 'e', 'a'], found: [], attempts: [], recent: [],
+    project: {title: 'Новая карусель', need: ['wind', 'lava'], rewarded: false},
+    research: {contract: 3, progress: 2, mastery: 0, hintsUsed: 0, phase: 'active', goal: {kind: 'new', count: 2, category: null}, lastCategory: 'nature'}});
+  const dom8 = load(win => win.localStorage.setItem(SAVE_KEY, projectSave));
+  const w8 = dom8.window, d8 = w8.document;
+  await sleep(60);
+  check(errors.length === 0, 'project state loads without errors', errors);
+  check(d8.querySelector('#project-title').textContent === 'Новая карусель', 'project title is shown', d8.querySelector('#project-title').textContent);
+  check(d8.querySelector('#project-progress').textContent === '0 / 2', 'project starts at 0 of its targets', d8.querySelector('#project-progress').textContent);
+  check(d8.querySelector('#project-need').hidden === true, 'project details are collapsed by default', true);
+  d8.querySelector('#project-toggle').click();
+  await sleep(30);
+  const chips = [...d8.querySelectorAll('#project-need button')].map(b => b.textContent);
+  check(d8.querySelector('#project-need').hidden === false && chips.some(c => c.includes('Ветер')) && chips.some(c => c.includes('Лава')), 'expanding the project lists its targets', chips);
+
+  await mixPair(w8, d8, 'a', 'a');
+  check(d8.querySelector('#project-progress').textContent === '1 / 2', 'opening a project element advances it', d8.querySelector('#project-progress').textContent);
+
+  await mixPair(w8, d8, 'e', 'f');
+  const done8 = save(w8);
+  check(d8.querySelector('#project-progress').textContent === 'готово', 'project reports completion', d8.querySelector('#project-progress').textContent);
+  check(done8.research.mastery === 1 && done8.project.rewarded === true, 'project completion grants exactly one mastery', done8.research);
+  const againBtn = [...d8.querySelectorAll('#project-need button')].find(b => b.textContent === 'Новый проект');
+  check(!!againBtn, 'completed project offers a new one', d8.querySelector('#project-need').textContent.slice(0, 80));
+  againBtn.click();
+  await sleep(30);
+  const fresh = save(w8).project;
+  check(Array.isArray(fresh.need) && fresh.need.length > 0 && fresh.rewarded === false, 'a new project is generated after completion', fresh);
+
+  // the reward is paid once: another discovery must not add mastery again
+  await mixPair(w8, d8, 'w', 'w');
+  check(save(w8).research.mastery === done8.research.mastery, 'project reward is not paid twice', save(w8).research.mastery);
+
+  // generated project targets must be owned-free and derivable
+  const depth = (win, opened) => {
+    const map = new Map(opened.map(id => [id, 0]));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const r of win.DISCOVERY_DATA.recipes) {
+        if (map.has(r.result) || !r.ingredients.every(i => map.has(i))) continue;
+        map.set(r.result, Math.max(...r.ingredients.map(i => map.get(i))) + 1);
+        changed = true;
+      }
+    }
+    return map;
+  };
+  const owned = new Set(save(w8).opened);
+  const reachable = depth(w8, [...owned]);
+  check(fresh.need.every(id => reachable.has(id)), 'every project target is derivable from the current collection', fresh.need);
+  check(fresh.need.every(id => !owned.has(id)), 'project targets are not already owned', fresh.need);
+
+  // project survives reload with the same targets
+  const rawProject = w8.localStorage.getItem(SAVE_KEY);
+  const dom9 = load(win => win.localStorage.setItem(SAVE_KEY, rawProject));
+  await sleep(60);
+  const reloadedProject = save(dom9.window).project;
+  check(pairKey(reloadedProject.need) === pairKey(fresh.need) && reloadedProject.title === fresh.title, 'project persists across reload', reloadedProject);
+
   // ---------- corrupted save must not break the page ----------
   errors = [];
   const dom3 = load(win => win.localStorage.setItem(SAVE_KEY, '{"opened":["nope",42],"found":[{"ids":["x"]}],"research":{"contract":"bad","goal":{"kind":"category","category":"unicorns","count":99}}}'));
