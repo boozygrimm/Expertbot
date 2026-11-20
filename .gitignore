@@ -8,3 +8,4 @@ __pycache__/
 
 # Local agent tooling and disposable environments
 .arena/
+node_modules/

@@ -166,10 +166,14 @@
 @keyframes fxGlowSand{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(230,196,105,.25)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(230,196,105,.34)}}
 @keyframes fxGlowSolid{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(180,200,220,.22)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(180,200,220,.32)}}
 @keyframes fxGlowOrganic{0%,100%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 10px rgba(120,220,120,.28)}50%{box-shadow:inset 0 2px 6px #ffffff38,0 3px 8px #0008,0 0 16px rgba(120,220,120,.38)}}
+
+.research-card{display:flex;align-items:center;gap:8px;margin:4px 0 7px;padding:7px 9px;border:1px solid #b7d8bd55;border-radius:10px;background:linear-gradient(100deg,#253c39dd,#30233edb);box-shadow:inset 0 1px 0 #ffffff12}
+.research-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.research-copy small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#b6e0be}.research-copy strong{font:700 13px Georgia,serif;color:#fff1d8}.research-copy span{font-size:9px;line-height:1.2;color:#d4c5cf}.research-actions{display:flex;flex:none;gap:5px}.research-actions button{border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px;font-size:9px;font-weight:750}.research-actions button:disabled{opacity:.5}.research-actions button[hidden]{display:none}
+@media(max-height:650px){.research-card{margin:2px 0 4px;padding:5px 7px}.research-copy strong{font-size:12px}.research-actions button{padding:5px 6px}}
 </style></head>
 <body><main class="shell">
 <header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button><button class="sound" id="effect" type="button" aria-pressed="true" title="Включить текстурный эффект">✦ <span>вкл</span></button></header>
-<div class="notice">✦ ПРОБНЫЙ ДИЗАЙН · ПРОГРЕСС НЕ СОХРАНЯЕТСЯ</div>
+<div class="notice">✦ ПРОТОТИП · ПРОГРЕСС ХРАНИТСЯ В ЭТОМ БРАУЗЕРЕ</div>
 <section class="workspace" id="workspace">
   <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div>
     <div class="hero-top"><button class="hero-action" type="button" data-view="history"><span>◷</span> История</button><span class="hero-caption">✧ КОТЁЛ ОТКРЫТИЙ</span><button class="hero-action" type="button" data-view="album"><span>▤</span> Рецепты</button></div>
@@ -178,6 +182,10 @@
     <div class="glitter g1">✧</div><div class="glitter g2">✦</div>
   </div>
   <div class="shelf">
+    <section class="research-card" aria-label="Исследовательский контракт">
+      <div class="research-copy"><small>КОНТРАКТ ЛАБОРАТОРИИ</small><strong id="research-title">Открой две новые реакции</strong><span id="research-progress">Прогресс 0 / 2 · исследования бесплатны</span><span id="research-feedback" role="status" hidden></span></div>
+      <div class="research-actions"><button type="button" id="research-hint">Улика ✦</button><button type="button" id="research-next" hidden>Новый контракт</button></div>
+    </section>
     <div class="shelf-heading"><div><small>ТВОЯ КОЛЛЕКЦИЯ</small><h2>Элементы <span id="open-count">04</span></h2></div><button class="tool-btn" id="search-toggle" type="button" aria-label="Поиск элементов" aria-expanded="false">⌕</button><button class="tool-btn" id="options-toggle" type="button" aria-label="Сортировка и категории" aria-expanded="false">☷</button></div>
     <div id="search-box" class="search-box" hidden><input id="search" type="search" placeholder="Название элемента…" aria-label="Поиск по названию"><button type="button" id="search-close" aria-label="Закрыть поиск">×</button></div>
     <div id="options-box" class="options-box" hidden><label>Категория <select id="category"><option value="all">Все</option><option value="basic">Стихии</option><option value="nature">Природа</option><option value="animals">Животные</option><option value="machines">Механизмы</option><option value="other">Другое</option></select></label><label>Сортировка <select id="sort"><option value="default">Обычная</option><option value="az">По названию</option><option value="recent">Недавние</option></select></label><label class="check"><input type="checkbox" id="hide-dead"> Скрыть тупиковые</label></div>
@@ -206,6 +214,13 @@ const byPair = new Map(recipes.map(r => [pairKey(r.ingredients), r]));
 const usedIngredients = new Set(recipes.flatMap(r => r.ingredients));
 const label = id => (names[id] || id).replace(/^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\uFE0F\u200D]+\s+/u, '');
 const HISTORY_SIZE = 10;
+const LAB_SAVE_KEY='bender-lunapark-lab-prealpha-v1';
+const savedLab=(()=>{try{return JSON.parse(localStorage.getItem(LAB_SAVE_KEY)||'{}')||{};}catch(_){return {};}})();
+const validId=id=>typeof id==='string'&&Object.prototype.hasOwnProperty.call(names,id);
+const savedOpened=Array.isArray(savedLab.opened)?savedLab.opened.filter(validId):[];
+const savedFound=Array.isArray(savedLab.found)?savedLab.found.filter(x=>x&&Array.isArray(x.ids)&&x.ids.length===2&&x.ids.every(validId)&&validId(x.result)).map(x=>({key:pairKey(x.ids),ids:x.ids,result:x.result})):[];
+const savedAttempts=Array.isArray(savedLab.attempts)?savedLab.attempts.filter(x=>x&&Array.isArray(x.ids)&&x.ids.length===2&&x.ids.every(validId)&&(!x.result||validId(x.result))).slice(0,100):[];
+const savedResearch=savedLab.research&&typeof savedLab.research==='object'?savedLab.research:{};
 const GLYPH = {
 water:'<path d="M16 4C16 4 6 15 6 21a10 10 0 0 0 20 0C26 15 16 4 16 4Z"/>',
 fire:'<path d="M16 3c0 5-4 6-4 12a4 4 0 0 0 8 0c0-3-2-4-2-7 0 2-2 3-2 4 0-3 0-6 0-9Z"/>',
@@ -336,7 +351,8 @@ wheel:'wheel', cart:'cart', car:'car', motor:'motor', plane:'plane', robot:'robo
 book:'book', library:'library', paper:'paper', pen:'pen', coin:'coin', money:'money', gold:'gold', silver:'silver', diamond:'diamond', gem:'gem', crystal:'crystal', idea:'idea', sound:'sound', music:'music', love:'love', life:'life', death:'death', ghost:'ghost', space:'space', star:'star', moon:'moon', sun:'sun', planet:'planet', city:'city', country:'country', house:'house', hospital:'hospital',
 alcohol:'alcohol', beer:'alcohol', wine:'alcohol', vodka:'alcohol', milk:'milk', cheese:'cheese', bread:'bread', meat:'meat', egg:'egg', fruit:'fruit', vegetable:'vegetable', medicine:'medicine', poison:'poison', acid:'acid', salt:'salt', mineral:'mineral', lava:'lava'
 };
-const state = {opened:[...basics], found:[], attempts:[], tried:new Map(), failedNow:null, reacting:false, recent:[], slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
+const state = {opened:[...new Set([...basics,...savedOpened])], found:savedFound, attempts:savedAttempts, tried:new Map(), failedNow:null, reacting:false, recent:Array.isArray(savedLab.recent)?savedLab.recent.filter(validId).slice(0,24):[], research:{contract:Math.max(1,Math.floor(Number(savedResearch.contract)||1)),progress:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.progress)||0))),mastery:Math.max(0,Math.floor(Number(savedResearch.mastery)||0)),hintsUsed:Math.max(0,Math.min(2,Math.floor(Number(savedResearch.hintsUsed)||0)))}, slots:[null,null], target:null, nextAfterMix:null, filter:'all', category:'all', sort:'default', search:'', hideDead:false, page:0, view:'', viewPage:0, detail:null, sound:false, effect:true, lastNew:null};
+for(const attempt of [...state.attempts].reverse())state.tried.set(pairKey(attempt.ids),attempt.result||null);
 function cat(id) { if (basics.includes(id)) return 'basic'; for (const c of ['nature','animals','machines']) if (categories[c].has(id)) return c; return 'other'; }
 function hash(id) { let h=0; for(const c of id) h=(h*31+c.charCodeAt(0))>>>0; return h; }
 function abstractGlyph(id) {
@@ -532,6 +548,45 @@ function selectedItems() {
  else if (state.sort==='recent' || state.filter==='recent') result.sort((a,b) => {const ra=state.recent.indexOf(a), rb=state.recent.indexOf(b); return (ra<0?999:ra)-(rb<0?999:rb);});
  return result;
 }
+const RESEARCH_TARGET=2;
+function saveLabProgress(){
+ try{localStorage.setItem(LAB_SAVE_KEY,JSON.stringify({v:1,opened:state.opened,found:state.found,attempts:state.attempts,recent:state.recent,research:state.research}));}
+ catch(_){const feedback=$('#research-feedback');if(feedback){feedback.hidden=false;feedback.textContent='Локальное сохранение недоступно в этом браузере.';}}
+}
+function researchFrontier(){
+ const known=new Set(state.found.map(x=>x.key));
+ return recipes.filter(r=>r.ingredients.every(id=>state.opened.includes(id))&&!known.has(pairKey(r.ingredients)));
+}
+function renderResearch(){
+ const r=state.research,done=r.progress>=RESEARCH_TARGET;
+ $('#research-title').textContent=done?`Контракт ${r.contract} выполнен`:'Открой две новые реакции';
+ $('#research-progress').textContent=done?`Мастерство ${r.mastery} · ${r.mastery>=1?'Анализатор улучшен':'бонус: мастерство лаборатории'}`:`Прогресс ${r.progress} / ${RESEARCH_TARGET} · новые реакции ищутся бесплатно`;
+ const hint=$('#research-hint'),next=$('#research-next');
+ const hintLimit=r.mastery>=1?2:1,left=Math.max(0,hintLimit-r.hintsUsed);
+ hint.disabled=done||left===0||!researchFrontier().length;hint.textContent=`Улика ✦ ×${left}`;hint.title=`Осталось улик: ${left}`;
+ next.hidden=!done;
+}
+function showResearchHint(){
+ const frontier=researchFrontier(),feedback=$('#research-feedback');
+ if(!frontier.length){feedback.hidden=false;feedback.dataset.transient='1';feedback.textContent='Сначала открой новые элементы — появятся новые направления исследования.';return;}
+ const hintLimit=state.research.mastery>=1?2:1;if(state.research.hintsUsed>=hintLimit)return;
+ const clueIndex=state.research.hintsUsed;
+ const pick=frontier[(state.research.contract-1+clueIndex)%frontier.length];
+ const ingredient=pick.ingredients[(state.research.contract-1+clueIndex)%2];
+ state.research.hintsUsed++;feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent=`Улика: в одной из новых реакций участвует «${label(ingredient)}».`;
+ saveLabProgress();renderResearch();
+}
+function advanceResearch(){
+ if(state.research.progress<RESEARCH_TARGET)return;
+ state.research.contract++;state.research.progress=0;state.research.hintsUsed=0;
+ const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent='Новый бриф готов. Проверь гипотезы в котле.';
+ saveLabProgress();renderResearch();
+}
+function recordResearchDiscovery(isFresh){
+ if(!isFresh||state.research.progress>=RESEARCH_TARGET)return;
+ state.research.progress++;
+ if(state.research.progress>=RESEARCH_TARGET){state.research.mastery++;}
+}
 function renderElements() {
  stopFlight();
  const all=selectedItems(), pages=Math.max(1,Math.ceil(all.length/PAGE_SIZE)); state.page=Math.min(state.page,pages-1);
@@ -581,10 +636,11 @@ function choose(id, target=null){
  state.failedNow=null;
  const explicit=target!==null || state.target!==null;
  let i=target ?? state.target ?? state.nextAfterMix;
- if(i===null)i=state.slots.indexOf(null);if(i<0)i=1;
+ if(i===null||i===undefined||i<0||i>1)i=state.slots.indexOf(null);
+ if(i<0)i=0;
  state.slots[i]=id;state.target=null;
- // After a mix replace slot 1, then slot 2; explicit slot selection overrides it.
- state.nextAfterMix=explicit?null:(state.nextAfterMix===0?1:null);
+ // Fill empty slots first, then replace slot 1 and slot 2 in turn; explicit slot selection overrides it.
+ state.nextAfterMix=explicit?null:(i===0?1:0);
  remember(id);state.lastNew=null;
  $('#mix-message').textContent='Выбран: '+label(id)+(state.nextAfterMix===1?' · теперь второй':'');
  renderSlots();renderElements();
@@ -642,8 +698,9 @@ function mix(){
  const resolve=()=>{
   state.reacting=false;hero.classList.remove('reacting');
   state.attempts.unshift({key,ids,result:r?.result||null});state.attempts=state.attempts.slice(0,100);state.tried.set(key,r?.result||null);
+  let fresh=false;
   if(r){
-   const fresh=!state.found.some(x=>x.key===key),newElement=!state.opened.includes(r.result);
+   fresh=!state.found.some(x=>x.key===key);const newElement=!state.opened.includes(r.result);
    if(fresh)state.found.push({key,ids,result:r.result});
    if(newElement){
     state.opened.push(r.result);remember(r.result);state.lastNew=r.result;state.filter='all';state.category='all';state.search='';
@@ -656,7 +713,9 @@ function mix(){
    state.failedNow=key;state.target=null;state.nextAfterMix=null;
    $('#mix-message').textContent='Нет реакции — очисти или замени элемент';hero.classList.add('fail');tone(false);
   }
-  renderSlots();renderElements();
+  if(r)recordResearchDiscovery(fresh);
+  saveLabProgress();
+  renderSlots();renderElements();renderResearch();
   if(r)flyToCollection(r.result);
  };
  if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)resolve();else window.setTimeout(resolve,700);
@@ -682,7 +741,7 @@ $('#elements').addEventListener('pointermove',e=>{if(!drag)return;if(!drag.moved
 function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;if(d.ghost)d.ghost.remove();if(!d.moved)return;suppress=true;setTimeout(()=>suppress=false,100);const under=document.elementFromPoint(e.clientX,e.clientY);if(!cancel&&under?.closest('#hero')){const slot=under.closest('[data-slot]');choose(d.id,slot?Number(slot.dataset.slot):null);}}
 $('#elements').addEventListener('pointerup',e=>endDrag(e,false));$('#elements').addEventListener('pointercancel',e=>endDrag(e,true));
 document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{if(state.reacting)return;const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
-$('#mix').addEventListener('click',mix);$('#prev').onclick=()=>{state.page--;renderElements();};$('#next').onclick=()=>{state.page++;renderElements();};
+$('#mix').addEventListener('click',mix);$('#research-hint').onclick=showResearchHint;$('#research-next').onclick=advanceResearch;$('#prev').onclick=()=>{state.page--;renderElements();};$('#next').onclick=()=>{state.page++;renderElements();};
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;state.page=0;renderElements();});
 $('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#options-box').hidden=true;$('#options-toggle').setAttribute('aria-expanded','false');$('#search').focus();}};
 $('#search-close').onclick=()=>{$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');$('#search').value='';state.search='';state.page=0;renderElements();};
@@ -692,6 +751,6 @@ $('#category').onchange=e=>{state.category=e.target.value;state.page=0;renderEle
 $('#sound').onclick=()=>{state.sound=!state.sound;$('#sound').setAttribute('aria-pressed',String(state.sound));$('#sound span').textContent=state.sound?'вкл':'выкл';};
 $('#effect').onclick=()=>{state.effect=!state.effect;$('#effect').setAttribute('aria-pressed',String(state.effect));$('#effect span').textContent=state.effect?'вкл':'выкл';renderElements();renderSlots();};
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>go(b.dataset.view));$('#back').onclick=()=>{if(state.detail){state.detail=null;renderOverlay();}else goBack();};$('#overlay-prev').onclick=()=>{state.viewPage--;renderOverlay();};$('#overlay-next').onclick=()=>{state.viewPage++;renderOverlay();};
-renderSlots();renderElements();
+renderSlots();renderElements();renderResearch();
 })();
 </script></body></html>
