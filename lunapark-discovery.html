@@ -100,16 +100,18 @@
 @media(max-height:510px){.result-slot{width:58px;height:58px}#mix .result-primary{font-size:8px}#mix .result-caption{font-size:7px}#mix[data-state="mix"] .result-primary{font-size:17px}#mix[data-state="known"] .result-caption{font-size:9px}}
 /* Aggregate-state texture fill; toggled by the #effect button. */
 .element{overflow:hidden}
-.element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:2px;border-radius:50%;pointer-events:none;mix-blend-mode:soft-light;opacity:.88;z-index:0}
+.element::after,.slot::after,.flight-clone::after{content:'';position:absolute;inset:2px;border-radius:50%;pointer-events:none;mix-blend-mode:normal;opacity:.82;z-index:0}
 .element,.slot{border-color:var(--orb-accent,#d7b683);box-shadow:inset 0 0 0 1px #fff4,inset 0 2px 6px #ffffff38,0 0 0 2px color-mix(in srgb,var(--orb-accent,#d7b683) 46%,transparent),0 3px 10px #0009}
 .element .symbol,.slot .symbol,.flight-clone .symbol{position:relative;z-index:1}
 .element .orb-curve,.slot .orb-curve,.flight-clone .orb-curve{z-index:2}
-.fx.state-fire::after{background:conic-gradient(from 0deg, rgba(255,120,60,.9), rgba(255,60,30,.8), rgba(255,210,120,.7), rgba(255,90,40,.9));animation:fxSpin 1.6s linear infinite,fxFlicker .9s ease-in-out infinite}
-.fx.state-gas::after{background:conic-gradient(from 0deg, rgba(200,235,255,.8), rgba(235,250,255,.6), rgba(170,215,255,.7), rgba(200,235,255,.8));animation:fxSpin 4.5s linear infinite,fxMist 3s ease-in-out infinite}
-.fx.state-liquid::after{background:conic-gradient(from 0deg, rgba(77,184,255,.85), rgba(120,220,255,.65), rgba(40,120,220,.8), rgba(77,184,255,.85));animation:fxSpin 3.2s linear infinite,fxWave 2s ease-in-out infinite}
+.fx.state-fire::after{background:conic-gradient(from 0deg,rgba(255,174,48,.96),rgba(255,54,24,.78),rgba(255,238,128,.95),rgba(255,92,28,.9));mask:radial-gradient(circle,transparent 22%,#000 25% 82%,transparent 86%);animation:fxSpin 1.6s linear infinite,fxFlicker .9s ease-in-out infinite}
+.fx.state-gas::after{background:radial-gradient(ellipse at 30% 40%,#ffffffbb 0 8%,transparent 29%),radial-gradient(ellipse at 68% 62%,#d3f2ffbb 0 12%,transparent 38%),conic-gradient(from 0deg,#d8f4ff88,#b6d7ff33,#f7feff99,#d8f4ff88);filter:blur(1px);animation:fxSpin 7s linear infinite,fxMist 2.2s ease-in-out infinite}
+.fx.state-liquid::after{background:repeating-radial-gradient(ellipse at 50% 120%,transparent 0 7px,#dbf6ffb0 8px 10px,transparent 11px 17px);animation:fxWave 1.8s ease-in-out infinite,fxLiquidFlow 3s linear infinite}
+.fx.swamp::after{background:repeating-radial-gradient(ellipse at 50% 115%,transparent 0 7px,#d4f29d 8px 10px,transparent 11px 17px),radial-gradient(ellipse at 50% 68%,#789d3c66,transparent 70%);animation:fxWave 1.8s ease-in-out infinite,fxLiquidFlow 3s linear infinite}
+.fx.swamp{animation:fxGlowOrganic 2.4s ease-in-out infinite}
 .fx.state-sand::after{background-image:radial-gradient(circle at 50% 50%, rgba(255,222,125,.95) 1.3px, transparent 2.6px);background-size:8px 8px;animation:fxSand 2.2s linear infinite}
 .fx.state-solid::after{background:conic-gradient(from 0deg, rgba(180,200,220,.6), rgba(220,230,245,.42), rgba(140,160,180,.6), rgba(180,200,220,.6));animation:fxSpin 6s linear infinite,fxShimmer 2.6s ease-in-out infinite}
-.fx.state-organic::after{background:radial-gradient(ellipse at 50% 50%,rgba(120,255,145,.72) 0 12%,transparent 64%),repeating-radial-gradient(ellipse at 50% 50%,transparent 0 7px,rgba(145,255,155,.48) 8px 10px,transparent 11px 17px);animation:fxOrganic 2.2s ease-in-out infinite}
+.fx.state-organic::after{background:radial-gradient(ellipse at 50% 50%,rgba(120,255,145,.72) 0 12%,transparent 64%),repeating-radial-gradient(ellipse at 50% 50%,transparent 0 7px,rgba(145,255,155,.72) 8px 10px,transparent 11px 17px);animation:fxOrganic 2.2s ease-in-out infinite}
 .fx.state-fire{animation:fxGlowFire 1.4s ease-in-out infinite}
 .fx.state-gas{animation:fxGlowGas 3s ease-in-out infinite}
 .fx.state-liquid{animation:fxGlowLiquid 2s ease-in-out infinite}
@@ -120,6 +122,7 @@
 @keyframes fxFlicker{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
 @keyframes fxMist{0%,100%{opacity:.75;transform:translate(0,0)}50%{opacity:1;transform:translate(2px,-2px)}}
 @keyframes fxWave{0%,100%{opacity:.85;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
+@keyframes fxLiquidFlow{to{background-position:0 17px}}
 @keyframes fxSand{to{background-position:8px 0}}
 @keyframes fxShimmer{0%,100%{opacity:.65}50%{opacity:.95}}
 @keyframes fxOrganic{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
@@ -388,6 +391,8 @@ function hex(rgb){return '#'+rgb.map(v=>Math.max(0,Math.min(255,Math.round(v))).
 const ELEMENT_TINTS={water:'#4db8ff',fire:'#ff5252',earth:'#a9743f',air:'#d8f0ff'};
 const STATE_ORDER=['fire','gas','liquid','sand','solid','organic'];
 function orbColor(id){
+ const key=glyphKey(id);
+ if(key==='swamp'||key==='bog'||key==='marsh')return 'radial-gradient(circle at 36% 23%, #b8df79 0%, #6e9e42 34%, #3f642f 72%, #1d321f 100%)';
  const w=elemental(id);
  // Keep mixed recipes colourful: lift the elemental weights before blending so
  // the tint is still obvious on dark glass, even when several elements combine.
@@ -412,6 +417,7 @@ function clearOrb(el){
  el.style.backgroundColor='';
  el.style.backgroundBlendMode='';
  el.style.removeProperty('--orb-accent');
+ el.classList.remove('swamp');
  for(const k of STATE_ORDER)el.classList.remove('state-'+k);
  el.classList.remove('fx');
 }
@@ -419,10 +425,12 @@ function applyOrb(el,id){
  if(!el)return;
  clearOrb(el);
  el.style.background=orbColor(id);
+ const key=glyphKey(id);
  const weights=elemental(id);
  const strongest=Math.max(...weights);
- const tint=Object.values(ELEMENT_TINTS)[weights.indexOf(strongest)];
+ const tint=(key==='swamp'||key==='bog'||key==='marsh')?'#a8d66d':Object.values(ELEMENT_TINTS)[weights.indexOf(strongest)];
  el.style.setProperty('--orb-accent',tint);
+ if(key==='swamp'||key==='bog'||key==='marsh')el.classList.add('swamp');
  if(state.effect){
   el.classList.add('fx','state-'+dominantState(id));
  }
