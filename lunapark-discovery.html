@@ -43,7 +43,7 @@
 .element::after{content:'';position:absolute;z-index:0;pointer-events:none;right:10%;bottom:14%;width:14%;height:24%;border-radius:50%;transform:rotate(34deg);border-right:1.5px solid #ffffff80;filter:blur(.4px)}
 .element .symbol{position:relative;z-index:1;height:34px;transform:translateY(-12%)}
 .orb-curve{position:absolute;z-index:3;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
-.orb-curve text{fill:#fff8eb;font:700 17px Verdana,Tahoma,system-ui,sans-serif;letter-spacing:0;paint-order:stroke;stroke:#21172b;stroke-width:1.2px;stroke-linejoin:round}
+.orb-curve text{fill:#fff8eb;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-weight:600;letter-spacing:0;paint-order:stroke;stroke:#21172b;stroke-width:.7px;stroke-linejoin:round}
 .element.in-flight{opacity:0}
 .flying-orb{position:fixed;left:0;top:0;z-index:100;pointer-events:none;will-change:transform,opacity;margin:0}
 @media(max-height:510px){.element .symbol{transform:scale(.82) translateY(-5%)}}
@@ -90,7 +90,7 @@
 @keyframes reaction-ring{0%{opacity:0;transform:scale(.55)}30%{opacity:1}100%{opacity:0;transform:scale(1.3)}}
 @keyframes reaction-rise{0%{opacity:0;transform:translateY(0) scale(.4)}25%{opacity:1}100%{opacity:0;transform:translateY(-70px) scale(1.5)}}
 @keyframes reaction-spark{0%{opacity:0;transform:scale(.3) rotate(0)}35%{opacity:1}100%{opacity:0;transform:scale(1.4) rotate(80deg)}}
-@media(max-height:510px){.result-slot{width:52px;height:52px}.result-slot .result-primary{font-size:8px}.result-slot .result-caption{font-size:7px}.result-slot[data-state="known"] .result-caption{font-size:9px}.result-slot[data-state="mix"] .result-primary{font-size:16px}.slot .orb-curve text{font-size:15px}}
+@media(max-height:510px){.result-slot{width:52px;height:52px}.result-slot .result-primary{font-size:8px}.result-slot .result-caption{font-size:7px}.result-slot[data-state="known"] .result-caption{font-size:9px}.result-slot[data-state="mix"] .result-primary{font-size:16px}.slot .orb-curve text{stroke-width:.6px}}
 /* Keep situation text readable rather than clipping it inside the medallion. */
 .result-slot{padding:2px}
 #mix .result-primary{font-size:clamp(9px,1.5dvh,12px);line-height:1.08}
@@ -424,7 +424,7 @@ function curvedLabel(id) {
   return wide?1.0:0.68;
  });
  const total=widths.reduce((a,b)=>a+b,0)||1;
- const maxWidth=52, fontSize=Math.max(7,Math.min(11,maxWidth/total));
+ const maxWidth=62, fontSize=Math.max(8,Math.min(13,maxWidth/total));
  const arcLen=81, margin=3, usable=arcLen-margin*2;
  const scale=Math.min(1,usable/(total*fontSize));
  const stepFont=fontSize*scale; const start=Math.max(0,(usable-total*stepFont)/2); let pos=start; const positions=[];
