@@ -83,7 +83,11 @@ def render(folder: Path, output: Path, ffmpeg: str, source: Path, *,
     extra = entry.before_frames + entry.clip_frames + entry.hold_frames + entry.after_frames
     active = timeline[1][:entry.cut_frame] + [None] * extra + timeline[1][entry.cut_frame:]
     states = timeline[2][:entry.cut_frame] + [False] * extra + timeline[2][entry.cut_frame:]
-    windows, _ = bulletin_timing.section_windows([(STORY_ID, turns[0][0])])
+    # The window must span every turn, not just the first one: passing the first
+    # turn's file made the story end while the dialogue went on, so the screen
+    # froze on one frame for the rest of the story. All turns belong to one
+    # section, so they are passed in order.
+    windows, _ = bulletin_timing.section_windows([(STORY_ID, path) for path, _ in turns])
     window = bulletin_timing.SectionWindow(STORY_ID, windows[0].start, windows[0].end + extra / timing.FPS)
     with tempfile.TemporaryDirectory(prefix='story-video-', dir=output.parent) as temporary:
         temporary = Path(temporary)
