@@ -63,10 +63,13 @@ class OwnerControlTests(unittest.IsolatedAsyncioTestCase):
                                                   'news-story-manual-video-v1'}}, 'поддерживает'),
             # Old worker: the protocol itself is missing -> update the worker.
             ({'reachable': True, 'capabilities': {'news-bulletin-v1'}}, 'не хватает'),
-            # Newer worker without ffmpeg: only the binary is missing.
+            # All bulletin video capabilities present: the binaries exist, so
+            # the gap is old worker code, not a missing ffmpeg. Saying "install
+            # ffmpeg" here sent the owner chasing a binary already installed.
             ({'reachable': True, 'capabilities': {'news-bulletin-v1', 'news-bulletin-video-v1',
                                                   'news-bulletin-manual-video-v1',
-                                                  'news-bulletin-video-cut-v1'}}, 'нет ffmpeg'),
+                                                  'news-bulletin-video-cut-v1'}},
+             'устанавливать ffmpeg не нужно'),
             # Unreachable is not the same as outdated.
             ({'reachable': False, 'capabilities': set()}, 'не ответил'),
         )
