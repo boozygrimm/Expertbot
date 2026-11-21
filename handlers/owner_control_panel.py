@@ -226,6 +226,71 @@ def _msk_time(value):
     return value.astimezone(owner_daily.MSK).strftime('%d.%m.%Y %H:%M МСК')
 
 
+VIDEO_FRAGMENT = 'news-story-manual-video-v1'
+VIDEO_FRAGMENT_NEEDS = ('news-bulletin-v1', 'news-bulletin-video-v1', 'news-bulletin-manual-video-v1')
+
+
+def video_fragment_status(worker: dict) -> str:
+    """Say what the worker lacks instead of only "not supported".
+
+    The worker advertises video fragments only when the bulletin renderer, the
+    video pipeline and both ffprobe/ffmpeg are present. The owner cannot fix a
+    missing binary, but "update the worker" and "install ffmpeg" are different
+    actions, so the two cases must not read the same.
+    """
+    if not worker.get('reachable'):
+        return ('воркер не ответил на проверку. Это не значит, что версия старая: '
+                'проверь адрес и ключ воркера и что сервис запущен.')
+    capabilities = worker.get('capabilities') or set()
+    if VIDEO_FRAGMENT in capabilities:
+        return 'воркер поддерживает видеофрагмент в одиночном сюжете.'
+    missing = [name for name in VIDEO_FRAGMENT_NEEDS if name not in capabilities]
+    if missing:
+        return ('воркер без протокола видеофрагмента: не хватает ' + ', '.join(missing)
+                + '. Нужен обновлённый воркер.')
+    if 'news-bulletin-video-cut-v1' in capabilities or 'news-bulletin-video-v1' in capabilities:
+        return ('воркер умеет видео в вестниках, но не объявляет видеофрагмент для одиночного '
+                'сюжета: на сервере воркера нет ffmpeg (нужны и ffprobe, и ffmpeg). '
+                'Установи ffmpeg и перезапусти сервис воркера — обновление кода не поможет.')
+    return 'воркер не объявляет видео для одиночного сюжета.'
+
+
+async def worker_content():
+    """Read-only worker check, opened explicitly by the owner."""
+    from news_prototype.news_worker_client import NewsWorkerClient
+    import os
+    lines = ['🎬 Воркер видео\nПульт › Статус › Воркер', '']
+    try:
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', 'https://worker.invalid').strip()
+                                  or 'https://worker.invalid', os.getenv('BENDER_WORKER_KEY', ''))
+    except (ValueError, TypeError):
+        lines.append('Воркер не настроен: не заданы адрес или ключ.')
+        worker = {'reachable': False, 'configured': False}
+    else:
+        worker = await client.media_capabilities()
+    if worker.get('configured') is False:
+        pass
+    elif worker.get('reachable'):
+        capabilities = sorted(worker.get('capabilities') or set())
+        lines.append('Видеофрагмент в сюжете')
+        lines.append(video_fragment_status(worker))
+        lines.append('')
+        lines.append('Объявленные возможности')
+        if capabilities:
+            lines.extend('· ' + name for name in capabilities)
+        else:
+            lines.append('· список пуст')
+    else:
+        lines.append(video_fragment_status(worker))
+    lines.append('')
+    lines.append('Эта проверка читает только /health воркера и ничего не запускает.')
+    b = InlineKeyboardBuilder()
+    b.button(text='🔄 Проверить снова', callback_data='owner_panel:worker')
+    b.adjust(1)
+    add_nav(b, back='owner_panel:status', back_label='‹ Статус', refresh='owner_panel:worker')
+    return '\n'.join(lines), b.as_markup()
+
+
 async def status_content():
     """Read-only snapshot of saved state; it does not probe external services."""
     from news_prototype import general_auto, general_editorial, general_sources
@@ -294,6 +359,7 @@ async def status_content():
     b.button(text='🌍 Общая подборка', callback_data='gnews:home')
     b.button(text='📝 Готовые сценарии', callback_data='news_panel:drafts')
     b.button(text='📡 Crypto Sensei и RSS', callback_data='news_panel:collection')
+    b.button(text='🎬 Воркер видео', callback_data='owner_panel:worker')
     if poll.get('failed'):
         b.button(text='⚠️ Ошибки источников', callback_data='gnews:failed:0')
     b.adjust(1)
@@ -326,7 +392,7 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
     action = (callback.data or '').partition(':')[2]
     if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups',
                             'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help',
-                            'commands', 'status'):
+                            'commands', 'worker', 'status'):
         # Leaving a section must also release an unfinished text input, or the
         # next non-command message would be swallowed by that old form.
         get_data = getattr(state, 'get_data', None)
@@ -356,6 +422,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             text, markup = await home_content()
         elif action == 'status':
             text, markup = await status_content()
+        elif action == 'worker':
+            text, markup = await worker_content()
         elif action in ('tools', 'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help'):
             text, markup = section_content(action)
         elif action == 'commands':
