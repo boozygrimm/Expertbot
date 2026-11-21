@@ -243,7 +243,8 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         self.message.from_user = self.user; self.message.panel_mode = True
         await news_owner_drafts.show(self.message, 12, item=item)
         self.assertEqual(self.message.answer.await_count, 1)
-        self.assertIn('Картинка не найдена или убрана', self.message.answer.await_args.args[0])
+        self.assertIn('Без картинки', self.message.answer.await_args.args[0])
+        self.assertIn('не нашлось подходящего изображения', self.message.answer.await_args.args[0])
         self.assertFalse(any(b.text == '🖼 Проверить картинку' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
         self.message.answer_photo.assert_not_awaited()
         self.message.answer.reset_mock()

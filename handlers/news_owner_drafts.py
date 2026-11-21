@@ -141,6 +141,65 @@ def _id(value: str) -> int:
     return int(value)
 
 
+def source_warning(item: dict) -> str:
+    """Warn when a fact rests on a picture that will not be in the video.
+
+    The post text can be a single joke line while the numbers live on the
+    screenshot. If that screenshot is missing, facts about it cannot be checked
+    against the text and must not look as solid as the rest.
+    """
+    from news_prototype import story_editor
+    script = item.get('script') or {}
+    if not isinstance(script, dict):
+        return ''
+    counts = story_editor.evidence_sources(script, item)
+    facts = sum(counts.values())
+    if not facts:
+        return ''
+    if item.get('image_description'):
+        if counts['image'] and not script.get('image_b64'):
+            return (f'Часть фактов ({counts["image"]} из {facts} реплик) подтверждена только '
+                    'описанием картинки. Картинки в ролике не будет — проверь эти факты '
+                    'по оригиналу поста.')
+        return ''
+    if counts['unknown']:
+        return (f'Часть цитат ({counts["unknown"]} из {facts}) не нашлась в сохранённом '
+                'тексте источника — вероятно, они с картинки. Проверь по оригиналу.')
+    return ''
+
+
+def image_status(item: dict) -> str:
+    """Say *why* there is no picture instead of one catch-all sentence.
+
+    A photo that failed to download, an unreadable thumbnail and a post with no
+    photo at all need different actions, and the stored draft already knows
+    which one happened. Nothing here is provider text: the reason is a fixed
+    code mapped to our own wording.
+    """
+    reasons = {
+        'too_large': 'файл больше допустимого размера',
+        'unavailable': 'Telegram не отдал файл',
+        'network': 'не удалось скачать файл',
+        'unsafe_url': 'адрес файла не прошёл проверку безопасности',
+        'redirect': 'файл отдаётся только через перенаправление, а оно запрещено',
+        'encoding': 'неподдерживаемая кодировка ответа',
+        'compression': 'файл пришёл сжатым, а распаковка запрещена',
+        'codec': 'формат или содержимое файла не подошли',
+        'other': 'неизвестная ошибка загрузки',
+    }
+    if not item.get('image_kind'):
+        if item.get('image_error') in reasons:
+            return ('в посте была картинка, но загрузить её не удалось: '
+                    f'{reasons[item["image_error"]]}. Сюжет соберётся без неё.')
+        if item.get('image_analysis') == 'unavailable':
+            return ('в посте была картинка, но прочитать её не удалось. '
+                    'Сюжет соберётся без неё.')
+        return ('в источнике не нашлось подходящего изображения, либо его убрали вручную. '
+                'Сюжет соберётся без картинки.')
+    return ('картинка была выбрана, но не скачалась или не прошла проверку. '
+            'Сюжет соберётся без неё; можно прислать свою.')
+
+
 async def show(message, draft_id: int, *, for_program: bool = False, item: dict | None = None,
                panel_mode: bool = False, notice: str = '') -> None:
     panel_mode = panel_mode or getattr(message, 'panel_mode', False)
@@ -158,10 +217,13 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         if panel_mode:
             image = item['script'].get('image_b64')
             status = ('Картинка найдена — открой и проверь её и кадрирование.' if image else
-                      'Картинка не найдена или убрана — сюжет будет без неё.')
+                      'Без картинки: ' + image_status(item))
+            warning = source_warning(item)
             text = (f'📰 Черновик №{draft_id} · сценарий\n'
                     + (notice + '\n' if notice else '') + editable.split('\n', 1)[1]
-                    + '\n\n' + status + '\nСверь факты, шутки и строку с источником.'
+                    + '\n\n' + status
+                    + ('\n⚠️ ' + warning if warning else '')
+                    + '\nСверь факты, шутки и строку с источником.'
                     + ('\n\n' + review_text if review_text else ''))
             from handlers.owner_bulletin_panel import _chunks
             from handlers.owner_news_actions import card
@@ -201,8 +263,8 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
                                                    'неудачно, убери их кнопкой «Убрать увеличенные области».',
                                            parse_mode=None)
         else:
-            await message.answer('Картинка не найдена или недоступна — ролик будет без неё. '
-                                 'Можно прислать свою кнопкой «Добавить картинку вручную».', parse_mode=None)
+            await message.answer('Без картинки: ' + image_status(item)
+                                 + ' Можно прислать свою кнопкой «Добавить картинку вручную».', parse_mode=None)
         if item['script'].get('video_sha256'):
             await message.answer('Видеофрагмент добавлен: он прозвучит в паузе между репликами, '
                                  'видео будет на экране студии около 10 секунд. Права на использование '

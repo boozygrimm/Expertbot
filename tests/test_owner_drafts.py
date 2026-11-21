@@ -322,6 +322,81 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('detail', owner_drafts.diagnostic(
             editor_client.EditorialError('x', code='invalid_schema', detail='answer:`secret`'), phase='editor'))
 
+    async def test_missing_picture_says_why_it_is_missing(self):
+        from news_prototype import article_fetch as fetch_mod
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
+        failed = AsyncMock(side_effect=fetch_mod.ArticleError('Изображение слишком большое'))
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value=article),
+                                       AsyncMock(return_value=DRAFT), failed)
+        item = await owner_drafts.get(self.db, 123, 10)
+        # The story itself is not blocked by a missing picture.
+        self.assertEqual(item['stage'], 'draft_ready')
+        self.assertEqual(item['image_error'], 'too_large')
+        self.assertNotIn('image_b64', item['script'])
+        status = self.handler.image_status(item)
+        self.assertIn('больше допустимого размера', status)
+        self.assertNotIn('не нашлось', status)
+        # A post with no media at all keeps its own wording, not a false error.
+        self.assertIn('не нашлось', self.handler.image_status({'script': {}}))
+        # An unreadable thumbnail is reported as such, never as "no image".
+        self.assertIn('прочитать', self.handler.image_status({'image_analysis': 'unavailable', 'script': {}}))
+
+    async def test_card_warns_when_facts_rest_on_a_picture_without_one(self):
+        # Post text is a joke line; the numbers came from image_description.
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(return_value=DRAFT))
+        item = await owner_drafts.get(self.db, 123, 10)
+        counts = story_editor.evidence_sources(item['script'], item)
+        self.assertIn('text', counts)
+        self.assertEqual(self.handler.source_warning(item), '')
+        # Now the same draft where a quote exists only in the image description
+        # and the image itself is gone.
+        item = item | {'image_description': 'агент молится 500 раз в минуту',
+                       'evidence': [{'kind': 'fact', 'quote': 'агент молится 500 раз в минуту'},
+                                    {'kind': 'comment', 'quote': ''}]}
+        counts = story_editor.evidence_sources(item['script'], item)
+        self.assertEqual(counts['image'], 1)
+        warning = self.handler.source_warning(item)
+        self.assertIn('только описанием картинки', warning)
+        # With the picture present there is nothing to warn about.
+        item['script']['image_b64'] = 'x'
+        self.assertEqual(self.handler.source_warning(item), '')
+        # A quote nobody can find in the text is flagged as probably from a picture.
+        item['script'].pop('image_b64')
+        item = item | {'image_description': ''}
+        self.assertIn('вероятно, они с картинки', self.handler.source_warning(item))
+
+    async def test_panel_card_explains_missing_picture_and_source_risk(self):
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
+        from news_prototype import article_fetch as fetch_mod
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value=article),
+                                       AsyncMock(return_value=DRAFT),
+                                       AsyncMock(side_effect=fetch_mod.ArticleError('Изображение недоступно')))
+        item = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(item['image_error'], 'unavailable')
+        msg = self.msg('/news_draft 10')
+        await self.handler.show(msg, 10, panel_mode=True, item=item)
+        texts = [call.args[0] for call in msg.answer.await_args_list]
+        joined = '\n'.join(texts)
+        self.assertIn('Без картинки', joined)
+        self.assertIn('Telegram не отдал файл', joined)
+        self.assertNotIn('Картинка не найдена или убрана', joined)
+
+    async def test_image_error_codes_are_fixed_and_hide_provider_text(self):
+        from news_prototype import article_fetch as fetch_mod
+        for message, code in (
+                ('Изображение слишком большое', 'too_large'),
+                ('Неподдерживаемое сжатие', 'compression'),
+                ('Перенаправление изображения недоступно', 'redirect'),
+                ('Не удалось безопасно получить изображение', 'network'),
+                ('Изображение недоступно', 'unavailable'),
+                ('секретный адрес https://x/y', 'other')):
+            self.assertEqual(owner_drafts.image_error_code(fetch_mod.ArticleError(message)), code)
+        self.assertEqual(owner_drafts.image_error_code(ValueError('плохой jpeg')), 'codec')
+
     async def test_every_draft_screen_has_navigation_buttons(self):
         await owner_drafts.create(self.db, 123, 10, URL, '')
         msg = self.msg('/news_draft 10')
