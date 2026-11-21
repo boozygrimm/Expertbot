@@ -56,6 +56,11 @@
     { id: 'pierce', name: 'Пронза', icon: '⚒', desc: '+30% урона по броне', apply: () => { S.pierce *= 1.3; } },
   ];
 
+  // concept-art sprites from the catalog (window.SKULL_ART injected by the build)
+  const SKULL_ART = (typeof window !== 'undefined' && window.SKULL_ART) || {};
+  const SKULL_KEYS = ['e1_ghost', 'e2_cult', 'e3_beholder', 'e4_plasma', 'e5_shadow'];
+  const BOSS_KEY = 'boss_lich';
+
   let S = null;
 
   // --- DOM helpers ---------------------------------------------------------
@@ -129,6 +134,7 @@
     const scale = Math.max(1, lv);
     return {
       boss: !!boss,
+      art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
       atk: Math.round((3 + 0.4 * Math.max(0, S.turn - 3)) * (boss ? 2.6 : 1)),
       def: Math.round((3 + 0.35 * Math.max(0, S.turn - 3)) * (boss ? 2 : 1)),
       hp: Math.round((8 + 0.55 * Math.max(0, S.turn - 3)) * (boss ? 3 : 1)),
@@ -383,7 +389,17 @@
     const isSkull = cell.type === 'skull';
     const boss = isSkull && cell.skull.boss;
     cellEl.className = 'cell tile type-' + cell.type + (boss ? ' boss' : '');
-    cellEl.innerHTML = tileSymbol(cell);
+    if (isSkull && SKULL_ART[cell.skull.art]) {
+      const img = document.createElement('img');
+      img.className = 'skull-art' + (boss ? ' boss' : '');
+      img.src = SKULL_ART[cell.skull.art];
+      img.alt = boss ? 'Босс-череп' : 'Череп';
+      img.setAttribute('aria-hidden', 'false');
+      cellEl.innerHTML = '';
+      cellEl.appendChild(img);
+    } else {
+      cellEl.innerHTML = tileSymbol(cell);
+    }
     if (isSkull) {
       const s = cell.skull;
       const badge = document.createElement('div');
