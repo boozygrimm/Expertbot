@@ -300,6 +300,16 @@ def runner(output_dir, channel_id, token, timeout, smoke_plate=None, scene_portr
     return run
 
 
+# systemd services often run with a PATH that lacks the directory where a
+# manually installed static ffmpeg lives. Advertising video support only when
+# the inherited PATH happened to contain it made a working install look broken.
+# The search list lives in news_prototype.media_tools (fixed, never user input).
+def find_tool(name: str) -> str | None:
+    """Locate ffmpeg/ffprobe in the standard locations, not only in PATH."""
+    from news_prototype import media_tools
+    return media_tools.find(name)
+
+
 def handler_for(store, secret, news=None):
     secret_bytes = secret.encode('utf-8')
 
@@ -338,10 +348,10 @@ def handler_for(store, secret, news=None):
                         capabilities.append('news-program-v1')
                     if getattr(news, 'run_bulletin', None) is not None:
                         capabilities.append('news-bulletin-v1')
-                        if shutil.which('ffprobe'):
+                        if find_tool('ffprobe'):
                             capabilities.extend(['news-bulletin-video-v1', 'news-bulletin-video-remarks-v1',
                                                  'news-bulletin-video-cut-v1', 'news-bulletin-multi-video-v1'])
-                            if shutil.which('ffmpeg'):
+                            if find_tool('ffmpeg'):
                                 capabilities.extend(['news-bulletin-manual-video-v1',
                                                      'news-story-manual-video-v1'])
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
@@ -416,7 +426,7 @@ def handler_for(store, secret, news=None):
                 if news is None or getattr(news, 'run_bulletin', None) is None:
                     return self.respond(404, {'error': 'not_found'})
                 from news_prototype import bulletin_manual_media, telegram_public_source
-                ffmpeg, ffprobe = shutil.which('ffmpeg'), shutil.which('ffprobe')
+                ffmpeg, ffprobe = find_tool('ffmpeg'), find_tool('ffprobe')
                 if not ffmpeg or not ffprobe:
                     return self.respond(503, {'error': 'unavailable'})
                 try:

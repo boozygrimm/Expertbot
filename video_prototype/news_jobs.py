@@ -14,6 +14,8 @@ import sys
 import threading
 import uuid
 
+from news_prototype import media_tools
+
 
 class NewsBusy(Exception):
     pass
@@ -326,6 +328,9 @@ def runner(repo_root: Path):
         for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
                      'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
             env.pop(name, None)
+        # The render child resolves ffmpeg itself; give it the directories that
+        # actually contain the binaries, not just the inherited systemd PATH.
+        env = media_tools.child_env(env)
         command = [sys.executable, '-u', '-m', 'news_prototype.story_pipeline',
                    '--script', str(folder / 'request.json'), '--output-dir', str(folder / 'work')]
         with (folder / 'worker.log').open('ab') as log:
@@ -344,6 +349,9 @@ def story_studio_runner(repo_root: Path):
         for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
                      'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
             env.pop(name, None)
+        # The render child resolves ffmpeg itself; give it the directories that
+        # actually contain the binaries, not just the inherited systemd PATH.
+        env = media_tools.child_env(env)
         command = [sys.executable, '-u', '-m', 'news_prototype.story_pipeline',
                    '--script', str(folder / 'request.json'), '--output-dir', str(folder / 'work'), '--studio-request']
         with (folder / 'worker.log').open('ab') as log:
@@ -362,6 +370,9 @@ def program_runner(repo_root: Path):
         for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
                      'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
             env.pop(name, None)
+        # The render child resolves ffmpeg itself; give it the directories that
+        # actually contain the binaries, not just the inherited systemd PATH.
+        env = media_tools.child_env(env)
         command = [sys.executable, '-u', '-m', 'news_prototype.program_job',
                    '--request', str(folder / 'request.json'), '--output-dir', str(folder / 'work')]
         with (folder / 'worker.log').open('ab') as log:
@@ -408,6 +419,9 @@ def bulletin_runner(repo_root: Path):
         for name in ('BOT_TOKEN', 'VIDEO_WORKER_KEY', 'STORAGE_CHANNEL_ID', 'GEMINI_KEYS',
                      'GEMINI_API_KEYS', 'GEMINI_API_KEY'):
             env.pop(name, None)
+        # The render child resolves ffmpeg itself; give it the directories that
+        # actually contain the binaries, not just the inherited systemd PATH.
+        env = media_tools.child_env(env)
         command = [sys.executable, '-u', '-m', 'news_prototype.bulletin_job',
                    '--request', str(folder / 'request.json'), '--output-dir', str(folder / 'work')]
         with (folder / 'worker.log').open('ab') as log:

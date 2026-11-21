@@ -25,7 +25,8 @@ def _acquire_reviewed_video(video: dict, parent: Path, ffmpeg: str) -> tuple[Pat
     before TTS, privately, into a fresh directory, and never silently replaced
     by different material. An approved hash is not itself proof of rights.
     """
-    ffprobe = shutil.which('ffprobe')
+    from news_prototype import media_tools
+    ffprobe = media_tools.find('ffprobe')
     if not ffprobe:
         raise ValueError('Для видео нужен ffprobe')
     post = telegram_public_source.fetch_post(video['post_url'])
@@ -48,8 +49,8 @@ def run(data: dict, folder: Path, ffmpeg: str, keys: list[str]) -> Path:
         for index, video in enumerate(bulletin_contract.selected_videos(bulletin)):
             private = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=f'bulletin-source-{index}-', dir=folder.parent)))
             if video.get('manual') is True:
-                from news_prototype import bulletin_manual_media
-                ffprobe = shutil.which('ffprobe')
+                from news_prototype import bulletin_manual_media, media_tools
+                ffprobe = media_tools.find('ffprobe')
                 if not ffprobe:
                     raise ValueError('Для видео нужен ffprobe')
                 # Job output is news_root/<request-id>/work; the upload cache

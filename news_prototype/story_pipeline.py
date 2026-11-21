@@ -49,7 +49,8 @@ def run(script: dict, folder: Path, ffmpeg: str, keys: list[str], *, studio: str
             from news_prototype import bulletin_manual_media, story_video_insert
             if studio != 'bulletin':
                 raise ValueError('Видеовставка доступна только в студии вестника')
-            ffprobe = shutil.which('ffprobe')
+            from news_prototype import media_tools
+            ffprobe = media_tools.find('ffprobe')
             if not ffprobe:
                 raise ValueError('Для видеовставки нужен ffprobe')
             media_root = folder.resolve().parent.parent
