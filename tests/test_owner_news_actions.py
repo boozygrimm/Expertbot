@@ -8,7 +8,7 @@ os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
 os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
 from mongomock_motor import AsyncMongoMockClient
 from handlers import owner_news_actions as news, owner_tools_panel as tools, news_owner_drafts
-from news_prototype import owner_drafts, owner_program, owner_trial
+from news_prototype import news_image_fetch, owner_drafts, owner_program, owner_trial
 from tests.test_owner_drafts import DRAFT, SOURCE
 
 
@@ -341,6 +341,36 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any('/news_edit' in text or '/news_approve' in text for text in texts))
         card = await self.db.owner_news_cards.find_one({})
         self.assertEqual(card['revision'], item['revision'])
+
+    async def test_card_offers_image_retry_only_when_the_picture_is_missing(self):
+        from news_prototype import article_fetch as fetch_mod
+        from news_prototype import news_image_codec
+        from io import BytesIO
+        from PIL import Image
+        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12, AsyncMock(return_value=article),
+                                       AsyncMock(return_value=DRAFT),
+                                       AsyncMock(side_effect=fetch_mod.ArticleError('Изображение недоступно')))
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        buttons = [b for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        retry = next(b.callback_data for b in buttons if 'загрузку картинки' in b.text)
+        data = BytesIO(); Image.new('RGB', (160, 90), 'blue').save(data, format='JPEG')
+        thumbnail = news_image_codec.make_thumbnail(data.getvalue())
+        with patch.object(news_image_fetch, 'fetch_thumbnail', AsyncMock(return_value=thumbnail)), \
+             patch.object(news_owner_drafts, 'analyze_image', AsyncMock(return_value={'description': 'мем'})):
+            await self.action(retry)
+        fresh = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        self.assertIn('image_b64', fresh['script'])
+        self.assertEqual(fresh['stage'], 'draft_ready')
+        texts = '\n'.join(c.args[0] for c in self.message.answer.await_args_list if c.args)
+        self.assertIn('Картинка загружена заново', texts)
+        # With the picture attached the button is gone.
+        await news.card(self.message, news.ADMIN_ID, 'draft', fresh)
+        labels = [b.text for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
+        self.assertFalse(any('загрузку картинки' in label for label in labels))
+        self.assertTrue(any('Проверить картинку' in label for label in labels))
 
     async def test_confirmation_uses_captured_approval_revision_once(self):
         item = await self.ready(12)

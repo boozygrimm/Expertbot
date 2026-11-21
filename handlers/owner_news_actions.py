@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID
 from database import db
-from news_prototype import owner_drafts, owner_program, owner_trial
+from news_prototype import news_image_fetch, owner_drafts, owner_program, owner_trial
 from handlers import owner_tools_panel as tools
 from handlers.owner_nav import add_nav, ensure_nav
 
@@ -72,6 +72,10 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
             b.button(text='🚫 Убрать видеофрагмент', callback_data=f'newsact:novideo:{token}')
         if item.get('script', {}).get('image_b64'):
             b.button(text='🖼 Проверить картинку', callback_data=f'newsact:media:{token}')
+        elif owner_drafts.media_retry_available(item):
+            # The picture failed to download; the script is ready and paid for,
+            # so it is retried without touching Gemini or the draft stage.
+            b.button(text='🔄 Повторить загрузку картинки', callback_data=f'newsact:retryimage:{token}')
         if for_program:
             b.button(text='📺 Собрать выпуск', callback_data='newsact:choose')
         else:
@@ -230,6 +234,33 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             if result == 'changed':
                 return await callback.message.answer(f'Состояние уже изменилось. /news_draft {number}', parse_mode=None)
             return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number, panel_mode=True)
+        if action == 'retryimage' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            await callback.answer('Пробую снова загрузить картинку')
+            from handlers import news_owner_drafts
+            result = await owner_drafts.retry_image(
+                db.db, callback.from_user.id, number, news_image_fetch.fetch_thumbnail,
+                news_owner_drafts.analyze_image, news_owner_drafts.article_fetch.fetch_article)
+            if result == 'saved':
+                await callback.message.answer('Картинка загружена заново. Проверь её и кадрирование.', parse_mode=None)
+            elif result == 'unchanged':
+                await callback.message.answer('Картинка уже есть в черновике.', parse_mode=None)
+            elif result == 'no_media':
+                await callback.message.answer('В сохранённом источнике нет картинки, которую можно повторить. '
+                                              'Можно прислать свою вручную.', parse_mode=None)
+            elif result == 'not_ready':
+                await callback.message.answer('Черновик уже не готов к правке картинки; обнови карточку.', parse_mode=None)
+            elif result == 'changed':
+                await callback.message.answer('Карточка устарела: обнови её и попробуй снова.', parse_mode=None)
+            elif result.startswith('source_'):
+                await callback.message.answer('Не удалось перечитать источник, чтобы найти картинку. '
+                                              'Попробуй позже или пришли картинку вручную.', parse_mode=None)
+            else:
+                from handlers import news_owner_drafts as drafts_handler
+                await callback.message.answer('Не удалось загрузить картинку: '
+                                              + drafts_handler.image_status({'image_error': result}),
+                                              parse_mode=None)
+            return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number,
+                                                panel_mode=True)
         if action == 'source' and kind == 'draft' and card_doc['stage'] in ('needs_source', 'editor_failed'):
             await tools.ask(callback, state, 'news_source', 'Пришли полный текст источника одним сообщением. '
                             'Редактор использует квоту Gemini; рендер не начнётся.', number=number)
