@@ -98,8 +98,10 @@ def section_content(section):
             ('🖌 Рисование', 'owner_panel:images'),
             ('🌐 Картинки в поиске', 'owner_panel:search'),
         ], 'owner_panel:home'),
-        'help': ('❓ Справка\nПульт › Справка', '', [
+        'help': ('❓ Справка\nПульт › Справка', 'Всё, что можно сделать, доступно кнопками. '
+                          'Команды ниже — резерв, если экран не отвечает.', [
             ('📖 Справка по боту', 'owner_tools:help'),
+            ('⌨️ Все команды', 'owner_panel:commands'),
         ], 'owner_panel:home'),
         # Keep the old route usable from already-sent keyboards and video flow.
         'tools': ('🧰 Инструменты\nПульт › Инструменты', 'Выбери раздел.', [
@@ -118,6 +120,67 @@ def section_content(section):
     b.adjust(1)
     add_nav(b, back=back, refresh='owner_panel:' + section)
     return text, b.as_markup()
+
+
+# One screen with every reserved text command, grouped the same way as the
+# panels. Buttons stay the primary way; this is the printable map for them.
+COMMAND_GROUPS = (
+    ('Новости и сценарии', [
+        ('/news_prepare ССЫЛКА', 'подготовить сценарий по ссылке, акцент — следующей строкой'),
+        ('/news_prepare_many', 'то же для двух-четырёх ссылок'),
+        ('/news_discover', 'найти новые публикации в настроенных источниках'),
+        ('/news_pick', 'выбрать сюжет из найденного'),
+        ('/news_drafts', 'список последних черновиков'),
+        ('/news_draft НОМЕР', 'карточка одного черновика'),
+        ('/news_source НОМЕР', 'прислать текст источника вместо недоступной статьи'),
+        ('/news_retry НОМЕР', 'один повтор подготовки после ошибки редактора'),
+        ('/news_edit', 'исправить текст сценария по версии'),
+        ('/news_nofocus', 'убрать автоматические области увеличения'),
+        ('/news_noimage', 'убрать картинку из черновика'),
+        ('/news_novideo', 'убрать присланный видеофрагмент'),
+        ('/news_approve НОМЕР ВЕРСИЯ', 'подтвердить рендер конкретной версии'),
+        ('/news_daily_status', 'состояние ежедневного сбора'),
+        ('/news_collected', 'что уже собрано за день'),
+    ]),
+    ('Выпуски и вестники', [
+        ('/news_program', 'собрать выпуск из готовых черновиков'),
+        ('/news_programs', 'список выпусков'),
+        ('/news_program_status', 'состояние выпуска'),
+        ('/news_program_approve', 'подтвердить рендер выпуска'),
+    ]),
+    ('Проба и доставка', [
+        ('/news_trial', 'поставить свой сценарий в пробу'),
+        ('/news_trial_next', 'перейти к следующей пробе'),
+        ('/news_trial_status', 'состояние рендера и доставки'),
+    ]),
+    ('Прежний ручной режим', [
+        ('/news, /news_list', 'старый ручной приём новостей'),
+        ('/news_ready', 'готовые материалы прежнего режима'),
+        ('/news_digest', 'собрать дайджест в старом режиме'),
+        ('/news_digest_status', 'состояние старого дайджеста'),
+    ]),
+)
+
+
+def commands_content():
+    """Show the reserved text commands without dumping them into the chat."""
+    lines = ['⌨️ Все команды', 'Пульт › Справка › Все команды', '',
+             'Обычно ничего вводить не нужно: каждое действие есть кнопкой в разделе. '
+             'Команды ниже остаются резервом — например, если экран не отвечает.', '']
+    for title, entries in COMMAND_GROUPS:
+        lines.append(f'— {title}')
+        for command, purpose in entries:
+            lines.append(f'{command} · {purpose}')
+        lines.append('')
+    lines.append('Команды работают только в личке владельца. В группе действует только /panel.')
+    b = InlineKeyboardBuilder()
+    b.button(text='📖 Справка по боту', callback_data='owner_tools:help')
+    b.button(text='📝 К черновикам', callback_data='news_panel:scripts')
+    b.adjust(1)
+    add_nav(b, back='owner_panel:help', refresh='owner_panel:commands')
+    # Telegram caps one message at 4096 characters; split only if a future
+    # entry grows the list past that.
+    return '\n'.join(lines), b.as_markup()
 
 
 async def image_content():
@@ -262,7 +325,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
         return
     action = (callback.data or '').partition(':')[2]
     if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups',
-                            'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help', 'status'):
+                            'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help',
+                            'commands', 'status'):
         # Leaving a section must also release an unfinished text input, or the
         # next non-command message would be swallowed by that old form.
         get_data = getattr(state, 'get_data', None)
@@ -294,6 +358,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             text, markup = await status_content()
         elif action in ('tools', 'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help'):
             text, markup = section_content(action)
+        elif action == 'commands':
+            text, markup = commands_content()
         elif action == 'images':
             text, markup = await image_content()
         elif action == 'search':

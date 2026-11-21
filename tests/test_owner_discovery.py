@@ -160,7 +160,10 @@ class AsyncDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             await handler.discover(msg)
         text = '\n'.join(call.args[0] for call in msg.answer.await_args_list)
         self.assertIn('Decrypt', text); self.assertIn('ИИ обновление', text)
-        self.assertIn('/news_pick 51 1 2', text)
+        # The picker is a screen: the text points at the panel buttons instead
+        # of printing a command with the batch number and indexes.
+        self.assertIn('подборки №51 кнопками', text)
+        self.assertNotIn('/news_pick', text)
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
         pick_msg = SimpleNamespace(from_user=SimpleNamespace(id=123), chat=SimpleNamespace(type='private'),
                                    text='/news_pick 51 2 1', message_id=52, answer=AsyncMock())

@@ -29,6 +29,13 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         # editor_failed is included so the card can offer one explicit retry
         # instead of leaving the owner with an opaque dead-end state.
         if stage not in ('draft_ready', 'needs_source', 'editor_failed'):
+            # Waiting and finished stages still get navigation: the screen must
+            # never be a dead end just because there is nothing to act on yet.
+            back = InlineKeyboardBuilder()
+            add_nav(back, back='news_panel:scripts', back_label='‹ К списку',
+                    refresh=f'news_panel:view_drafts:{number}')
+            await message.answer(text or 'Эта версия ещё не готова к действиям.',
+                                 reply_markup=back.as_markup(), parse_mode=None)
             return
     else:
         number = item['program_id']
@@ -45,6 +52,9 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
     b = InlineKeyboardBuilder()
     if kind == 'draft' and stage == 'editor_failed':
         b.button(text='🔄 Повторить подготовку', callback_data=f'newsact:retry:{token}')
+        # A refusal or a quote mismatch cannot be fixed by retrying alone, so
+        # the owner can replace the material without leaving the card.
+        b.button(text='📄 Прислать текст источника', callback_data=f'newsact:source:{token}')
     elif kind == 'draft' and stage == 'needs_source':
         b.button(text='📄 Прислать текст источника', callback_data=f'newsact:source:{token}')
     elif kind == 'draft' and media_view:
@@ -220,7 +230,7 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             if result == 'changed':
                 return await callback.message.answer(f'Состояние уже изменилось. /news_draft {number}', parse_mode=None)
             return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number, panel_mode=True)
-        if action == 'source' and kind == 'draft' and card_doc['stage'] == 'needs_source':
+        if action == 'source' and kind == 'draft' and card_doc['stage'] in ('needs_source', 'editor_failed'):
             await tools.ask(callback, state, 'news_source', 'Пришли полный текст источника одним сообщением. '
                             'Редактор использует квоту Gemini; рендер не начнётся.', number=number)
             return

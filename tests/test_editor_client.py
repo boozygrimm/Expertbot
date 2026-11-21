@@ -79,6 +79,46 @@ class EditorClientTests(unittest.IsolatedAsyncioTestCase):
             result=await editor_client.draft(CANDIDATE,'fake-secret','gemini-test')
         self.assertEqual(result['verification'],'needs_review')
 
+    async def test_blocked_request_is_named_and_never_reported_as_bad_format(self):
+        # Gemini answers a refused request with no candidates at all. The owner
+        # must see a refusal, not an invented "unsupported format".
+        blocked = {'promptFeedback': {'blockReason': 'OTHER'},
+                   'usageMetadata': {'promptTokenCount': 900}}
+        for body, code in ((blocked, 'refused'),
+                           ({'candidates': [{'finishReason': 'SAFETY'}]}, 'refused'),
+                           ({'candidates': [{'finishReason': 'STOP', 'content': {'parts': []}}]}, 'empty_answer'),
+                           ({'candidates': [{'finishReason': 'STOP',
+                                             'content': {'parts': [{'text': '   '},
+                                                                   {'text': 'размышление', 'thought': True}]}}]},
+                            'invalid_json')):
+            with self.subTest(code=code), patch.object(editor_client.aiohttp, 'ClientSession',
+                    return_value=Session(Response(200, json.dumps(body, ensure_ascii=False).encode()), [])):
+                with self.assertRaises(editor_client.EditorialError) as caught:
+                    await editor_client.draft(CANDIDATE, 'fake-secret', 'gemini-3-flash-preview')
+                self.assertEqual(caught.exception.code, code)
+
+    async def test_one_answer_split_into_parts_and_fenced_is_still_read(self):
+        answer = json.dumps(OUTPUT, ensure_ascii=False)
+        middle = len(answer) // 2
+        for parts in ([{'text': answer[:middle]}, {'text': answer[middle:]}],
+                      [{'text': '```json\n' + answer + '\n```'}],
+                      [{'text': 'вступление '}, {'text': answer}, {'text': '\n'}][1:]):
+            with self.subTest(parts=len(parts)):
+                body = {'candidates': [{'finishReason': 'STOP', 'content': {'parts': parts}}]}
+                with patch.object(editor_client.aiohttp, 'ClientSession', return_value=Session(
+                        Response(200, json.dumps(body, ensure_ascii=False).encode()), [])):
+                    result = await editor_client.draft(CANDIDATE, 'fake-secret', 'gemini-test')
+                self.assertEqual(result['verification'], 'needs_review')
+
+    async def test_fence_stripper_only_unwraps_a_whole_message(self):
+        answer = json.dumps(OUTPUT, ensure_ascii=False)
+        self.assertEqual(editor_client._strip_fence('```json\n' + answer + '\n```'), answer)
+        self.assertEqual(editor_client._strip_fence('```\n' + answer + '\n```'), answer)
+        # Anything ambiguous stays untouched so the parser still fails closed.
+        for value in (answer, 'до ```json\n' + answer + '\n```', '```json\n' + answer,
+                      '```json\n```', '', None):
+            self.assertEqual(editor_client._strip_fence(value), value)
+
     async def test_older_model_is_not_sent_a_gemini3_only_field(self):
         calls=[]
         body={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':json.dumps(OUTPUT,ensure_ascii=False)}]}}]}

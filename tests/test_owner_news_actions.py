@@ -421,7 +421,8 @@ async def run():
         await cb(6, 'owner_tools:run:' + confirm['_id'], 322)
         assert await database.news_owner_programs.count_documents({'stage':'ready_for_review'}) == 1
         assert await database.news_owner_trial_jobs.count_documents({}) == 0
-        assert any(isinstance(m, SendMessage) and m.text == 'Действия с этой версией:' for m in sent)
+        assert any(isinstance(m, SendMessage) and m.text == 'Если все сюжеты проверены, '
+                'подтверди один общий рендер кнопкой ниже:' for m in sent)
     await bot.session.close()
 asyncio.run(run())
 '''

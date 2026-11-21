@@ -10,7 +10,7 @@ try:
     from mongomock_motor import AsyncMongoMockClient
 except ImportError:
     AsyncMongoMockClient = None
-from news_prototype import article_fetch, owner_drafts, owner_trial
+from news_prototype import article_fetch, editor_client, owner_drafts, owner_trial, story_editor
 
 URL = 'https://t.me/ExampleNews/102'
 SOURCE = 'Исходная новость о том, что команда перестала принимать статичные изображения. ' * 3
@@ -239,6 +239,8 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
                          patch.object(news_owner_drafts, 'db', SimpleNamespace(db=self.db)),
                          patch.dict(os.environ, {'NEWS_OWNER_DRAFT_ENABLED':'1', 'NEWS_OWNER_TRIAL_ENABLED':'1',
                              **{k:'0' for k in owner_trial.OTHER_FLAGS}})]
+        from handlers import owner_news_actions
+        self.patchers.append(patch.object(owner_news_actions, 'db', SimpleNamespace(db=self.db)))
         for p in self.patchers: p.start(); self.addAsyncCleanup(self.stop_patch, p)
 
     async def stop_patch(self, p): p.stop()
@@ -282,6 +284,38 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
             await self.handler.approve_draft(self.msg(f'/news_approve 10 {item["revision"]}'))
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
 
+    async def test_failed_editor_card_offers_buttons_instead_of_commands(self):
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(side_effect=editor_client.EditorialError(
+                                           'x', code='refused')))
+        item = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(item['stage'], 'editor_failed')
+        self.assertEqual(item['editor_error']['code'], 'refused')
+        msg = self.msg('/news_draft 10')
+        await self.handler.show(msg, 10)
+        texts = [call.args[0] for call in msg.answer.await_args_list]
+        self.assertTrue(any('фильтр безопасности' in text for text in texts))
+        self.assertFalse(any('/news_retry' in text or '/news_approve' in text for text in texts))
+        keyboards = [call.kwargs.get('reply_markup') for call in msg.answer.await_args_list]
+        callbacks = [b.callback_data for markup in keyboards if markup for row in markup.inline_keyboard for b in row]
+        self.assertTrue(any(c.startswith('newsact:retry:') for c in callbacks))
+        self.assertTrue(any(c.startswith('newsact:source:') for c in callbacks))
+        self.assertTrue(any(c.startswith('news_panel:view_drafts:10') for c in callbacks))
+        # Owner-supplied text is accepted on a failed draft, not only on a fetch failure.
+        with patch.object(story_editor, 'prompt_for'):
+            self.assertEqual(await owner_drafts.provide_source(self.db, 123, 10, SOURCE, AsyncMock(return_value=DRAFT)),
+                             'draft_ready')
+
+    async def test_every_draft_screen_has_navigation_buttons(self):
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        msg = self.msg('/news_draft 10')
+        await self.handler.show(msg, 10)  # stage 'new': nothing to act on yet
+        markup = msg.answer.await_args.kwargs.get('reply_markup')
+        callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+        self.assertIn('news_panel:scripts', callbacks)
+        self.assertIn('news_panel:view_drafts:10', callbacks)
+
     async def test_trial_status_explains_missing_image_capability(self):
         from handlers import news_owner_trial as handler
         from io import BytesIO
@@ -320,7 +354,9 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item['stage'], 'draft_ready')
         texts = [call.args[0] for call in msg.answer.await_args_list]
         self.assertTrue(any(text.startswith('/news_edit 10 ') for text in texts))
-        self.assertTrue(any(text.startswith('/news_approve 10 ') for text in texts))
+        # Every action is a button on the card; the chat never prints a
+        # command with a revision hash for the owner to retype.
+        self.assertFalse(any('/news_approve' in text for text in texts))
         approval = self.msg('/news_approve 10 ' + item['revision'], message_id=11)
         with patch('news_prototype.news_worker_client.NewsWorkerClient', return_value=SimpleNamespace(
                 capabilities=AsyncMock(return_value={'news-story-bulletin-studio-v1'}))):

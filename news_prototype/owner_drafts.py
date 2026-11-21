@@ -26,6 +26,9 @@ EDITOR_ERROR_CODES = frozenset({
     'configuration', 'timeout', 'network', 'http', 'response_too_large',
     'incomplete_response', 'max_tokens', 'invalid_response', 'invalid_json',
     'evidence', 'speakers', 'too_long', 'validation', 'save', 'unknown',
+    # A refusal and an empty answer look identical to the owner unless they
+    # are named: one needs a different source, the other a retry.
+    'refused', 'empty_answer',
 })
 
 
@@ -347,11 +350,15 @@ async def provide_source(db, owner_id: int, draft_id: int, text: str, draft) -> 
         raise ValueError('Нужен текст источника до 8000 символов')
     key = _key(owner_id, draft_id)
     item = await get(db, owner_id, draft_id)
-    if not item or item.get('stage') != 'needs_source':
+    # A failed edit means the stored source was unusable for the editor, so new
+    # owner-supplied text is accepted there too instead of only after a fetch
+    # failure. Both transitions are guarded by the exact current stage.
+    if not item or item.get('stage') not in ('needs_source', 'editor_failed'):
         return 'not_waiting'
+    stage = item['stage']
     item = item | {'text': text.strip()}
     story_editor.prompt_for(item)
-    changed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'needs_source'},
+    changed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': stage},
                                                      {'$set': {'text': text.strip(), 'stage': 'editing'},
                                                       '$unset': {'editor_error': '', 'source_error': ''}})
     if not changed.modified_count:
