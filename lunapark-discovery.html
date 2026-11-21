@@ -171,24 +171,25 @@
 .research-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}.research-copy small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#b6e0be}.research-copy strong{font:700 13px Georgia,serif;color:#fff1d8}.research-copy span{font-size:9px;line-height:1.2;color:#d4c5cf}.research-actions{display:flex;flex:none;gap:5px}.research-actions button{border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:6px 8px;font-size:9px;font-weight:750}.research-actions button:disabled{opacity:.5}.research-actions button[hidden]{display:none}
 @media(max-height:650px){.research-card{margin:2px 0 4px;padding:5px 7px}.research-copy strong{font-size:12px}.research-actions button{padding:5px 6px}}
 .research-card{flex-wrap:wrap}
-.research-choices{flex-basis:100%;display:flex;flex-direction:column;gap:4px;margin-top:5px}
-.research-choices button{display:flex;align-items:baseline;gap:6px;width:100%;text-align:left;border:1px solid #dfbd836b;border-radius:8px;background:#42324f;color:#f1d79d;padding:5px 7px}
-.research-choices button strong{flex:none;font-size:10px;font-weight:800}
-.research-choices button small{flex:1;min-width:0;margin:0;font-size:8px;font-weight:600;color:#cdbbd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.research-choices button::after{content:'›';flex:none;margin-left:auto;color:#cbb1d6;font-size:11px;line-height:1}
-.research-choices button:active{background:#55416a}
+.brief-list{display:flex;flex-direction:column;gap:7px}
+.brief-choice{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid #dfbd8350;border-radius:12px;background:#241c30;padding:9px 10px;color:#f1d79d}
+.brief-choice strong{flex:none;font:700 12px Georgia,serif;color:#ffe9c4}
+.brief-choice small{flex:1;min-width:0;font-size:9px;font-weight:600;color:#c6b5c8;line-height:1.25}
+.brief-choice::after{content:'›';flex:none;font-size:15px;color:#cbb1d6;line-height:1}
+.brief-choice:active{background:#31253f}
+.brief-note{margin:8px 0 0;font-size:9px;line-height:1.35;color:#c9b8cf}
+.project-overlay{display:flex;flex-direction:column;gap:9px}
+.project-overlay p{margin:0;font-size:11px;line-height:1.4;color:#d5c5ce}
+.project-targets{display:flex;flex-wrap:wrap;gap:5px}
+.project-targets span{border:1px solid #e0bd8055;border-radius:7px;padding:4px 7px;font-size:10px;color:#e8d4b4;background:#241c30}
+.project-targets .done{color:#bdf0c4;border-color:#8fd39a66;background:#22392b}
+.project-overlay button{align-self:flex-start;border:1px solid #e6c786;border-radius:8px;padding:7px 10px;font-size:10px;background:#e6c386;color:#34202c;font-weight:800}
 .project-card{flex:none;margin:0 0 7px;border:1px solid #d9b47c55;border-radius:10px;background:linear-gradient(100deg,#33243fdd,#2a2338db)}
 .project-head{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;padding:6px 9px;text-align:left}
 .project-head small{font-size:8px;letter-spacing:.12em;font-weight:800;color:#d9bd8c;flex:none}
 .project-head strong{font:700 12px Georgia,serif;color:#ffe9c4;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-head span#project-progress{flex:none;font-size:9px;font-weight:800;color:#bfe6c2}
 .project-chevron{flex:none;font-size:12px;color:#cbb1d6;transition:transform .15s}
-.project-head[aria-expanded="true"] .project-chevron{transform:rotate(180deg)}
-.project-need{display:flex;flex-wrap:wrap;gap:4px;padding:0 9px 7px}
-.project-need button{border:1px solid #e0bd8055;border-radius:6px;background:#241c30;color:#e8d4b4;font-size:9px;padding:3px 6px}
-.project-need .done{color:#bdf0c4;border-color:#8fd39a66;background:#22392b}
-.project-need .project-note{flex-basis:100%;font-size:8px;color:#cdbbd2;line-height:1.3}
-.project-need .project-new{border-color:#e6c786;background:#e6c386;color:#34202c;font-weight:800}
 @media (orientation:portrait){
  .workspace{display:flex;flex-direction:column;justify-content:flex-start;gap:6px}
  .shelf{order:1;flex:1 1 auto;min-height:0}
@@ -213,15 +214,13 @@
   <div class="shelf">
     <section class="research-card" aria-label="Исследовательский контракт">
       <div class="research-copy"><small>КОНТРАКТ ЛАБОРАТОРИИ</small><strong id="research-title">Открой две новые реакции</strong><span id="research-progress">Прогресс 0 / 2 · исследования бесплатны</span><span id="research-feedback" role="status" hidden></span></div>
-      <div class="research-actions"><button type="button" id="research-hint">Улика ✦</button><button type="button" id="research-next" hidden>Новый контракт</button></div>
-      <div class="research-choices" id="research-choices" hidden></div>
+      <div class="research-actions"><button type="button" id="research-pick" hidden>Выбрать бриф</button><button type="button" id="research-hint">Улика ✦</button><button type="button" id="research-next" hidden>Новый контракт</button></div>
     </section>
-    <section class="project-card" id="project-card" aria-label="Проект парка">
-      <button type="button" class="project-head" id="project-toggle" aria-expanded="false">
+    <section class="project-card" aria-label="Проект парка">
+      <button type="button" class="project-head" id="project-toggle" aria-haspopup="dialog">
         <small>ПРОЕКТ ПАРКА</small><strong id="project-title">Новая карусель</strong>
-        <span id="project-progress">0 / 3</span><span class="project-chevron" aria-hidden="true">⌄</span>
+        <span id="project-progress">0 / 3</span><span class="project-chevron" aria-hidden="true">›</span>
       </button>
-      <div class="project-need" id="project-need" hidden></div>
     </section>
     <div class="shelf-heading"><div><small>ТВОЯ КОЛЛЕКЦИЯ</small><h2>Элементы <span id="open-count">04</span></h2></div><button class="tool-btn" id="search-toggle" type="button" aria-label="Поиск элементов" aria-expanded="false">⌕</button><button class="tool-btn" id="options-toggle" type="button" aria-label="Сортировка и категории" aria-expanded="false">☷</button></div>
     <div id="search-box" class="search-box" hidden><input id="search" type="search" placeholder="Название элемента…" aria-label="Поиск по названию"><button type="button" id="search-close" aria-label="Закрыть поиск">×</button></div>
@@ -647,6 +646,7 @@ function chooseGoal(goal){
  r.lastCategory=goal.category||r.lastCategory;
  const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent=`Бриф взят: ${goalText(goal).title}. Ищи в котле.`;
  saveLabProgress();renderResearch();
+ if(state.view==='briefs')goBack();
 }
 function validGoal(goal){
  if(!goal||typeof goal!=='object')return false;
@@ -663,28 +663,15 @@ function ensureGoal(){
 }
 function renderResearch(){
  const r=state.research;ensureGoal();
- const choices=$('#research-choices');
  if(r.phase==='choose'){
-  const list=makeChoices();
-  if(!list.length)list.push({kind:'new',count:1,category:null});
   $('#research-title').textContent='Куда идём дальше?';
-  $('#research-progress').textContent='Выбери бриф · награда: мастерство лаборатории';
-  choices.replaceChildren();
-  for(const goal of list){
-   const text=goalText(goal);
-   const b=document.createElement('button');b.type='button';
-   const strong=document.createElement('strong');strong.textContent=text.title;
-   const small=document.createElement('small');small.textContent=text.scope;
-   b.append(strong,small);b.title=`${text.title}: ${text.scope}`;
-   b.onclick=()=>chooseGoal(goal);
-   choices.append(b);
-  }
-  choices.hidden=false;
+  $('#research-progress').textContent='Бриф не выбран · награда: мастерство';
+  $('#research-pick').hidden=false;
   $('#research-hint').hidden=true;$('#research-next').hidden=true;
   $('#research-feedback').hidden=true;
   return;
  }
- choices.hidden=true;choices.replaceChildren();
+ $('#research-pick').hidden=true;
  $('#research-hint').hidden=false;
  const goal=r.goal,text=goalText(goal),done=r.progress>=goal.count;
  $('#research-title').textContent=done?`Контракт ${r.contract} выполнен`:text.title;
@@ -709,8 +696,7 @@ function advanceResearch(){
  const r=state.research;
  if(r.progress<r.goal.count)return;
  r.lastCategory=r.goal.category||r.lastCategory;r.phase='choose';r.progress=0;r.hintsUsed=0;
- const feedback=$('#research-feedback');feedback.hidden=false;feedback.dataset.transient='0';feedback.textContent='Выбери следующий бриф.';
- saveLabProgress();renderResearch();
+ saveLabProgress();renderResearch();go('briefs');
 }
 function recordResearchDiscovery(isFresh,isNewElement,result){
  const r=state.research;
@@ -771,25 +757,54 @@ function renderProject(){
  const p=ensureProject(),done=projectDone();
  $('#project-title').textContent=p.title;
  $('#project-progress').textContent=done?'готово':`${projectProgress()} / ${p.need.length}`;
- const box=$('#project-need');
- $('#project-toggle').setAttribute('aria-expanded',String(!box.hidden));
- if(box.hidden&&!done)return;
- box.replaceChildren();
+ $('#project-toggle').title=`Открыть проект «${p.title}»`;
+}
+function renderBriefOverlay(){
+ $('#overlay-kicker').textContent='ЛАБОРАТОРИЯ';
+ $('#overlay-title').textContent='Доска брифов';
+ $('.overlay-bottom').hidden=true;
+ const body=$('#overlay-body');body.replaceChildren();
+ const wrap=document.createElement('div');wrap.className='brief-list';
+ const list=makeChoices();if(!list.length)list.push({kind:'new',count:1,category:null});
+ for(const goal of list){
+  const text=goalText(goal);
+  const b=document.createElement('button');b.type='button';b.className='brief-choice';
+  const strong=document.createElement('strong');strong.textContent=text.title;
+  const small=document.createElement('small');small.textContent=text.scope;
+  b.append(strong,small);b.title=`${text.title}: ${text.scope}`;
+  b.onclick=()=>chooseGoal(goal);
+  wrap.append(b);
+ }
+ const note=document.createElement('p');note.className='brief-note';
+ note.textContent='Считаются только новые элементы. Награда за бриф — мастерство лаборатории.';
+ wrap.append(note);
+ body.append(wrap);
+}
+function renderProjectOverlay(){
+ const p=ensureProject(),done=projectDone();
+ $('#overlay-kicker').textContent='ПРОЕКТ ПАРКА';
+ $('#overlay-title').textContent=p.title;
+ $('.overlay-bottom').hidden=true;
+ const body=$('#overlay-body');body.replaceChildren();
+ const wrap=document.createElement('div');wrap.className='project-overlay';
+ const lead=document.createElement('p');
+ lead.textContent=done?'Проект закрыт, мастерство уже начислено.':'Найди эти элементы в любых реакциях. Прогресс не сгорает между заходами.';
+ const targets=document.createElement('div');targets.className='project-targets';
  for(const id of p.need){
-  const chip=document.createElement('button');chip.type='button';chip.disabled=true;
+  const chip=document.createElement('span');
   const opened=state.opened.includes(id);
   chip.textContent=(opened?'✓ ':'· ')+label(id);
   if(opened)chip.classList.add('done');
-  box.append(chip);
+  targets.append(chip);
  }
- const note=document.createElement('span');note.className='project-note';
- note.textContent=done?'Проект закрыт, награда начислена. Возьми следующий — прогресс не сгорает.':`Найди эти элементы в любых реакциях. Осталось: ${p.need.length-projectProgress()}.`;
- box.append(note);
+ const counter=document.createElement('p');counter.textContent=`Собрано ${projectProgress()} из ${p.need.length}.`;
+ wrap.append(lead,targets,counter);
  if(done){
-  const again=document.createElement('button');again.type='button';again.className='project-new';again.textContent='Новый проект';
-  again.onclick=()=>{state.project=makeProject();saveLabProgress();renderProject();};
-  box.append(again);
+  const again=document.createElement('button');again.type='button';again.textContent='Новый проект';
+  again.onclick=()=>{state.project=makeProject();saveLabProgress();renderProject();renderOverlay();};
+  wrap.append(again);
  }
+ body.append(wrap);
 }
 function renderElements() {
  stopFlight();
@@ -939,6 +954,8 @@ function mix(){
 function go(view){stopFlight();state.view=view;state.viewPage=0;state.detail=null;$('#workspace').hidden=true;$('#overlay').hidden=false;renderOverlay();}
 function goBack(){state.view='';state.detail=null;$('#overlay').hidden=true;$('#workspace').hidden=false;}
 function renderOverlay(){
+ if(state.view==='briefs'){renderBriefOverlay();return;}
+ if(state.view==='project'){renderProjectOverlay();return;}
  $('#overlay-kicker').textContent=state.view==='album'?'ТВОЯ КОЛЛЕКЦИЯ':'ЛАБОРАТОРНЫЙ ЖУРНАЛ';$('#overlay-title').textContent=state.view==='album'?'Альбом открытий':'История попыток';
  const body=$('#overlay-body');body.replaceChildren();const items=state.view==='album'?[...state.found].reverse():state.attempts;const size=state.view==='album'?6:HISTORY_SIZE,pages=Math.max(1,Math.ceil(items.length/size));state.viewPage=Math.min(state.viewPage,pages-1);
  $('#overlay-prev').disabled=state.viewPage===0;$('#overlay-next').disabled=state.viewPage===pages-1;$('#overlay-page').textContent=`${state.viewPage+1} / ${pages}`;$('.overlay-bottom').hidden=!!state.detail;
@@ -957,7 +974,7 @@ $('#elements').addEventListener('pointermove',e=>{if(!drag)return;if(!drag.moved
 function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;if(d.ghost)d.ghost.remove();if(!d.moved)return;suppress=true;setTimeout(()=>suppress=false,100);const under=document.elementFromPoint(e.clientX,e.clientY);if(!cancel&&under?.closest('#hero')){const slot=under.closest('[data-slot]');choose(d.id,slot?Number(slot.dataset.slot):null);}}
 $('#elements').addEventListener('pointerup',e=>endDrag(e,false));$('#elements').addEventListener('pointercancel',e=>endDrag(e,true));
 document.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{if(state.reacting)return;const i=Number(el.dataset.slot);state.nextAfterMix=null;state.target=i;$('#mix-message').textContent=state.slots[i]?'Выбери элемент для замены':'Выбери элемент для этого слота';renderSlots();}));
-$('#mix').addEventListener('click',mix);$('#project-toggle').onclick=()=>{const box=$('#project-need');box.hidden=!box.hidden;renderProject();};$('#research-hint').onclick=showResearchHint;$('#research-next').onclick=advanceResearch;
+$('#mix').addEventListener('click',mix);$('#project-toggle').onclick=()=>go('project');$('#research-pick').onclick=()=>go('briefs');$('#research-hint').onclick=showResearchHint;$('#research-next').onclick=advanceResearch;
 $('#tabs').addEventListener('click',e=>{const b=e.target.closest('[data-filter]');if(!b)return;state.filter=b.dataset.filter;renderElements();});
 $('#search-toggle').onclick=()=>{const box=$('#search-box');box.hidden=!box.hidden;$('#search-toggle').setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden){$('#options-box').hidden=true;$('#options-toggle').setAttribute('aria-expanded','false');$('#search').focus();}};
 $('#search-close').onclick=()=>{$('#search-box').hidden=true;$('#search-toggle').setAttribute('aria-expanded','false');$('#search').value='';state.search='';renderElements();};

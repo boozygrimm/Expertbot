@@ -84,14 +84,19 @@ function pick(win, doc, id) {
 
 async function takeBrief(win, doc) {
   const next = doc.querySelector('#research-next');
-  if (!next.hidden) { next.click(); await sleep(20); }
-  const box = doc.querySelector('#research-choices');
-  if (!box || box.hidden) return null;
-  const button = box.querySelector('button');
+  if (!next.hidden) { next.click(); await sleep(40); }
+  if (doc.querySelector('#overlay').hidden) {
+    const pick = doc.querySelector('#research-pick');
+    if (!pick || pick.hidden) return null;
+    pick.click();
+    await sleep(40);
+  }
+  const button = doc.querySelector('#overlay .brief-choice');
   if (!button) return null;
+  const label = button.querySelector('strong').textContent;
   button.click();
-  await sleep(20);
-  return button.querySelector('strong').textContent;
+  await sleep(40);
+  return label;
 }
 
 async function mixPair(win, doc, a, b) {
@@ -187,15 +192,16 @@ async function solveContract(win, doc, labelText) {
   check(t.hintDisabled === true, 'hint stays closed while the finished contract waits for its next brief', t);
 
   d1.querySelector('#research-next').click();
-  await sleep(20);
-  t = texts(d1);
-  check(t.title === 'Куда идём дальше?', 'finishing a contract opens the brief board', t);
-  const board = [...d1.querySelectorAll('#research-choices button')];
+  await sleep(40);
+  check(d1.querySelector('#overlay').hidden === false && d1.querySelector('#overlay-title').textContent === 'Доска брифов', 'finishing a contract opens the brief popup', d1.querySelector('#overlay-title').textContent);
+  const board = [...d1.querySelectorAll('.brief-choice')];
   check(board.length >= 2 && board.length <= 3, 'board offers two or three briefs', board.length);
   check(board.every(b => b.querySelector('strong') && b.querySelector('small')), 'every brief shows a goal and what counts', board.length);
+  check(d1.querySelector('.overlay-bottom').hidden === true, 'brief popup has no pager', true);
   const pickedLabel = board[0].querySelector('strong').textContent;
   board[0].click();
-  await sleep(20);
+  await sleep(40);
+  check(d1.querySelector('#overlay').hidden === true, 'choosing a brief closes the popup', true);
   t = texts(d1);
   const secondTitle = t.title;
   check(secondTitle === pickedLabel, 'the chosen brief becomes the active contract', {picked: pickedLabel, shown: secondTitle});
@@ -302,11 +308,14 @@ async function solveContract(win, doc, labelText) {
   const w7 = dom7.window, d7 = w7.document;
   await sleep(50);
   check(errors.length === 0, 'board state loads without errors', errors);
-  check(texts(d7).title === 'Куда идём дальше?' && d7.querySelectorAll('#research-choices button').length >= 2, 'open brief board is restored after reload', texts(d7));
-  const restored = d7.querySelectorAll('#research-choices button');
+  check(texts(d7).title === 'Куда идём дальше?' && d7.querySelector('#research-pick').hidden === false, 'unfinished brief choice is restored after reload', texts(d7));
+  d7.querySelector('#research-pick').click();
+  await sleep(40);
+  const restored = [...d7.querySelectorAll('#overlay .brief-choice')];
+  check(restored.length >= 2, 'restored popup still offers briefs', restored.length);
   restored[restored.length - 1].click();
-  await sleep(30);
-  check(texts(d7).title !== 'Куда идём дальше?' && !isDone(d7), 'the last offered brief can be taken from a restored board', texts(d7));
+  await sleep(40);
+  check(texts(d7).title !== 'Куда идём дальше?' && !isDone(d7), 'the last offered brief can be taken from a restored popup', texts(d7));
 
   // ---------- long-term park project ----------
   errors = [];
@@ -317,27 +326,36 @@ async function solveContract(win, doc, labelText) {
   const w8 = dom8.window, d8 = w8.document;
   await sleep(60);
   check(errors.length === 0, 'project state loads without errors', errors);
-  check(d8.querySelector('#project-title').textContent === 'Новая карусель', 'project title is shown', d8.querySelector('#project-title').textContent);
+  check(d8.querySelector('#project-title').textContent === 'Новая карусель', 'project name is on the collapsed row', d8.querySelector('#project-title').textContent);
   check(d8.querySelector('#project-progress').textContent === '0 / 2', 'project starts at 0 of its targets', d8.querySelector('#project-progress').textContent);
-  check(d8.querySelector('#project-need').hidden === true, 'project details are collapsed by default', true);
+
   d8.querySelector('#project-toggle').click();
+  await sleep(40);
+  check(d8.querySelector('#overlay').hidden === false && d8.querySelector('#overlay-title').textContent === 'Новая карусель', 'project row opens a popup', d8.querySelector('#overlay-title').textContent);
+  const chips = [...d8.querySelectorAll('.project-targets span')].map(el => el.textContent);
+  check(chips.some(c => c.includes('Ветер')) && chips.some(c => c.includes('Лава')), 'project popup lists its targets', chips);
+  d8.querySelector('#back').click();
   await sleep(30);
-  const chips = [...d8.querySelectorAll('#project-need button')].map(b => b.textContent);
-  check(d8.querySelector('#project-need').hidden === false && chips.some(c => c.includes('Ветер')) && chips.some(c => c.includes('Лава')), 'expanding the project lists its targets', chips);
+  check(d8.querySelector('#overlay').hidden === true, 'project popup closes back to the cauldron', true);
 
   await mixPair(w8, d8, 'a', 'a');
   check(d8.querySelector('#project-progress').textContent === '1 / 2', 'opening a project element advances it', d8.querySelector('#project-progress').textContent);
 
   await mixPair(w8, d8, 'e', 'f');
   const done8 = save(w8);
-  check(d8.querySelector('#project-progress').textContent === 'готово', 'project reports completion', d8.querySelector('#project-progress').textContent);
+  check(d8.querySelector('#project-progress').textContent === 'готово', 'project reports completion on its row', d8.querySelector('#project-progress').textContent);
   check(done8.research.mastery === 1 && done8.project.rewarded === true, 'project completion grants exactly one mastery', done8.research);
-  const againBtn = [...d8.querySelectorAll('#project-need button')].find(b => b.textContent === 'Новый проект');
-  check(!!againBtn, 'completed project offers a new one', d8.querySelector('#project-need').textContent.slice(0, 80));
+
+  d8.querySelector('#project-toggle').click();
+  await sleep(40);
+  const againBtn = [...d8.querySelectorAll('#overlay-body button')].find(b => b.textContent === 'Новый проект');
+  check(!!againBtn, 'completed project popup offers a new one', d8.querySelector('#overlay-body').textContent.slice(0, 80));
   againBtn.click();
-  await sleep(30);
+  await sleep(40);
   const fresh = save(w8).project;
   check(Array.isArray(fresh.need) && fresh.need.length > 0 && fresh.rewarded === false, 'a new project is generated after completion', fresh);
+  d8.querySelector('#back').click();
+  await sleep(20);
 
   // the reward is paid once: another discovery must not add mastery again
   await mixPair(w8, d8, 'w', 'w');
