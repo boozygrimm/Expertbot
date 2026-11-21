@@ -385,30 +385,53 @@
     const cellEl = qs(`.cell[data-idx="${idx}"]`);
     if (!cellEl) return;
     const isSkull = !!(cell && cell.type === 'skull');
-    // state key: full re-render only when the skull (uid) or tile kind changes —
-    // skull cells whose sprite didn't change stay untouched (no flicker after a hit)
+    // state key: render the cell fresh only when its content identity changes —
+    // skull cells reuse their <img> and badge across turns; only the numbers move
     const key = !cell || cell.type === 'empty'
       ? 'empty'
       : isSkull
         ? `skull:${cell.skull.uid}`
         : `tile:${cell.type}`;
-    if (cellEl._renderKey === key) {
-      // same cell — update only the numbers in the badge
-      if (isSkull) {
-        const s = cell.skull;
-        const text = `${s.atk}·${s.def}·${s.hp}`;
-        let badge = cellEl.querySelector('.skull-badge');
-        if (badge) {
-          badge.textContent = text;
-        } else {
-          badge = document.createElement('div');
-          badge.className = 'skull-badge' + (s.boss ? ' boss' : '');
-          badge.textContent = text;
-          cellEl.appendChild(badge);
-        }
+    if (isSkull) {
+      const s = cell.skull;
+      const boss = !!s.boss;
+      let img = SKULL_IMAGES.get(s.uid);
+      if (!img) {
+        img = document.createElement('img');
+        img.src = SKULL_ART[s.art] || '';
+        SKULL_IMAGES.set(s.uid, img);
       }
+      img.className = 'skull-art' + (boss ? ' boss' : '');
+      img.alt = boss ? 'Босс-череп' : 'Череп';
+      const keyChanged = cellEl._renderKey !== key;
+      if (keyChanged) {
+        // cell is now showing a different skull (or a skull replacing a tile) —
+        // drop stale tile art and any other skull's art; keep a badge element if any
+        Array.from(cellEl.children).forEach(child => {
+          if (child === img) return;
+          if (child.classList && (child.classList.contains('skull-art') || child.classList.contains('skull-badge'))) {
+            if (child.classList.contains('skull-art')) child.remove(); // different skull's art — keep only this uid's img
+            return;
+          }
+          child.remove(); // stale tile svg
+        });
+        cellEl.className = 'cell tile type-skull' + (boss ? ' boss' : '');
+        cellEl._renderKey = key;
+      }
+      // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
+      if (img.parentNode !== cellEl) cellEl.appendChild(img);
+      // badge: reuse the same element — only the numbers change in place
+      let badge = cellEl.querySelector('.skull-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        cellEl.appendChild(badge);
+      }
+      badge.className = 'skull-badge' + (boss ? ' boss' : '');
+      const text = `${s.atk}·${s.def}·${s.hp}`;
+      if (badge.textContent !== text) badge.textContent = text;
       return;
     }
+    if (cellEl._renderKey === key) return;
     cellEl._renderKey = key;
     cellEl.className = 'cell';
     cellEl.innerHTML = '';
@@ -416,31 +439,7 @@
       cellEl.className = 'cell empty';
       return;
     }
-    const boss = isSkull && cell.skull.boss;
-    cellEl.className = 'cell tile type-' + cell.type + (boss ? ' boss' : '');
-    if (isSkull) {
-      const s = cell.skull;
-      if (SKULL_ART[s.art]) {
-        let img = SKULL_IMAGES.get(s.uid);
-        if (!img) {
-          img = document.createElement('img');
-          img.className = 'skull-art' + (boss ? ' boss' : '');
-          img.src = SKULL_ART[s.art];
-          img.alt = boss ? 'Босс-череп' : 'Череп';
-          SKULL_IMAGES.set(s.uid, img);
-        } else {
-          img.className = 'skull-art' + (boss ? ' boss' : '');
-        }
-        cellEl.appendChild(img);
-      } else {
-        cellEl.innerHTML = tileSymbol(cell);
-      }
-      const badge = document.createElement('div');
-      badge.className = 'skull-badge' + (boss ? ' boss' : '');
-      badge.textContent = `${s.atk}·${s.def}·${s.hp}`;
-      cellEl.appendChild(badge);
-      return;
-    }
+    cellEl.className = 'cell tile type-' + cell.type;
     cellEl.innerHTML = tileSymbol(cell);
   }
 
@@ -461,6 +460,9 @@
       }
       board.dataset.cellsReady = '1';
     }
+    // transient pop animation: only for cleared cells on the tiles — drop the class
+    // at the start of every render so surviving skulls never stay faded/invisible
+    qsa('.cell').forEach(c => c.classList.remove('pop'));
     for (let i = 0; i < CELL_COUNT; i++) {
       renderCell(S.board[i], i);
     }
@@ -835,8 +837,12 @@
       else if (cell.type === 'skull') skullsInChain.push(idx);
     });
 
-    // clear chain cells (during fade)
+    // clear chain cells (during fade) — only the cells that vanish get the pop fade.
+    // skulls are NOT faded out: surviving skulls stay put and only their badge numbers
+    // update in place; dying skulls are swapped out at the re-render below
     chain.forEach(idx => {
+      const cell = S.board[idx];
+      if (!cell || cell.type === 'skull') return;
       const cellEl = qs(`.cell[data-idx="${idx}"]`);
       if (cellEl) cellEl.classList.add('pop');
     });
