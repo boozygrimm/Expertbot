@@ -51,6 +51,40 @@ class OwnerControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('owner_panel:help', callbacks)
         self.assertIn('owner_panel:commands', callbacks)
 
+    async def test_status_links_to_a_worker_screen_that_names_the_gap(self):
+        from news_prototype import news_worker_client
+        await self.action('status')
+        callbacks = [b.callback_data for row in self.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row]
+        self.assertIn('owner_panel:worker', callbacks)
+        cases = (
+            ({'reachable': True, 'capabilities': {'news-bulletin-v1', 'news-bulletin-video-v1',
+                                                  'news-bulletin-manual-video-v1',
+                                                  'news-story-manual-video-v1'}}, 'поддерживает'),
+            # Old worker: the protocol itself is missing -> update the worker.
+            ({'reachable': True, 'capabilities': {'news-bulletin-v1'}}, 'не хватает'),
+            # Newer worker without ffmpeg: only the binary is missing.
+            ({'reachable': True, 'capabilities': {'news-bulletin-v1', 'news-bulletin-video-v1',
+                                                  'news-bulletin-manual-video-v1',
+                                                  'news-bulletin-video-cut-v1'}}, 'нет ffmpeg'),
+            # Unreachable is not the same as outdated.
+            ({'reachable': False, 'capabilities': set()}, 'не ответил'),
+        )
+        for worker, expected in cases:
+            with self.subTest(expected=expected), patch.dict(os.environ, {
+                    'BENDER_WORKER_URL': 'https://worker.example.com', 'BENDER_WORKER_KEY': 'k'}), \
+                    patch.object(news_worker_client.NewsWorkerClient, 'media_capabilities',
+                                 AsyncMock(return_value=worker)):
+                await self.action('worker')
+            text = self.message.edit_text.await_args.args[0]
+            self.assertIn(expected, text)
+            self.assertIn('ничего не запускает', text)
+        # The screen explains that the check is read-only and offers a retry.
+        callbacks = [b.callback_data for row in self.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row]
+        self.assertIn('owner_panel:worker', callbacks)
+        self.assertIn('owner_panel:status', callbacks)
+
     async def test_migration_preserves_current_values_and_survives_removal(self):
         for provider in ('legacy', 'cloudflare'):
             for search in ('', 'enabled'):

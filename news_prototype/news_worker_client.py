@@ -116,6 +116,19 @@ class NewsWorkerClient:
         """A single story with an owner fragment needs this explicit promise."""
         return await self._supports('news-story-manual-video-v1')
 
+    async def media_capabilities(self, *, timeout: float = 10) -> dict:
+        """What this worker can actually do with pictures and video fragments.
+
+        One bounded health read; the caller decides what to tell the owner.
+        A sleeping or broken worker is reported as unreachable rather than as
+        an older version, because those need different actions.
+        """
+        try:
+            capabilities = await self.capabilities(timeout=timeout)
+        except (NewsWorkerError, ValueError):
+            return {'reachable': False, 'capabilities': set()}
+        return {'reachable': True, 'capabilities': capabilities}
+
     async def upload_bulletin_video(self, data: bytes) -> str:
         from news_prototype.bulletin_manual_media import MAX_BYTES
         if not isinstance(data, bytes) or not 16 <= len(data) <= MAX_BYTES:
