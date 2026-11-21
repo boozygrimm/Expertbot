@@ -1356,12 +1356,12 @@
       // Bonus shields (classic) — каждый лишний щит сверх первых трёх
       const extra = Math.max(0, validShields - 3);
       if (extra > 0) {
-        let chance = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.dexterity + 0.05 * S.hero.stats.charisma;
-        if (cls && cls.flaw === 'Reckless') chance -= 0.10;
-        if (raiderPerk) chance = 1.0;
-        chance = Math.min(1, Math.max(0, chance));
+        let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.dexterity + 0.05 * S.hero.stats.charisma;
+        if (cls && cls.flaw === 'Reckless') chanceP -= 0.10;
+        if (raiderPerk) chanceP = 1.0;
+        chanceP = Math.min(1, Math.max(0, chanceP));
         for (let k = 0; k < extra; k++) {
-          if (chance(chance)) {
+          if (chance(chanceP)) {
             const bonus = perShield;
             const before2 = S.hero.armor;
             S.hero.armor = Math.min(S.hero.maxArmor, S.hero.armor + bonus);
@@ -1384,12 +1384,12 @@
       // Bonus coins — каждый лишний монетный тип сверх первых трёх
       const extra = Math.max(0, coinCount - 3);
       if (extra > 0) {
-        let chance = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.luck + 0.05 * S.hero.stats.charisma;
-        if (cls && cls.perk === 'Frugal') chance += 0.10;
-        if (raiderPerk) chance = 1.0;
-        chance = Math.min(1, chance);
+        let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.luck + 0.05 * S.hero.stats.charisma;
+        if (cls && cls.perk === 'Frugal') chanceP += 0.10;
+        if (raiderPerk) chanceP = 1.0;
+        chanceP = Math.min(1, chanceP);
         for (let k = 0; k < extra; k++) {
-          if (chance(chance)) {
+          if (chance(chanceP)) {
             const bonus = Math.round(S.goldPerCoin * (1 + 0.05 * charisma));
             gainGold(bonus);
             result.goldGained += bonus;
@@ -1413,11 +1413,11 @@
       // Bonus potions — каждый лишний зелье сверх первых трёх
       const extra = Math.max(0, potionCount - 3);
       if (extra > 0) {
-        let chance = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.vitality + 0.05 * S.hero.stats.charisma;
-        if (raiderPerk) chance = 1.0;
-        chance = Math.min(1, chance);
+        let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.vitality + 0.05 * S.hero.stats.charisma;
+        if (raiderPerk) chanceP = 1.0;
+        chanceP = Math.min(1, chanceP);
         for (let k = 0; k < extra; k++) {
-          if (chance(chance)) {
+          if (chance(chanceP)) {
             const bonus = Math.round(healBase * (1 + 0.05 * charisma));
             const before2 = S.hero.hp;
             heal(bonus);
@@ -1555,12 +1555,12 @@
         if (S.leech > 0) heal(S.leech * (result.dmgShown));
         const extraKills = Math.max(0, result.kills - 3);
         if (extraKills > 0 && result.kills > 0) {
-          let chance = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.strength + 0.05 * S.hero.stats.charisma;
-          if (cls && cls.perk === 'Daring' && chain.length >= 10) chance = 1.0;
-          chance = Math.min(1, chance);
+          let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.strength + 0.05 * S.hero.stats.charisma;
+          if (cls && cls.perk === 'Daring' && chain.length >= 10) chanceP = 1.0;
+          chanceP = Math.min(1, chanceP);
           const bonusXp = extraKills * (S.xpPerSkull || XP_PER_SKULL);
           for (let k = 0; k < extraKills; k++) {
-            if (chance(chance)) gainXp(S.xpPerSkull || XP_PER_SKULL);
+            if (chance(chanceP)) gainXp(S.xpPerSkull || XP_PER_SKULL);
           }
         }
         log(`⚔ ${result.xpGained + runeXp} XP за ${S.skullsKilled} черепа`);
