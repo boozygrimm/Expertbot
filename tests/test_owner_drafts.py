@@ -96,6 +96,38 @@ class DraftFlowTests(unittest.IsolatedAsyncioTestCase):
         self.draft.side_effect = None; self.draft.return_value = {'decision': 'skip'}
         self.assertEqual(await owner_drafts.process_new(self.db, 123, 11, self.fetch, self.draft), 'skipped')
 
+    async def test_editor_failure_keeps_allowlisted_cause_and_can_be_retried_manually(self):
+        from news_prototype import editor_client
+        await owner_drafts.create(self.db, 123, 12, URL, '')
+        self.draft.side_effect = editor_client.EditorialError('внутренний текст', code='max_tokens')
+        self.assertEqual(await owner_drafts.process_new(self.db, 123, 12, self.fetch, self.draft), 'editor_failed')
+        item = await owner_drafts.get(self.db, 123, 12)
+        self.assertEqual(item['stage'], 'editor_failed')
+        self.assertEqual(item['editor_error'], {'code': 'max_tokens', 'phase': 'editor'})
+        self.assertNotIn('внутренний текст', str(item))
+        self.draft.side_effect = None
+        self.assertEqual(await owner_drafts.retry(self.db, 123, 12, self.draft), 'draft_ready')
+        item = await owner_drafts.get(self.db, 123, 12)
+        self.assertNotIn('editor_error', item)
+        self.assertEqual(item['stage'], 'draft_ready')
+
+    async def test_retry_is_only_for_failed_stage_and_never_fetches_again(self):
+        ready = await self.create_ready(13)
+        self.assertEqual(ready['stage'], 'draft_ready')
+        self.assertEqual(await owner_drafts.retry(self.db, 123, 13, self.draft), 'not_failed')
+        self.assertEqual(await owner_drafts.retry(self.db, 123, 99, self.draft), 'not_found')
+        self.assertEqual(self.fetch.await_count, 1)
+
+    async def test_retry_after_http_failure_keeps_status_for_the_owner(self):
+        from news_prototype import editor_client
+        await owner_drafts.create(self.db, 123, 14, URL, '')
+        self.draft.side_effect = editor_client.EditorialError('boom', code='http', http_status=429)
+        await owner_drafts.process_new(self.db, 123, 14, self.fetch, self.draft)
+        item = await owner_drafts.get(self.db, 123, 14)
+        self.assertEqual(item['editor_error'], {'code': 'http', 'phase': 'editor', 'http_status': 429})
+        self.draft.side_effect = None
+        self.assertEqual(await owner_drafts.retry(self.db, 123, 14, self.draft), 'draft_ready')
+
     async def test_edit_uses_compare_and_set_and_source_is_immutable(self):
         item = await self.create_ready()
         text = owner_drafts.editable_message(10, URL, item['script'])

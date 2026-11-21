@@ -47,6 +47,46 @@ class EditorClientTests(unittest.IsolatedAsyncioTestCase):
                 await editor_client.draft(CANDIDATE,'fake-secret','gemini-test')
         self.assertEqual(len(calls),1); self.assertNotIn('secret',str(caught.exception))
 
+    async def test_draft_limits_reasoning_budget_and_reports_validation_code(self):
+        calls=[]; session=Session(Response(200,b'{}'),calls)
+        broken=json.loads(json.dumps(OUTPUT))
+        # A quote that is absent from the candidate text is a model mistake the
+        # owner must be able to see as 'evidence', not as an opaque failure.
+        broken['turns'][0]['evidence']='такой цитаты в тексте нет'
+        body={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':json.dumps(broken,ensure_ascii=False)}]}}]}
+        with patch.object(editor_client.aiohttp,'ClientSession',return_value=Session(
+                Response(200,json.dumps(body,ensure_ascii=False).encode()),calls)):
+            with self.assertRaises(editor_client.EditorialError) as caught:
+                await editor_client.draft(CANDIDATE,'fake-secret','gemini-3-flash-preview')
+        self.assertEqual(caught.exception.code,'evidence')
+        config=calls[0][1]['json']['generationConfig']
+        self.assertEqual(config['thinkingConfig'],{'thinkingLevel':'low'})
+        self.assertGreaterEqual(config['maxOutputTokens'],8192)
+
+    async def test_max_tokens_is_reported_separately_from_other_stops(self):
+        body=b'{"candidates":[{"finishReason":"MAX_TOKENS"}]}'
+        calls=[]
+        with patch.object(editor_client.aiohttp,'ClientSession',return_value=Session(Response(200,body),calls)):
+            with self.assertRaises(editor_client.EditorialError) as caught:
+                await editor_client.draft(CANDIDATE,'fake-secret','gemini-test')
+        self.assertEqual(caught.exception.code,'max_tokens')
+
+    async def test_thought_parts_are_ignored_when_the_answer_is_present(self):
+        answer=json.dumps(OUTPUT,ensure_ascii=False)
+        body={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':'размышление','thought':True},{'text':answer}]}}]}
+        with patch.object(editor_client.aiohttp,'ClientSession',return_value=Session(
+                Response(200,json.dumps(body,ensure_ascii=False).encode()),[])):
+            result=await editor_client.draft(CANDIDATE,'fake-secret','gemini-test')
+        self.assertEqual(result['verification'],'needs_review')
+
+    async def test_older_model_is_not_sent_a_gemini3_only_field(self):
+        calls=[]
+        body={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':json.dumps(OUTPUT,ensure_ascii=False)}]}}]}
+        with patch.object(editor_client.aiohttp,'ClientSession',return_value=Session(
+                Response(200,json.dumps(body,ensure_ascii=False).encode()),calls)):
+            await editor_client.draft(CANDIDATE,'fake-secret','gemini-2.5-flash')
+        self.assertNotIn('thinkingConfig',calls[0][1]['json']['generationConfig'])
+
     async def test_rejects_untrusted_model_name(self):
         with self.assertRaises(editor_client.EditorialError):
             await editor_client.draft(CANDIDATE,'fake-secret','../../bad')
@@ -62,7 +102,8 @@ class BulletinDiagnosticTests(unittest.IsolatedAsyncioTestCase):
         for status, body, code, http in (
             (429, b'private secret', 'http', 429),
             (403, b'private secret', 'http', 403),
-            (200, b'{"candidates":[{"finishReason":"MAX_TOKENS"}]}', 'incomplete_response', None),
+            (200, b'{"candidates":[{"finishReason":"MAX_TOKENS"}]}', 'max_tokens', None),
+            (200, b'{"candidates":[{"finishReason":"RECITATION"}]}', 'incomplete_response', None),
             (200, b'bad secret', 'invalid_response', None),
         ):
             calls = []

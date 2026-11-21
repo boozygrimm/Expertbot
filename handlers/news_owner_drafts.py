@@ -19,6 +19,50 @@ def authorized(message) -> bool:
     return bool(message.from_user and message.from_user.id == ADMIN_ID and message.chat.type == 'private')
 
 
+def editor_failure_text(item: dict) -> str:
+    """Explain a stored, allowlisted diagnostic; never show provider output.
+
+    Mirrors the bulletin wording so both news flows read the same, and keeps
+    older failures (no stored code) explicitly labelled as unknown.
+    """
+    labels = {
+        'configuration': 'Не настроен ключ или модель Gemini.',
+        'timeout': 'Время ожидания Gemini истекло; результат запроса неизвестен.',
+        'network': 'Не удалось получить ответ Gemini; результат запроса неизвестен.',
+        'http': 'Gemini вернул HTTP-ошибку.',
+        'response_too_large': 'Ответ Gemini превысил допустимый размер.',
+        'max_tokens': 'Gemini израсходовал лимит вывода на рассуждение и не дошёл до сценария.',
+        'incomplete_response': 'Gemini вернул незавершённый ответ.',
+        'invalid_response': 'Ответ Gemini имеет неподдерживаемый формат.',
+        'invalid_json': 'Редактор не вернул корректный JSON.',
+        'evidence': 'Цитата отсутствует или не совпала с текстом источника.',
+        'speakers': 'В сценарии должны участвовать оба ведущих.',
+        'too_long': 'Сценарий или число реплик превысили допустимый предел.',
+        'validation': 'Ответ редактора не прошёл проверку формата или ограничений.',
+        'save': 'Не удалось подтвердить сохранение результата.',
+        'unknown': 'Причину не удалось определить.',
+    }
+    error = item.get('editor_error')
+    if not isinstance(error, dict):
+        return 'Причина этой ошибки не записана предыдущей версией бота.'
+    code = error.get('code')
+    if not isinstance(code, str) or code not in labels:
+        return 'Причина не распознана: код диагностики неизвестен.'
+    text = labels[code]
+    status = error.get('http_status')
+    if code == 'http' and type(status) is int and 100 <= status <= 599:
+        text += f' Код HTTP: {status}.'
+        if status == 429:
+            text += ' Возможно, исчерпана квота или превышен лимит запросов.'
+        elif status in (401, 403):
+            text += ' Проверьте ключ и доступ к модели.'
+        elif status == 404:
+            text += ' Проверьте доступность настроенной модели.'
+        elif 500 <= status <= 599:
+            text += ' Сервис временно недоступен или вернул ошибку.'
+    return text
+
+
 async def make_draft(candidate):
     from ai_providers import fire_gemini_key
     from models import GEMINI_CHAT_MODEL
@@ -118,6 +162,10 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
     }
     if panel_mode and stage == 'needs_source':
         await message.answer('Источник недоступен или текста мало. Пришли полный текст кнопкой ниже.', parse_mode=None)
+    elif stage == 'editor_failed':
+        # The generic label hides whether it was a quota error or a bad quote.
+        await message.answer(labels['editor_failed'] + '\n' + editor_failure_text(item)
+                             + f'\nПовторить попытку: /news_retry {draft_id}', parse_mode=None)
     else:
         await message.answer(labels.get(stage, 'Неизвестное состояние; нужна проверка.'), parse_mode=None)
     if panel_mode:
@@ -441,6 +489,42 @@ async def provide_source(message: types.Message) -> None:
     except Exception as exc:
         logger.warning('Не удалось подтвердить источник: %s', type(exc).__name__)
         await message.answer('Состояние не подтверждено. Проверьте /news_drafts; не повторяйте вслепую.', parse_mode=None)
+
+
+@router.message(Command('news_retry'))
+async def retry_draft(message: types.Message) -> None:
+    """Owner-initiated repeat of a failed draft; one Gemini request, no fetch."""
+    if not authorized(message):
+        return
+    if not await owner_trial.drafts_enabled(db.db):
+        await message.answer('Подготовка черновиков выключена.', parse_mode=None)
+        return
+    try:
+        parts = (message.text or '').split()
+        if len(parts) != 2:
+            raise ValueError
+        draft_id = _id(parts[1])
+        result = await owner_drafts.retry(db.db, message.from_user.id, draft_id, make_draft)
+        if result == 'not_failed':
+            await message.answer(f'Черновик не в состоянии ошибки. Проверьте /news_draft {draft_id}', parse_mode=None)
+            return
+        if result in ('not_found', 'not_ready'):
+            await message.answer(f'Повтор недоступен: нет сохранённого источника. Проверьте /news_draft {draft_id}', parse_mode=None)
+            return
+        if result == 'changed':
+            await message.answer(f'Состояние уже изменилось. Проверьте /news_draft {draft_id}; не повторяйте вслепую.', parse_mode=None)
+            return
+        if getattr(message, 'panel_mode', False):
+            await show(message, draft_id)
+        else:
+            await message.answer(f'Повторяю один запрос к Gemini по сохранённому источнику. Проверка: /news_draft {draft_id}',
+                                 parse_mode=None)
+            await show(message, draft_id)
+    except ValueError:
+        await message.answer('Укажите номер: /news_retry НОМЕР', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось подтвердить повтор: %s', type(exc).__name__)
+        await message.answer(f'Состояние не подтверждено. Проверьте /news_draft {draft_id}; не повторяйте вслепую.', parse_mode=None)
 
 
 @router.message(Command('news_edit'))

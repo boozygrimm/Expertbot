@@ -19,6 +19,27 @@ from news_prototype.story_audio import validate_script
 MAX_MESSAGE = 3900  # Includes the editable command; below Telegram's limit.
 REVISION = re.compile(r'^[0-9a-f]{64}$')
 
+# Safe, allowlisted diagnostics: a code and an HTTP status, never provider text,
+# submitted content, or exception messages. Stored so a failed draft can be
+# explained and retried deliberately instead of disappearing into a dead state.
+EDITOR_ERROR_CODES = frozenset({
+    'configuration', 'timeout', 'network', 'http', 'response_too_large',
+    'incomplete_response', 'max_tokens', 'invalid_response', 'invalid_json',
+    'evidence', 'speakers', 'too_long', 'validation', 'save', 'unknown',
+})
+
+
+def diagnostic(exc: BaseException, *, phase: str) -> dict:
+    """Describe a failed editor step without copying anything from the request."""
+    code = getattr(exc, 'code', None)
+    if code not in EDITOR_ERROR_CODES:
+        code = 'unknown'
+    status = getattr(exc, 'http_status', None)
+    result = {'code': code, 'phase': phase}
+    if type(status) is int and 100 <= status <= 599:
+        result['http_status'] = status
+    return result
+
 
 def _url(value: str) -> str:
     try:
@@ -195,11 +216,15 @@ async def _finish_editing(db, item: dict, draft, image_b64: str | None = None,
         rev = revision(item['url'], script)
         saved = await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'},
             {'$set': {'stage': 'draft_ready', 'script': script, 'revision': rev,
-                      'evidence': evidence, 'verification': 'needs_review'}})
+                      'evidence': evidence, 'verification': 'needs_review'},
+             '$unset': {'editor_error': ''}})
         return 'draft_ready' if saved.modified_count else 'changed'
-    except Exception:
-        # Do not include provider errors: they can contain keys or input.
-        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'}, {'$set': {'stage': 'editor_failed'}})
+    except Exception as exc:
+        # Do not include provider errors: they can contain keys or input. Keep
+        # only an allowlisted code so the owner can tell a quota error from a
+        # quote mismatch instead of seeing one opaque message.
+        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'},
+            {'$set': {'stage': 'editor_failed', 'editor_error': diagnostic(exc, phase='editor')}})
         return 'editor_failed'
 
 
@@ -290,10 +315,38 @@ async def provide_source(db, owner_id: int, draft_id: int, text: str, draft) -> 
     item = item | {'text': text.strip()}
     story_editor.prompt_for(item)
     changed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'needs_source'},
-                                                     {'$set': {'text': text.strip(), 'stage': 'editing'}})
+                                                     {'$set': {'text': text.strip(), 'stage': 'editing'},
+                                                      '$unset': {'editor_error': ''}})
     if not changed.modified_count:
         return 'changed'
     return await _finish_editing(db, item, draft)
+
+
+async def retry(db, owner_id: int, draft_id: int, draft) -> str:
+    """One explicit repeat of a failed editor step; never called automatically.
+
+    Reuses the source already stored on the draft, so a retry costs one Gemini
+    request and no extra article fetch.
+    """
+    key = _key(owner_id, draft_id)
+    item = await get(db, owner_id, draft_id)
+    if not item:
+        return 'not_found'
+    if item.get('stage') != 'editor_failed':
+        return 'not_failed'
+    try:
+        story_editor.prompt_for(item)
+    except ValueError:
+        return 'not_ready'
+    claimed = await db.news_owner_drafts.update_one(
+        {'_id': key, 'owner_id': owner_id, 'stage': 'editor_failed'},
+        {'$set': {'stage': 'editing'}, '$unset': {'editor_error': ''}})
+    if not claimed.modified_count:
+        return 'changed'
+    # Media lives in item['script'] only after a successful draft; a failed one
+    # has none, so a retry reuses just the already fetched source text.
+    media = item.get('script') or {}
+    return await _finish_editing(db, item, draft, media.get('image_b64'), media.get('image_regions'))
 
 
 async def edit(db, owner_id: int, draft_id: int, expected: str, url: str, script: dict) -> str:

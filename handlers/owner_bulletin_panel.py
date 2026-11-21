@@ -295,6 +295,7 @@ def editor_failure_message(item):
         'http': 'Gemini вернул HTTP-ошибку.',
         'response_too_large': 'Ответ Gemini превысил допустимый размер.',
         'incomplete_response': 'Gemini вернул незавершённый ответ.',
+        'max_tokens': 'Gemini израсходовал лимит вывода на рассуждение и не дошёл до сценария.',
         'invalid_response': 'Ответ Gemini имеет неподдерживаемый формат.',
         'invalid_json': 'Редактор не вернул корректный JSON.',
         'missing_sections': 'Редактор включил не все выбранные новости.',

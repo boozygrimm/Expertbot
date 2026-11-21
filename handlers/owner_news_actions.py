@@ -25,7 +25,9 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         number = item['draft_id']
         stage = item.get('stage')
         revision = item.get('revision')
-        if stage not in ('draft_ready', 'needs_source'):
+        # editor_failed is included so the card can offer one explicit retry
+        # instead of leaving the owner with an opaque dead-end state.
+        if stage not in ('draft_ready', 'needs_source', 'editor_failed'):
             return
     else:
         number = item['program_id']
@@ -40,7 +42,9 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         'number': number, 'revision': revision, 'stage': stage, 'for_program': for_program,
         'expires_at': now + timedelta(days=2)})
     b = InlineKeyboardBuilder()
-    if kind == 'draft' and stage == 'needs_source':
+    if kind == 'draft' and stage == 'editor_failed':
+        b.button(text='🔄 Повторить подготовку', callback_data=f'newsact:retry:{token}')
+    elif kind == 'draft' and stage == 'needs_source':
         b.button(text='📄 Прислать текст источника', callback_data=f'newsact:source:{token}')
     elif kind == 'draft' and media_view:
         if item.get('script', {}).get('image_regions'):
@@ -196,6 +200,16 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             from handlers import news_owner_drafts
             return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number,
                                                 item=item, for_program=card_doc.get('for_program', False))
+        if action == 'retry' and kind == 'draft' and card_doc['stage'] == 'editor_failed':
+            await callback.answer()
+            from handlers import news_owner_drafts
+            result = await owner_drafts.retry(db.db, callback.from_user.id, number, news_owner_drafts.make_draft)
+            if result in ('not_found', 'not_ready'):
+                return await callback.message.answer(f'Повтор недоступен: нет сохранённого источника. /news_draft {number}',
+                                                     parse_mode=None)
+            if result == 'changed':
+                return await callback.message.answer(f'Состояние уже изменилось. /news_draft {number}', parse_mode=None)
+            return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number, panel_mode=True)
         if action == 'source' and kind == 'draft' and card_doc['stage'] == 'needs_source':
             await tools.ask(callback, state, 'news_source', 'Пришли полный текст источника одним сообщением. '
                             'Редактор использует квоту Gemini; рендер не начнётся.', number=number)
