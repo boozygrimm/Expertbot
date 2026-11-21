@@ -224,7 +224,9 @@ async def test_rejected_fragment_names_the_worker_gap_and_points_to_the_check():
                               video=SimpleNamespace(file_id='f', file_size=1024), document=None,
                               video_note=None, answer=AsyncMock(), bot=SimpleNamespace(download=AsyncMock()))
     cases = (({'news-bulletin-v1'}, 'не хватает'),
-             ({'news-bulletin-v1', 'news-bulletin-video-v1', 'news-bulletin-manual-video-v1'}, 'нет ffmpeg'))
+             # Binaries proven present by the bulletin capability: old code, not ffmpeg.
+             ({'news-bulletin-v1', 'news-bulletin-video-v1', 'news-bulletin-manual-video-v1'},
+              'старый код воркера'))
     with patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example.com', 'BENDER_WORKER_KEY': 'k'}), \
          patch.object(tools, 'db', SimpleNamespace(db=database)):
         for capabilities, expected in cases:
@@ -239,3 +241,24 @@ async def test_rejected_fragment_names_the_worker_gap_and_points_to_the_check():
             message.bot.download.assert_not_awaited()
     # An unreachable worker is not reported as an outdated one.
     assert 'не ответил' in owner_control_panel.video_fragment_status({'reachable': False, 'capabilities': set()})
+
+
+def test_story_window_spans_every_turn_not_only_the_first(tmp_path):
+    """A story must not end while the dialogue goes on.
+
+    section_windows() was given the first turn's file only, so the section
+    window ended early: the screen kept one frozen frame until the end of the
+    story. The window now covers all turns and the insert.
+    """
+    import asyncio
+    from news_prototype import bulletin_timing, podcast_video_trial, story_video
+    folder = tmp_path / 'story'
+    asyncio.run(story_folder(folder))
+    audio, turns, _ = story_video.load_story(folder)
+    rate, samples = podcast_video_trial.read_wav(audio)
+    windows, _ = bulletin_timing.section_windows([(story_video_insert.STORY_ID, path)
+                                                  for path, _ in turns])
+    # Two six-second turns plus the gap: the window must cover all of them.
+    assert windows[0].end - windows[0].start > len(samples) / rate * 0.95
+    first_only, _ = bulletin_timing.section_windows([(story_video_insert.STORY_ID, turns[0][0])])
+    assert first_only[0].end < windows[0].end

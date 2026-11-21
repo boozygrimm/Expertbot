@@ -233,10 +233,12 @@ VIDEO_FRAGMENT_NEEDS = ('news-bulletin-v1', 'news-bulletin-video-v1', 'news-bull
 def video_fragment_status(worker: dict) -> str:
     """Say what the worker lacks instead of only "not supported".
 
-    The worker advertises video fragments only when the bulletin renderer, the
-    video pipeline and both ffprobe/ffmpeg are present. The owner cannot fix a
-    missing binary, but "update the worker" and "install ffmpeg" are different
-    actions, so the two cases must not read the same.
+    The order matters, and getting it wrong sent the owner to install ffmpeg
+    that was already installed. `news-bulletin-manual-video-v1` is advertised
+    only when ffmpeg *and* ffprobe exist, so this capability already proves the
+    binaries are there: if it is present and only the story capability is
+    missing, the worker runs old code. ffmpeg can only be the culprit when no
+    video capability at all is advertised.
     """
     if not worker.get('reachable'):
         return ('воркер не ответил на проверку. Это не значит, что версия старая: '
@@ -248,11 +250,11 @@ def video_fragment_status(worker: dict) -> str:
     if missing:
         return ('воркер без протокола видеофрагмента: не хватает ' + ', '.join(missing)
                 + '. Нужен обновлённый воркер.')
-    if 'news-bulletin-video-cut-v1' in capabilities or 'news-bulletin-video-v1' in capabilities:
-        return ('воркер умеет видео в вестниках, но не объявляет видеофрагмент для одиночного '
-                'сюжета: на сервере воркера нет ffmpeg (нужны и ffprobe, и ffmpeg). '
-                'Установи ffmpeg и перезапусти сервис воркера — обновление кода не поможет.')
-    return 'воркер не объявляет видео для одиночного сюжета.'
+    # Every bulletin video capability is present, so both binaries exist.
+    return ('ffmpeg и ffprobe на месте (иначе не было бы news-bulletin-manual-video-v1), '
+            'но запущен старый код воркера: возможность news-story-manual-video-v1 объявляет '
+            'только worker.py из свежего main. Нужно обновить код воркера и перезапустить '
+            'службу — устанавливать ffmpeg не нужно.')
 
 
 async def worker_content():
