@@ -251,13 +251,11 @@
 
     let chain = S.selected;
     if (chain.length === 0) {
-      if (cell.type === 'skull') {
-        flashHint('Сначала выбери меч — череп в цепочку идёт только с мечом');
-        return;
-      }
+      // любая клетка начинает цепочку; череп = категория меча (меч+череп
+      // идут в одну цепочку, начинаясь с любого из них)
       chain = [cellIdx];
       S.selected = chain;
-      S.chainType = cell.type;
+      S.chainType = cell.type === 'skull' ? 'sword' : cell.type;
       onChainChanged();
       return;
     }
@@ -399,7 +397,7 @@
     if (el('armor-text')) el('armor-text').textContent = `${fmt(h.armor)} / ${fmt(h.maxArmor)}`;
     if (el('xp-text')) el('xp-text').textContent = `Ур. ${h.level} · ${fmt(h.xp)} / ${fmt(h.xpNext)}`;
     if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)} / ${GOLD_BOX_MAX}`;
-    if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(h.weaponDamage + h.stats.damage + h.stats.strength)}`;
+    if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(1 + h.stats.strength + h.stats.damage)} + ${fmt(h.weaponDamage)}×меч`;
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     // upgrade bar
     const u = el('upgrade-bar'); if (u) u.style.width = Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100) + '%';
@@ -644,11 +642,11 @@
       // apply effects
       let xpGained = 0, goldGained = 0, armorGained = 0, healGained = 0;
 
-      // swords → skull damage
-      if (swordCount > 0 && skullsInChain.length > 0) {
+      // swords → skull damage (classic: база один раз + оружие за каждый меч)
+      if (skullsInChain.length > 0) {
         let dmgShown = 0;
-        const weaponDmg = S.hero.weaponDamage + S.hero.stats.damage + S.hero.stats.strength;
-        const totalDamage = Math.round(weaponDmg * swordCount + (skullsInChain.length > 0 ? S.hero.stats.strength : 0));
+        const baseDmg = 1 + S.hero.stats.strength + S.hero.stats.damage;
+        const totalDamage = Math.round(baseDmg + S.hero.weaponDamage * swordCount);
         // damage: distribute to skulls in chain (all skulls take the full sword damage)
         skullsInChain.forEach(idx => {
           const cell = S.board[idx];
