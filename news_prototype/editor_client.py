@@ -10,12 +10,25 @@ import aiohttp
 from news_prototype import story_editor
 
 
+# A short, fixed vocabulary for "where exactly did it break". It is shown to
+# the owner as a technical hint so a repeated failure can be diagnosed without
+# logging provider text, source content or a single byte of the model answer.
+DETAILS = frozenset({
+    'response:not_json', 'response:not_object', 'response:bad_encoding', 'response:no_candidates',
+    'response:no_content', 'response:no_parts', 'response:bad_candidate',
+    'answer:no_json', 'answer:truncated', 'answer:too_long', 'answer:not_object',
+    'answer:no_decision', 'answer:skip_without_reason', 'answer:bad_turns',
+    'answer:bad_turn', 'answer:bad_speaker',
+})
+
+
 class EditorialError(Exception):
     """Safe diagnostic code, never provider text or submitted content."""
-    def __init__(self, message, *, code='unknown', http_status=None):
+    def __init__(self, message, *, code='unknown', http_status=None, detail=None):
         super().__init__(message)
         self.code = code
         self.http_status = http_status if type(http_status) is int and 100 <= http_status <= 599 else None
+        self.detail = detail if isinstance(detail, str) and detail in DETAILS else None
 
 
 # Only exact, hard-coded parser errors may leave the validator. Never expose
@@ -38,23 +51,29 @@ def bulletin_validation_code(error):
 
 # Story validation errors are a fixed set of parser messages, so they can be
 # reported to the owner without leaking model text or source content.
+# The structure group is separated from the quote group on purpose: "the model
+# returned something we cannot read as a scenario" and "the scenario contradicts
+# the source" need different actions from the owner (retry/edit vs another source).
 _STORY_VALIDATION = {
     'Повреждён ответ редактора': 'invalid_response',
     'Редактор не вернул JSON': 'invalid_json',
     'Неверный формат редактора': 'invalid_response',
     'Неизвестное решение редактора': 'invalid_response',
     'Неверное число реплик': 'too_long',
-    'Неверный тип реплики': 'invalid_response',
-    'Неверная цитата': 'evidence',
+    'Неверный тип реплики': 'invalid_schema',
+    'Неверная цитата': 'invalid_schema',
     'Цитата не найдена в исходном материале': 'evidence',
     'Комментарий не должен притворяться фактом': 'evidence',
     'Нужен факт и оба ведущих': 'speakers',
-    'В сценарии нужны реплики': 'invalid_response',
+    'В сценарии нужны реплики': 'invalid_schema',
     'Слишком много реплик': 'too_long',
-    'Неверная реплика': 'invalid_response',
-    'Неверный ведущий или текст реплики': 'invalid_response',
+    'Неверная реплика': 'invalid_schema',
+    'Неверный ведущий или текст реплики': 'invalid_schema',
     'Пустая, повреждённая или слишком длинная реплика': 'too_long',
-    'Неверный текст строки': 'invalid_response',
+    'Неверный текст строки': 'invalid_schema',
+    # Checked before the turn schema, so these are their own codes.
+    'Повреждена карточка': 'source_invalid',
+    'Недостаточно текста для сценария: требуется дополнительный источник': 'source_short',
 }
 
 
@@ -76,6 +95,77 @@ def _strip_fence(text: str) -> str:
         return text
     body = match.group(1).strip()
     return body or text
+
+
+def extract_answer(text: str) -> str:
+    """Keep only the JSON document from a Gemini answer, with a safety net.
+
+    The prompt and the response schema both ask for bare JSON, so anything else
+    is a model formatting slip, not a reason to spend another paid request. A
+    fenced block, a stray sentence before/after, or a second JSON object must
+    not turn a usable draft into "unsupported format". When the text contains
+    braces, only the outermost object is kept (string-aware, so braces inside
+    strings do not confuse it); otherwise the text is returned untouched so the
+    parser still fails closed.
+    """
+    if not isinstance(text, str):
+        return text
+    text = _strip_fence(text)
+    start = text.find('{')
+    if start < 0:
+        return text
+    depth, in_string, escaped, end = 0, False, False, -1
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end < 0:
+        # Unbalanced braces (almost always maxOutputTokens cutting the answer
+        # mid-object). The fragment is kept so the parser reports a truncation
+        # instead of "no text at all".
+        return text[start:]
+    return text[start:end + 1]
+
+
+def _json_state(text: str) -> str:
+    """Classify the answer: 'ok' closed object, 'open' truncated, 'none' no JSON."""
+    if not isinstance(text, str) or '{' not in text:
+        return 'none'
+    start = text.find('{')
+    depth, in_string, escaped = 0, False, False
+    for char in text[start:]:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                return 'ok'
+    return 'open'
 
 
 async def _request(system: str, material: str, key: str, model: str, *, output_tokens: int, timeout: int) -> str:
@@ -105,20 +195,35 @@ async def _request(system: str, material: str, key: str, model: str, *, output_t
                     data.extend(chunk)
                     if len(data) > 131_072:
                         raise EditorialError('Слишком большой ответ редактора', code='response_too_large')
-        content = json.loads(data)
+        # Strict UTF-8: the transport label is not trusted, and a wrong one
+        # must never be reported as a broken answer from the model.
+        try:
+            body = data.decode('utf-8')
+        except UnicodeDecodeError:
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:bad_encoding') from None
+        try:
+            content = json.loads(body)
+        except (ValueError, RecursionError):
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:not_json') from None
         if not isinstance(content, dict):
-            raise EditorialError('Некорректный ответ редактора', code='invalid_response')
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:not_object')
         candidates = content.get('candidates')
         if not isinstance(candidates, list) or not candidates:
             # Gemini returns no candidates at all when a request is refused
             # before generation. That is a stable, repeatable refusal, so it
             # must never be reported as a broken response format.
             if content.get('promptFeedback') or content.get('usageMetadata'):
-                raise EditorialError('Редактор отказался от запроса', code='refused')
-            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer')
+                raise EditorialError('Редактор отказался от запроса', code='refused',
+                                     detail='response:no_candidates')
+            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer',
+                                 detail='response:no_candidates')
         result = candidates[0]
         if not isinstance(result, dict):
-            raise EditorialError('Некорректный ответ редактора', code='invalid_response')
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:bad_candidate')
         block = result.get('finishReason')
         if block == 'SAFETY' or result.get('blockReason') or (
                 isinstance(result.get('promptFeedback'), dict)
@@ -130,15 +235,25 @@ async def _request(system: str, material: str, key: str, model: str, *, output_t
             # than a provider outage. Keep it distinct from other stops.
             code = 'max_tokens' if block == 'MAX_TOKENS' else 'incomplete_response'
             raise EditorialError('Редактор вернул неполный ответ', code=code)
-        parts = (result.get('content') or {}).get('parts')
+        body = result.get('content')
+        parts = body.get('parts') if isinstance(body, dict) else None
         if not isinstance(parts, list):
-            raise EditorialError('Некорректный ответ редактора', code='invalid_response')
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:no_content' if not isinstance(body, dict)
+                                 else 'response:no_parts')
+        # A part without a text field is ignored; a non-string text is a
+        # broken answer, not a reason to crash out of the parser.
+        if any(isinstance(item, dict) and 'text' in item and not isinstance(item.get('text'), str)
+               for item in parts):
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                                 detail='response:no_parts')
         text_parts = [item['text'] for item in parts
                       if isinstance(item, dict) and isinstance(item.get('text'), str) and not item.get('thought')]
         if not text_parts:
             # A STOP without visible text means the whole budget went to
             # reasoning or the answer was filtered; that is not a format bug.
-            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer')
+            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer',
+                                 detail='response:no_parts')
         # Gemini may split one JSON answer into several consecutive parts.
         # The answer is one document, so they are joined instead of rejected.
         return ''.join(text_parts)
@@ -149,25 +264,40 @@ async def _request(system: str, material: str, key: str, model: str, *, output_t
     except aiohttp.ClientError:
         raise EditorialError('Не удалось связаться с редактором', code='network') from None
     except (ValueError, KeyError, TypeError, IndexError):
-        raise EditorialError('Некорректный ответ редактора', code='invalid_response') from None
+        raise EditorialError('Некорректный ответ редактора', code='invalid_response',
+                             detail='response:not_json') from None
 
 
 async def draft(candidate: dict, key: str, model: str) -> dict:
     system, material = story_editor.prompt_for(candidate)
     # The JSON draft plus evidence quotes is a few thousand characters; 4096
     # leaves too little room once Gemini 3 spends part of the budget thinking.
-    text = _strip_fence(await _request(system, material, key, model, output_tokens=8192, timeout=60))
+    text = extract_answer(await _request(system, material, key, model, output_tokens=8192, timeout=60))
     try:
         return story_editor.parse_draft(text, candidate)
     except (ValueError, TypeError) as exc:
-        raise EditorialError('Не удалось подготовить сценарий', code=story_validation_code(exc)) from None
+        state = _json_state(text)
+        detail = getattr(exc, 'detail', None)
+        if detail == 'answer:too_long':
+            code = 'too_long'
+        elif str(exc) == 'Повреждён ответ редактора' and state == 'none':
+            # Nothing JSON-like came back at all: that is a formatting/refusal
+            # problem, not a damaged document inside a valid envelope.
+            code = 'invalid_response'
+        else:
+            code = story_validation_code(exc)
+            if code == 'invalid_json' and (detail == 'answer:truncated' or state == 'open'):
+                # An object that opened but never closed is a truncation
+                # (budget), not a schema error; the owner acts differently.
+                code = 'incomplete_response'
+        raise EditorialError('Не удалось подготовить сценарий', code=code, detail=detail) from None
 
 
 async def bulletin(stories: list[dict], key: str, model: str) -> dict:
     """Generate exactly one short bulletin; no render, auto-retry or delivery."""
     from news_prototype import bulletin_editor
     system, material = bulletin_editor.prompt_for(stories)
-    text = _strip_fence(await _request(system, material, key, model, output_tokens=8192, timeout=90))
+    text = extract_answer(await _request(system, material, key, model, output_tokens=8192, timeout=90))
     try:
         return bulletin_editor.parse_draft(text, stories)
     except (ValueError, TypeError) as exc:

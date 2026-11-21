@@ -54,9 +54,17 @@ def editor_failure_text(item: dict) -> str:
         'http': 'Gemini вернул HTTP-ошибку.',
         'response_too_large': 'Ответ Gemini превысил допустимый размер.',
         'max_tokens': 'Gemini израсходовал лимит вывода на рассуждение и не дошёл до сценария.',
-        'incomplete_response': 'Gemini вернул незавершённый ответ.',
-        'invalid_response': 'Ответ Gemini имеет неподдерживаемый формат: '
-                            'в ответе нет одного текстового фрагмента или структура не та.',
+        'incomplete_response': 'Gemini вернул незавершённый ответ: JSON обрывается '
+                               'или не хватило лимита вывода.',
+        'invalid_response': 'Gemini вернул ответ без пригодного текста '
+                            '(пустые части или один лишь блок рассуждения).',
+        'invalid_schema': 'Gemini вернул JSON, но не по схеме сценария: '
+                          'не те поля, типы реплик или ведущие. Это сбой модели, '
+                          'а не источника — повтори подготовку.',
+        'source_invalid': 'Сохранённая карточка источника повреждена; '
+                          'пришли текст источника заново.',
+        'source_short': 'В источнике слишком мало текста для сценария; '
+                        'пришли дополнительный текст или другую ссылку.',
         'refused': 'Gemini отказался обрабатывать этот материал (фильтр безопасности), '
                    'и повтор того же запроса даст тот же результат. '
                    'Нужен другой источник или пересказ без спорных формулировок.',
@@ -88,6 +96,29 @@ def editor_failure_text(item: dict) -> str:
             text += ' Проверьте доступность настроенной модели.'
         elif 500 <= status <= 599:
             text += ' Сервис временно недоступен или вернул ошибку.'
+    # Where exactly it broke, in a closed vocabulary. Without this a repeated
+    # "bad format" says nothing about which check refused the answer.
+    where = {
+        'response:not_json': 'тело ответа API не JSON',
+        'response:not_object': 'тело ответа API не объект',
+        'response:bad_encoding': 'тело ответа API не в UTF-8',
+        'response:no_candidates': 'в ответе нет кандидатов',
+        'response:no_content': 'у кандидата нет поля content',
+        'response:no_parts': 'в ответе нет текстовых частей',
+        'response:bad_candidate': 'кандидат не объект',
+        'answer:no_json': 'в тексте ответа нет JSON',
+        'answer:truncated': 'JSON обрывается на середине',
+        'answer:too_long': 'ответ длиннее допустимых 20 000 символов',
+        'answer:not_object': 'JSON верхнего уровня не объект',
+        'answer:no_decision': 'нет поля decision или turns',
+        'answer:skip_without_reason': 'решение skip без причины',
+        'answer:bad_turns': 'нет ни одной фактовой реплики или обоих ведущих',
+        'answer:bad_turn': 'реплика без поля kind или evidence',
+        'answer:bad_speaker': 'неверный набор ведущих',
+    }
+    detail = error.get('detail')
+    if isinstance(detail, str) and detail in where:
+        text += f'\nГде именно: {where[detail]} (`{detail}`).'
     return text
 
 

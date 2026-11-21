@@ -110,6 +110,56 @@ class EditorClientTests(unittest.IsolatedAsyncioTestCase):
                     result = await editor_client.draft(CANDIDATE, 'fake-secret', 'gemini-test')
                 self.assertEqual(result['verification'], 'needs_review')
 
+    def test_extra_text_around_the_json_is_not_a_format_failure(self):
+        answer = json.dumps(OUTPUT, ensure_ascii=False)
+        for raw, expected in (
+                ('```json\n' + answer + '\n```', answer),
+                ('Вот сценарий:\n' + answer, answer),
+                (answer + '\nГотово.', answer),
+                ('```json\n' + answer + '\n```\nНадеюсь, подойдёт.', answer),
+                ('{"ticker": "{}", "turns": []}', '{"ticker": "{}", "turns": []}'),
+        ):
+            with self.subTest(raw=raw[:20]):
+                self.assertEqual(editor_client.extract_answer(raw), expected)
+        # No JSON at all stays untouched, so the parser still fails closed.
+        for raw in ('Извините, не могу помочь', '', None):
+            self.assertEqual(editor_client.extract_answer(raw), raw)
+        # A truncated object is kept as a fragment and reported as incomplete.
+        self.assertEqual(editor_client.extract_answer('текст до {"turns": [{"text": "a'),
+                         '{"turns": [{"text": "a')
+        self.assertEqual(editor_client._json_state('{"turns": [{"text": "a'), 'open')
+        self.assertEqual(editor_client._json_state('нет json'), 'none')
+        self.assertEqual(editor_client._json_state(answer), 'ok')
+
+    async def test_prose_around_json_still_yields_a_draft(self):
+        answer = json.dumps(OUTPUT, ensure_ascii=False)
+        body = {'candidates': [{'finishReason': 'STOP',
+                                'content': {'parts': [{'text': 'Конечно!\n```json\n' + answer + '\n```'}]}}]}
+        with patch.object(editor_client.aiohttp, 'ClientSession', return_value=Session(
+                Response(200, json.dumps(body, ensure_ascii=False).encode()), [])):
+            result = await editor_client.draft(CANDIDATE, 'fake-secret', 'gemini-test')
+        self.assertEqual(result['verification'], 'needs_review')
+
+    def test_structural_errors_do_not_share_the_format_code(self):
+        # A model schema slip is retryable; a bad quote or a short source is not.
+        self.assertEqual(editor_client.story_validation_code(ValueError('Неверный тип реплики')),
+                         'invalid_schema')
+        self.assertEqual(editor_client.story_validation_code(ValueError('Неверный ведущий или текст реплики')),
+                         'invalid_schema')
+        self.assertEqual(editor_client.story_validation_code(ValueError('Цитата не найдена в исходном материале')),
+                         'evidence')
+        self.assertEqual(editor_client.story_validation_code(ValueError(
+            'Недостаточно текста для сценария: требуется дополнительный источник')), 'source_short')
+
+    async def test_truncated_answer_is_not_reported_as_a_schema_error(self):
+        cut = json.dumps(OUTPUT, ensure_ascii=False)[:120]
+        body = {'candidates': [{'finishReason': 'STOP', 'content': {'parts': [{'text': cut}]}}]}
+        with patch.object(editor_client.aiohttp, 'ClientSession', return_value=Session(
+                Response(200, json.dumps(body, ensure_ascii=False).encode()), [])):
+            with self.assertRaises(editor_client.EditorialError) as caught:
+                await editor_client.draft(CANDIDATE, 'fake-secret', 'gemini-test')
+        self.assertEqual(caught.exception.code, 'incomplete_response')
+
     async def test_fence_stripper_only_unwraps_a_whole_message(self):
         answer = json.dumps(OUTPUT, ensure_ascii=False)
         self.assertEqual(editor_client._strip_fence('```json\n' + answer + '\n```'), answer)

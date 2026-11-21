@@ -77,32 +77,49 @@ def prompt_for(candidate: dict) -> tuple[str, str]:
     return SYSTEM, json.dumps(fields, ensure_ascii=False)
 
 
+def _fail(message: str, detail: str) -> None:
+    """Raise a fixed parser message plus a short structural hint.
+
+    The hint is a constant from a closed vocabulary, never model or source
+    text, so the owner can tell a broken envelope from a schema slip without
+    anything private leaving the process.
+    """
+    error = ValueError(message)
+    error.detail = detail
+    raise error
+
+
 def parse_draft(raw: str, candidate: dict) -> dict:
-    if not isinstance(raw, str) or len(raw) > 20_000:
-        raise ValueError('Повреждён ответ редактора')
+    if not isinstance(raw, str):
+        _fail('Повреждён ответ редактора', 'answer:no_json')
+    if len(raw) > 20_000:
+        # A draft with many turns and evidence can legitimately approach this
+        # bound; it is a size problem, not a broken format.
+        _fail('Повреждён ответ редактора', 'answer:too_long')
     _, user_data = prompt_for(candidate)
     fields = json.loads(user_data)
     source = _normalize('\n'.join(fields[x] for x in ('title', 'summary', 'text', 'image_description')))
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, RecursionError):
-        raise ValueError('Редактор не вернул JSON') from None
+        _fail('Редактор не вернул JSON',
+              'answer:truncated' if isinstance(raw, str) and raw.count('{') > raw.count('}') else 'answer:no_json')
     if not isinstance(data, dict):
-        raise ValueError('Неверный формат редактора')
+        _fail('Неверный формат редактора', 'answer:not_object')
     if data.get('decision') == 'skip':
         return {'decision': 'skip'}
     if data.get('decision') != 'draft' or not isinstance(data.get('turns'), list):
-        raise ValueError('Неизвестное решение редактора')
+        _fail('Неизвестное решение редактора', 'answer:no_decision')
     turns = data['turns']
     if len(turns) < 2 or len(turns) > 100:
         raise ValueError('Неверное число реплик')
     evidence_present = False
     for turn in turns:
         if not isinstance(turn, dict) or turn.get('kind') not in ('fact', 'comment'):
-            raise ValueError('Неверный тип реплики')
+            _fail('Неверный тип реплики', 'answer:bad_turn')
         evidence = turn.get('evidence')
         if not isinstance(evidence, str):
-            raise ValueError('Неверная цитата')
+            _fail('Неверная цитата', 'answer:bad_turn')
         if turn['kind'] == 'fact':
             quote = _normalize(evidence)
             if len(quote) < 12 or quote not in source:
@@ -111,7 +128,8 @@ def parse_draft(raw: str, candidate: dict) -> dict:
         elif evidence.strip():
             raise ValueError('Комментарий не должен притворяться фактом')
     if not evidence_present or {t.get('speaker') for t in turns if isinstance(t.get('speaker'), str)} != {'Бендер', 'Киберсенсей'}:
-        raise ValueError('Нужен факт и оба ведущих')
+        _fail('Нужен факт и оба ведущих',
+              'answer:bad_speaker' if evidence_present else 'answer:bad_turns')
     script = validate_script({'turns': [{'speaker': t.get('speaker'), 'text': t.get('text')} for t in turns],
                               'ticker': data.get('ticker')})
     return {'decision': 'draft', 'script': script,

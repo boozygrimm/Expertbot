@@ -307,6 +307,21 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await owner_drafts.provide_source(self.db, 123, 10, SOURCE, AsyncMock(return_value=DRAFT)),
                              'draft_ready')
 
+    async def test_failure_detail_is_stored_and_explained_without_model_text(self):
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        error = editor_client.EditorialError('внутренний текст модели', code='invalid_schema',
+                                            detail='answer:bad_turn')
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(side_effect=error))
+        item = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(item['editor_error']['detail'], 'answer:bad_turn')
+        text = self.handler.editor_failure_text(item)
+        self.assertIn('answer:bad_turn', text)
+        self.assertNotIn('внутренний текст модели', text)
+        # An unknown hint is dropped entirely instead of being echoed back.
+        self.assertNotIn('detail', owner_drafts.diagnostic(
+            editor_client.EditorialError('x', code='invalid_schema', detail='answer:`secret`'), phase='editor'))
+
     async def test_every_draft_screen_has_navigation_buttons(self):
         await owner_drafts.create(self.db, 123, 10, URL, '')
         msg = self.msg('/news_draft 10')
