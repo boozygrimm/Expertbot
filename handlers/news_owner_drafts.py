@@ -152,7 +152,7 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         image = item['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
-            label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи'}.get(item.get('image_kind'), 'изображение поста')
+            label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи', 'manual': 'присланное владельцем изображение'}.get(item.get('image_kind'), 'изображение поста')
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Найдено {label}. Оно появится в ролике крупным планом. '
                                                'Проверьте содержимое и кадрирование перед публикацией. '
@@ -166,7 +166,13 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
                                                       'Если они выбраны неудачно, используйте обычное кадрирование: '
                                                       f'/news_nofocus {draft_id} {item["revision"]}'), parse_mode=None)
         else:
-            await message.answer('Картинка не найдена или недоступна — ролик будет без неё.', parse_mode=None)
+            await message.answer('Картинка не найдена или недоступна — ролик будет без неё. '
+                                 'Можно прислать свою кнопкой «Добавить картинку вручную».', parse_mode=None)
+        if item['script'].get('video_sha256'):
+            await message.answer('Видеофрагмент добавлен: он прозвучит в паузе между репликами, '
+                                 'видео будет на экране студии около 10 секунд. Права на использование '
+                                 'проверяешь ты.' + ('' if panel_mode else
+                                 f'\nУбрать: /news_novideo {draft_id} {item["revision"]}'), parse_mode=None)
         if not for_program:
             await message.answer(f'/news_approve {draft_id} {item["revision"]}', parse_mode=None)
         return
@@ -208,8 +214,8 @@ async def show_image_details(message, owner_id: int, item: dict, *, for_program:
     if not image:
         await message.answer('Картинка не выбрана.', parse_mode=None)
         return
-    label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи'}.get(
-        item.get('image_kind'), 'изображение поста')
+    label = {'video_thumbnail': 'кадр-превью видео', 'article_image': 'изображение из метаданных статьи',
+             'manual': 'присланное тобой изображение'}.get(item.get('image_kind'), 'изображение поста')
     await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
         caption=f'Найдено {label}. Проверь содержимое и право использования.', parse_mode=None)
     regions = item['script'].get('image_regions')
@@ -638,6 +644,35 @@ async def remove_image(message: types.Message) -> None:
         await message.answer('Сохранение не подтверждено. Проверьте /news_drafts.', parse_mode=None)
 
 
+@router.message(Command('news_novideo'))
+async def remove_video(message: types.Message) -> None:
+    if not authorized(message):
+        return
+    if not await owner_trial.drafts_enabled(db.db):
+        await message.answer('Подготовка черновиков выключена.', parse_mode=None)
+        return
+    try:
+        parts = (message.text or '').split()
+        if len(parts) != 3:
+            raise ValueError
+        draft_id = _id(parts[1])
+        result = await owner_drafts.remove_video(db.db, message.from_user.id, draft_id, parts[2])
+        if result == 'stale':
+            await message.answer(f'Версия изменилась. Проверьте /news_draft {draft_id}.', parse_mode=None)
+        else:
+            notice = 'Видеофрагмент убран.' if result == 'saved' else 'Видеофрагмента нет.'
+            if getattr(message, 'panel_mode', False):
+                await show(message, draft_id, notice=notice)
+            else:
+                await message.answer(notice, parse_mode=None)
+                await show(message, draft_id)
+    except ValueError:
+        await message.answer('Скопируйте команду удаления фрагмента из черновика.', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось подтвердить удаление фрагмента: %s', type(exc).__name__)
+        await message.answer('Сохранение не подтверждено. Проверьте /news_drafts.', parse_mode=None)
+
+
 @router.message(Command('news_approve'))
 async def approve_draft(message: types.Message) -> None:
     if not authorized(message):
@@ -668,6 +703,10 @@ async def approve_draft(message: types.Message) -> None:
             if item.get('script', {}).get('image_b64') and 'news-story-image-v1' not in capabilities:
                 await message.answer('Воркер ответил, но не поддерживает картинки в одиночных сюжетах. '
                                      'Рендер не запущен, картинка сохранена; сначала обновите воркер.', parse_mode=None)
+                return
+            if item['script'].get('video_sha256') and 'news-story-manual-video-v1' not in capabilities:
+                await message.answer('Воркер ответил, но не поддерживает видеофрагмент в одиночном сюжете. '
+                                     'Рендер не запущен, черновик сохранён; сначала обновите воркер.', parse_mode=None)
                 return
             if item['script'].get('image_regions') and 'news-image-focus-v1' not in capabilities:
                 await message.answer('Воркер ответил, но не поддерживает выбранные области картинки. '
@@ -722,7 +761,8 @@ async def show_program(message, program_id: int, *, program: dict | None = None,
         image = story['script'].get('image_b64')
         if image:
             from news_prototype.news_image_codec import decode_thumbnail
-            label = {'video_thumbnail': 'превью видео', 'article_image': 'изображение из метаданных статьи'}.get(story.get('image_kind'), 'картинка поста')
+            label = {'video_thumbnail': 'превью видео', 'article_image': 'изображение из метаданных статьи',
+                     'manual': 'присланное изображение'}.get(story.get('image_kind'), 'картинка поста')
             await message.answer_photo(types.BufferedInputFile(decode_thumbnail(image), filename='source.jpg'),
                                        caption=f'Сюжет {index}: {label}. ' + (
                                            'Правки доступны в карточке черновика.' if panel_mode else

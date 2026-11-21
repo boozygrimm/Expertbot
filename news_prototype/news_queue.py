@@ -125,6 +125,66 @@ async def enqueue_digest(collection, owner_id: int, message_id: int, inputs: lis
     return False
 
 
+async def capabilities_ready(client, job: dict) -> bool:
+    """Return whether this worker explicitly promises every feature the job uses.
+
+    Any missing promise, missing method or failed probe keeps the job queued:
+    an older worker must never silently drop a picture, a fragment or a mode.
+    """
+    if job.get('kind') == 'bulletin':
+        try:
+            if not await client.supports_bulletins():
+                return False
+            bulletin = job.get('bulletin', {})
+            from news_prototype import bulletin_contract
+            if (any(v.get('manual') is True for v in bulletin_contract.selected_videos(bulletin))
+                    and not await client.supports_bulletin_manual_video()):
+                return False
+            if 'videos' in bulletin and not await client.supports_bulletin_multi_video():
+                return False
+            video = bulletin.get('video')
+            if video is not None and not await client.supports_bulletin_video():
+                return False
+            if isinstance(video, dict) and 'remarks' in video and not await client.supports_bulletin_video_remarks():
+                return False
+            if isinstance(video, dict) and 'cut_after' in video and not await client.supports_bulletin_video_cut():
+                return False
+        except (AttributeError, NewsWorkerError):
+            return False
+    if job.get('kind') == 'program':
+        try:
+            if not await client.supports_programs():
+                return False
+        except (AttributeError, NewsWorkerError):
+            return False
+    if job.get('kind', 'story') == 'story':
+        try:
+            if not await client.supports_story_studio():
+                return False
+        except (AttributeError, NewsWorkerError):
+            return False
+        if isinstance(job.get('script'), dict) and 'video_sha256' in job['script']:
+            try:
+                if not await client.supports_story_manual_video():
+                    return False
+            except (AttributeError, NewsWorkerError):
+                return False
+    if job.get('kind') not in ('digest', 'program', 'bulletin') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
+        try:
+            if not await client.supports_images():
+                return False
+        except (AttributeError, NewsWorkerError):
+            return False
+    scripts = job.get('scripts', []) if job.get('kind') == 'program' else [job.get('script')]
+    if any(isinstance(script, dict) and 'image_regions' in script for script in scripts):
+        try:
+            if not await client.supports_image_focus():
+                return False
+        except (AttributeError, NewsWorkerError):
+            return False
+    return True
+
+
 async def _advance(collection, job, from_stage: str, stage: str) -> None:
     await collection.update_one({'_id': job['_id'], 'stage': from_stage},
                                 {'$set': {'stage': stage, 'updated_at': datetime.now(timezone.utc)}})
@@ -154,51 +214,8 @@ async def run_idle_once(queue, collection, client) -> None:
         return
     if job.get('kind', 'story') not in ('story', 'digest', 'program', 'bulletin'):
         return  # never interpret an unknown protocol as an ordinary story
-    if job.get('kind') == 'bulletin':
-        try:
-            if not await client.supports_bulletins():
-                return
-            bulletin = job.get('bulletin', {})
-            from news_prototype import bulletin_contract
-            if (any(v.get('manual') is True for v in bulletin_contract.selected_videos(bulletin))
-                    and not await client.supports_bulletin_manual_video()):
-                return
-            if 'videos' in bulletin and not await client.supports_bulletin_multi_video():
-                return
-            video = bulletin.get('video')
-            if video is not None and not await client.supports_bulletin_video():
-                return
-            if isinstance(video, dict) and 'remarks' in video and not await client.supports_bulletin_video_remarks():
-                return
-            if isinstance(video, dict) and 'cut_after' in video and not await client.supports_bulletin_video_cut():
-                return
-        except (AttributeError, NewsWorkerError):
-            return
-    if job.get('kind') == 'program':
-        try:
-            if not await client.supports_programs():
-                return
-        except (AttributeError, NewsWorkerError):
-            return
-    if job.get('kind', 'story') == 'story':
-        try:
-            if not await client.supports_story_studio():
-                return
-        except (AttributeError, NewsWorkerError):
-            return
-    if job.get('kind') not in ('digest', 'program', 'bulletin') and isinstance(job.get('script'), dict) and 'image_b64' in job['script']:
-        try:
-            if not await client.supports_images():
-                return
-        except (AttributeError, NewsWorkerError):
-            return
-    scripts = job.get('scripts', []) if job.get('kind') == 'program' else [job.get('script')]
-    if any(isinstance(script, dict) and 'image_regions' in script for script in scripts):
-        try:
-            if not await client.supports_image_focus():
-                return
-        except (AttributeError, NewsWorkerError):
-            return
+    if not await capabilities_ready(client, job):
+        return
     updates = {'stage': 'submitting', 'updated_at': datetime.now(timezone.utc)}
     if job.get('kind', 'story') == 'story':
         updates['studio_protocol'] = 'bulletin-v1'

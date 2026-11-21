@@ -138,6 +138,11 @@ async def receive_bulletin_video(message: types.Message, state: FSMContext):
     if data.get('action') == 'owner_send_video':
         from handlers import owner_video_sender
         return await owner_video_sender.receive_video(message, state, data)
+    if data.get('action') == 'news_video':
+        # This router entry is registered first, so the story fragment is
+        # handed to its own handler explicitly.
+        from handlers.owner_tools_panel import receive_draft_video
+        return await receive_draft_video(message, state)
     if data.get('action') != 'bulletin_manual_video':
         return await message.answer('Сейчас ожидается другой ввод. Отмени его или пришли нужные данные.', parse_mode=None)
     from news_prototype import owner_bulletin, owner_trial, bulletin_manual_media
@@ -181,6 +186,87 @@ async def receive_bulletin_video(message: types.Message, state: FSMContext):
         'Фрагмент будет на экране студии и примерно 10 секунд на весь экран; короткий фрагмент может повторяться. '
         'Озвучка и рендер сейчас не запускаются.',
         number=data['number'], section_id=data['section_id'], revision=data['revision'], digest=digest)
+
+
+@router.message(OwnerInput.waiting, F.photo)
+async def receive_draft_image(message: types.Message, state: FSMContext):
+    """Owner-supplied picture for one reviewed story draft."""
+    if not authorized(message.from_user, message.chat):
+        return
+    data = await state.get_data()
+    if data.get('action') != 'news_picture':
+        return await message.answer('Сейчас ожидается другой ввод. Отмени его или пришли нужные данные.', parse_mode=None)
+    media = message.photo[-1] if message.photo else None
+    size = getattr(media, 'file_size', None)
+    if media is None or type(size) is not int or not 0 < size <= 10 * 1024 * 1024:
+        return await message.answer('Пришли одно фото как изображение (до 10 МБ), не файлом.', parse_mode=None)
+    try:
+        buffer = io.BytesIO()
+        await asyncio.wait_for(message.bot.download(media.file_id, destination=buffer), timeout=120)
+        payload = buffer.getvalue()
+        if len(payload) != size:
+            raise ValueError('Файл получен не полностью')
+    except Exception as exc:
+        logger.warning('Не удалось принять картинку: %s', type(exc).__name__)
+        return await message.answer('Не удалось получить фото. Попробуй ещё раз или отмени ввод.', parse_mode=None)
+    async with _input_lock:
+        current = await state.get_data()
+        if (current.get('action') != 'news_picture'
+                or current.get('input_token') != data.get('input_token')):
+            return await message.answer('Ввод уже отменён или заменён; фото не выбрано.', parse_mode=None)
+        await state.clear()
+    await new_confirmation(message, message.from_user.id, 'use_news_image',
+        'Поставить именно это фото в черновик? Автоматические области увеличения будут сняты, '
+        'кадрирование проверишь после сохранения.', payload=payload,
+        number=data['number'], revision=data['revision'])
+
+
+@router.message(OwnerInput.waiting, F.video | F.document | F.video_note)
+async def receive_draft_video(message: types.Message, state: FSMContext):
+    """Owner-supplied MP4 fragment for one reviewed story draft."""
+    if not authorized(message.from_user, message.chat):
+        return
+    data = await state.get_data()
+    if data.get('action') == 'owner_send_video':
+        from handlers import owner_video_sender
+        return await owner_video_sender.receive_video(message, state, data)
+    if data.get('action') == 'bulletin_manual_video':
+        from handlers.owner_tools_panel import receive_bulletin_video
+        return await receive_bulletin_video(message, state)
+    if data.get('action') != 'news_video':
+        return await message.answer('Сейчас ожидается другой ввод. Отмени его или пришли нужные данные.', parse_mode=None)
+    media = message.video or message.document
+    size = getattr(media, 'file_size', None)
+    if (media is None or type(size) is not int or not 0 < size <= 20 * 1024 * 1024
+            or (message.document and getattr(message.document, 'mime_type', '') not in ('video/mp4', 'application/octet-stream'))):
+        return await message.answer('Нужен MP4-фрагмент до 20 МБ. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
+    from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
+    try:
+        client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
+        if not await client.supports_story_manual_video():
+            return await message.answer('Воркер пока не поддерживает видео в одиночном сюжете. Видео не добавлено.', parse_mode=None)
+        buffer = _LimitedVideoBuffer()
+        await asyncio.wait_for(message.bot.download(media.file_id, destination=buffer), timeout=120)
+        payload = buffer.getvalue()
+        if len(payload) != size or payload[4:8] != b'ftyp':
+            raise ValueError('Неверный MP4')
+        digest = await client.upload_bulletin_video(payload)
+    except (ValueError, NewsWorkerError, OSError, TimeoutError):
+        return await message.answer('Не удалось получить или проверить MP4-фрагмент. Попробуй короче или отмени ввод.', parse_mode=None)
+    except Exception as exc:
+        logger.warning('Не удалось принять фрагмент сюжета: %s', type(exc).__name__)
+        return await message.answer('Не удалось получить или проверить фрагмент; попробуй позже.', parse_mode=None)
+    async with _input_lock:
+        current = await state.get_data()
+        if (current.get('action') != 'news_video'
+                or current.get('input_token') != data.get('input_token')):
+            return await message.answer('Ввод уже отменён или заменён; фрагмент не выбран.', parse_mode=None)
+        await state.clear()
+    await new_confirmation(message, message.from_user.id, 'use_news_video',
+        'Поставить этот фрагмент в конец сюжета? Он прозвучит в паузе между репликами, '
+        'видео будет на экране студии примерно 10 секунд. Проверь звук и права. '
+        'Озвучка и рендер сейчас не запускаются.',
+        number=data['number'], revision=data['revision'], digest=digest)
 
 
 @router.message(OwnerInput.waiting, F.text, ~F.text.regexp(r'^/(?:panel|панель)(?:@\w+)?(?:\s|$)'))
@@ -795,6 +881,20 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 else:
                     message.text = '/news_digest ' + ' '.join(data['ids'])
                     await news_intake.create_digest(message)
+            elif name == 'remove_news_video':
+                from handlers import news_owner_drafts
+                if not await owner_trial.drafts_enabled(db.db):
+                    await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+                else:
+                    result = await owner_drafts.remove_video(db.db, callback.from_user.id,
+                                                             data['number'], data['revision'])
+                    if result == 'stale':
+                        await message.answer('Версия изменилась. Открой черновик заново.', parse_mode=None)
+                    else:
+                        await message.answer('Видеофрагмент убран.' if result == 'saved'
+                                             else 'Видеофрагмента нет.', parse_mode=None)
+                        await news_owner_drafts.show(proxy(message, callback.from_user),
+                                                     data['number'], panel_mode=True)
             elif name in ('noimage', 'nofocus'):
                 from handlers import news_owner_drafts
                 message.for_program = data.get('for_program', False)
@@ -827,6 +927,40 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             elif name == 'run_bulletin_editor':
                 from handlers import owner_bulletin_panel
                 await owner_bulletin_panel.run_editor(message, callback.from_user.id, data)
+            elif name == 'use_news_image':
+                from handlers import news_owner_drafts
+                if not await owner_trial.drafts_enabled(db.db):
+                    await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+                else:
+                    result = await owner_drafts.set_image(db.db, callback.from_user.id,
+                        data['number'], data['revision'], data['payload'])
+                    if result == 'saved':
+                        await message.answer('Фото добавлено в черновик. Проверь кадрирование и отдельно '
+                                             'подтверди рендер.', parse_mode=None)
+                        await news_owner_drafts.show(proxy(message, callback.from_user),
+                                                     data['number'], panel_mode=True)
+                    elif result == 'not_ready':
+                        await message.answer('Черновик не готов принять фото. Открой его заново.', parse_mode=None)
+                    else:
+                        await message.answer('Версия изменилась; фото не добавлено. Открой черновик заново.',
+                                             parse_mode=None)
+            elif name == 'use_news_video':
+                from handlers import news_owner_drafts
+                if not await owner_trial.drafts_enabled(db.db):
+                    await message.answer('Подготовка сценариев выключена.', parse_mode=None)
+                else:
+                    result = await owner_drafts.set_video(db.db, callback.from_user.id,
+                        data['number'], data['revision'], data['digest'])
+                    if result == 'saved':
+                        await message.answer('Фрагмент добавлен в черновик: он прозвучит в паузе между '
+                                             'репликами. Отдельно подтверди рендер сюжета.', parse_mode=None)
+                        await news_owner_drafts.show(proxy(message, callback.from_user),
+                                                     data['number'], panel_mode=True)
+                    elif result == 'not_ready':
+                        await message.answer('Черновик не готов принять фрагмент. Открой его заново.', parse_mode=None)
+                    else:
+                        await message.answer('Версия изменилась; фрагмент не добавлен. Открой черновик заново.',
+                                             parse_mode=None)
             elif name == 'use_manual_bulletin_video':
                 from news_prototype import owner_bulletin, owner_bulletin_manual_video
                 from handlers import owner_bulletin_panel

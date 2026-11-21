@@ -64,6 +64,33 @@ def test_invalid_or_ambiguous_post_fails_closed():
         with pytest.raises(source.SourceError): source.parse_widget('https://t.me/ExampleNews/102', html)
 
 
+ALBUM = '''<div class="tgme_widget_message" data-post="ExampleNews/300">
+  <div class="tgme_widget_message_text js-message_text">Подпись альбома с фактами.</div>
+  <div class="tgme_widget_message_grouped_wrap"><div class="tgme_widget_message_grouped">
+    <a class="tgme_widget_message_video_player grouped_media_wrap" href="https://t.me/ExampleNews/300?single"><video src="https://cdn4.telesco.pe/file/v"></video></a>
+    <a class="tgme_widget_message_photo_wrap grouped_media_wrap" href="https://t.me/ExampleNews/301?single" style="background-image:url('https://cdn4.telesco.pe/file/p.jpg')"></a>
+  </div></div></div>'''.encode()
+
+
+def test_album_item_reads_shared_caption_instead_of_reporting_missing_text():
+    # A later album item has no card of its own, so its caption is the album's.
+    post = source.parse_widget('https://t.me/ExampleNews/301', ALBUM)
+    assert post.post_id == 'ExampleNews/301' and post.caption == 'Подпись альбома с фактами.'
+    assert post.video_status == 'none'
+    from news_prototype import telegram_post
+    assert telegram_post.extract_post(ALBUM, 'ExampleNews/301')[1] == post.caption
+
+
+def test_album_without_own_caption_still_asks_for_single_mode():
+    hollow = ALBUM.replace('<div class="tgme_widget_message_text js-message_text">'
+                           'Подпись альбома с фактами.</div>'.encode(), b'')
+    assert hollow != ALBUM
+    # The album marker tells fetch_post to retry once with ?single=1; no
+    # caption is invented from a neighbour or from an empty card.
+    with pytest.raises(source._GroupedAttempt):
+        source.parse_widget('https://t.me/ExampleNews/301', hollow)
+
+
 def test_fetch_uses_canonical_exact_widget_and_closes_connection():
     conn = Mock(); data = page()
     with patch.object(probe, 'get_response', return_value=(conn, Response(data, str(len(data))))) as get:

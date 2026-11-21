@@ -142,12 +142,16 @@ def parse_widget(url: str, html: bytes) -> Post:
             parser.feed(text)
             parser.close()
         if caption_parser.matches == 0 and 'tgme_widget_message_grouped' in text:
-            # Album: this post's own card was replaced by the group's first one.
-            raise _GroupedAttempt
-        if caption_parser.matches != 1 or caption_parser.bodies != 1 or video_parser.matches != 1:
+            # Album: the whole group is rendered as the first item's card, so
+            # the caption belongs to the group and is shared by every item.
+            caption = _album_caption(text)
+            if caption is None:
+                raise _GroupedAttempt
+        elif caption_parser.matches != 1 or caption_parser.bodies != 1 or video_parser.matches != 1:
             raise ValueError
-        caption = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
-                            for line in ''.join(caption_parser.parts).split('\n')).strip()
+        else:
+            caption = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
+                                for line in ''.join(caption_parser.parts).split('\n')).strip()
         # A prefix is sufficient for display, but never enough to assert that
         # a later post is unchanged. Record truncation before slicing.
         caption_complete = len(caption) <= MAX_TEXT
@@ -169,12 +173,36 @@ def parse_widget(url: str, html: bytes) -> Post:
     return Post(canonical, post_id, caption, 'available', candidates[0], caption_complete)
 
 
+def _album_caption(html: str) -> str | None:
+    """Caption of the album card that owns the group markup, if any.
+
+    The caption stays with the album's first item, so any other item of the
+    same album legitimately has no text node of its own. Only that owner card
+    may donate it; when it has none, nothing is borrowed.
+    """
+    cards = list(re.finditer(r'<div class="tgme_widget_message[^"]*" data-post="([^"]+)"', html))
+    owner = next((card for index, card in enumerate(cards)
+                  if 'tgme_widget_message_grouped' in html[card.end():
+                                                          cards[index + 1].start() if index + 1 < len(cards) else len(html)]),
+                 None)
+    if not owner:
+        return None
+    parser = CaptionParser(owner.group(1))
+    parser.feed(html)
+    parser.close()
+    if parser.matches != 1 or parser.bodies != 1:
+        return None
+    return '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
+                     for line in ''.join(parser.parts).split('\n')).strip()
+
+
 def fetch_post(url: str) -> Post:
     """Fetch one public widget with pinned vetted DNS and without redirects.
 
-    A post that is one item of an album is retried once with ``single=1``:
-    the plain embed renders the album as one card owned by its first item, so
-    this post's own caption would look absent (same switch the web preview uses).
+    An album renders as one card owned by its first item, and Telegram keeps a
+    single caption for the whole album, so any other item reuses that caption.
+    Only when the album card has no caption at all is this retried once with
+    ``single=1`` (the same switch the web preview uses) and then failed closed.
     """
     canonical, post_id = canonical_post(url)
     targets = [f'/{post_id}?embed=1', f'/{post_id}?embed=1&single=1']

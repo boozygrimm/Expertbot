@@ -444,6 +444,75 @@ async def remove_image(db, owner_id: int, draft_id: int, expected: str) -> str:
     return 'saved' if changed.modified_count else 'stale'
 
 
+async def set_image(db, owner_id: int, draft_id: int, expected: str, data: bytes) -> str:
+    """Attach an owner-supplied picture to a ready draft.
+
+    The bytes are rebuilt through the same bounded JPEG codec as source media,
+    so nothing unvalidated ever reaches the renderer. Automatic focus regions
+    are dropped: they described the previous picture, not this one.
+    """
+    if not REVISION.fullmatch(expected or ''):
+        raise ValueError('Неверная версия')
+    from news_prototype.news_image_codec import make_thumbnail
+    image_b64 = make_thumbnail(data)
+    item = await get(db, owner_id, draft_id)
+    if not item or item.get('stage') != 'draft_ready':
+        return 'not_ready'
+    if item.get('revision') != expected:
+        return 'stale'
+    script = dict(item['script'])
+    script.pop('image_regions', None)
+    script['image_b64'] = image_b64
+    changed = await db.news_owner_drafts.update_one(
+        {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
+        {'$set': {'script': script, 'revision': revision(item['url'], script), 'verification': 'needs_review',
+                  'image_kind': 'manual', 'image_analysis': 'unavailable'},
+         '$unset': {'image_description': ''}})
+    if not changed.modified_count:
+        return 'stale'
+    return 'saved'
+
+
+async def set_video(db, owner_id: int, draft_id: int, expected: str, digest: str) -> str:
+    """Attach an owner fragment already stored and checked by the worker.
+
+    Only the digest travels in the draft: the bytes stay in the worker's
+    private upload cache and are re-verified before every render.
+    """
+    if not REVISION.fullmatch(expected or ''):
+        raise ValueError('Неверная версия')
+    if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+        raise ValueError('Неверный отпечаток фрагмента')
+    item = await get(db, owner_id, draft_id)
+    if not item or item.get('stage') != 'draft_ready':
+        return 'not_ready'
+    if item.get('revision') != expected:
+        return 'stale'
+    script = dict(item['script'])
+    script['video_sha256'] = digest
+    script = validate_script(script)
+    changed = await db.news_owner_drafts.update_one(
+        {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
+        {'$set': {'script': script, 'revision': revision(item['url'], script), 'verification': 'needs_review'}})
+    return 'saved' if changed.modified_count else 'stale'
+
+
+async def remove_video(db, owner_id: int, draft_id: int, expected: str) -> str:
+    if not REVISION.fullmatch(expected or ''):
+        raise ValueError('Неверная версия')
+    item = await get(db, owner_id, draft_id)
+    if not item or item.get('stage') != 'draft_ready' or item.get('revision') != expected:
+        return 'stale'
+    script = dict(item['script'])
+    if 'video_sha256' not in script:
+        return 'unchanged'
+    script.pop('video_sha256')
+    changed = await db.news_owner_drafts.update_one(
+        {'_id': _key(owner_id, draft_id), 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': expected},
+        {'$set': {'script': script, 'revision': revision(item['url'], script), 'verification': 'needs_review'}})
+    return 'saved' if changed.modified_count else 'stale'
+
+
 async def approve(db, owner_id: int, draft_id: int, expected: str) -> str:
     if not REVISION.fullmatch(expected or ''):
         raise ValueError('Неверная версия')
