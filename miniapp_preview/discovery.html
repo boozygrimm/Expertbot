@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#160d27"><title>Лаборатория открытий — Луна-парк Бендера</title><style>/*__STYLE__*/</style></head>
+<body><main class="shell">
+<header class="top"><div class="brand"><span class="brand-mark">✦</span><div><small>ЛУНА-ПАРК БЕНДЕРА / ДЕМО</small><strong>Лаборатория открытий</strong></div></div><button class="sound" id="sound" type="button" aria-pressed="false" title="Включить звук">♫ <span>выкл</span></button><button class="sound" id="effect" type="button" aria-pressed="true" title="Включить текстурный эффект">✦ <span>вкл</span></button></header>
+<div class="notice">✦ ПРОБНЫЙ ДИЗАЙН · ПРОГРЕСС НЕ СОХРАНЯЕТСЯ</div>
+<section class="workspace" id="workspace">
+  <div class="hero" id="hero"><div class="hero-art"></div><div class="hero-shade"></div>
+    <div class="hero-top"><button class="hero-action" type="button" data-view="history"><span>◷</span> История</button><span class="hero-caption">✧ КОТЁЛ ОТКРЫТИЙ</span><button class="hero-action" type="button" data-view="album"><span>▤</span> Рецепты</button></div>
+    <div class="mix-space" id="mix-space"><div class="slots"><button class="slot" data-slot="0" aria-label="Первый слот">+</button><button id="mix" class="result-slot" type="button" aria-label="Выбери элементы" disabled></button><button class="slot" data-slot="1" aria-label="Второй слот">+</button></div><div id="mix-message" class="mix-message" role="status">Выбери или перетащи два элемента</div></div>
+    <div class="reaction-fx" aria-hidden="true"><i class="reaction-ring"></i><i class="reaction-bubble b1"></i><i class="reaction-bubble b2"></i><i class="reaction-bubble b3"></i><i class="reaction-bubble b4"></i><i class="reaction-spark s1">✦</i><i class="reaction-spark s2">✧</i><i class="reaction-spark s3">✦</i></div>
+    <div class="glitter g1">✧</div><div class="glitter g2">✦</div>
+  </div>
+  <div class="shelf">
+    <div class="shelf-heading"><div><small>ТВОЯ КОЛЛЕКЦИЯ</small><h2>Элементы <span id="open-count">04</span></h2></div><button class="tool-btn" id="search-toggle" type="button" aria-label="Поиск элементов" aria-expanded="false">⌕</button><button class="tool-btn" id="options-toggle" type="button" aria-label="Сортировка и категории" aria-expanded="false">☷</button></div>
+    <div id="search-box" class="search-box" hidden><input id="search" type="search" placeholder="Название элемента…" aria-label="Поиск по названию"><button type="button" id="search-close" aria-label="Закрыть поиск">×</button></div>
+    <div id="options-box" class="options-box" hidden><label>Категория <select id="category"><option value="all">Все</option><option value="basic">Стихии</option><option value="nature">Природа</option><option value="animals">Животные</option><option value="machines">Механизмы</option><option value="other">Другое</option></select></label><label>Сортировка <select id="sort"><option value="default">Обычная</option><option value="az">По названию</option><option value="recent">Недавние</option></select></label><label class="check"><input type="checkbox" id="hide-dead"> Скрыть тупиковые</label></div>
+    <div class="tabs" id="tabs"><button data-filter="all" class="active">Все</button><button data-filter="favorites">★ Избранное</button><button data-filter="recent">Недавние</button><button data-filter="dead">Тупиковые</button></div>
+    <div class="element-grid" id="elements" aria-label="Открытые элементы"></div>
+    <div class="pager"><button id="prev" aria-label="Предыдущая страница">‹</button><span id="page-label">1 / 1</span><button id="next" aria-label="Следующая страница">›</button></div>
+  </div>
+</section>
+<section class="overlay" id="overlay" hidden><div class="overlay-head"><button id="back" class="back">‹ <span>К котлу</span></button><div><small id="overlay-kicker">КОЛЛЕКЦИЯ</small><h2 id="overlay-title">Альбом открытий</h2></div></div><div class="overlay-body" id="overlay-body"></div><div class="overlay-bottom"><button id="overlay-prev" aria-label="Предыдущая страница">‹</button><span id="overlay-page"></span><button id="overlay-next" aria-label="Следующая страница">›</button></div></section>
+<footer>Лаборатория исследует рецепты · производство не подключено</footer>
+</main><script>window.DISCOVERY_DATA=/*__DATA__*/;</script><script>/*__SCRIPT__*/</script></body></html>

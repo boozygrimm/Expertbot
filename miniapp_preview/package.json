@@ -1,0 +1,10 @@
+{
+  "name": "expertbot-lunapark-preview",
+  "private": true,
+  "scripts": {
+    "test": "node --test test.mjs integration.test.cjs telegram_integration.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
