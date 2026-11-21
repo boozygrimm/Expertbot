@@ -19,6 +19,7 @@ class AsyncMockCollection:
     def __init__(self, collection):
         self.raw = collection
         self.database = collection.database
+        self.name = collection.name
         self.after_commit_error = False
         self.fail_read = False
         self.fail_before_write = False
@@ -131,16 +132,45 @@ class IsolatedStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.store.craft(42, key, ['w', 'f']))['outcome'], 'crafted')
         self.assertEqual(self.raw.find_one({'user_id': 42})['inventory']['steam'], 1)
 
-    async def test_full_log_does_not_evict_and_existing_id_remains_replayable(self):
+    async def test_log_window_keeps_replays_and_slides_oldest_out(self):
         key = uid()
         command = {'kind': 'craft_single_v1', 'ingredients': ['w', 'f']}
         entries = [{'key': uid(), 'fingerprint': 'x', 'result': {'outcome': 'done'}} for _ in range(MAX_OPERATIONS - 1)]
         entries.append({'key': key, 'fingerprint': _fingerprint(command), 'result': {'outcome': 'crafted', 'result_id': 'steam'}})
         self.raw.update_one({'user_id': 42}, {'$set': {'_alc_rev': 10, '_alc_ops': entries}})
+        # A stored result inside the window is replayed, not recomputed.
         self.assertEqual((await self.store.craft(42, key, ['w', 'f']))['result_id'], 'steam')
-        with self.assertRaises(OperationLogFull):
-            await self.store.craft(42, uid(), ['w', 'f'])
-        self.assertEqual(len(self.raw.find_one({'user_id': 42})['_alc_ops']), MAX_OPERATIONS)
+        # A new operation slides the window instead of blocking all later writes.
+        self.assertEqual((await self.store.craft(42, uid(), ['w', 'f']))['outcome'], 'crafted')
+        operations = self.raw.find_one({'user_id': 42})['_alc_ops']
+        self.assertEqual(len(operations), MAX_OPERATIONS)
+        # The oldest entry left the window; the newest one is there.
+        self.assertNotIn(entries[0]['key'], {entry['key'] for entry in operations})
+        self.assertIn(key, {entry['key'] for entry in operations})
+
+    async def test_hundred_operations_never_block_and_document_stays_bounded(self):
+        """The owner's choice: window of the last 100 operations, never a hard stop."""
+        for index in range(MAX_OPERATIONS + 40):
+            result = await self.store.craft(42, uid(), ['w', 'f'])
+            self.assertEqual(result['outcome'], 'crafted')
+            # Keep the inventory stocked so the rejections never appear.
+            if index % 10 == 0:
+                inventory = dict(self.raw.find_one({'user_id': 42})['inventory'])
+                inventory['w'] = inventory.get('w', 0) + 20
+                inventory['f'] = inventory.get('f', 0) + 20
+                self.raw.update_one({'user_id': 42}, {'$set': {'inventory': inventory}})
+        operations = self.raw.find_one({'user_id': 42})['_alc_ops']
+        self.assertLessEqual(len(operations), MAX_OPERATIONS)
+
+    async def test_production_mode_accepts_only_the_lunapark_collection(self):
+        allowed = AsyncMockCollection(mongomock.MongoClient().bender.lunapark_players)
+        store = IsolatedProfileStore(allowed, allow_production=True)
+        self.assertIsNotNone(store)
+        other = AsyncMockCollection(mongomock.MongoClient().bender.alchemy_players)
+        with self.assertRaises(ValueError):
+            IsolatedProfileStore(other, allow_production=True)
+        with self.assertRaises(ValueError):
+            IsolatedProfileStore(allowed, isolated_test_only=True, allow_production=True)
 
     async def test_corrupt_or_unavailable_state_fails_closed(self):
         self.collection.fail_read = True
@@ -173,6 +203,9 @@ class IsolatedStoreTests(unittest.IsolatedAsyncioTestCase):
             IsolatedProfileStore(wrong, isolated_test_only=True)
         with self.assertRaises(ValueError):
             IsolatedProfileStore(self.collection)
+        # Production mode is an explicit opt-in and only for the known collection.
+        with self.assertRaises(ValueError):
+            IsolatedProfileStore(self.collection, allow_production=True)
         self.assertEqual(self.collection.options['write_concern'].document['w'], 'majority')
         self.assertEqual(self.collection.options['read_concern'].document['level'], 'majority')
 

@@ -1,8 +1,23 @@
-"""Experimental single-document CAS/idempotency for isolated Mongo test DBs only.
+"""Single-document CAS/idempotency for Mini App writing.
 
-NOT wired to the bot or web API. This cannot coexist safely with legacy writers
-that replace the same fields without bumping _alc_rev. All relevant bot and job
-writers must adopt one protocol before this can ever touch real player data.
+The store keeps a revision counter and a bounded log of recent operations in the
+same player document, so one `update_one` both changes state and records what was
+done. The log is a sliding window of the last `MAX_OPERATIONS` entries: it is
+never evicted silently for a *duplicate* of a recent request (that would double
+apply it), but the oldest entries do fall out so the document cannot grow
+without limit.
+
+Guarantee, stated exactly: a repeated request returns the stored result while its
+entry is inside the window. A repeat older than the window is executed again as a
+new request. Callers must therefore treat a retry as "same key, recent", not as
+an unlimited guarantee.
+
+Two construction modes:
+
+- `test_only=True` — the original guard: only a database named `lunapark_test_*`
+  is accepted. Used by the sandbox and its tests.
+- `allow_production=True` — writing to the real Mini App collection, whose name
+  must be `lunapark_players`. This is an explicit opt-in, never a default.
 """
 from copy import deepcopy
 from dataclasses import dataclass
@@ -17,7 +32,10 @@ from pymongo.write_concern import WriteConcern
 
 from .crafting import CraftRejected, craft_transition
 
-MAX_OPERATIONS = 256  # Fail closed instead of evicting keys and risking duplicate execution.
+# Sliding window of remembered operations per player. Chosen by the owner: the
+# last 100 operations are replayable; older requests are new requests.
+MAX_OPERATIONS = 100
+PRODUCTION_COLLECTION = 'lunapark_players'
 MAX_RETRIES = 12
 ALLOWED_FIELDS = frozenset({'inventory', 'discovered', 'last_craft', 'production_slots'})
 
@@ -35,7 +53,7 @@ class OperationKeyConflict(StoreError):
 
 
 class OperationLogFull(StoreError):
-    pass
+    """Retained for compatibility; the log is now a sliding window."""
 
 
 class ConcurrentUpdate(StoreError):
@@ -98,11 +116,20 @@ def _state(document):
 
 
 class IsolatedProfileStore:
-    def __init__(self, collection, *, isolated_test_only=False):
+    def __init__(self, collection, *, isolated_test_only=False, allow_production=False):
         # A naming check is a guardrail, NOT proof that a cluster is isolated.
-        name = getattr(getattr(collection, 'database', None), 'name', '')
-        if not isolated_test_only or not re.fullmatch(r'lunapark_test_[a-z0-9_]{1,32}', name or ''):
-            raise ValueError('use only an explicitly isolated test database')
+        database = getattr(getattr(collection, 'database', None), 'name', '')
+        collection_name = getattr(collection, 'name', '')
+        if isolated_test_only and allow_production:
+            raise ValueError('choose either a test database or the production collection')
+        if not isolated_test_only and not allow_production:
+            raise ValueError('explicit mode is required: test database or production collection')
+        if isolated_test_only:
+            if not re.fullmatch(r'lunapark_test_[a-z0-9_]{1,32}', database or ''):
+                raise ValueError('use only an explicitly isolated test database')
+        elif collection_name != PRODUCTION_COLLECTION:
+            # Production writes are allowed for one known collection only.
+            raise ValueError(f'production writes are limited to {PRODUCTION_COLLECTION}')
         self._players = collection.with_options(
             write_concern=WriteConcern(w='majority'), read_concern=ReadConcern('majority'),
             read_preference=ReadPreference.PRIMARY,
@@ -128,8 +155,6 @@ class IsolatedProfileStore:
                 if previous['fingerprint'] != fingerprint:
                     raise OperationKeyConflict('operation ID already used for a different command')
                 return deepcopy(previous['result'])
-            if len(operations) >= MAX_OPERATIONS:
-                raise OperationLogFull('operation log is full; no keys were evicted')
             change = transition(deepcopy(player))
             if (not isinstance(change, Change) or not isinstance(change.fields, dict) or
                     not set(change.fields).issubset(ALLOWED_FIELDS) or not isinstance(change.result, dict)):
@@ -145,9 +170,11 @@ class IsolatedProfileStore:
                 'user_id': user_id,
                 '_alc_rev': revision if '_alc_rev' in player else {'$exists': False},
                 '_alc_ops.key': {'$ne': operation_id},
-                f'_alc_ops.{MAX_OPERATIONS - 1}': {'$exists': False},
             }
-            update = {'$inc': {'_alc_rev': 1}, '$push': {'_alc_ops': log_entry}}
+            # $push with $slice keeps the newest MAX_OPERATIONS entries: the
+            # window slides instead of blocking every later write.
+            update = {'$inc': {'_alc_rev': 1},
+                      '$push': {'_alc_ops': {'$each': [log_entry], '$slice': -MAX_OPERATIONS}}}
             if change.fields:
                 update['$set'] = deepcopy(change.fields)
             try:
