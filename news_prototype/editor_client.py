@@ -62,6 +62,22 @@ def story_validation_code(error):
     return _STORY_VALIDATION.get(str(error), 'validation') if type(error) is ValueError else 'validation'
 
 
+def _strip_fence(text: str) -> str:
+    """Unwrap one Markdown code block, which some Gemini replies add anyway.
+
+    The response schema asks for bare JSON, but a fenced answer is the same
+    document with decoration. Only a single whole-message fence is unwrapped;
+    anything else is returned untouched so the parser still fails closed.
+    """
+    if not isinstance(text, str):
+        return text
+    match = re.fullmatch(r'\s*```(?:json|JSON)?\s*\n?(.*?)\n?\s*```\s*', text, re.S)
+    if not match:
+        return text
+    body = match.group(1).strip()
+    return body or text
+
+
 async def _request(system: str, material: str, key: str, model: str, *, output_tokens: int, timeout: int) -> str:
     if not key or not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9._-]{1,100}', model):
         raise EditorialError('Редактор не настроен', code='configuration')
@@ -90,18 +106,42 @@ async def _request(system: str, material: str, key: str, model: str, *, output_t
                     if len(data) > 131_072:
                         raise EditorialError('Слишком большой ответ редактора', code='response_too_large')
         content = json.loads(data)
-        result = content['candidates'][0]
-        if result.get('finishReason') != 'STOP':
+        if not isinstance(content, dict):
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response')
+        candidates = content.get('candidates')
+        if not isinstance(candidates, list) or not candidates:
+            # Gemini returns no candidates at all when a request is refused
+            # before generation. That is a stable, repeatable refusal, so it
+            # must never be reported as a broken response format.
+            if content.get('promptFeedback') or content.get('usageMetadata'):
+                raise EditorialError('Редактор отказался от запроса', code='refused')
+            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer')
+        result = candidates[0]
+        if not isinstance(result, dict):
+            raise EditorialError('Некорректный ответ редактора', code='invalid_response')
+        block = result.get('finishReason')
+        if block == 'SAFETY' or result.get('blockReason') or (
+                isinstance(result.get('promptFeedback'), dict)
+                and result['promptFeedback'].get('blockReason')):
+            raise EditorialError('Редактор отказался от запроса', code='refused')
+        if block != 'STOP':
             # MAX_TOKENS is the one truncation the owner can act on: it means
             # the visible answer never fit, which is a budget problem rather
             # than a provider outage. Keep it distinct from other stops.
-            code = 'max_tokens' if result.get('finishReason') == 'MAX_TOKENS' else 'incomplete_response'
+            code = 'max_tokens' if block == 'MAX_TOKENS' else 'incomplete_response'
             raise EditorialError('Редактор вернул неполный ответ', code=code)
-        parts = result['content']['parts']
-        text_parts = [item['text'] for item in parts if isinstance(item, dict) and isinstance(item.get('text'), str) and not item.get('thought')]
-        if len(text_parts) != 1:
+        parts = (result.get('content') or {}).get('parts')
+        if not isinstance(parts, list):
             raise EditorialError('Некорректный ответ редактора', code='invalid_response')
-        return text_parts[0]
+        text_parts = [item['text'] for item in parts
+                      if isinstance(item, dict) and isinstance(item.get('text'), str) and not item.get('thought')]
+        if not text_parts:
+            # A STOP without visible text means the whole budget went to
+            # reasoning or the answer was filtered; that is not a format bug.
+            raise EditorialError('Редактор вернул пустой ответ', code='empty_answer')
+        # Gemini may split one JSON answer into several consecutive parts.
+        # The answer is one document, so they are joined instead of rejected.
+        return ''.join(text_parts)
     except EditorialError:
         raise
     except TimeoutError:
@@ -116,7 +156,7 @@ async def draft(candidate: dict, key: str, model: str) -> dict:
     system, material = story_editor.prompt_for(candidate)
     # The JSON draft plus evidence quotes is a few thousand characters; 4096
     # leaves too little room once Gemini 3 spends part of the budget thinking.
-    text = await _request(system, material, key, model, output_tokens=8192, timeout=60)
+    text = _strip_fence(await _request(system, material, key, model, output_tokens=8192, timeout=60))
     try:
         return story_editor.parse_draft(text, candidate)
     except (ValueError, TypeError) as exc:
@@ -127,7 +167,7 @@ async def bulletin(stories: list[dict], key: str, model: str) -> dict:
     """Generate exactly one short bulletin; no render, auto-retry or delivery."""
     from news_prototype import bulletin_editor
     system, material = bulletin_editor.prompt_for(stories)
-    text = await _request(system, material, key, model, output_tokens=8192, timeout=90)
+    text = _strip_fence(await _request(system, material, key, model, output_tokens=8192, timeout=90))
     try:
         return bulletin_editor.parse_draft(text, stories)
     except (ValueError, TypeError) as exc:

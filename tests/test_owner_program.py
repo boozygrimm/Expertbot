@@ -289,7 +289,9 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
                 message_id=mid,text=text,answer=AsyncMock(),answer_photo=AsyncMock())
         make = AsyncMock(return_value=DRAFT)
         fetch = AsyncMock(return_value={'summary':SOURCE})
+        from handlers import owner_news_actions
         with patch.object(handler, 'ADMIN_ID', 123), patch.object(handler, 'db', SimpleNamespace(db=self.db)), \
+             patch.object(owner_news_actions, 'db', SimpleNamespace(db=self.db)), \
              patch.object(handler, 'make_draft', make), patch.object(handler.article_fetch, 'fetch_article', fetch):
             incoming = msg('/news_prepare_many\nhttps://t.me/A/1\nhttps://t.me/B/2')
             await handler.prepare_many(incoming)
@@ -304,7 +306,10 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
             await handler.create_program(issue)
             p = await owner_program.get(self.db,123,6001)
             self.assertEqual(p['stage'], 'ready_for_review')
-            self.assertTrue(any(c.args[0].startswith('Если все сюжеты') for c in issue.answer.await_args_list))
+            self.assertTrue(any(c.args[0].startswith('Проверь все сюжеты') for c in issue.answer.await_args_list))
+            # The confirmation is a button on the program card, not a command.
+            cards = [c for c in issue.answer.await_args_list if c.kwargs.get('reply_markup')]
+            self.assertTrue(any(c.args[0].startswith('Если все сюжеты проверены') for c in cards))
             approval = msg(f'/news_program_approve 6001 {p["revision"]}', mid=6002)
             with patch('news_prototype.news_worker_client.NewsWorkerClient', side_effect=ValueError('old')):
                 await handler.approve_program(approval)

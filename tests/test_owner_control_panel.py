@@ -29,6 +29,28 @@ class OwnerControlTests(unittest.IsolatedAsyncioTestCase):
         self.callback.data = 'owner_panel:' + action
         await panel.control_action(self.callback)
 
+    async def test_help_screen_lists_every_reserved_command(self):
+        await self.action('help')
+        text = self.message.edit_text.await_args.args[0]
+        callbacks = [b.callback_data for row in self.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row]
+        self.assertIn('owner_panel:commands', callbacks)
+        await self.action('commands')
+        text = self.message.edit_text.await_args.args[0]
+        self.assertIn('Все команды', text)
+        listed = {command for titles, entries in panel.COMMAND_GROUPS for command, _ in entries}
+        # Everything the owner may still need to type is on one screen, grouped.
+        for command in ('/news_prepare ССЫЛКА', '/news_retry НОМЕР', '/news_approve НОМЕР ВЕРСИЯ',
+                        '/news_novideo', '/news_program_approve'):
+            self.assertIn(command, listed)
+        for command in listed:
+            self.assertIn(command, text)
+        self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
+        callbacks = [b.callback_data for row in self.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard
+                     for b in row]
+        self.assertIn('owner_panel:help', callbacks)
+        self.assertIn('owner_panel:commands', callbacks)
+
     async def test_migration_preserves_current_values_and_survives_removal(self):
         for provider in ('legacy', 'cloudflare'):
             for search in ('', 'enabled'):
@@ -216,7 +238,7 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             ('alchemy_admin', {'owner_tools:lore', 'owner_tools:regen', 'owner_tools:seed', 'owner_tools:pack',
                                'owner_tools:clear', 'owner_tools:reset'}, 'owner_panel:alchemy'),
             ('media', {'owner_panel:images', 'owner_panel:search'}, 'owner_panel:home'),
-            ('help', {'owner_tools:help'}, 'owner_panel:home'),
+            ('help', {'owner_tools:help', 'owner_panel:commands'}, 'owner_panel:home'),
             ('tools', {'ovideo:open', 'owner_panel:alchemy', 'owner_panel:group_menu'}, 'owner_panel:home'),
         ]:
             markup = await self.click('owner_panel:' + route)
