@@ -13,8 +13,33 @@ from urllib.parse import urlsplit
 from news_prototype.article_fetch import ArticleError, MAX_BYTES, MAX_TEXT, validate_url
 
 HOSTS = frozenset(('t.me', 'www.t.me', 'telegram.me', 'www.telegram.me'))
+
+
+GROUPED_MESSAGE = ('Пост входит в альбом (видео и/или несколько картинок), и Telegram '
+                   'не отдал его текст отдельной карточкой. Ссылка вида '
+                   'https://t.me/канал/НОМЕР?single открывает именно этот элемент; '
+                   'если сообщение всё равно не читается, пришли полный текст источника.')
+
+
+class GroupedPost(ArticleError):
+    """The post belongs to an album, so its own card was not rendered."""
 VOID_TAGS = frozenset(('area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
                        'link', 'meta', 'param', 'source', 'track', 'wbr'))
+
+
+def single_widget_for(url: str) -> tuple[str, str] | None:
+    """Embed just this post, not the album around it.
+
+    Telegram renders a grouped post (a video or photo album) as one card whose
+    ``data-post`` belongs to the *first* item only, so any later item of the
+    album looks like "no text" on the plain embed. ``single=1`` is the same
+    switch the web preview uses for "open this exact message"; yt-dlp relies on
+    it too. It stays the same post, so no extra trust is involved.
+    """
+    widget = widget_for(url)
+    if widget is None:
+        return None
+    return widget[0] + '&single=1', widget[1]
 
 
 def widget_for(url: str) -> tuple[str, str] | None:
@@ -61,6 +86,8 @@ class WidgetParser(HTMLParser):
         self.stack = []
         self.matches = 0
         self.text_nodes = 0
+        self.other_posts = 0
+        self.saw_grouped = False
         self.parts = []
         self.media = []
 
@@ -75,6 +102,12 @@ class WidgetParser(HTMLParser):
             media_owner = False
             if target:
                 self.matches += 1
+            elif attrs.get('data-post'):
+                self.other_posts += 1
+        if not target and not suppressed and ('tgme_widget_message_grouped_wrap' in classes
+                                             or 'tgme_widget_message_video_player' in classes):
+            # Album/multi-media markup rendered in place of the requested card.
+            self.saw_grouped = True
         suppressed = suppressed or tag in ('script', 'style', 'noscript', 'template') or 'tgme_widget_message_reply' in classes
         if (target and not suppressed and 'tgme_widget_message_text' in classes
                 and 'js-message_text' in classes):
@@ -131,8 +164,14 @@ def extract_post_info(data: bytes, post: str, charset: str | None = None) -> tup
         parser.close()
     except (LookupError, TypeError, ValueError, RecursionError):
         raise ArticleError('Не удалось прочитать пост') from None
-    if parser.matches != 1 or parser.text_nodes != 1:
+    if parser.matches != 1:
+        # The widget rendered some post, just not this one, and that post
+        # carries album/multi-media markup: this post is another item of it.
+        if parser.matches == 0 and parser.other_posts and parser.saw_grouped:
+            raise GroupedPost(GROUPED_MESSAGE)
         raise ArticleError('Публичный пост с текстом не найден однозначно')
+    if parser.text_nodes != 1:
+        raise ArticleError('В публичном посте нет текста, доступного без входа в аккаунт')
     body = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
                      for line in ''.join(parser.parts).split('\n')).strip()[:MAX_TEXT]
     if not body:
@@ -148,6 +187,11 @@ def extract_post_info(data: bytes, post: str, charset: str | None = None) -> tup
 def extract_post(data: bytes, post: str, charset: str | None = None) -> tuple[str, str]:
     title, body, _ = extract_post_info(data, post, charset)
     return title, body
+
+
+def grouped_post_error() -> str:
+    """Owner-facing text for GroupedPost; safe to show, contains no source data."""
+    return GROUPED_MESSAGE
 
 
 def safe_channel_name(value: object) -> str | None:

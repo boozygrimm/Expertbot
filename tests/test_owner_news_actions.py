@@ -53,6 +53,40 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('изменилось', self.callback.answer.await_args.args[0])
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 1)
 
+    async def test_failed_draft_shows_reason_and_one_retry_button(self):
+        from news_prototype import editor_client
+        await owner_drafts.create(self.db, news.ADMIN_ID, 15, 'https://t.me/ExampleNews/15', '')
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 15, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(side_effect=editor_client.EditorialError('q', code='http')))
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 15)
+        self.assertEqual(item['stage'], 'editor_failed')
+        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        buttons = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
+        retry = next(b.callback_data for row in buttons for b in row if b.text.startswith('🔄'))
+        detail = news_owner_drafts.editor_failure_text(item)
+        self.assertIn('HTTP', detail)
+        self.assertEqual(await owner_drafts.retry(self.db, news.ADMIN_ID, 15, AsyncMock(return_value=DRAFT)), 'draft_ready')
+        # The stale card must not retry again once the draft is no longer failed.
+        await self.action(retry)
+        self.assertEqual((await owner_drafts.get(self.db, news.ADMIN_ID, 15))['stage'], 'draft_ready')
+
+    async def test_needs_source_explains_album_posts(self):
+        from news_prototype.telegram_post import GroupedPost, GROUPED_MESSAGE
+        await owner_drafts.create(self.db, news.ADMIN_ID, 31, 'https://t.me/exploitex/38046', '')
+        fetch = AsyncMock(side_effect=GroupedPost(GROUPED_MESSAGE))
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 31, fetch, AsyncMock())
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 31)
+        self.assertEqual(item['stage'], 'needs_source')
+        detail = news_owner_drafts.source_failure_text(item)
+        self.assertIn('альбом', detail)
+        self.assertEqual(news_owner_drafts.source_failure_text({}), '')
+
+    async def test_editor_failure_text_never_invents_unknown_codes(self):
+        self.assertIn('не записана', news_owner_drafts.editor_failure_text({}))
+        self.assertIn('не распознана', news_owner_drafts.editor_failure_text({'editor_error': {'code': 'hack'}}))
+        self.assertIn('квота', news_owner_drafts.editor_failure_text(
+            {'editor_error': {'code': 'http', 'http_status': 429}}))
+
     async def test_multi_story_preview_offers_program_not_single_render(self):
         item = await self.ready(12)
         self.message.from_user = self.user

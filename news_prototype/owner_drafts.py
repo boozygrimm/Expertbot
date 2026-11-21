@@ -19,6 +19,60 @@ from news_prototype.story_audio import validate_script
 MAX_MESSAGE = 3900  # Includes the editable command; below Telegram's limit.
 REVISION = re.compile(r'^[0-9a-f]{64}$')
 
+# Safe, allowlisted diagnostics: a code and an HTTP status, never provider text,
+# submitted content, or exception messages. Stored so a failed draft can be
+# explained and retried deliberately instead of disappearing into a dead state.
+EDITOR_ERROR_CODES = frozenset({
+    'configuration', 'timeout', 'network', 'http', 'response_too_large',
+    'incomplete_response', 'max_tokens', 'invalid_response', 'invalid_json',
+    'evidence', 'speakers', 'too_long', 'validation', 'save', 'unknown',
+})
+
+
+SOURCE_ERROR_CODES = frozenset({'grouped_post', 'no_text', 'too_little_text', 'unavailable',
+                                 'article_missing', 'not_html', 'too_large', 'network', 'unknown'})
+
+# Sources are fetched by our own code, so these messages are ours, not model
+# or provider output: safe to store and to explain to the owner.
+_SOURCE_MESSAGES = {
+    'Не удалось прочитать пост': 'no_text',
+    'В публичном посте нет доступного текста': 'no_text',
+    'Публичный пост с текстом не найден однозначно': 'no_text',
+    'В публичном посте нет текста, доступного без входа в аккаунт': 'no_text',
+    'Не найден текст': 'no_text',
+    'Не найден достаточно полный текст страницы': 'too_little_text',
+    'Недостаточно текста для сценария: требуется дополнительный источник': 'too_little_text',
+    'Страница слишком большая': 'too_large',
+    'Это не HTML-страница': 'not_html',
+    'Неподдерживаемое сжатие страницы': 'not_html',
+    'Страница недоступна': 'unavailable',
+    'Публичный пост недоступен': 'unavailable',
+    'Не удалось безопасно получить страницу': 'network',
+    'Не удалось получить страницу': 'network',
+}
+
+
+def source_error(exc: BaseException) -> dict:
+    """Describe why the source text could not be used, without copying it."""
+    text = str(exc) if isinstance(exc, Exception) else ''
+    code = _SOURCE_MESSAGES.get(text, 'unknown')
+    # Album posts carry their own explanation as the exception text.
+    if 'альбом' in text and '?single' in text:
+        code = 'grouped_post'
+    return {'code': code}
+
+
+def diagnostic(exc: BaseException, *, phase: str) -> dict:
+    """Describe a failed editor step without copying anything from the request."""
+    code = getattr(exc, 'code', None)
+    if code not in EDITOR_ERROR_CODES:
+        code = 'unknown'
+    status = getattr(exc, 'http_status', None)
+    result = {'code': code, 'phase': phase}
+    if type(status) is int and 100 <= status <= 599:
+        result['http_status'] = status
+    return result
+
 
 def _url(value: str) -> str:
     try:
@@ -195,11 +249,15 @@ async def _finish_editing(db, item: dict, draft, image_b64: str | None = None,
         rev = revision(item['url'], script)
         saved = await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'},
             {'$set': {'stage': 'draft_ready', 'script': script, 'revision': rev,
-                      'evidence': evidence, 'verification': 'needs_review'}})
+                      'evidence': evidence, 'verification': 'needs_review'},
+             '$unset': {'editor_error': ''}})
         return 'draft_ready' if saved.modified_count else 'changed'
-    except Exception:
-        # Do not include provider errors: they can contain keys or input.
-        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'}, {'$set': {'stage': 'editor_failed'}})
+    except Exception as exc:
+        # Do not include provider errors: they can contain keys or input. Keep
+        # only an allowlisted code so the owner can tell a quota error from a
+        # quote mismatch instead of seeing one opaque message.
+        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'editing'},
+            {'$set': {'stage': 'editor_failed', 'editor_error': diagnostic(exc, phase='editor')}})
         return 'editor_failed'
 
 
@@ -221,8 +279,11 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
         if name and widget_for(item['url']) is not None:
             additions['telegram_channel_name'] = name
         item = item | additions
-    except Exception:
-        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'}, {'$set': {'stage': 'needs_source'}})
+    except Exception as exc:
+        # Keep one safe, allowlisted reason: "the post is an album" needs a
+        # different action than "the site timed out", and the text is ours.
+        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
+            {'$set': {'stage': 'needs_source', 'source_error': source_error(exc)}})
         return 'needs_source'
     image_b64 = None
     media = article.get('media')
@@ -274,7 +335,8 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
                                                {'$set': dict(additions, stage='needs_source')})
         return 'needs_source'
     claimed = await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
-                                                     {'$set': dict(additions, stage='editing')})
+                                                     {'$set': dict(additions, stage='editing'),
+                                                      '$unset': {'source_error': ''}})
     if not claimed.modified_count:
         return 'changed'
     return await _finish_editing(db, item, draft, image_b64, regions)
@@ -290,10 +352,38 @@ async def provide_source(db, owner_id: int, draft_id: int, text: str, draft) -> 
     item = item | {'text': text.strip()}
     story_editor.prompt_for(item)
     changed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'needs_source'},
-                                                     {'$set': {'text': text.strip(), 'stage': 'editing'}})
+                                                     {'$set': {'text': text.strip(), 'stage': 'editing'},
+                                                      '$unset': {'editor_error': '', 'source_error': ''}})
     if not changed.modified_count:
         return 'changed'
     return await _finish_editing(db, item, draft)
+
+
+async def retry(db, owner_id: int, draft_id: int, draft) -> str:
+    """One explicit repeat of a failed editor step; never called automatically.
+
+    Reuses the source already stored on the draft, so a retry costs one Gemini
+    request and no extra article fetch.
+    """
+    key = _key(owner_id, draft_id)
+    item = await get(db, owner_id, draft_id)
+    if not item:
+        return 'not_found'
+    if item.get('stage') != 'editor_failed':
+        return 'not_failed'
+    try:
+        story_editor.prompt_for(item)
+    except ValueError:
+        return 'not_ready'
+    claimed = await db.news_owner_drafts.update_one(
+        {'_id': key, 'owner_id': owner_id, 'stage': 'editor_failed'},
+        {'$set': {'stage': 'editing'}, '$unset': {'editor_error': ''}})
+    if not claimed.modified_count:
+        return 'changed'
+    # Media lives in item['script'] only after a successful draft; a failed one
+    # has none, so a retry reuses just the already fetched source text.
+    media = item.get('script') or {}
+    return await _finish_editing(db, item, draft, media.get('image_b64'), media.get('image_regions'))
 
 
 async def edit(db, owner_id: int, draft_id: int, expected: str, url: str, script: dict) -> str:

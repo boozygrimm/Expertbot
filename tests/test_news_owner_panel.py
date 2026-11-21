@@ -212,7 +212,8 @@ class NewsSectionsTests(unittest.IsolatedAsyncioTestCase):
                 self.callback.data = 'news_panel:' + section
                 await panel.news_panel_action(self.callback, self.state)
                 markup = self.message.edit_text.await_args.kwargs['reply_markup']
-                self.assertEqual(buttons(markup), actions | {'news_panel:home', 'owner_panel:close'})
+                self.assertEqual(buttons(markup), actions | {'news_panel:home', 'owner_panel:close',
+                                                             'news_panel:' + section})
             collect.assert_not_awaited(); poll.assert_not_awaited()
             self.assertEqual(await self.db.news_owner_drafts.count_documents({}), 0)
             self.assertGreaterEqual(self.state.clear.await_count, 4)

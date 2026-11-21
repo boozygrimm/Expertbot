@@ -203,10 +203,12 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_main_sections_and_backward_compatibility(self):
         markup = (await panel.home_content())[1]
-        self.assertEqual([len(row) for row in markup.inline_keyboard], [2, 2, 1, 2, 2])
+        # Every private screen ends with refresh + close, so the panel must too.
+        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 2, 2, 1, 1, 1])
         self.assertEqual(callbacks(markup), {'owner_panel:news', 'ovideo:open', 'owner_panel:group_menu',
                          'owner_panel:alchemy', 'owner_panel:media', 'owner_panel:help',
-                         'owner_panel:home', 'owner_panel:close', 'owner_panel:status'})
+                         'owner_panel:home', 'owner_panel:close', 'owner_panel:status',
+                         'gnews:home', 'news_panel:scripts', 'news_panel:editions'})
         for route, expected, back in [
             ('group_menu', {'owner_panel:groups', 'owner_tools:reports', 'owner_tools:points'}, 'owner_panel:home'),
             ('alchemy', {'owner_tools:base', 'owner_panel:alchemy_ref', 'owner_panel:alchemy_admin'}, 'owner_panel:home'),
@@ -218,7 +220,8 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
             ('tools', {'ovideo:open', 'owner_panel:alchemy', 'owner_panel:group_menu'}, 'owner_panel:home'),
         ]:
             markup = await self.click('owner_panel:' + route)
-            self.assertEqual(callbacks(markup), expected | {back, 'owner_panel:close'})
+            self.assertEqual(callbacks(markup), expected | {back, 'owner_panel:close',
+                                                             'owner_panel:' + route})
         self.assertGreaterEqual(self.state.clear.await_count, 7)
 
     async def test_sections_are_owner_only_and_do_not_launch_any_actions(self):

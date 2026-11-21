@@ -16,6 +16,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID, get_msk_now
 from database import db
+from handlers.owner_nav import add_nav
 from news_prototype import owner_drafts, owner_trial
 
 router = Router()
@@ -43,8 +44,8 @@ def menu(title, buttons):
     builder = InlineKeyboardBuilder()
     for text, action in buttons:
         builder.button(text=text, callback_data=action)
-    builder.button(text='⬅️ Пульт', callback_data='owner_panel:home')
     builder.adjust(1)
+    add_nav(builder, back='owner_panel:home', back_label='‹ Пульт')
     return title, builder.as_markup()
 
 
@@ -110,8 +111,9 @@ async def profile_choice(callback, state, action_name: str, size: str = ''):
         name = str(player.get('user_name') or 'Игрок')[:40]
         b.button(text=f'{name} · {number}', callback_data=f'owner_tools:profile:{code}:{number}')
     b.button(text='⌨️ Ввести ID вручную', callback_data=f'owner_tools:profileinput:{code}')
-    b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
     b.adjust(1)
+    add_nav(b, back='owner_panel:alchemy_admin', back_label='‹ Управление алхимией',
+            refresh='owner_tools:' + action_name)
     await state.clear()
     await callback.answer()
     label = f'промопак {size.upper()}' if action_name == 'pack' else ('удалить профиль' if action_name == 'reset' else 'очистить инвентарь')
@@ -473,8 +475,11 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 from handlers import owner_video_sender
                 await owner_video_sender.cleanup_bot_messages(bot, callback.message.chat.id,
                     data.get('video_bot_messages'), keep=[callback.message.message_id])
-            await callback.message.edit_text('Ввод отменён. Пульт: /panel' if matches else
-                                             'Этот ввод уже завершён. Пульт: /panel', parse_mode=None)
+            back_home = InlineKeyboardBuilder()
+            add_nav(back_home, back='owner_panel:home', back_label='‹ Пульт')
+            await callback.message.edit_text('Ввод отменён. Ничего не изменилось.' if matches else
+                                             'Этот ввод уже завершён; повторно он не выполняется.',
+                                             reply_markup=back_home.as_markup(), parse_mode=None)
             return
         if op == 'prepare':
             if not await owner_trial.drafts_enabled(db.db):
@@ -531,8 +536,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             b = InlineKeyboardBuilder()
             for size in ('s', 'm', 'l', 'xl'):
                 b.button(text=size.upper(), callback_data=f'owner_tools:packsize:{size}')
-            b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
-            b.adjust(4, 1)
+            b.adjust(4)
+            add_nav(b, back='owner_panel:alchemy_admin', back_label='‹ Управление алхимией',
+                    refresh='owner_tools:pack')
             await callback.answer()
             await callback.message.answer('Выбери размер промопака:', reply_markup=b.as_markup(), parse_mode=None)
             return
@@ -571,8 +577,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             b = InlineKeyboardBuilder()
             for cid, title in groups.items():
                 b.button(text=str(title)[:80], callback_data=f'owner_tools:pointsgroup:{cid}')
-            b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
             b.adjust(1)
+            add_nav(b, back='owner_panel:group_menu', back_label='‹ Группы', refresh='owner_tools:points')
             await callback.answer()
             await callback.message.answer('Выбери группу для изменения очков:' if groups else 'Доступные группы с историей не найдены.', reply_markup=b.as_markup(), parse_mode=None)
             return
@@ -604,8 +610,9 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     if len(seen) == 20:
                         break
                 b.button(text='⌨️ Ввести ID вручную', callback_data=f'owner_tools:pointsinput:{group_id}')
-                b.button(text='⬅️ Пульт', callback_data='owner_panel:home')
                 b.adjust(1)
+                add_nav(b, back='owner_tools:points', back_label='‹ Группы',
+                        refresh=f'owner_tools:pointsgroup:{group_id}')
                 await state.clear()
                 await callback.answer()
                 await callback.message.answer(f'Группа «{title}». Выбери игрока из недавних записей или введи ID вручную. '

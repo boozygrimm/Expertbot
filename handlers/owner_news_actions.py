@@ -13,6 +13,7 @@ from config import ADMIN_ID
 from database import db
 from news_prototype import owner_drafts, owner_program, owner_trial
 from handlers import owner_tools_panel as tools
+from handlers.owner_nav import add_nav, ensure_nav
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -25,7 +26,9 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         number = item['draft_id']
         stage = item.get('stage')
         revision = item.get('revision')
-        if stage not in ('draft_ready', 'needs_source'):
+        # editor_failed is included so the card can offer one explicit retry
+        # instead of leaving the owner with an opaque dead-end state.
+        if stage not in ('draft_ready', 'needs_source', 'editor_failed'):
             return
     else:
         number = item['program_id']
@@ -40,7 +43,9 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         'number': number, 'revision': revision, 'stage': stage, 'for_program': for_program,
         'expires_at': now + timedelta(days=2)})
     b = InlineKeyboardBuilder()
-    if kind == 'draft' and stage == 'needs_source':
+    if kind == 'draft' and stage == 'editor_failed':
+        b.button(text='🔄 Повторить подготовку', callback_data=f'newsact:retry:{token}')
+    elif kind == 'draft' and stage == 'needs_source':
         b.button(text='📄 Прислать текст источника', callback_data=f'newsact:source:{token}')
     elif kind == 'draft' and media_view:
         if item.get('script', {}).get('image_regions'):
@@ -58,8 +63,12 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
             b.button(text='🎬 Подтвердить рендер сюжета', callback_data=f'newsact:approve:{token}')
     else:
         b.button(text='🎬 Подтвердить рендер выпуска', callback_data=f'newsact:approve:{token}')
-    b.button(text='📰 Панель новостей', callback_data='news_panel:home')
     b.adjust(1)
+    # The card is a screen like any other: it must lead back to its list and
+    # offer a refresh that re-renders the current, unchanged version.
+    folder = 'editions' if kind == 'program' else 'scripts'
+    add_nav(b, back=f'news_panel:{folder}', back_label='‹ К списку',
+            refresh=f'news_panel:view_{"programs" if kind == "program" else "drafts"}:{number}')
     await message.answer(text if text is not None else ('Действия с этой версией:' if stage != 'needs_source' else 'Источник требует уточнения:'),
                          reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
 
@@ -196,6 +205,16 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             from handlers import news_owner_drafts
             return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number,
                                                 item=item, for_program=card_doc.get('for_program', False))
+        if action == 'retry' and kind == 'draft' and card_doc['stage'] == 'editor_failed':
+            await callback.answer()
+            from handlers import news_owner_drafts
+            result = await owner_drafts.retry(db.db, callback.from_user.id, number, news_owner_drafts.make_draft)
+            if result in ('not_found', 'not_ready'):
+                return await callback.message.answer(f'Повтор недоступен: нет сохранённого источника. /news_draft {number}',
+                                                     parse_mode=None)
+            if result == 'changed':
+                return await callback.message.answer(f'Состояние уже изменилось. /news_draft {number}', parse_mode=None)
+            return await news_owner_drafts.show(tools.proxy(callback.message, callback.from_user), number, panel_mode=True)
         if action == 'source' and kind == 'draft' and card_doc['stage'] == 'needs_source':
             await tools.ask(callback, state, 'news_source', 'Пришли полный текст источника одним сообщением. '
                             'Редактор использует квоту Gemini; рендер не начнётся.', number=number)
