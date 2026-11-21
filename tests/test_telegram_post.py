@@ -99,6 +99,81 @@ class TelegramPostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['telegram_channel_name'], 'Example News')
         self.assertEqual(session.calls, ['https://t.me/ExampleNews/102?embed=1'])
 
+    def test_album_item_reports_album_and_single_widget_is_used(self):
+        # Real widget shape: one card per album, data-post belongs to its first
+        # item only. Later items must not look like "the post has no text".
+        album = ('<div class="tgme_widget_message_wrap"><div class="tgme_widget_message" '
+                 'data-post="ExampleNews/200"><div class="tgme_widget_message_text js-message_text">'
+                 'Подпись альбома</div><div class="tgme_widget_message_grouped_wrap">'
+                 '<a class="tgme_widget_message_photo_wrap grouped_media_wrap" href="https://t.me/ExampleNews/200?single" '
+                 "style=\"background-image:url('https://cdn4.telesco.pe/file/a.jpg')\"></a>"
+                 '<a class="tgme_widget_message_video_player grouped_media_wrap" href="https://t.me/ExampleNews/201?single">'
+                 '</a></div></div></div>').encode()
+        self.assertIn('Подпись альбома', telegram_post.extract_post(album, 'ExampleNews/200')[1])
+        with self.assertRaises(telegram_post.GroupedPost) as caught:
+            telegram_post.extract_post(album, 'ExampleNews/201')
+        self.assertIn('?single', str(caught.exception))
+        self.assertNotIn('Подпись альбома', str(caught.exception))
+        # A post that is simply absent stays an ordinary failure, not an album.
+        with self.assertRaises(article_fetch.ArticleError) as plain:
+            telegram_post.extract_post(PAGE, 'ExampleNews/999')
+        self.assertNotIsInstance(plain.exception, telegram_post.GroupedPost)
+        self.assertEqual(telegram_post.single_widget_for('https://t.me/ExampleNews/201?single'),
+                         ('https://t.me/ExampleNews/201?embed=1&single=1', 'ExampleNews/201'))
+
+    async def test_fetch_retries_album_item_once_in_single_mode(self):
+        album_first = b'<div class="tgme_widget_message" data-post="ExampleNews/200">' \
+                      b'<div class="tgme_widget_message_text js-message_text">\xd0\x9f\xd0\xbe\xd0\xb4\xd0\xbf\xd0\xb8\xd1\x81\xd1\x8c</div></div>'
+        wanted = (b'<div class="tgme_widget_message" data-post="ExampleNews/201">'
+                  b'<div class="tgme_widget_message_text js-message_text">' + POST_BODY.encode() + b'</div></div>')
+        class Content:
+            def __init__(self, data): self.data = data
+            async def iter_chunked(self, _): yield self.data
+        class Response:
+            status=200; headers={}; content_type='text/html'; charset='utf-8'
+            def __init__(self, data): self.data=data; self.content=Content(data); self.content_length=len(data)
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+        class Session:
+            def __init__(self): self.calls = []
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects):
+                self.calls.append(url)
+                return Response(wanted if 'single=1' in url else album_first)
+        session = Session()
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=session):
+            result = await article_fetch.fetch_article('https://t.me/ExampleNews/201?single')
+        self.assertEqual(session.calls, ['https://t.me/ExampleNews/201?embed=1',
+                                        'https://t.me/ExampleNews/201?embed=1&single=1'])
+        self.assertIn(POST_BODY, result['summary'])
+
+    async def test_album_failure_is_explained_and_not_retried_twice(self):
+        album = (b'<div class="tgme_widget_message" data-post="ExampleNews/200">'
+                 b'<div class="tgme_widget_message_text js-message_text">Other</div>'
+                 b'<div class="tgme_widget_message_grouped_wrap">'
+                 b'<a class="tgme_widget_message_video_player" href="https://t.me/ExampleNews/201?single"></a>'
+                 b'</div></div>')
+        class Content:
+            async def iter_chunked(self, _): yield album
+        class Response:
+            status=200; headers={}; content_type='text/html'; content_length=len(album); charset='utf-8'
+            content=Content()
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+        class Session:
+            def __init__(self): self.calls = []
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects): self.calls.append(url); return Response()
+        session = Session()
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=session):
+            with self.assertRaises(article_fetch.ArticleError) as caught:
+                await article_fetch.fetch_article('https://t.me/ExampleNews/201')
+        self.assertEqual(len(session.calls), 2)
+        self.assertIn('альбом', str(caught.exception))
+        self.assertNotIn('Other', str(caught.exception))
+
     async def test_redirect_not_accepted_as_a_post(self):
         class Response:
             status=302; headers={'Location':'https://example.com/'}

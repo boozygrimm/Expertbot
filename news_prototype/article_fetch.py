@@ -170,9 +170,13 @@ async def fetch_article(url: str) -> dict:
     current = validate_url(url)
     # Telegram's landing page is not the post itself. Only a validated public
     # post link is rewritten to the official HTML widget, then matched by ID.
-    from news_prototype.telegram_post import widget_for, extract_post_info, extract_channel_name
+    from news_prototype.telegram_post import (widget_for, single_widget_for, extract_post_info,
+                                              extract_channel_name, GroupedPost)
     telegram = widget_for(current)
+    grouped = None
     if telegram:
+        # Build the fallback from the original link, before it is rewritten.
+        grouped = single_widget_for(current)
         current, post = telegram
     resolver = PublicResolver()
     timeout = aiohttp.ClientTimeout(total=25, connect=8, sock_read=10)
@@ -181,6 +185,7 @@ async def fetch_article(url: str) -> dict:
         async with aiohttp.ClientSession(connector=connector, timeout=timeout, trust_env=False, auto_decompress=False,
                                          cookie_jar=aiohttp.DummyCookieJar(), headers={'User-Agent':'Expertbot-NewsTrial/1.0', 'Accept':'text/html,application/xhtml+xml',
                                                   'Accept-Encoding':'identity'}) as session:
+            single_tried = False
             for hop in range(MAX_REDIRECTS + 1):
                 async with session.get(current, allow_redirects=False) as response:
                     if response.status in (301, 302, 303, 307, 308):
@@ -207,7 +212,21 @@ async def fetch_article(url: str) -> dict:
                             raise ArticleError('Страница слишком большая')
                     video_status = channel_name = None
                     if telegram:
-                        title, body, media = extract_post_info(bytes(data), post, response.charset)
+                        try:
+                            title, body, media = extract_post_info(bytes(data), post, response.charset)
+                        except ArticleError as exc:
+                            # A grouped post (video or photo album) is rendered
+                            # as one card owned by the album's first item, so
+                            # this post's own text is absent from that HTML.
+                            # Telegram's own "single message" mode shows it, so
+                            # retry there exactly once before giving up.
+                            if grouped and not single_tried:
+                                single_tried = True
+                                current = grouped[0]
+                                continue
+                            if isinstance(exc, GroupedPost):
+                                raise GroupedPost(exc.args[0]) from None
+                            raise
                         channel_name = extract_channel_name(bytes(data), post, response.charset)
                         # Inspect only the exact same widget; never persist a
                         # signed CDN URL or download video during source review.

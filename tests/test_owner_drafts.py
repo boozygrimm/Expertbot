@@ -128,6 +128,32 @@ class DraftFlowTests(unittest.IsolatedAsyncioTestCase):
         self.draft.side_effect = None
         self.assertEqual(await owner_drafts.retry(self.db, 123, 14, self.draft), 'draft_ready')
 
+    async def test_source_failure_keeps_a_safe_reason_for_the_owner(self):
+        from news_prototype.telegram_post import GroupedPost, GROUPED_MESSAGE
+        await owner_drafts.create(self.db, 123, 21, URL, '')
+        self.fetch.side_effect = GroupedPost(GROUPED_MESSAGE)
+        self.assertEqual(await owner_drafts.process_new(self.db, 123, 21, self.fetch, self.draft), 'needs_source')
+        item = await owner_drafts.get(self.db, 123, 21)
+        self.assertEqual(item['source_error'], {'code': 'grouped_post'})
+        self.assertNotIn('Эксплойт', str(item['source_error']))
+        self.draft.assert_not_awaited()
+        # A supplied text clears the stored reason before the editor runs.
+        await owner_drafts.provide_source(self.db, 123, 21, SOURCE, self.draft)
+        self.assertNotIn('source_error', await owner_drafts.get(self.db, 123, 21))
+
+    async def test_source_error_codes_are_allowlisted(self):
+        from news_prototype.article_fetch import ArticleError
+        from news_prototype.telegram_post import GroupedPost, GROUPED_MESSAGE
+        cases = [(ValueError('Не найден текст'), 'no_text'),
+                 (ArticleError('Страница недоступна'), 'unavailable'),
+                 (GroupedPost(GROUPED_MESSAGE), 'grouped_post'),
+                 (RuntimeError('секрет'), 'unknown')]
+        for exc, code in cases:
+            with self.subTest(code=code):
+                reason = owner_drafts.source_error(exc)
+                self.assertEqual(reason, {'code': code})
+                self.assertNotIn('секрет', str(reason))
+
     async def test_edit_uses_compare_and_set_and_source_is_immutable(self):
         item = await self.create_ready()
         text = owner_drafts.editable_message(10, URL, item['script'])

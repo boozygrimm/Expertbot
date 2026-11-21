@@ -141,6 +141,9 @@ def parse_widget(url: str, html: bytes) -> Post:
         for parser in (caption_parser, video_parser):
             parser.feed(text)
             parser.close()
+        if caption_parser.matches == 0 and 'tgme_widget_message_grouped' in text:
+            # Album: this post's own card was replaced by the group's first one.
+            raise _GroupedAttempt
         if caption_parser.matches != 1 or caption_parser.bodies != 1 or video_parser.matches != 1:
             raise ValueError
         caption = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
@@ -152,6 +155,8 @@ def parse_widget(url: str, html: bytes) -> Post:
         caption = ''.join(c for c in caption if (ord(c) >= 32 and ord(c) != 127) or c == '\n')
         if not caption:
             raise ValueError
+    except _GroupedAttempt:
+        raise
     except (ValueError, TypeError, RecursionError):
         raise SourceError('Пост с подписью не найден однозначно') from None
     candidates = list(dict.fromkeys(video_parser.videos))
@@ -165,11 +170,33 @@ def parse_widget(url: str, html: bytes) -> Post:
 
 
 def fetch_post(url: str) -> Post:
-    """Fetch one public widget with pinned vetted DNS and without redirects."""
+    """Fetch one public widget with pinned vetted DNS and without redirects.
+
+    A post that is one item of an album is retried once with ``single=1``:
+    the plain embed renders the album as one card owned by its first item, so
+    this post's own caption would look absent (same switch the web preview uses).
+    """
     canonical, post_id = canonical_post(url)
+    targets = [f'/{post_id}?embed=1', f'/{post_id}?embed=1&single=1']
+    last = None
+    for index, target in enumerate(targets):
+        try:
+            return _fetch_one(canonical, post_id, target)
+        except _GroupedAttempt as exc:
+            last = exc
+            if index + 1 >= len(targets):
+                raise SourceError('Пост входит в альбом; текст недоступен без ?single') from None
+    raise SourceError('Не удалось безопасно получить пост Telegram') from None
+
+
+class _GroupedAttempt(Exception):
+    """Internal marker: this HTML has no card for the requested post."""
+
+
+def _fetch_one(canonical: str, post_id: str, target: str) -> Post:
     conn = None
     try:
-        conn, response = probe.get_response('t.me', f'/{post_id}?embed=1')
+        conn, response = probe.get_response('t.me', target)
         if (response.getheader('Content-Encoding') or 'identity').lower() not in ('', 'identity'):
             raise SourceError('Неподдерживаемое сжатие страницы')
         header = response.getheader('Content-Length')

@@ -70,6 +70,17 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         await self.action(retry)
         self.assertEqual((await owner_drafts.get(self.db, news.ADMIN_ID, 15))['stage'], 'draft_ready')
 
+    async def test_needs_source_explains_album_posts(self):
+        from news_prototype.telegram_post import GroupedPost, GROUPED_MESSAGE
+        await owner_drafts.create(self.db, news.ADMIN_ID, 31, 'https://t.me/exploitex/38046', '')
+        fetch = AsyncMock(side_effect=GroupedPost(GROUPED_MESSAGE))
+        await owner_drafts.process_new(self.db, news.ADMIN_ID, 31, fetch, AsyncMock())
+        item = await owner_drafts.get(self.db, news.ADMIN_ID, 31)
+        self.assertEqual(item['stage'], 'needs_source')
+        detail = news_owner_drafts.source_failure_text(item)
+        self.assertIn('альбом', detail)
+        self.assertEqual(news_owner_drafts.source_failure_text({}), '')
+
     async def test_editor_failure_text_never_invents_unknown_codes(self):
         self.assertIn('не записана', news_owner_drafts.editor_failure_text({}))
         self.assertIn('не распознана', news_owner_drafts.editor_failure_text({'editor_error': {'code': 'hack'}}))

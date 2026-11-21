@@ -19,6 +19,28 @@ def authorized(message) -> bool:
     return bool(message.from_user and message.from_user.id == ADMIN_ID and message.chat.type == 'private')
 
 
+SOURCE_FAILURE_LABELS = {
+    'grouped_post': 'Пост входит в альбом (видео или несколько картинок), и Telegram не отдал '
+                    'его текст отдельной карточкой — даже в режиме ?single.',
+    'no_text': 'В публичном посте нет текста, доступного без входа в аккаунт: только медиа.',
+    'too_little_text': 'Текста в источнике слишком мало для сценария.',
+    'unavailable': 'Источник недоступен или удалён.',
+    'article_missing': 'Не удалось выделить текст статьи на странице.',
+    'not_html': 'Ссылка ведёт не на HTML-страницу.',
+    'too_large': 'Страница или пост слишком большие для разбора.',
+    'network': 'Не удалось безопасно получить страницу: сеть, DNS или тайм-аут.',
+    'unknown': 'Причину установить не удалось.',
+}
+
+
+def source_failure_text(item: dict) -> str:
+    """Explain a stored source-fetch reason; older drafts have none."""
+    error = item.get('source_error')
+    if not isinstance(error, dict) or not isinstance(error.get('code'), str):
+        return ''
+    return SOURCE_FAILURE_LABELS.get(error['code'], SOURCE_FAILURE_LABELS['unknown'])
+
+
 def editor_failure_text(item: dict) -> str:
     """Explain a stored, allowlisted diagnostic; never show provider output.
 
@@ -148,11 +170,14 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         if not for_program:
             await message.answer(f'/news_approve {draft_id} {item["revision"]}', parse_mode=None)
         return
+    source_reason = source_failure_text(item)
     labels = {
         'new': 'Запрос сохранён, подготовка ещё не началась.',
         'fetching': 'Читаю источник; при зависании не запускайте повтор вслепую.',
         'editing': 'Редактор готовит сценарий; при зависании не запускайте повтор вслепую.',
-        'needs_source': f'Источник недоступен или текста мало. Пришлите текст одним сообщением:\n/news_source {draft_id}\nТекст источника',
+        'needs_source': ('Источник недоступен или текста мало.'
+                         + (f'\nПричина: {source_reason}' if source_reason else '')
+                         + f'\nПришлите текст одним сообщением:\n/news_source {draft_id}\nТекст источника'),
         'skipped': 'Редактор отказался от сюжета: информации недостаточно.',
         'editor_failed': 'Не удалось подготовить сценарий. Автоматического повтора нет.',
         'approving': 'Подтверждение обрабатывается. Проверьте /news_trial_status, не повторяйте вслепую.',
@@ -161,7 +186,9 @@ async def show(message, draft_id: int, *, for_program: bool = False, item: dict 
         'already_queued': 'Эта версия уже сохранялась; повторного рендера не запущено. /news_trial_status',
     }
     if panel_mode and stage == 'needs_source':
-        await message.answer('Источник недоступен или текста мало. Пришли полный текст кнопкой ниже.', parse_mode=None)
+        await message.answer('Источник недоступен или текста мало.'
+                             + (f'\nПричина: {source_reason}' if source_reason else '')
+                             + '\nПришли полный текст кнопкой ниже.', parse_mode=None)
     elif stage == 'editor_failed':
         # The generic label hides whether it was a quota error or a bad quote.
         await message.answer(labels['editor_failed'] + '\n' + editor_failure_text(item)

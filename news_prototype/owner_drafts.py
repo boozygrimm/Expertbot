@@ -29,6 +29,39 @@ EDITOR_ERROR_CODES = frozenset({
 })
 
 
+SOURCE_ERROR_CODES = frozenset({'grouped_post', 'no_text', 'too_little_text', 'unavailable',
+                                 'article_missing', 'not_html', 'too_large', 'network', 'unknown'})
+
+# Sources are fetched by our own code, so these messages are ours, not model
+# or provider output: safe to store and to explain to the owner.
+_SOURCE_MESSAGES = {
+    'Не удалось прочитать пост': 'no_text',
+    'В публичном посте нет доступного текста': 'no_text',
+    'Публичный пост с текстом не найден однозначно': 'no_text',
+    'В публичном посте нет текста, доступного без входа в аккаунт': 'no_text',
+    'Не найден текст': 'no_text',
+    'Не найден достаточно полный текст страницы': 'too_little_text',
+    'Недостаточно текста для сценария: требуется дополнительный источник': 'too_little_text',
+    'Страница слишком большая': 'too_large',
+    'Это не HTML-страница': 'not_html',
+    'Неподдерживаемое сжатие страницы': 'not_html',
+    'Страница недоступна': 'unavailable',
+    'Публичный пост недоступен': 'unavailable',
+    'Не удалось безопасно получить страницу': 'network',
+    'Не удалось получить страницу': 'network',
+}
+
+
+def source_error(exc: BaseException) -> dict:
+    """Describe why the source text could not be used, without copying it."""
+    text = str(exc) if isinstance(exc, Exception) else ''
+    code = _SOURCE_MESSAGES.get(text, 'unknown')
+    # Album posts carry their own explanation as the exception text.
+    if 'альбом' in text and '?single' in text:
+        code = 'grouped_post'
+    return {'code': code}
+
+
 def diagnostic(exc: BaseException, *, phase: str) -> dict:
     """Describe a failed editor step without copying anything from the request."""
     code = getattr(exc, 'code', None)
@@ -246,8 +279,11 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
         if name and widget_for(item['url']) is not None:
             additions['telegram_channel_name'] = name
         item = item | additions
-    except Exception:
-        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'}, {'$set': {'stage': 'needs_source'}})
+    except Exception as exc:
+        # Keep one safe, allowlisted reason: "the post is an album" needs a
+        # different action than "the site timed out", and the text is ours.
+        await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
+            {'$set': {'stage': 'needs_source', 'source_error': source_error(exc)}})
         return 'needs_source'
     image_b64 = None
     media = article.get('media')
@@ -299,7 +335,8 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
                                                {'$set': dict(additions, stage='needs_source')})
         return 'needs_source'
     claimed = await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
-                                                     {'$set': dict(additions, stage='editing')})
+                                                     {'$set': dict(additions, stage='editing'),
+                                                      '$unset': {'source_error': ''}})
     if not claimed.modified_count:
         return 'changed'
     return await _finish_editing(db, item, draft, image_b64, regions)
@@ -316,7 +353,7 @@ async def provide_source(db, owner_id: int, draft_id: int, text: str, draft) -> 
     story_editor.prompt_for(item)
     changed = await db.news_owner_drafts.update_one({'_id': key, 'owner_id': owner_id, 'stage': 'needs_source'},
                                                      {'$set': {'text': text.strip(), 'stage': 'editing'},
-                                                      '$unset': {'editor_error': ''}})
+                                                      '$unset': {'editor_error': '', 'source_error': ''}})
     if not changed.modified_count:
         return 'changed'
     return await _finish_editing(db, item, draft)
