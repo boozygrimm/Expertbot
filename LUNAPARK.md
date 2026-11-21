@@ -23,7 +23,7 @@
 > алхимии — тогда этот файл главный. Остальные `LUNAPARK_*.md` частично
 > устарели.**
 
-**Обновлено:** 2026-11-21 (правило сужено до перехода в мини-апп).
+**Обновлено:** 2026-11-22 (полная паритет-восстановление пробника Рейда).
 
 ## Входной лист: прочитать за 30 секунд
 
@@ -82,6 +82,12 @@
   переименование/переоснащение боссов и черепников — после проверки работоспособности.
   Проверено в тестах: 55/55 (цепочки, дамага, золото, лечение, броня, волна
   черепов, freeze/bribe, уровень, рестарт, help-модал).
+- **Полная паритет-восстановление пробника Рейда сделано 22.11** («не мелочь»):
+  10 классов с perk/flaw/race/unique-skill (стартовый пикер, Ranger не реализован —
+  клик отклоняется/fallback Adventurer), все 8 уникальных навыков, все perk/flaw-эффекты
+  (Strong/Reckless, Gifted/Frail/mana, Frugal/Clumsy/brokenShields, Daring/Cocky, Faithful/
+  Cautious, Tough/Noisy, Cunning/Sneaky, Strong perk, Zealous-spawn-turn, Orc Stun, Werewolf
+  Cripple, Dragonkin Fire Breath, Faun Rejuvenate, Dwarf Uppercut), формулы (щиты = `armorPerShield+dex+defense*2`, зелья = `HEAL_PER_POTION+luck`, босс atk×2/def×2/hp×3, TEMPER scaling, pierce 50%, durability 50%, baseDamage formula), level-up cap 4 + Cunning/Faun perks, mixed-chain chain-preview, localStorage-persist класс. Проверено: test_raid 60/60, test_sprites 85/85. Осталось открытым: Ranger/Volley, Guts, Trophy-система, special skulls (30), mortal-enemy-трафик, base racial stats.
 - Границы журнала: сюда пишется только работа по переходу и парку. Остальной
   бот — коммит и PR, без записи здесь (решение 21.11, см. раздел 7).
 
@@ -307,6 +313,9 @@
 ## 7. Журнал работы (дописывать сверху, новые записи выше старых)
 
 Формат записи: дата — что сделано — что решено — что осталось.
+
+- **2026-11-22** — **Полная паритет-восстановление пробника Рейда** («Не мелочь, сделай как надо»): классный уровень классики вскрыт целиком.
+  (1) **Классы и расы** — 10 классов с perk/flaw/race/уникальный навык; выбор в стартовом пикeре (`#class-picker`, сетка 10 карточек, perk/flaw/уникальный навык в карточке); класс сохраняется в `localStorage` (`raid:class`) между сессиями; **Ranger (Volley) не реализован** — клик по карте отклоняется с вспышкой, `newGame()` падает на Adventurer (fallback вместо «пустого» сл; (2) **уникальные навыки** — все 8: Берсерк (Barbarian, HP за убийство черепа = atk), Руна (Mage, замкнутая цепочка собирает интерьер по BFS), Жадность (Rogue, убивает черепов вокруг монетки), Последний рубеж (Paladin, полное лечение при смерти этого хода, одноразовый), Желание (Priest, одноразовый: вся доска → эффекты+череп-атака), Мазохизм (Raider, монетки → черепа, без награды), Рывок (Warrior, все клетки по краю), Хействие (Assassin, цепочка смешивает 2 типа меток в этот ход). (3) **Perk/flaw/раса-эффекты**: Strong (+1 base dmg), Reckless (−10% шанс бонусовщитов), Gifted (mana-зелья: −1 клд), Frail (−10 max HP), Frugal (+10% chance для бонусов монет), Clumsy (3% щитов сломано), Daring (100% chance при цепочке 10+), Cocky (цепочка из ровно 3 ничего не даёт), Tough (+10 max HP), Noisy (+5% HP у боссов), Faithful (двойной regen), Cautious (−20% pierce), Cunning (−1 клд 4-го навыка), Sneaky (+1 HP у всех черепов), Zealous (босс на 1 ход раньше), Intimidating/Agile/Guts/Uppercut/Stun/Cripple/Fire Breath/Rejuvenate — сила раса-эффектов с черепнами. (4) **Баланс и формулы**: щиты дают `armorPerShield + dexterity + defense*2` брони; зелья — `HEAL_PER_POTION + luck` HP (без ×2); base damage = `strength + 2*damage + (Strong?1:0)`; pierce baseline 50% (cap 1), durability 50% (cap 90%); босс: atk ×2, def ×2, hp ×3, Warrior/Noisy +5% HP; TEMPER scaling (hp .55, def .3, atk .4 за ход); HUD dmg text = `baseDamage()`. (5) **Level-up flow**: 4 варианта (2–3 стата + 1–2 навыка до cap 4, stats fill), Assassin Cunning −1 клд, Priest Faun Rejuvenate HP ≥ 25% max. (6) **HUD**: очки прыщикости живые, цепочка-preview корректно рисует damage/kills/heal/gold для mixed-chain (Haste). (7) **Косметические правки**: typo в имени класса (масchism → Мазохизм, Charge → Рывок, Haste → Хействие), латиница-в-кирилле: 'Аdventurer' → 'Авантюрист', 'Бaрбарианин' → 'Варвар', 'Палaдин' → 'Паладин', дубль 'Разбойник' разделен (Rogue → 'Вор', Raider остаётся 'Разбойник'), `.unimplemented`-класс в пикeре отклоняет клик. Проверено харнессом: **test_raid 60/60**, **test_sprites 85/85**. `lunapark-raid.html` собран заново. **Осталось открытым** (по-прежнему): Ranger/Volley (нужна механика стрел); перевести «mortal enemy»-систему (классы-расы помечаются своими врагами: Chaotic/Corrosive/Unstable/Poisonous/Thief/Invisible/Freezing/Assassin/Vampire — без них Skin «теней»/«стекло» для черепов пока что случайные); Guts (раса Halfling — не реализован); Trophy-система и leveling class через trophy; special skulls (30) — не реализованы; Base racial stats — не получили.
 
 - **2026-11-22** — **Исправлено в пробнике** (2 замечания владельца: +
   правило): (1) **щиты теперь дают очки в upgrade bar** (8 очков за щит,

@@ -10,6 +10,16 @@
 </style>
 </head>
 <body>
+<!-- class picker (стартовый экран) -->
+<div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
+  <div class="picker-card">
+    <h3 class="picker-title">⚔ Выбери класс</h3>
+    <p class="picker-hint">Классика: 10 классов · каждый — свой perk/flaw/раса/навык. Выбор определяет механику забега.</p>
+    <div class="picker-grid" id="picker-grid"></div>
+    <p class="picker-foot">Perk/Flaw/уникальный навык каждого класса — реально в игре. Ranger пока недоступен: Volley требует механики «стрел», которая в клоне не реализована — выбор Ranger будет отклонён.</p>
+  </div>
+</div>
+
 <div class="shell">
   <!-- top brand -->
   <header class="brand">
@@ -30,7 +40,7 @@
     </div>
   </header>
 
-  <div class="notice">Пробник классики · <strong>свои графика и код</strong> · бои пока без переделок</div>
+  <div class="notice">Пробник классики · <strong>свои графика и код</strong> · сложность: Нормал · босс каждые 10 ходов</div>
 
   <!-- board -->
   <div class="board-wrap">

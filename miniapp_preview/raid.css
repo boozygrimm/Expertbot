@@ -364,3 +364,51 @@ body { display: flex; align-items: stretch; justify-content: center; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* --- class picker --- */
+.class-picker {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(10,6,18,0.92);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  overflow-y: auto;
+  padding: 20px 12px;
+}
+.class-picker.show { opacity: 1; pointer-events: auto; }
+.picker-card {
+  width: min(100%, 620px);
+  background: linear-gradient(180deg, #1c1228 0%, #140e22 100%);
+  border: 1px solid #4a315a; border-radius: 18px;
+  padding: 18px 16px 20px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  display: flex; flex-direction: column; gap: 12px;
+}
+.picker-title { margin: 0; font-size: 20px; font-weight: 800; color: #ffe2a9; letter-spacing: 0.02em; text-align: center; }
+.picker-hint { margin: 0; font-size: 11px; color: #a493b8; text-align: center; line-height: 1.5; }
+.picker-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  max-height: 56vh; overflow-y: auto; padding-right: 2px;
+}
+.picker-card-btn {
+  text-align: left;
+  border: 1px solid #3d2a52; background: rgba(36,24,50,0.7);
+  border-radius: 12px; padding: 10px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px;
+  color: inherit; font: inherit; transition: all .15s ease;
+}
+.picker-card-btn:hover, .picker-card-btn:focus-visible {
+  border-color: var(--gold); box-shadow: 0 0 18px rgba(255,217,122,0.25); transform: translateY(-1px);
+}
+.picker-card-btn.unimplemented { opacity: 0.55; }
+.pick-head { display: flex; align-items: center; gap: 8px; }
+.pick-icon { font-size: 22px; }
+.pick-name { font-size: 13px; font-weight: 800; color: #ffe2a9; letter-spacing: 0.02em; }
+.pick-race { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.pick-perk { font-size: 9px; color: #b9f0a8; line-height: 1.35; }
+.pick-flaw { font-size: 9px; color: #ff9a86; line-height: 1.35; }
+.pick-unique { font-size: 9px; color: #c9a8ff; line-height: 1.35; }
+.pick-unimplemented { margin-top: 2px; font-size: 9px; color: #7d6d87; font-style: italic; }
+.picker-foot { margin: 0; font-size: 9px; color: #6e5b7a; text-align: center; line-height: 1.5; }
+@media (max-width: 480px) {
+  .picker-grid { grid-template-columns: 1fr; }
+}
