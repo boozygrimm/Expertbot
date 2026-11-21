@@ -19,6 +19,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_ID
 from database import db
 from handlers import owner_tools_panel as tools
+from handlers.owner_nav import ensure_nav
 from news_prototype import general_auto, general_bulletin_selection as basket, general_editorial, general_queue, general_sources, general_translation, news_scheduler, owner_drafts, owner_trial
 
 router = Router()
@@ -39,17 +40,7 @@ def category_label(topic):
 
 def _with_close(markup):
     """Add a close button to navigation screens, never to a pending confirmation."""
-    if not isinstance(markup, types.InlineKeyboardMarkup):
-        return markup
-    rows = [list(row) for row in markup.inline_keyboard]
-    if any(button.callback_data == 'owner_panel:close' for row in rows for button in row):
-        return markup
-    close = types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close')
-    if rows and len(rows[-1]) == 1 and rows[-1][0].text.startswith(('⬅️', '↩️', '‹')):
-        rows[-1].append(close)
-    else:
-        rows.append([close])
-    return markup.model_copy(update={'inline_keyboard': rows})
+    return ensure_nav(markup)
 
 
 async def _edit(message, text, **kwargs):

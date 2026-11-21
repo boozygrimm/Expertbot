@@ -13,6 +13,7 @@ from config import ADMIN_ID
 from database import db
 from news_prototype import owner_drafts, owner_program, owner_trial
 from handlers import owner_tools_panel as tools
+from handlers.owner_nav import add_nav, ensure_nav
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -62,8 +63,12 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
             b.button(text='🎬 Подтвердить рендер сюжета', callback_data=f'newsact:approve:{token}')
     else:
         b.button(text='🎬 Подтвердить рендер выпуска', callback_data=f'newsact:approve:{token}')
-    b.button(text='📰 Панель новостей', callback_data='news_panel:home')
     b.adjust(1)
+    # The card is a screen like any other: it must lead back to its list and
+    # offer a refresh that re-renders the current, unchanged version.
+    folder = 'editions' if kind == 'program' else 'scripts'
+    add_nav(b, back=f'news_panel:{folder}', back_label='‹ К списку',
+            refresh=f'news_panel:view_{"programs" if kind == "program" else "drafts"}:{number}')
     await message.answer(text if text is not None else ('Действия с этой версией:' if stage != 'needs_source' else 'Источник требует уточнения:'),
                          reply_markup=b.as_markup(), parse_mode=None, disable_web_page_preview=True)
 

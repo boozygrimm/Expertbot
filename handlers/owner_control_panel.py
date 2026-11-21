@@ -1,6 +1,7 @@
 """Owner's private control panel, separate from per-group /panel settings."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -12,10 +13,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_ID
 from database import db
 import owner_preferences
+from handlers.owner_nav import add_nav, HOME_CALLBACK
 from news_prototype import owner_daily, owner_trial
 
 router = Router()
 logger = logging.getLogger(__name__)
+_input_state_lock = asyncio.Lock()
 
 
 def authorized(callback) -> bool:
@@ -30,86 +33,97 @@ async def home_content():
     prefs = await owner_preferences.get(db.settings)
     daily = await owner_daily.enabled(db.db)
     drafts = await owner_trial.drafts_enabled(db.db)
+    ready = await db.db.news_owner_drafts.count_documents({'owner_id': ADMIN_ID, 'stage': 'draft_ready'})
     image = 'Cloudflare + OVHcloud' if prefs['image_provider'] == 'cloudflare' else 'Pollinations'
     search = 'включены' if prefs['search_images'] else 'выключены'
-    text = ('Пульт владельца\n\n'
-            f'Сбор Crypto Sensei и RSS · {"включён" if daily else "выключен"}\n'
-            f'Сценарии · {"включены" if drafts else "выключены"}\n'
-            f'Рисование · {image}\n'
-            f'Картинки в поиске · {search}\n\n'
-            'Выбери раздел. Настройки картинок и поиска действуют во всех чатах. '
-            'Модули группы — через /panel в этой группе.')
+    text = ('🎛 Пульт владельца\nПульт › Главная\n\n'
+            'Состояние\n'
+            f'· Сбор Crypto Sensei и RSS · {"включён" if daily else "выключен"}\n'
+            f'· Сценарии · {"включены" if drafts else "выключены"} · готово к проверке: {ready}\n'
+            f'· Рисование · {image}\n'
+            f'· Картинки в поиске · {search}\n\n'
+            'Разделы\n'
+            '📰 Новости — сбор, сценарии и выпуски\n'
+            '🎬 Видео в чат — отправить своё видео в группу\n'
+            '⚗️ Алхимия — штаб, рецепты и управление игрой\n'
+            '👥 Группы — доступ, расписания и очки\n'
+            '🎨 Картинки и поиск — общие настройки всех чатов\n\n'
+            'Настройки картинок и поиска действуют во всех чатах. '
+            'Модули группы — через /panel в этой группе.\n'
+            'В каждом разделе есть «Назад», «Обновить» и «Закрыть».')
     builder = InlineKeyboardBuilder()
     builder.button(text='📰 Новости', callback_data='owner_panel:news')
+    builder.button(text='🌍 Общая подборка', callback_data='gnews:home')
+    builder.button(text='📝 Сценарии', callback_data='news_panel:scripts')
+    builder.button(text='🎞 Вестники и выпуски', callback_data='news_panel:editions')
     builder.button(text='🎬 Видео в чат', callback_data='ovideo:open')
-    builder.button(text='👥 Группы', callback_data='owner_panel:group_menu')
-    builder.button(text='⚗️ Алхимия', callback_data='owner_panel:alchemy')
-    builder.button(text='🎨 Картинки и поиск', callback_data='owner_panel:media')
-    builder.button(text='❔ Справка', callback_data='owner_panel:help')
     builder.button(text='📊 Статус', callback_data='owner_panel:status')
-    builder.button(text='🔄 Обновить', callback_data='owner_panel:home')
-    builder.button(text='❌ Закрыть', callback_data='owner_panel:close')
-    builder.adjust(2, 2, 1, 2, 2)
-
+    builder.button(text='⚗️ Алхимия', callback_data='owner_panel:alchemy')
+    builder.button(text='👥 Группы', callback_data='owner_panel:group_menu')
+    builder.button(text='🎨 Картинки и поиск', callback_data='owner_panel:media')
+    builder.button(text='❓ Справка', callback_data='owner_panel:help')
+    builder.adjust(1, 2, 2, 2, 2, 1)
+    add_nav(builder, refresh='owner_panel:home')
     return text, builder.as_markup()
 
 
 def section_content(section):
     """Navigation only; existing action callbacks and confirmations stay intact."""
     menus = {
-        'group_menu': ('👥 Группы\n\nДоступ, расписания отчётов и очки участников.', [
-            ('Доступ к группам', 'owner_panel:groups'),
-            ('Расписания отчётов', 'owner_tools:reports'),
-            ('Очки игрока в группе', 'owner_tools:points'),
+        'group_menu': ('👥 Группы\nПульт › Группы', 'Доступ к группам, расписания отчётов и очки участников.', [
+            ('🔐 Доступ к группам', 'owner_panel:groups'),
+            ('⏱ Расписания отчётов', 'owner_tools:reports'),
+            ('🏅 Очки игрока в группе', 'owner_tools:points'),
         ], 'owner_panel:home'),
-        'alchemy': ('⚗️ Алхимия\n\nШтаб, справочники и управление игрой.', [
-            ('Штаб алхимии', 'owner_tools:base'),
-            ('Рецепты и справка', 'owner_panel:alchemy_ref'),
-            ('Управление алхимией', 'owner_panel:alchemy_admin'),
+        'alchemy': ('⚗️ Алхимия\nПульт › Алхимия', 'Штаб, справочники и управление игрой.', [
+            ('🏕 Штаб алхимии', 'owner_tools:base'),
+            ('📚 Рецепты и справка', 'owner_panel:alchemy_ref'),
+            ('🛠 Управление алхимией', 'owner_panel:alchemy_admin'),
         ], 'owner_panel:home'),
-        'alchemy_ref': ('📚 Рецепты и справка', [
-            ('Все рецепты', 'owner_tools:recipes'),
-            ('Найти рецепт', 'owner_tools:recipe'),
-            ('Справка по наследиям', 'owner_tools:lorehelp'),
+        'alchemy_ref': ('📚 Рецепты и справка\nПульт › Алхимия › Рецепты и справка', '', [
+            ('📖 Все рецепты', 'owner_tools:recipes'),
+            ('🔎 Найти рецепт', 'owner_tools:recipe'),
+            ('📜 Справка по наследиям', 'owner_tools:lorehelp'),
         ], 'owner_panel:alchemy'),
-        'alchemy_admin': ('🛠 Управление алхимией\n\nПроверь действие перед запуском: некоторые изменения необратимы.', [
-            ('Редактор наследий', 'owner_tools:lore'),
-            ('Перезапустить квесты', 'owner_tools:regen'),
-            ('Обновить начальные наследия', 'owner_tools:seed'),
-            ('Выдать промопак игроку', 'owner_tools:pack'),
-            ('Очистить инвентарь игрока', 'owner_tools:clear'),
-            ('Удалить профиль алхимии', 'owner_tools:reset'),
+        'alchemy_admin': ('🛠 Управление алхимией\nПульт › Алхимия › Управление',
+                          'Проверь действие перед запуском: некоторые изменения необратимы.', [
+            ('✏️ Редактор наследий', 'owner_tools:lore'),
+            ('🔁 Перезапустить квесты', 'owner_tools:regen'),
+            ('🌱 Обновить начальные наследия', 'owner_tools:seed'),
+            ('🎁 Выдать промопак игроку', 'owner_tools:pack'),
+            ('🧹 Очистить инвентарь игрока', 'owner_tools:clear'),
+            ('🗑 Удалить профиль алхимии', 'owner_tools:reset'),
         ], 'owner_panel:alchemy'),
-        'media': ('🎨 Картинки и поиск\n\nНастройки действуют во всех чатах.', [
-            ('Рисование', 'owner_panel:images'),
-            ('Картинки в поиске', 'owner_panel:search'),
+        'media': ('🎨 Картинки и поиск\nПульт › Картинки и поиск', 'Настройки действуют во всех чатах.', [
+            ('🖌 Рисование', 'owner_panel:images'),
+            ('🌐 Картинки в поиске', 'owner_panel:search'),
         ], 'owner_panel:home'),
-        'help': ('❔ Справка', [
-            ('Справка по боту', 'owner_tools:help'),
+        'help': ('❓ Справка\nПульт › Справка', '', [
+            ('📖 Справка по боту', 'owner_tools:help'),
         ], 'owner_panel:home'),
         # Keep the old route usable from already-sent keyboards and video flow.
-        'tools': ('🧰 Инструменты\n\nВыбери раздел.', [
+        'tools': ('🧰 Инструменты\nПульт › Инструменты', 'Выбери раздел.', [
             ('🎬 Видео в чат', 'ovideo:open'),
             ('👥 Группы', 'owner_panel:group_menu'),
             ('⚗️ Алхимия', 'owner_panel:alchemy'),
         ], 'owner_panel:home'),
     }
-    text, actions, back = menus[section]
+    head, lead, actions, back = menus[section]
+    text = head + (f'\n\n{lead}' if lead else '')
     b = InlineKeyboardBuilder()
     for label, callback in actions:
         b.button(text=label, callback_data=callback)
     if section == 'help':
-        b.button(text='Связь с владельцем', url='https://t.me/boozygrimm')
+        b.button(text='💬 Связь с владельцем', url='https://t.me/boozygrimm')
     b.adjust(1)
-    b.row(types.InlineKeyboardButton(text='‹ Назад', callback_data=back),
-          types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(b, back=back, refresh='owner_panel:' + section)
     return text, b.as_markup()
 
 
 async def image_content():
     prefs = await owner_preferences.get(db.settings)
     active = prefs['image_provider']
-    text = ('🎨 Рисование\n\n'
+    text = ('🖌 Рисование\nПульт › Картинки и поиск › Рисование\n\n'
             f'Сейчас: {"Cloudflare + резерв OVHcloud" if active == "cloudflare" else "Pollinations"}.\n'
             'Выбор действует во всех чатах и сам не запускает проверку. Cloudflare требует настроенный доступ. '
             'Проверка сервисов потребует подтверждения и может расходовать квоту.\n\n'
@@ -117,29 +131,27 @@ async def image_content():
     builder = InlineKeyboardBuilder()
     builder.button(text=('✅ ' if active == 'legacy' else '') + 'Pollinations', callback_data='owner_panel:image_legacy')
     builder.button(text=('✅ ' if active == 'cloudflare' else '') + 'Cloudflare + OVHcloud', callback_data='owner_panel:image_cloudflare')
-    builder.button(text='Нарисовать картинку', callback_data='owner_tools:draw')
-    builder.button(text='Проверить сервисы', callback_data='owner_tools:image_probe')
+    builder.button(text='🖼 Нарисовать картинку', callback_data='owner_tools:draw')
+    builder.button(text='🩺 Проверить сервисы', callback_data='owner_tools:image_probe')
     builder.adjust(1)
-    builder.row(types.InlineKeyboardButton(text='‹ Картинки и поиск', callback_data='owner_panel:media'),
-                types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(builder, back='owner_panel:media', back_label='‹ Картинки и поиск', refresh='owner_panel:images')
     return text, builder.as_markup()
 
 
 async def search_content():
     prefs = await owner_preferences.get(db.settings)
     active = prefs['search_images']
-    text = ('🌐 Картинки в поиске\n\n'
+    text = ('🌐 Картинки в поиске\nПульт › Картинки и поиск › Поиск\n\n'
             f'Сейчас: {"включены" if active else "выключены"} во всех чатах.\n'
             'При включении бот может добавлять найденную картинку к ответу; '
             'это может расходовать квоту поиска. Картинка не подтверждает достоверность ответа.')
     builder = InlineKeyboardBuilder()
     builder.button(text='⏸ Выключить' if active else '▶️ Включить',
                    callback_data='owner_panel:search_off' if active else 'owner_panel:search_on')
-    builder.button(text='Проверить поиск', callback_data='owner_tools:search_probe')
-    builder.button(text='Проверить поиск по своему запросу', callback_data='owner_tools:search_query')
+    builder.button(text='🩺 Проверить поиск', callback_data='owner_tools:search_probe')
+    builder.button(text='🔎 Проверить по своему запросу', callback_data='owner_tools:search_query')
     builder.adjust(1)
-    builder.row(types.InlineKeyboardButton(text='‹ Картинки и поиск', callback_data='owner_panel:media'),
-                types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(builder, back='owner_panel:media', back_label='‹ Картинки и поиск', refresh='owner_panel:search')
     return text, builder.as_markup()
 
 
@@ -186,7 +198,7 @@ async def status_content():
         'uncertain': 'результат не подтверждён', 'already_claimed': 'новость уже обрабатывалась',
         'throttled': 'ожидание следующего интервала', 'busy': 'редактор занят', 'off': 'отбор выключен'}
     image = 'Cloudflare + OVHcloud' if prefs['image_provider'] == 'cloudflare' else 'Pollinations'
-    text = ('📊 Статус пульта\n\n'
+    text = ('📊 Статус пульта\nПульт › Статус\n\n'
             'Общая подборка\n'
             f'Автоотбор · {"включён" if automatic else "выключен"}\n'
             f'Категории · {categories} из {len(general_editorial.LABELS)}\n'
@@ -216,15 +228,13 @@ async def status_content():
              f'Картинки в поиске · {"включены" if prefs["search_images"] else "выключены"}\n\n'
              'Статус — сохранённые данные, а не проверка работы сервера или источников в реальном времени.')
     b = InlineKeyboardBuilder()
-    b.button(text='Обновить', callback_data='owner_panel:status')
-    b.button(text='Общая подборка', callback_data='gnews:home')
-    b.button(text='Готовые сценарии', callback_data='news_panel:drafts')
-    b.button(text='Crypto Sensei и RSS', callback_data='news_panel:collection')
+    b.button(text='🌍 Общая подборка', callback_data='gnews:home')
+    b.button(text='📝 Готовые сценарии', callback_data='news_panel:drafts')
+    b.button(text='📡 Crypto Sensei и RSS', callback_data='news_panel:collection')
     if poll.get('failed'):
-        b.button(text='Ошибки источников', callback_data='gnews:failed:0')
+        b.button(text='⚠️ Ошибки источников', callback_data='gnews:failed:0')
     b.adjust(1)
-    b.row(types.InlineKeyboardButton(text='‹ Пульт', callback_data='owner_panel:home'),
-          types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(b, back=HOME_CALLBACK, back_label='‹ Пульт', refresh='owner_panel:status')
     return text, b.as_markup()
 
 
@@ -253,7 +263,16 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
     action = (callback.data or '').partition(':')[2]
     if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups',
                             'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help', 'status'):
-        await state.clear()
+        # Leaving a section must also release an unfinished text input, or the
+        # next non-command message would be swallowed by that old form.
+        get_data = getattr(state, 'get_data', None)
+        async with _input_state_lock:
+            if get_data:
+                try:
+                    await get_data()
+                except Exception:
+                    pass
+            await state.clear()
     try:
         if action == 'close':
             await callback.answer()

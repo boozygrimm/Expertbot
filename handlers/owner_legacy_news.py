@@ -16,6 +16,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import db
 from handlers import owner_tools_panel as tools
+from handlers.owner_nav import add_nav
 from news_prototype.news_queue import READY_STORY_STAGES
 from news_prototype.news_worker_client import valid_id
 
@@ -60,12 +61,11 @@ def home():
         b.button(text='🎞 Готовые сюжеты и дайджест', callback_data='legacynews:ready')
         b.button(text='📊 Статус дайджестов', callback_data='legacynews:status')
     b.adjust(1)
-    b.row(types.InlineKeyboardButton(text='⬅️ Настройки новостей', callback_data='news_panel:settings'),
-          types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(b, back='news_panel:settings', back_label='‹ Настройки новостей', refresh='legacynews:home')
     if not enabled():
-        return ('🗂 ДОПОЛНИТЕЛЬНЫЙ СТАРЫЙ РЕЖИМ\n\nОн сейчас выключен и не нужен для обычной '
+        return ('🗂 Дополнительный старый режим\nПульт › Новости › Настройки › Старый режим\n\nОн сейчас выключен и не нужен для обычной '
                 'ежедневной подборки и сценариев. Пульт не включает его и не меняет настройки Render.'), b.as_markup()
-    return ('🗂 ДОПОЛНИТЕЛЬНЫЙ СТАРЫЙ РЕЖИМ\n\nЭто отдельный режим ручного приёма и дайджестов, '
+    return ('🗂 Дополнительный старый режим\nПульт › Новости › Настройки › Старый режим\n\nЭто отдельный режим ручного приёма и дайджестов, '
             'несовместимый с режимом сценариев владельца. ' + mode_notice() +
             '\n\nПанель не включает обработку. Дайджест ставится в очередь только после подтверждения.'), b.as_markup()
 
@@ -91,8 +91,8 @@ async def render_selection(message, session):
     if len(chosen) >= 2:
         bottom.button(text='🎬 Собрать дайджест', callback_data=f'legacynews:build:{session["_id"]}')
     bottom.adjust(1)
-    bottom.row(types.InlineKeyboardButton(text='⬅️ Старый режим', callback_data='legacynews:home'),
-               types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(bottom, back='legacynews:home', back_label='‹ Старый режим',
+            refresh=f'legacynews:page:{session["_id"]}:{page}')
     b.attach(bottom)
     await message.edit_text(f'Готовые сюжеты · страница {page+1}/{pages}\n'
         f'Показаны до {MAX_ITEMS} последних. Выбрано: {len(chosen)} из {MAX_CHOICE}. '

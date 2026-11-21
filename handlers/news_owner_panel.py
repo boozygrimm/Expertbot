@@ -18,6 +18,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID
 from database import db
+from handlers.owner_nav import add_nav, section_title
 from news_prototype import owner_daily, owner_discovery, owner_trial
 
 router = Router()
@@ -40,7 +41,7 @@ async def panel_content():
     await owner_trial.migrate_panel_defaults(db.db)
     drafts_active = await owner_trial.drafts_enabled(db.db)
     active = await owner_daily.enabled(db.db)
-    text = ('📰 Новости\n\n'
+    text = (section_title('📰', 'Новости', 'Пульт') + '\n\n'
             f'Сценарии · {"включены" if drafts_active else "выключены"}\n'
             f'Crypto Sensei и RSS · сбор {"включён" if active else "выключен"}\n\n'
             'Общая подборка и Crypto Sensei с RSS — отдельные сборы. '
@@ -51,10 +52,8 @@ async def panel_content():
     builder.button(text='📝 Сценарии', callback_data='news_panel:scripts')
     builder.button(text='🎞 Вестники и выпуски', callback_data='news_panel:editions')
     builder.button(text='⚙️ Настройки новостей', callback_data='news_panel:settings')
-    builder.button(text='Обновить', callback_data='news_panel:home')
     builder.adjust(1)
-    builder.row(types.InlineKeyboardButton(text='‹ Пульт', callback_data='owner_panel:home'),
-                types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(builder, back='owner_panel:home', back_label='‹ Пульт', refresh='news_panel:home')
     return text, builder.as_markup()
 
 
@@ -65,7 +64,7 @@ async def collection_status():
     state = await db.db.news_owner_daily_state.find_one({'_id': 'last_poll'}) or {}
     count = await db.db.news_owner_daily_items.count_documents({
         'published_at': {'$gte': (now - timedelta(hours=24)).isoformat(), '$lte': now.isoformat()}})
-    lines = ['📡 Crypto Sensei и RSS', '',
+    lines = [section_title('📡', 'Crypto Sensei и RSS', 'Пульт', 'Новости'), '',
              f'Сбор · {"включён" if active else "выключен"} · каждые 30 минут',
              f'Собрано за сутки · {count}', 'Плановая подборка в личку · 03:00 МСК']
     at = state.get('at')
@@ -91,36 +90,38 @@ async def section_content(section):
     if section == 'collection':
         text, active = await collection_status()
         buttons = [
-            ('Собранные новости', 'news_panel:list'),
-            ('Найти свежие новости сейчас', 'news_panel:discover'),
+            ('📰 Собранные новости', 'news_panel:list'),
+            ('🔎 Найти свежие новости сейчас', 'news_panel:discover'),
             ('⏸ Выключить сбор' if active else '▶️ Включить сбор', 'news_panel:off' if active else 'news_panel:on'),
         ]
     elif section == 'scripts':
-        text = '📝 Сценарии\n\nПодготовка, просмотр и свой сценарий.'
+        text = (section_title('📝', 'Сценарии', 'Пульт', 'Новости') + '\n\n'
+                'Подготовка, просмотр и свой сценарий. Рендер запускается только после отдельного подтверждения.')
         buttons = [
-            ('Черновики', 'news_panel:drafts'),
-            ('Подготовить по ссылкам', 'owner_tools:prepare'),
-            ('Свой сценарий', 'owner_tools:trial'),
+            ('📄 Черновики', 'news_panel:drafts'),
+            ('🔗 Подготовить по ссылкам', 'owner_tools:prepare'),
+            ('✍️ Свой сценарий', 'owner_tools:trial'),
         ]
     elif section == 'editions':
-        text = '🎞 Вестники и выпуски\n\nСоздание и просмотр подготовленных выпусков.'
+        text = (section_title('🎞', 'Вестники и выпуски', 'Пульт', 'Новости') + '\n\n'
+                'Создание и просмотр подготовленных выпусков. Публикация не начинается сама.')
         buttons = [
-            ('Вестник из Crypto Sensei и RSS', 'nb:daily'),
-            ('Вестник из черновиков', 'nb:choose'),
-            ('Вестники', 'nb:list'),
-            ('Собрать выпуск из сюжетов', 'newsact:choose'),
-            ('Выпуски', 'news_panel:programs'),
+            ('📡 Вестник из Crypto Sensei и RSS', 'nb:daily'),
+            ('🗂 Вестник из черновиков', 'nb:choose'),
+            ('📋 Все вестники', 'nb:list'),
+            ('📺 Собрать выпуск из сюжетов', 'newsact:choose'),
+            ('🎬 Выпуски', 'news_panel:programs'),
         ]
     elif section == 'settings':
         active = await owner_trial.drafts_enabled(db.db)
-        text = ('⚙️ Настройки новостей\n\nПодготовка сценариев: '
+        text = (section_title('⚙️', 'Настройки новостей', 'Пульт', 'Новости') + '\n\nПодготовка сценариев: '
                 + ('включена.' if active else 'выключена.')
                 + '\nНастройки общей подборки и её автоотбора находятся внутри неё.')
         buttons = [
             ('⏸ Выключить сценарии' if active else '▶️ Включить сценарии',
              'news_panel:modeoff' if active else 'news_panel:modeon'),
-            ('Статус видео', 'owner_tools:trial_status'),
-            ('Ручные новости и старые дайджесты', 'legacynews:home'),
+            ('🎬 Статус видео', 'owner_tools:trial_status'),
+            ('🗃 Ручные новости и старые дайджесты', 'legacynews:home'),
         ]
     else:
         raise ValueError('Неизвестный раздел новостей')
@@ -128,8 +129,7 @@ async def section_content(section):
     for label, callback in buttons:
         builder.button(text=label, callback_data=callback)
     builder.adjust(1)
-    builder.row(types.InlineKeyboardButton(text='‹ Новости', callback_data='news_panel:home'),
-                types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+    add_nav(builder, back='news_panel:home', back_label='‹ Новости', refresh='news_panel:' + section)
     return text, builder.as_markup()
 
 
@@ -325,10 +325,11 @@ async def news_panel_action(callback: types.CallbackQuery, state: FSMContext = N
                 builder.button(text='Дальше ➡️', callback_data=f'news_panel:{action}:{page + 1}')
             builder.adjust(1)
             back = 'news_panel:scripts' if action == 'drafts' else 'news_panel:editions'
-            builder.row(types.InlineKeyboardButton(text='‹ Назад', callback_data=back),
-                        types.InlineKeyboardButton(text='Закрыть', callback_data='owner_panel:close'))
+            add_nav(builder, back=back, refresh=f'news_panel:{action}:{page}')
             await callback.answer()
-            await edit_panel(callback.message, f'{label}: страница {page + 1}.' if entries else f'{label}: на этой странице пусто.',
+            await edit_panel(callback.message, (f'{label}: страница {page + 1}.' if entries
+                                                else f'{label}: на этой странице пусто.') +
+                             '\nОткрой нужный номер, чтобы увидеть сценарий и кнопки действий.',
                              builder.as_markup())
             return
         if action in ('view_drafts', 'view_programs'):

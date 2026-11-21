@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import db
 from handlers import owner_tools_panel as tools
+from handlers.owner_nav import add_nav
 from news_prototype import (article_fetch, editor_client, news_image_fetch, owner_bulletin,
                             owner_bulletin_sources, owner_bulletin_admission, owner_daily, owner_drafts, owner_program, owner_trial)
 from news_prototype.news_image_codec import decode_thumbnail
@@ -450,7 +451,7 @@ async def show_review(message, owner_id: int, item: dict):
     if item.get('stage') == 'editor_failed':
         b = InlineKeyboardBuilder()
         if item.get('mode') == 'direct':
-            b.button(text='🔁 Повторить подготовку', callback_data=f'nb:retry:{item["bulletin_id"]}')
+            b.button(text='🔄 Повторить подготовку', callback_data=f'nb:retry:{item["bulletin_id"]}')
         b.button(text='📋 Все вестники', callback_data='nb:list')
         b.adjust(1)
         next_step = ('Новый запрос только после отдельного подтверждения; источники повторно не загружаются. '
@@ -551,9 +552,14 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
             b = InlineKeyboardBuilder()
             for item in items:
                 b.button(text=f'Вестник №{item["bulletin_id"]} · {item["stage"]}', callback_data=f'nb:view:{item["bulletin_id"]}')
-            b.button(text='📰 Панель новостей', callback_data='news_panel:home'); b.adjust(1)
+            b.adjust(1)
+            add_nav(b, back='news_panel:editions', back_label='‹ Вестники и выпуски', refresh='nb:list')
             await callback.answer()
-            return await callback.message.answer('Последние вестники:' if items else 'Вестников пока нет.', reply_markup=b.as_markup(), parse_mode=None)
+            return await callback.message.answer(
+                ('🎞 Последние вестники\nПульт › Новости › Вестники и выпуски › Вестники\n\n'
+                 'Открой номер, чтобы увидеть сценарий и действия.') if items else
+                '🎞 Вестников пока нет.\nСоздай его в разделе «Вестники и выпуски»; рендер потребует подтверждения.',
+                reply_markup=b.as_markup(), parse_mode=None)
         if action == 'view' and len(parts) == 3 and parts[2].isdigit():
             item = await owner_bulletin.get(db.db, owner, int(parts[2]))
             if not item: return await callback.answer('Вестник не найден.', show_alert=True)
