@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import subprocess
 
 from news_prototype import podcast_audio_trial as podcast
@@ -51,6 +52,13 @@ def validate_script(data: object) -> dict:
             raise ValueError('Области без изображения')
         from news_prototype.image_focus import validate_regions
         script['image_regions'] = validate_regions(data['image_regions'])
+    if 'video_sha256' in data:
+        # Only the digest of an already uploaded, worker-verified fragment is
+        # accepted here; the bytes never travel inside a script.
+        digest = data['video_sha256']
+        if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest):
+            raise ValueError('Неверный отпечаток видеовставки')
+        script['video_sha256'] = digest
     return script
 
 

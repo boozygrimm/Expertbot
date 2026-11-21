@@ -80,6 +80,14 @@ def _media_from_style(style: str) -> str | None:
 
 
 class WidgetParser(HTMLParser):
+    """Read exactly one public card, plus the album it belongs to.
+
+    Telegram renders an album as a single card owned by its first item: that
+    card holds the caption and the group markup, while every other item is
+    only an anchor with its own picture. Both facts are read here, so a later
+    item is never mistaken for a post without text.
+    """
+
     def __init__(self, post: str):
         super().__init__(convert_charrefs=True)
         self.post = post.casefold()
@@ -88,51 +96,88 @@ class WidgetParser(HTMLParser):
         self.text_nodes = 0
         self.other_posts = 0
         self.saw_grouped = False
-        self.parts = []
-        self.media = []
+        self.grouped = False
+        self.grouped_owner = None      # card that owns the album markup
+        self.album = []                # album items, in rendered order
+        self.texts = {}                # card -> text parts
+        self.media = []                # (url, kind, owning card)
+        self._card = None              # card being read right now
+        self._text_card = None         # card whose body is being collected
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         attrs = dict(attrs)
         classes = set((attrs.get('class') or '').split())
-        target, suppressed, body, media_owner = self.stack[-1][1:] if self.stack else (False, False, False, False)
-        if 'tgme_widget_message' in classes:
-            target = (attrs.get('data-post') or '').casefold() == self.post
-            body = False
-            media_owner = False
-            if target:
+        suppressed, in_text, card, media_ok = (self.stack[-1][1:] if self.stack
+                                               else (False, False, None, False))
+        if 'tgme_widget_message' in classes and attrs.get('data-post'):
+            card = (attrs['data-post'] or '').casefold()
+            in_text = media_ok = False
+            if card == self.post:
                 self.matches += 1
-            elif attrs.get('data-post'):
+            else:
                 self.other_posts += 1
+        self._card = card
+        target = card == self.post
         if not target and not suppressed and ('tgme_widget_message_grouped_wrap' in classes
-                                             or 'tgme_widget_message_video_player' in classes):
+                                              or 'tgme_widget_message_video_player' in classes):
             # Album/multi-media markup rendered in place of the requested card.
             self.saw_grouped = True
         suppressed = suppressed or tag in ('script', 'style', 'noscript', 'template') or 'tgme_widget_message_reply' in classes
-        if (target and not suppressed and 'tgme_widget_message_text' in classes
+        if (not suppressed and 'tgme_widget_message_text' in classes
                 and 'js-message_text' in classes):
-            self.text_nodes += 1
-            body = True
-        if target and body and not suppressed:
+            in_text = True
+            if target:
+                self.text_nodes += 1
+            self._text_card = card
+            self.texts.setdefault(card, [])
+        if suppressed:
+            in_text = False
+        if in_text and target:
             if tag == 'br':
-                self.parts.append('\n')
+                self.texts.setdefault(card, []).append('\n')
             elif tag == 'img' and attrs.get('alt'):
                 # Telegram uses emoji images in message bodies.
-                self.parts.append(attrs['alt'])
+                self.texts.setdefault(card, []).append(attrs['alt'])
+        if not suppressed and ('tgme_widget_message_grouped' in classes
+                               or 'grouped_media_wrap' in classes):
+            self.grouped = True
+            # Only the card that carries the group markup may donate its text.
+            if self.grouped_owner is None and card is not None:
+                self.grouped_owner = card
         photo = 'tgme_widget_message_photo_wrap' in classes
         video = 'tgme_widget_message_video_player' in classes
-        if target and not suppressed and (photo or video):
-            try:
-                match = widget_for(validate_url(attrs.get('href') or ''))
-                media_owner = bool(match and match[1].casefold() == self.post)
-            except (ArticleError, ValueError):
-                media_owner = False
-        if target and not suppressed and media_owner and (photo or 'tgme_widget_message_video_thumb' in classes):
-            value = _media_from_style(attrs.get('style') or '')
-            if value:
-                self.media.append((value, 'photo' if photo else 'video_thumbnail'))
+        if not suppressed and (photo or video or 'tgme_widget_message_video_thumb' in classes):
+            media_ok = self._media(attrs, classes, card, target, media_ok, photo, video)
         if tag not in VOID_TAGS:
-            self.stack.append((tag, target, suppressed, body, media_owner))
+            self.stack.append((tag, suppressed, in_text, card, media_ok))
+
+    def _media(self, attrs, classes, card, target, inherited, photo, video):
+        """Record one picture; return whether its children may still count."""
+        href = attrs.get('href')
+        try:
+            match = widget_for(validate_url(href)) if isinstance(href, str) else None
+        except (ArticleError, ValueError):
+            match = None
+        item = match[1].casefold() if match else None
+        if target:
+            # Inside the requested card only its own links count, so a reply or
+            # a quoted neighbour can never donate media. A video player is a
+            # wrapper, so its thumbnail may sit on a child element.
+            if item != self.post and not (item is None and inherited):
+                return inherited
+            owner, inherited = self.post, True
+        elif 'grouped_media_wrap' in classes and item:
+            owner = item
+            if item not in self.album:
+                self.album.append(item)
+        else:
+            return inherited
+        value = _media_from_style(attrs.get('style') or '')
+        entry = (value, 'photo' if photo else 'video_thumbnail', owner)
+        if value and entry not in self.media:
+            self.media.append(entry)
+        return inherited
 
     def handle_startendtag(self, tag, attrs):
         self.handle_starttag(tag, attrs)
@@ -149,9 +194,32 @@ class WidgetParser(HTMLParser):
 
     def handle_data(self, data):
         if self.stack:
-            _, target, suppressed, body, _ = self.stack[-1]
-            if target and body and not suppressed:
-                self.parts.append(data)
+            _, suppressed, in_text, card, _media_ok = self.stack[-1]
+            if in_text and not suppressed and card is not None:
+                self.texts.setdefault(card, []).append(data)
+
+
+def _album_post(parser: 'WidgetParser', post: str) -> tuple[str, str, dict | None]:
+    """Use the album caption and the requested item's own picture.
+
+    The caption belongs to the group and sits on the card that owns the album
+    markup, so every item of the group shares it; the picture stays
+    item-specific because each anchor carries its own style.
+    """
+    wanted = post.casefold()
+    captions = parser.texts.get(parser.grouped_owner) or []
+    body = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
+                     for line in ''.join(captions).split('\n')).strip()[:MAX_TEXT]
+    if not body:
+        # No caption on the album's own card: nothing to borrow, so fail closed
+        # instead of reading the requested item's captionless card as text.
+        raise ArticleError('В публичном посте нет доступного текста')
+    media = next(({'url': url, 'kind': kind} for url, kind, owner in parser.media
+                  if owner == wanted and kind == 'photo'), None)
+    if media is None:
+        media = next(({'url': url, 'kind': kind} for url, kind, owner in parser.media
+                      if owner == wanted and kind == 'video_thumbnail'), None)
+    return f'Пост Telegram-канала @{post.split("/", 1)[0]}', body, media
 
 
 def extract_post_info(data: bytes, post: str, charset: str | None = None) -> tuple[str, str, dict | None]:
@@ -164,23 +232,33 @@ def extract_post_info(data: bytes, post: str, charset: str | None = None) -> tup
         parser.close()
     except (LookupError, TypeError, ValueError, RecursionError):
         raise ArticleError('Не удалось прочитать пост') from None
-    if parser.matches != 1:
+    if parser.matches == 1 and parser.text_nodes == 1:
+        pass
+    elif parser.grouped and post.casefold() in parser.album:
+        # Telegram stores one caption per album and attaches it to the album's
+        # first item. Any other item of that album has no text node at all, so
+        # the group's caption is this post's text too. The album membership is
+        # taken from the same widget, never guessed from neighbouring posts.
+        return _album_post(parser, post)
+    elif parser.matches != 1:
         # The widget rendered some post, just not this one, and that post
         # carries album/multi-media markup: this post is another item of it.
         if parser.matches == 0 and parser.other_posts and parser.saw_grouped:
             raise GroupedPost(GROUPED_MESSAGE)
         raise ArticleError('Публичный пост с текстом не найден однозначно')
-    if parser.text_nodes != 1:
+    else:
         raise ArticleError('В публичном посте нет текста, доступного без входа в аккаунт')
     body = '\n'.join(re.sub(r'[\t\r\f\v ]+', ' ', line).strip()
-                     for line in ''.join(parser.parts).split('\n')).strip()[:MAX_TEXT]
+                     for line in ''.join(parser.texts.get(parser.post, [])).split('\n')).strip()[:MAX_TEXT]
     if not body:
         raise ArticleError('В публичном посте нет доступного текста')
     # An album can include neighbouring posts: never borrow their media. Prefer
     # a photo over a video thumbnail, keeping the first item of the exact post.
-    media = next(({'url': url, 'kind': kind} for url, kind in parser.media if kind == 'photo'), None)
+    media = next(({'url': url, 'kind': kind} for url, kind, owner in parser.media
+                  if owner == parser.post and kind == 'photo'), None)
     if media is None:
-        media = next(({'url': url, 'kind': kind} for url, kind in parser.media if kind == 'video_thumbnail'), None)
+        media = next(({'url': url, 'kind': kind} for url, kind, owner in parser.media
+                      if owner == parser.post and kind == 'video_thumbnail'), None)
     return f'Пост Telegram-канала @{post.split("/", 1)[0]}', body, media
 
 

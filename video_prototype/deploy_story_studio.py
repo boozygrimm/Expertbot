@@ -34,7 +34,8 @@ OLD_COMMIT = '7000538a9773ec61be6161204cb4432395f1fa5e'
 OLD = None
 REQUIRED_NEW = {'news-bulletin-v1', 'news-bulletin-video-v1', 'news-bulletin-video-remarks-v1',
                 'news-bulletin-video-cut-v1', 'news-bulletin-multi-video-v1',
-                'news-bulletin-manual-video-v1', 'news-story-bulletin-studio-v1'}
+                'news-bulletin-manual-video-v1', 'news-story-bulletin-studio-v1',
+                'news-story-manual-video-v1'}
 PYTHON = BASE / 'news-worker-stage-c55ke7g3/runtime/bin/python'
 NEWS_ROOT = BASE / 'news-jobs'
 JOBS = BASE / 'jobs'

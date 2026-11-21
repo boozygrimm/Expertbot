@@ -9,7 +9,10 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import tempfile
+
 from news_prototype import story_audio, story_video
 from news_prototype.run_bender_trial import load_keys
 
@@ -40,7 +43,22 @@ def run(script: dict, folder: Path, ffmpeg: str, keys: list[str], *, studio: str
             with os.fdopen(fd, 'wb') as target:
                 target.write(image)
         _state(folder, 'rendering')
-        if studio == 'bulletin':
+        if 'video_sha256' in script:
+            # A reviewed fragment lives in the worker's upload cache, a sibling
+            # of all job directories; it is re-checked before every render.
+            from news_prototype import bulletin_manual_media, story_video_insert
+            if studio != 'bulletin':
+                raise ValueError('Видеовставка доступна только в студии вестника')
+            ffprobe = shutil.which('ffprobe')
+            if not ffprobe:
+                raise ValueError('Для видеовставки нужен ffprobe')
+            media_root = folder.resolve().parent.parent
+            with tempfile.TemporaryDirectory(prefix='story-source-', dir=folder.parent) as private:
+                source = bulletin_manual_media.acquire(media_root, script['video_sha256'],
+                                                       Path(private) / 'source', ffmpeg=ffmpeg, ffprobe=ffprobe)
+                story_video_insert.render(folder, temporary, ffmpeg, source,
+                                          image_regions=script.get('image_regions'))
+        elif studio == 'bulletin':
             from news_prototype import story_studio_video
             story_studio_video.render(folder, temporary, ffmpeg, image_regions=script.get('image_regions'))
         else:

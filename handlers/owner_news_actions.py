@@ -55,6 +55,11 @@ async def card(message, owner_id: int, kind: str, item: dict, *, for_program: bo
         b.button(text='↩️ К сценарию', callback_data=f'newsact:back:{token}')
     elif kind == 'draft':
         b.button(text='✏️ Исправить сценарий', callback_data=f'newsact:edit:{token}')
+        b.button(text='🖼 Добавить картинку вручную', callback_data=f'newsact:addimage:{token}')
+        b.button(text='🎞 Добавить видео вручную' + (' (есть)' if item.get('script', {}).get('video_sha256') else ''),
+                 callback_data=f'newsact:addvideo:{token}')
+        if item.get('script', {}).get('video_sha256'):
+            b.button(text='🚫 Убрать видеофрагмент', callback_data=f'newsact:novideo:{token}')
         if item.get('script', {}).get('image_b64'):
             b.button(text='🖼 Проверить картинку', callback_data=f'newsact:media:{token}')
         if for_program:
@@ -225,6 +230,27 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
                             for_program=card_doc.get('for_program', False),
                             answer_text='Скопируй новое сообщение, исправь строки и пришли обратно. '
                                         'Ссылку источника менять нельзя. Для отмены нажми кнопку под сообщением.')
+            return
+        if action == 'addimage' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            await tools.ask(callback, state, 'news_picture',
+                            'Пришли одну картинку (фото, не файл). Она заменит текущую; '
+                            'автоматические области увеличения будут сняты.',
+                            number=number, revision=rev)
+            return
+        if action == 'addvideo' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            await tools.ask(callback, state, 'news_video',
+                            'Пришли MP4-фрагмент до 20 МБ. Он прозвучит в паузе между репликами, '
+                            'видео будет на экране студии примерно 10 секунд. Права на использование '
+                            'подтверждаешь ты; рендер не начнётся автоматически.',
+                            number=number, revision=rev)
+            return
+        if action == 'novideo' and kind == 'draft' and card_doc['stage'] == 'draft_ready':
+            if not item.get('script', {}).get('video_sha256'):
+                return await callback.answer('Видеофрагмента уже нет.', show_alert=True)
+            await callback.answer()
+            await tools.new_confirmation(callback.message, callback.from_user.id, 'remove_news_video',
+                'Убрать видеофрагмент из этой версии черновика?',
+                number=number, revision=rev, for_program=card_doc.get('for_program', False))
             return
         if action in ('noimage', 'nofocus') and kind == 'draft' and card_doc['stage'] == 'draft_ready':
             await callback.answer()

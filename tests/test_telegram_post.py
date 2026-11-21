@@ -110,8 +110,14 @@ class TelegramPostTests(unittest.IsolatedAsyncioTestCase):
                  '<a class="tgme_widget_message_video_player grouped_media_wrap" href="https://t.me/ExampleNews/201?single">'
                  '</a></div></div></div>').encode()
         self.assertIn('Подпись альбома', telegram_post.extract_post(album, 'ExampleNews/200')[1])
+        # Telegram keeps one caption per album and files it under the first
+        # item, so a later item must reuse it instead of reporting "no text".
+        self.assertEqual(telegram_post.extract_post(album, 'ExampleNews/201'),
+                         ('Пост Telegram-канала @ExampleNews', 'Подпись альбома'))
+        # A post of the same page that is not part of the album keeps the
+        # explanatory failure, and the message never leaks the caption.
         with self.assertRaises(telegram_post.GroupedPost) as caught:
-            telegram_post.extract_post(album, 'ExampleNews/201')
+            telegram_post.extract_post(album, 'ExampleNews/999')
         self.assertIn('?single', str(caught.exception))
         self.assertNotIn('Подпись альбома', str(caught.exception))
         # A post that is simply absent stays an ordinary failure, not an album.
@@ -173,6 +179,68 @@ class TelegramPostTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.calls), 2)
         self.assertIn('альбом', str(caught.exception))
         self.assertNotIn('Other', str(caught.exception))
+
+    async def test_album_item_gets_album_caption_and_own_picture_without_single(self):
+        # Real exploit-ex shape: a video opens the album and owns the only
+        # caption, a picture follows as its own item. Asking for the picture
+        # must return the album caption plus that picture, in one request.
+        album = ('<div class="tgme_widget_message" data-post="ExampleNews/300">'
+                 '<div class="tgme_widget_message_text js-message_text">'
+                 'Компания показала модель Inkling 2 Mini.</div>'
+                 '<div class="tgme_widget_message_grouped_wrap">'
+                 '<a class="tgme_widget_message_video_player grouped_media_wrap" '
+                 'href="https://t.me/ExampleNews/300?single" '
+                 "style=\"background-image:url('https://cdn4.telesco.pe/file/v.jpg')\"></a>"
+                 '<a class="tgme_widget_message_photo_wrap grouped_media_wrap" '
+                 'href="https://t.me/ExampleNews/301?single" '
+                 "style=\"background-image:url('https://cdn4.telesco.pe/file/p.jpg')\"></a>"
+                 '</div></div>')
+        seen = []
+
+        class Content:
+            async def iter_chunked(self, _): yield album.encode()
+
+        class Response:
+            status = 200; headers = {}; content_type = 'text/html'; charset = 'utf-8'
+            content_length = len(album); content = Content()
+
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+
+        class Session:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *args): return False
+            def get(self, url, allow_redirects): seen.append(url); return Response()
+
+        with patch.object(article_fetch.aiohttp, 'ClientSession', return_value=Session()):
+            result = await article_fetch.fetch_article('https://t.me/ExampleNews/301')
+        self.assertEqual(seen, ['https://t.me/ExampleNews/301?embed=1'])
+        self.assertEqual(result['summary'], 'Компания показала модель Inkling 2 Mini.')
+        self.assertEqual(result['media'], {'url': 'https://cdn4.telesco.pe/file/p.jpg', 'kind': 'photo'})
+        # The album's first item keeps its own video thumbnail, never a sibling's.
+        title, body, media = telegram_post.extract_post_info(album.encode(), 'ExampleNews/300')
+        self.assertEqual(media, {'url': 'https://cdn4.telesco.pe/file/v.jpg', 'kind': 'video_thumbnail'})
+        self.assertEqual(body, 'Компания показала модель Inkling 2 Mini.')
+
+    def test_album_without_caption_and_unknown_item_fail_closed(self):
+        # Group markup but no caption on any card: no text may be invented.
+        no_caption = ('<div class="tgme_widget_message" data-post="ExampleNews/400">'
+                      '<div class="tgme_widget_message_grouped_wrap">'
+                      '<a class="tgme_widget_message_photo_wrap grouped_media_wrap" '
+                      'href="https://t.me/ExampleNews/401?single" '
+                      "style=\"background-image:url('https://cdn4.telesco.pe/file/a.jpg')\"></a>"
+                      '</div></div>').encode()
+        with self.assertRaises(article_fetch.ArticleError) as caught:
+            telegram_post.extract_post(no_caption, 'ExampleNews/401')
+        self.assertNotIsInstance(caught.exception, telegram_post.GroupedPost)
+        # A card with its own text but no album markup still reads only itself.
+        own = ('<div class="tgme_widget_message" data-post="ExampleNews/500">'
+               '<div class="tgme_widget_message_text js-message_text">Свой текст</div>'
+               '<a class="tgme_widget_message_photo_wrap" href="https://t.me/ExampleNews/500" '
+               "style=\"background-image:url('https://cdn4.telesco.pe/file/own.jpg')\"></a></div>").encode()
+        self.assertEqual(telegram_post.extract_post_info(own, 'ExampleNews/500'),
+                         ('Пост Telegram-канала @ExampleNews', 'Свой текст',
+                          {'url': 'https://cdn4.telesco.pe/file/own.jpg', 'kind': 'photo'}))
 
     async def test_redirect_not_accepted_as_a_post(self):
         class Response:

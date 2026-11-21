@@ -342,7 +342,8 @@ def handler_for(store, secret, news=None):
                             capabilities.extend(['news-bulletin-video-v1', 'news-bulletin-video-remarks-v1',
                                                  'news-bulletin-video-cut-v1', 'news-bulletin-multi-video-v1'])
                             if shutil.which('ffmpeg'):
-                                capabilities.append('news-bulletin-manual-video-v1')
+                                capabilities.extend(['news-bulletin-manual-video-v1',
+                                                     'news-story-manual-video-v1'])
                 return self.respond(200, {'status': 'ok', 'capabilities': capabilities})
             studio_match = re.fullmatch(r'/news-studio-jobs/([0-9a-f-]{36})', path)
             if news is not None and studio_match:

@@ -71,7 +71,10 @@ def plan(samples: array, sections: list[Section], inserts: list[Insert]) -> Plan
     if (RATE % FPS or not isinstance(samples, array) or samples.typecode != 'h'
             or not samples or len(samples) > RATE * bulletin_timing.MAX_SECONDS):
         raise ValueError('Неверный диалог')
-    if (not isinstance(sections, list) or not 2 <= len(sections) <= bulletin_limits.MAX_STORIES
+    # One section is allowed on purpose: a reviewed single-story render needs
+    # the same checked-silence rule, and this planner only reserves time inside
+    # audio that was already synthesized.
+    if (not isinstance(sections, list) or not 1 <= len(sections) <= bulletin_limits.MAX_STORIES
             or not isinstance(inserts, list) or len(inserts) > len(sections)):
         raise ValueError('Неверный состав выпуска')
     by_id = {}

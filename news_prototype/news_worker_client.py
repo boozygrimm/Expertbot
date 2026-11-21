@@ -112,6 +112,10 @@ class NewsWorkerClient:
     async def supports_bulletin_manual_video(self) -> bool:
         return await self._supports('news-bulletin-manual-video-v1')
 
+    async def supports_story_manual_video(self) -> bool:
+        """A single story with an owner fragment needs this explicit promise."""
+        return await self._supports('news-story-manual-video-v1')
+
     async def upload_bulletin_video(self, data: bytes) -> str:
         from news_prototype.bulletin_manual_media import MAX_BYTES
         if not isinstance(data, bytes) or not 16 <= len(data) <= MAX_BYTES:
