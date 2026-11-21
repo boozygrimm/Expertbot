@@ -479,6 +479,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   const START_SKULLS = [3, 4];
   const START_HP = 60, START_MAX_ARMOR = 15;
   const HP_PER_SHIELD_ARMOR = 2;   // 2 пункта броню за щит (+ defense)
+  const SHIELD_UPGRADE_POINTS = 8;  // 8 очков в upgrade bar за каждый щит
   const HEAL_PER_POTION = 6;       // базовое лечение за зелье (+ luck)
   const GOLD_PER_COIN = 2;
   const XP_PER_SKULL = 1, XP_PER_BOSS = 6;
@@ -610,9 +611,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       boss: !!boss,
       uid: SKULL_UID++,
       art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
-      atk: Math.round((TEMPER.skullBaseAtk + TEMPER.skullAtkPerTurn * Math.max(0, S.turn - 3)) * (boss ? 2.6 : 1)),
-      def: Math.round((TEMPER.skullBaseDef + TEMPER.skullDefPerTurn * Math.max(0, S.turn - 3)) * (boss ? 2 : 1)),
-      hp: Math.round((TEMPER.skullBaseHp + TEMPER.skullHpPerTurn * Math.max(0, S.turn - 3)) * (boss ? 3 : 1)),
+      atk: Math.round((TEMPER.skullBaseAtk + TEMPER.skullAtkPerTurn * Math.max(0, S.turn - 3)) * (boss ? 1.8 : 1)),
+      def: Math.round((TEMPER.skullBaseDef + TEMPER.skullDefPerTurn * Math.max(0, S.turn - 3)) * (boss ? 1.5 : 1)),
+      hp: Math.round((TEMPER.skullBaseHp + TEMPER.skullHpPerTurn * Math.max(0, S.turn - 3)) * (boss ? 2.2 : 1)),
       maxHp: 0,
     };
   }
@@ -1364,6 +1365,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         // overflow to upgrade bar
         const overflow = Math.max(0, gain - (S.hero.maxArmor - before));
         if (overflow > 0) addUpgradeBar(overflow * 2);
+        // every shield also fills the upgrade bar (classic mechanic)
+        addUpgradeBar(shieldCount * SHIELD_UPGRADE_POINTS);
         for (let i = 0; i < shieldCount; i++) audioArmor();
       }
 
