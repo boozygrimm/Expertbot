@@ -205,3 +205,37 @@ def test_worker_prepares_fragment_only_in_the_studio(tmp_path):
     assert acquire.call_args.args[0] == job.parent
     assert acquire.call_args.args[1] == 'e' * 64
     assert render.call_args.args[3] == work / 'source.mp4'
+
+
+@pytest.mark.asyncio
+async def test_rejected_fragment_names_the_worker_gap_and_points_to_the_check():
+    """ "Not supported" alone left the owner with no next step."""
+    from handlers import owner_control_panel, owner_tools_panel as tools
+    from news_prototype import news_worker_client
+    database = AsyncMongoMockClient().test
+    await database.owner_news_cards.insert_one({'_id': 'tok', 'owner_id': tools.ADMIN_ID, 'kind': 'draft',
+                                                'number': 5, 'revision': 'a' * 64, 'stage': 'draft_ready',
+                                                'for_program': False})
+    state = SimpleNamespace(get_data=AsyncMock(return_value={'action': 'news_video', 'input_token': 'i',
+                                                             'number': 5, 'revision': 'a' * 64}),
+                            clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock())
+    message = SimpleNamespace(from_user=SimpleNamespace(id=tools.ADMIN_ID),
+                              chat=SimpleNamespace(id=tools.ADMIN_ID, type='private'), message_id=9,
+                              video=SimpleNamespace(file_id='f', file_size=1024), document=None,
+                              video_note=None, answer=AsyncMock(), bot=SimpleNamespace(download=AsyncMock()))
+    cases = (({'news-bulletin-v1'}, 'не хватает'),
+             ({'news-bulletin-v1', 'news-bulletin-video-v1', 'news-bulletin-manual-video-v1'}, 'нет ffmpeg'))
+    with patch.dict(os.environ, {'BENDER_WORKER_URL': 'https://worker.example.com', 'BENDER_WORKER_KEY': 'k'}), \
+         patch.object(tools, 'db', SimpleNamespace(db=database)):
+        for capabilities, expected in cases:
+            message.answer.reset_mock()
+            with patch.object(news_worker_client.NewsWorkerClient, 'media_capabilities',
+                              AsyncMock(return_value={'reachable': True, 'capabilities': capabilities})):
+                await tools.receive_draft_video(message, state)
+            text = message.answer.await_args.args[0]
+            assert 'Видео не добавлено' in text and expected in text, text
+            assert 'Воркер видео' in text
+            # Nothing was downloaded or uploaded for a rejected fragment.
+            message.bot.download.assert_not_awaited()
+    # An unreachable worker is not reported as an outdated one.
+    assert 'не ответил' in owner_control_panel.video_fragment_status({'reachable': False, 'capabilities': set()})

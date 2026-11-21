@@ -241,10 +241,15 @@ async def receive_draft_video(message: types.Message, state: FSMContext):
             or (message.document and getattr(message.document, 'mime_type', '') not in ('video/mp4', 'application/octet-stream'))):
         return await message.answer('Нужен MP4-фрагмент до 20 МБ. Обрежь видео в Telegram и пришли его снова.', parse_mode=None)
     from news_prototype.news_worker_client import NewsWorkerClient, NewsWorkerError
+    from handlers.owner_control_panel import video_fragment_status
     try:
         client = NewsWorkerClient(os.getenv('BENDER_WORKER_URL', ''), os.getenv('BENDER_WORKER_KEY', ''))
-        if not await client.supports_story_manual_video():
-            return await message.answer('Воркер пока не поддерживает видео в одиночном сюжете. Видео не добавлено.', parse_mode=None)
+        worker = await client.media_capabilities()
+        if 'news-story-manual-video-v1' not in (worker.get('capabilities') or set()):
+            # "Not supported" alone gave the owner nothing to do: name the gap
+            # and point at the read-only check screen.
+            return await message.answer('Видео не добавлено.\nПричина: ' + video_fragment_status(worker)
+                                        + '\nПроверка: пульт → Статус → «🎬 Воркер видео».', parse_mode=None)
         buffer = _LimitedVideoBuffer()
         await asyncio.wait_for(message.bot.download(media.file_id, destination=buffer), timeout=120)
         payload = buffer.getvalue()
