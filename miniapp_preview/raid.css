@@ -130,6 +130,46 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-skull .ic { color: #d6c8e0; }
 .cell.type-skull.boss { border-color: #d96a5a; box-shadow: inset 0 0 0 1px #d96a5a55, 0 0 14px rgba(217, 106, 90, 0.4); }
 .cell.type-skull.boss .ic { color: #ff9a8a; }
+/* chain tip — live projected effect during drag */
+.chain-tip {
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  z-index: 10;
+  background: rgba(16, 10, 24, 0.92);
+  border: 1px solid var(--gold-2);
+  border-radius: 12px;
+  padding: 6px 14px;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
+  color: #ffe2a9;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,217,122,0.2);
+  white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.chain-tip.show { opacity: 1; }
+.chain-tip b { color: #fff; }
+
+/* lethal skull — chain kills it: glow + crossed out */
+.cell.lethal {
+  border-color: #ff5a4a;
+  box-shadow: 0 0 20px rgba(255, 90, 74, 0.75), inset 0 0 14px rgba(255, 90, 74, 0.45);
+  z-index: 6;
+  animation: lethalPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes lethalPulse {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.45) drop-shadow(0 0 10px rgba(255, 90, 74, 0.9)); }
+}
+.cell.lethal::after {
+  content: "☠";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 34px; font-weight: 900;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 14px #ff3a2e, 0 0 30px #ff3a2e;
+  pointer-events: none;
+  z-index: 7;
+}
+
 .skull-badge {
   position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
   font-size: 9px; font-weight: 800; letter-spacing: 0.3px;
