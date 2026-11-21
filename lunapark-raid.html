@@ -605,13 +605,27 @@ body { display: flex; align-items: stretch; justify-content: center; }
     for (let tries = 0; tries < 30; tries++) {
       cells = new Array(CELL_COUNT).fill(null).map(() => ({ type: randomTileType() }));
       const count = Math.round(START_SKULLS[0] + Math.random() * (START_SKULLS[1] - START_SKULLS[0]));
-      // place skulls on random cells
-      const positions = shuffle([...Array(CELL_COUNT).keys()]).slice(0, count);
-      positions.forEach((pos, i) => {
+      // skulls enter from the top of random columns; then gravity compacts rows down
+      const cols = shuffle([...Array(COLS).keys()]).slice(0, count);
+      cols.forEach((c, i) => {
         const skull = makeSkull(1 + Math.floor(i / 2), false);
         skull.maxHp = skull.hp;
-        cells[pos] = { type: 'skull', skull };
+        skull.enteredTurn = -1; // present from the start of the game
+        cells[c] = { type: 'skull', skull };
       });
+      // compact each column to the bottom (skulls fall with the rest)
+      for (let c = 0; c < COLS; c++) {
+        const columnItems = [];
+        for (let r = ROWS - 1; r >= 0; r--) {
+          const cell = cells[r * COLS + c];
+          if (cell && cell.type !== 'empty') columnItems.push(cell);
+        }
+        let writeRow = ROWS - 1;
+        for (const cell of columnItems) {
+          cells[writeRow * COLS + c] = cell;
+          writeRow--;
+        }
+      }
       if (hasLegalChain(cells)) break;
     }
     S.board = cells;
@@ -625,29 +639,65 @@ body { display: flex; align-items: stretch; justify-content: center; }
     return a;
   }
 
-  function createNewTile(row, col) {
+  function createNewTile() {
     // new tiles appear at the top; only non-skull types
     return { type: randomTileType() };
   }
 
-  function placeNewTiles() {
-    // "gravity": each column: compact existing cells to the bottom, push new tiles in the top
+  // Gravity: each column compacts its non-empty cells to the bottom (skulls
+  // fall with the rest). New tiles fill the top. Skull spawns enter from the
+  // top of random columns (like new tiles) and cannot attack this turn
+  // (enteredTurn tag).
+  function placeNewTiles(options) {
+    const skullCount = Math.max(0, (options && options.skullCount) || 0);
+    const bossSpawn = !!(options && options.boss);
+    const skullUnits = skullCount + (bossSpawn ? 1 : 0);
+
+    // 1. compact each column bottom-up
+    const emptySlots = [];
     for (let c = 0; c < COLS; c++) {
-      let writeRow = ROWS - 1;
-      // collect existing non-empty cell indices from bottom to top
+      const columnItems = [];
       for (let r = ROWS - 1; r >= 0; r--) {
-        const idx = r * COLS + c;
-        const cell = S.board[idx];
-        if (cell.type !== 'empty') {
-          if (writeRow !== r) { S.board[writeRow * COLS + c] = cell; }
-          writeRow--;
-        }
+        const cell = S.board[r * COLS + c];
+        if (cell && cell.type !== 'empty') columnItems.push(cell);
       }
-      // new cells at top = nothing (writeRow already decremented accordingly; top indices stay empty)
-      for (let r = 0; r < writeRow + 1; r++) {
-        S.board[r * COLS + c] = createNewTile();
+      let writeRow = ROWS - 1;
+      for (const cell of columnItems) {
+        S.board[writeRow * COLS + c] = cell;
+        writeRow--;
+      }
+      for (let r = 0; r <= writeRow; r++) emptySlots.push({ col: c, row: r });
+    }
+
+    // 2. assign skulls to top slots of random columns (1 skull per column)
+    let placed = 0, bossPlaced = false;
+    if (skullUnits > 0 && emptySlots.length > 0) {
+      const slotsByCol = new Map();
+      for (const slot of emptySlots) {
+        if (!slotsByCol.has(slot.col)) slotsByCol.set(slot.col, []);
+        slotsByCol.get(slot.col).push(slot);
+      }
+      const cols = shuffle([...slotsByCol.keys()]);
+      for (let i = 0; i < skullUnits && i < cols.length; i++) {
+        const col = cols[i];
+        const slot = slotsByCol.get(col)[0]; // topmost empty slot
+        const isBoss = bossSpawn && i === 0;
+        const skull = makeSkull(1 + Math.floor(S.turn / 10), isBoss);
+        skull.maxHp = skull.hp;
+        skull.enteredTurn = S.turn;
+        S.board[slot.row * COLS + slot.col] = { type: 'skull', skull };
+        emptySlots.splice(emptySlots.indexOf(slot), 1);
+        placed++;
+        if (isBoss) { bossPlaced = true; audioBoss(); }
       }
     }
+
+    // 3. remaining empty slots: new tiles
+    for (const slot of emptySlots) {
+      S.board[slot.row * COLS + slot.col] = createNewTile();
+    }
+
+    return { placed, bossPlaced };
   }
 
   // --- chain rules ----------------------------------------------------------
@@ -1148,8 +1198,16 @@ body { display: flex; align-items: stretch; justify-content: center; }
       //  but remain. Actually in the classic, swords hit skulls; if they survive, they stay on the board.
       //  For simplicity, in our prototype, skulls in chain that survive stay — they are NOT removed.
 
-      // refill: gravity for empty cells
-      placeNewTiles();
+      // refill: gravity + skulls enter from the top (new enemies cannot
+      // attack until the next turn — enteredTurn tag)
+      const skullCount = S.turn > 0 && S.turn % SPAWN_EVERY_TURNS === 0 && S.turn % BOSS_EVERY_TURNS !== 0
+        ? randInt(SPAWN_COUNT[0], SPAWN_COUNT[1]) : 0;
+      const bossSpawn = S.turn > 0 && S.turn % BOSS_EVERY_TURNS === 0;
+      const spawned = placeNewTiles({ skullCount, boss: bossSpawn });
+      if (spawned.placed > 0) {
+        log(`☠ Появились новые черепа (+${spawned.placed})`);
+        if (spawned.bossPlaced) flash('👹 КОНЕЧНЫЙ БОСС');
+      }
 
       renderBoard();
       renderHUD();
@@ -1162,8 +1220,9 @@ body { display: flex; align-items: stretch; justify-content: center; }
   }
 
   function enemyPhase() {
-    // skulls that were on board at START of this enemy phase (not killed this turn)
-    const living = S.board.filter(c => c && c.type === 'skull');
+    // skulls that were on board at the START of this turn and not freshly
+    // spawned this turn — only they do damage
+    const living = S.board.filter(c => c && c.type === 'skull' && (c.skull.enteredTurn || 0) < S.turn);
     living.forEach(cell => {
       const s = cell.skull;
       const atk = Math.max(0, s.atk - S.blunt);
@@ -1173,15 +1232,8 @@ body { display: flex; align-items: stretch; justify-content: center; }
     // regenerate
     if (S.regen > 0) heal(S.regen);
 
-    // spawn new skulls (every 3 turns +2-3; boss every 10 turns)
     S.turn++;
-    if (S.turn % SPAWN_EVERY_TURNS === 0) {
-      const count = randInt(SPAWN_COUNT[0], SPAWN_COUNT[1]);
-      spawnSkulls(count, false);
-    }
-    if (S.turn % BOSS_EVERY_TURNS === 0) {
-      spawnBoss();
-    }
+
     // clear active skill cooldowns
     for (const id of Object.keys(S.skillCooldowns)) {
       S.skillCooldowns[id] = Math.max(0, S.skillCooldowns[id] - 1);
@@ -1224,37 +1276,6 @@ body { display: flex; align-items: stretch; justify-content: center; }
       floatOn('-' + Math.round(overflow), 'hurt');
     }
     audioEnemy();
-  }
-
-  function spawnSkulls(count, boss) {
-    let placed = 0;
-    const positions = shuffle([...Array(CELL_COUNT).keys()]);
-    for (const pos of positions) {
-      if (placed >= count) break;
-      const cell = S.board[pos];
-      if (!cell || cell.type === 'skull') continue;
-      const skull = makeSkull(1 + Math.floor(S.turn / 10), boss);
-      skull.maxHp = skull.hp;
-      S.board[pos] = { type: 'skull', skull };
-      placed++;
-    }
-    if (placed > 0) {
-      log(`☠ Появились новые черепа (+${placed})`);
-    }
-  }
-
-  function spawnBoss() {
-    const positions = shuffle([...Array(CELL_COUNT).keys()]);
-    for (const pos of positions) {
-      const cell = S.board[pos];
-      if (!cell || cell.type === 'skull') continue;
-      const skull = makeSkull(2 + Math.floor(S.turn / 10), true);
-      skull.maxHp = skull.hp;
-      S.board[pos] = { type: 'skull', skull };
-      audioBoss();
-      flash('👹 КОНЕЧНЫЙ БОСС');
-      return;
-    }
   }
 
   // --- modals ---------------------------------------------------------------
