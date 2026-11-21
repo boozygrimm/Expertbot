@@ -89,6 +89,35 @@ def _fail(message: str, detail: str) -> None:
     raise error
 
 
+IMAGE_ONLY = 'image_only'
+
+
+def evidence_sources(script: dict, item: dict) -> dict:
+    """Tell which review quotes are verifiable from text and which are not.
+
+    A quote that exists only in the model's description of the picture cannot
+    be checked by the owner against the post text. That is not an error — the
+    picture is a legitimate source — but the card must say so, especially when
+    the picture itself is missing from the draft.
+    """
+    fields = {name: _normalize(item.get(name) or '') for name in ('title', 'summary', 'text')}
+    text_source = '\n'.join(value for value in fields.values() if value)
+    image_source = _normalize(item.get('image_description') or '')
+    result = {'text': 0, 'image': 0, 'unknown': 0}
+    # Evidence is stored beside the script on the draft, not inside it.
+    for entry in item.get('evidence') or []:
+        quote = _normalize(entry.get('quote') if isinstance(entry, dict) else '')
+        if not quote:
+            continue
+        if quote in text_source:
+            result['text'] += 1
+        elif image_source and quote in image_source:
+            result['image'] += 1
+        else:
+            result['unknown'] += 1
+    return result
+
+
 def parse_draft(raw: str, candidate: dict) -> dict:
     if not isinstance(raw, str):
         _fail('Повреждён ответ редактора', 'answer:no_json')

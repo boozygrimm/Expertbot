@@ -272,6 +272,35 @@ async def _finish_editing(db, item: dict, draft, image_b64: str | None = None,
         return 'editor_failed'
 
 
+IMAGE_ERROR_CODES = frozenset({
+    'too_large', 'unavailable', 'network', 'unsafe_url', 'redirect', 'encoding',
+    'compression', 'codec', 'other',
+})
+
+
+def image_error_code(exc: BaseException) -> str:
+    """Map a failed image fetch to a short, fixed reason for the owner.
+
+    Only the category is kept: the provider text, URL and bytes never are.
+    """
+    from news_prototype.article_fetch import ArticleError
+    text = str(exc)
+    if not isinstance(exc, ArticleError):
+        # Our own codec or URL validation refused the bytes, not the network.
+        return 'codec' if isinstance(exc, (ValueError, TypeError, OSError)) else 'other'
+    if 'слишком большое' in text:
+        return 'too_large'
+    if 'сжатие' in text:
+        return 'compression'
+    if 'Перенаправление' in text:
+        return 'redirect'
+    if 'Не удалось безопасно получить' in text:
+        return 'network'
+    if 'Изображение недоступно' in text:
+        return 'unavailable'
+    return 'other'
+
+
 async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_image=None,
                       analyze_image=None) -> str:
     key = _key(owner_id, draft_id)
@@ -297,6 +326,7 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
             {'$set': {'stage': 'needs_source', 'source_error': source_error(exc)}})
         return 'needs_source'
     image_b64 = None
+    image_error = None
     media = article.get('media')
     if fetch_image and isinstance(media, dict) and media.get('kind') in ('photo', 'video_thumbnail', 'article_image'):
         try:
@@ -310,8 +340,13 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
             from news_prototype.news_image_codec import decode_thumbnail
             decode_thumbnail(image_b64)
             additions['image_kind'] = media['kind']
-        except Exception:
-            image_b64 = None  # Missing or unsafe media must never prevent the story.
+        except Exception as exc:
+            # Missing or unsafe media must never prevent the story, but the
+            # reason must survive so the card can explain the missing picture
+            # instead of a blanket "not found".
+            image_b64 = None
+            image_error = image_error_code(exc)
+            additions['image_error'] = image_error
     regions = None
     if image_b64:
         additions['image_analysis'] = 'unavailable'
@@ -340,7 +375,7 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
     except ValueError:
         # /news_source currently starts a text-only draft; do not retain an
         # image-derived description without the corresponding review image.
-        for field in ('image_description', 'image_analysis', 'image_kind'):
+        for field in ('image_description', 'image_analysis', 'image_kind', 'image_error'):
             additions.pop(field, None)
         await db.news_owner_drafts.update_one({'_id': key, 'stage': 'fetching'},
                                                {'$set': dict(additions, stage='needs_source')})
