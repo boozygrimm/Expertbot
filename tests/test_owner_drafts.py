@@ -385,6 +385,65 @@ class DraftHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Telegram не отдал файл', joined)
         self.assertNotIn('Картинка не найдена или убрана', joined)
 
+    def thumbnail(self):
+        from io import BytesIO
+        from PIL import Image
+        from news_prototype import news_image_codec
+        data = BytesIO(); Image.new('RGB', (160, 90), 'blue').save(data, format='JPEG')
+        return news_image_codec.make_thumbnail(data.getvalue())
+
+    async def test_failed_picture_can_be_downloaded_again_without_gemini(self):
+        from news_prototype import article_fetch as fetch_mod
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value=article),
+                                       AsyncMock(return_value=DRAFT),
+                                       AsyncMock(side_effect=fetch_mod.ArticleError('Изображение недоступно')))
+        item = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(item['stage'], 'draft_ready')
+        self.assertEqual(item['media'], {'kind': 'photo', 'url': 'https://cdn4.telesco.pe/file/x'})
+        self.assertTrue(owner_drafts.media_retry_available(item))
+        before = item['revision']
+        editor = AsyncMock()
+        result = await owner_drafts.retry_image(self.db, 123, 10, AsyncMock(return_value=self.thumbnail()),
+                                                AsyncMock(return_value={'description': 'на картинке мем'}),
+                                                AsyncMock())
+        self.assertEqual(result, 'saved')
+        fresh = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(fresh['stage'], 'draft_ready')
+        self.assertIn('image_b64', fresh['script'])
+        self.assertEqual(fresh['image_kind'], 'photo')
+        self.assertEqual(fresh['image_description'], 'на картинке мем')
+        self.assertNotIn('image_error', fresh)
+        self.assertNotEqual(fresh['revision'], before)
+        # The paid editor step is never called by a media retry.
+        editor.assert_not_awaited()
+        self.assertFalse(owner_drafts.media_retry_available(fresh))
+
+    async def test_media_retry_reports_why_it_failed_and_keeps_the_script(self):
+        from news_prototype import article_fetch as fetch_mod
+        await owner_drafts.create(self.db, 123, 10, URL, '')
+        article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
+        await owner_drafts.process_new(self.db, 123, 10, AsyncMock(return_value=article),
+                                       AsyncMock(return_value=DRAFT),
+                                       AsyncMock(side_effect=fetch_mod.ArticleError('Изображение недоступно')))
+        before = await owner_drafts.get(self.db, 123, 10)
+        result = await owner_drafts.retry_image(
+            self.db, 123, 10, AsyncMock(side_effect=fetch_mod.ArticleError('Изображение слишком большое')))
+        self.assertEqual(result, 'too_large')
+        after = await owner_drafts.get(self.db, 123, 10)
+        self.assertEqual(after['revision'], before['revision'])
+        self.assertEqual(after['stage'], 'draft_ready')
+        # A draft that never had a media reference is re-read once.
+        await owner_drafts.create(self.db, 123, 20, URL, '')
+        await owner_drafts.process_new(self.db, 123, 20, AsyncMock(return_value={'summary': SOURCE}),
+                                       AsyncMock(return_value=DRAFT))
+        self.assertEqual(await owner_drafts.retry_image(self.db, 123, 20, AsyncMock()), 'no_media')
+        self.assertEqual(await owner_drafts.retry_image(
+            self.db, 123, 20, AsyncMock(return_value=self.thumbnail()), None,
+            AsyncMock(return_value=article)), 'saved')
+        self.assertEqual(await owner_drafts.retry_image(self.db, 999, 10, AsyncMock()), 'not_ready')
+
     async def test_image_error_codes_are_fixed_and_hide_provider_text(self):
         from news_prototype import article_fetch as fetch_mod
         for message, code in (

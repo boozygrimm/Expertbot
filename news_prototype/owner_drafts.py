@@ -301,6 +301,84 @@ def image_error_code(exc: BaseException) -> str:
     return 'other'
 
 
+# A failed picture is retried on its own: no Gemini request, no new draft, and
+# the already approved script is never touched by it.
+IMAGE_RETRY_STAGES = ('draft_ready',)
+
+
+async def retry_image(db, owner_id: int, draft_id: int, fetch_image, analyze_image=None,
+                      fetch_article=None) -> str:
+    """Re-attach the source picture to a ready draft, without touching Gemini.
+
+    Drafts created before the media reference was stored keep no URL, so the
+    post is re-read when ``fetch_article`` is available: that costs one bounded
+    page request and no model quota. The script, its review and its stage stay
+    as they are; only the picture, its description and focus can change, so the
+    revision is recomputed when they do.
+    """
+    key = _key(owner_id, draft_id)
+    item = await get(db, owner_id, draft_id)
+    if not item or item.get('stage') not in IMAGE_RETRY_STAGES:
+        return 'not_ready'
+    if (item.get('script') or {}).get('image_b64'):
+        return 'unchanged'
+    media = item.get('media')
+    updates = {}
+    if not (isinstance(media, dict) and media.get('kind') in ('photo', 'video_thumbnail', 'article_image')):
+        if fetch_article is None:
+            return 'no_media'
+        try:
+            article = await fetch_article(item['url'])
+        except Exception as exc:
+            return 'source_' + source_error(exc)
+        found = article.get('media') if isinstance(article, dict) else None
+        if not (isinstance(found, dict) and found.get('kind') in ('photo', 'video_thumbnail', 'article_image')):
+            return 'no_media'
+        media = {'kind': found['kind'], 'url': found.get('url')}
+        updates['media'] = media
+    media_kind = media['kind']
+    try:
+        from news_prototype.telegram_post import media_url
+        if media_kind == 'article_image':
+            from news_prototype.article_fetch import validate_url
+            image_b64 = await fetch_image(validate_url(media.get('url')), article=True)
+        else:
+            image_b64 = await fetch_image(media_url(media.get('url')))
+        from news_prototype.news_image_codec import decode_thumbnail
+        decode_thumbnail(image_b64)
+    except Exception as exc:
+        return image_error_code(exc)
+    updates['image_kind'] = media_kind
+    if analyze_image:
+        try:
+            from news_prototype.image_vision import TIMEOUT_SECONDS
+            analysis = await asyncio.wait_for(analyze_image(image_b64), timeout=TIMEOUT_SECONDS)
+            description = analysis.get('description') if isinstance(analysis, dict) else None
+            if isinstance(description, str) and description.strip() and len(description) <= 1800:
+                updates['image_description'] = description.strip()
+                updates['image_analysis'] = 'analyzed'
+            else:
+                updates['image_analysis'] = 'unavailable'
+        except Exception:
+            updates['image_analysis'] = 'unavailable'
+    script = dict(item['script'])
+    script['image_b64'] = image_b64
+    script.pop('image_regions', None)
+    script = validate_script(script)
+    updates.update({'script': script, 'revision': revision(item['url'], script),
+                    'verification': 'needs_review'})
+    changed = await db.news_owner_drafts.update_one(
+        {'_id': key, 'owner_id': owner_id, 'stage': 'draft_ready', 'revision': item['revision']},
+        {'$set': updates, '$unset': {'image_error': '', 'image_error_at': ''}})
+    return 'saved' if changed.modified_count else 'changed'
+
+
+def media_retry_available(item: dict) -> bool:
+    """The retry button belongs on a ready draft that has no picture left."""
+    return (item.get('stage') == 'draft_ready'
+            and not (item.get('script') or {}).get('image_b64'))
+
+
 async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_image=None,
                       analyze_image=None) -> str:
     key = _key(owner_id, draft_id)
@@ -314,6 +392,11 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
         if not isinstance(article, dict) or not isinstance(article.get('summary'), str):
             raise ValueError('Не найден текст')
         additions = {k: article[k] for k in ('title', 'summary', 'resolved_url') if k in article}
+        media_ref = article.get('media')
+        if isinstance(media_ref, dict) and media_ref.get('kind') in ('photo', 'video_thumbnail', 'article_image'):
+            # Keep only the verified kind and URL reference: the retry needs it
+            # to re-download the picture without re-reading the whole article.
+            additions['media'] = {'kind': media_ref['kind'], 'url': media_ref.get('url')}
         from news_prototype.telegram_post import safe_channel_name, widget_for
         name = safe_channel_name(article.get('telegram_channel_name'))
         if name and widget_for(item['url']) is not None:
@@ -347,6 +430,10 @@ async def process_new(db, owner_id: int, draft_id: int, fetch, draft, fetch_imag
             image_b64 = None
             image_error = image_error_code(exc)
             additions['image_error'] = image_error
+            # The photo is a source, not decoration: a failed download leaves a
+            # hole in the material, so it is retried separately from the paid
+            # editor step and never silently baked into a ready draft.
+            additions['image_error_at'] = datetime.now(timezone.utc)
     regions = None
     if image_b64:
         additions['image_analysis'] = 'unavailable'
