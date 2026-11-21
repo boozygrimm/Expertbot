@@ -335,7 +335,12 @@ capability; изображение никогда не удаляется авт
 ```bash
 python3 -m video_prototype.worker_media_doctor            # что видит служба
 python3 -m video_prototype.worker_media_doctor --url https://воркер  # и /health
+python3 -m video_prototype.worker_media_doctor --video /path/to/video.mp4  # залипшие кадры
 ```
+
+С `--video` доктор ещё и опрашивает готовый ролик (`ffmpeg` в pipe, файл только
+на чтение) и печатает участки, где картинка не меняется совсем. Так «после
+крупного плана застыл кадр» проверяется по секундам, а не на глаз.
 
 Скрипт печатает `PATH`, найденные бинарники, состояние `bender-video.service`,
 список возможностей из `/health` и точные команды починки
