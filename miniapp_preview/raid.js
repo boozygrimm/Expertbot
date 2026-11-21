@@ -15,9 +15,8 @@
   const UPGRADE_BAR_MAX = 80;     // синяя полоса (от щитов) → выбор 1-из-4
   const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
   const TEMPER = {
-    skullBaseHp: 8, skullBaseDef: 3, skullBaseAtk: 3,
+    skullBaseHp: 6, skullBaseDef: 2, skullBaseAtk: 2,
     skullHpPerTurn: 0.55, skullDefPerTurn: 0.3, skullAtkPerTurn: 0.4,
-    bossHpExtra: 34, bossDefExtra: 9, bossAtkExtra: 7,
   };
 
   const SKILLS = [
@@ -60,6 +59,9 @@
   const SKULL_ART = (typeof window !== 'undefined' && window.SKULL_ART) || {};
   const SKULL_KEYS = ['e1_ghost', 'e2_cult', 'e3_beholder', 'e4_plasma', 'e5_shadow'];
   const BOSS_KEY = 'boss_lich';
+
+  let SKULL_UID = 1;
+  const SKULL_IMAGES = new Map(); // uid -> cached <img> (same sprite never re-created)
 
   let S = null;
 
@@ -134,10 +136,11 @@
     const scale = Math.max(1, lv);
     return {
       boss: !!boss,
+      uid: SKULL_UID++,
       art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
-      atk: Math.round((3 + 0.4 * Math.max(0, S.turn - 3)) * (boss ? 2.6 : 1)),
-      def: Math.round((3 + 0.35 * Math.max(0, S.turn - 3)) * (boss ? 2 : 1)),
-      hp: Math.round((8 + 0.55 * Math.max(0, S.turn - 3)) * (boss ? 3 : 1)),
+      atk: Math.round((TEMPER.skullBaseAtk + TEMPER.skullAtkPerTurn * Math.max(0, S.turn - 3)) * (boss ? 2.6 : 1)),
+      def: Math.round((TEMPER.skullBaseDef + TEMPER.skullDefPerTurn * Math.max(0, S.turn - 3)) * (boss ? 2 : 1)),
+      hp: Math.round((TEMPER.skullBaseHp + TEMPER.skullHpPerTurn * Math.max(0, S.turn - 3)) * (boss ? 3 : 1)),
       maxHp: 0,
     };
   }
@@ -381,47 +384,84 @@
   function renderCell(cell, idx) {
     const cellEl = qs(`.cell[data-idx="${idx}"]`);
     if (!cellEl) return;
-    if (!cell || cell.type === 'empty') {
-      cellEl.className = 'cell empty';
-      cellEl.innerHTML = '';
+    const isSkull = !!(cell && cell.type === 'skull');
+    // state key: full re-render only when the skull (uid) or tile kind changes —
+    // skull cells whose sprite didn't change stay untouched (no flicker after a hit)
+    const key = !cell || cell.type === 'empty'
+      ? 'empty'
+      : isSkull
+        ? `skull:${cell.skull.uid}`
+        : `tile:${cell.type}`;
+    if (cellEl._renderKey === key) {
+      // same cell — update only the numbers in the badge
+      if (isSkull) {
+        const s = cell.skull;
+        const text = `${s.atk}·${s.def}·${s.hp}`;
+        let badge = cellEl.querySelector('.skull-badge');
+        if (badge) {
+          badge.textContent = text;
+        } else {
+          badge = document.createElement('div');
+          badge.className = 'skull-badge' + (s.boss ? ' boss' : '');
+          badge.textContent = text;
+          cellEl.appendChild(badge);
+        }
+      }
       return;
     }
-    const isSkull = cell.type === 'skull';
+    cellEl._renderKey = key;
+    cellEl.className = 'cell';
+    cellEl.innerHTML = '';
+    if (!cell || cell.type === 'empty') {
+      cellEl.className = 'cell empty';
+      return;
+    }
     const boss = isSkull && cell.skull.boss;
     cellEl.className = 'cell tile type-' + cell.type + (boss ? ' boss' : '');
-    if (isSkull && SKULL_ART[cell.skull.art]) {
-      const img = document.createElement('img');
-      img.className = 'skull-art' + (boss ? ' boss' : '');
-      img.src = SKULL_ART[cell.skull.art];
-      img.alt = boss ? 'Босс-череп' : 'Череп';
-      img.setAttribute('aria-hidden', 'false');
-      cellEl.innerHTML = '';
-      cellEl.appendChild(img);
-    } else {
-      cellEl.innerHTML = tileSymbol(cell);
-    }
     if (isSkull) {
       const s = cell.skull;
+      if (SKULL_ART[s.art]) {
+        let img = SKULL_IMAGES.get(s.uid);
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'skull-art' + (boss ? ' boss' : '');
+          img.src = SKULL_ART[s.art];
+          img.alt = boss ? 'Босс-череп' : 'Череп';
+          SKULL_IMAGES.set(s.uid, img);
+        } else {
+          img.className = 'skull-art' + (boss ? ' boss' : '');
+        }
+        cellEl.appendChild(img);
+      } else {
+        cellEl.innerHTML = tileSymbol(cell);
+      }
       const badge = document.createElement('div');
       badge.className = 'skull-badge' + (boss ? ' boss' : '');
       badge.textContent = `${s.atk}·${s.def}·${s.hp}`;
       cellEl.appendChild(badge);
+      return;
     }
+    cellEl.innerHTML = tileSymbol(cell);
   }
 
   function renderBoard() {
     const board = qs('#board');
     if (!board) return;
-    board.innerHTML = '';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('id', 'chain-line');
-    svg.setAttribute('aria-hidden', 'true');
-    board.appendChild(svg);
+    if (!board.dataset.cellsReady) {
+      board.innerHTML = '';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('id', 'chain-line');
+      svg.setAttribute('aria-hidden', 'true');
+      board.appendChild(svg);
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const cellEl = document.createElement('div');
+        cellEl.className = 'cell';
+        cellEl.dataset.idx = String(i);
+        board.appendChild(cellEl);
+      }
+      board.dataset.cellsReady = '1';
+    }
     for (let i = 0; i < CELL_COUNT; i++) {
-      const cellEl = document.createElement('div');
-      cellEl.className = 'cell';
-      cellEl.dataset.idx = String(i);
-      board.appendChild(cellEl);
       renderCell(S.board[i], i);
     }
     renderSelection();
@@ -589,7 +629,14 @@
   // --- main flow -----------------------------------------------------------
   function newGame() {
     S = newGameState();
+    SKULL_UID = 1;
+    SKULL_IMAGES.clear();
     setupBoard();
+    const board = qs('#board');
+    if (board) {
+      board.innerHTML = '';
+      delete board.dataset.cellsReady;
+    }
     renderBoard();
     renderHUD();
     renderChainTip();
