@@ -140,7 +140,7 @@ async def prepare(db, owner_id: int, number: int, editor, *, expected_source: st
         if isinstance(exc, editor_client.EditorialError):
             allowed = {'configuration', 'http', 'timeout', 'network', 'response_too_large',
                        'incomplete_response', 'max_tokens', 'invalid_response', 'invalid_json',
-                       'refused', 'empty_answer', 'missing_sections',
+                       'refused', 'empty_answer', 'invalid_schema', 'missing_sections',
                        'section_order', 'evidence', 'speakers', 'too_long', 'validation'}
             code = exc.code if isinstance(exc.code, str) and exc.code in allowed else 'unknown'
             status = exc.http_status if code == 'http' else None

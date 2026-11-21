@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 
-from news_prototype import article_fetch, owner_trial, story_editor
+from news_prototype import article_fetch, editor_client, owner_trial, story_editor
 from news_prototype.story_audio import validate_script
 
 MAX_MESSAGE = 3900  # Includes the editable command; below Telegram's limit.
@@ -29,6 +29,9 @@ EDITOR_ERROR_CODES = frozenset({
     # A refusal and an empty answer look identical to the owner unless they
     # are named: one needs a different source, the other a retry.
     'refused', 'empty_answer',
+    # A model that answered with the wrong structure is a retry, while an
+    # unusable source needs different material: they must not share a code.
+    'invalid_schema', 'source_invalid', 'source_short',
 })
 
 
@@ -72,6 +75,11 @@ def diagnostic(exc: BaseException, *, phase: str) -> dict:
         code = 'unknown'
     status = getattr(exc, 'http_status', None)
     result = {'code': code, 'phase': phase}
+    detail = getattr(exc, 'detail', None)
+    # Fixed-vocabulary hint for diagnosing a repeat without storing any
+    # provider text, source content or part of the model answer.
+    if isinstance(detail, str) and detail in editor_client.DETAILS:
+        result['detail'] = detail
     if type(status) is int and 100 <= status <= 599:
         result['http_status'] = status
     return result
