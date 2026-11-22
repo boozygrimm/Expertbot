@@ -971,7 +971,8 @@
       if ((S.promotionRemaining || 0) <= 0) {
         const type = randInt(1, 32, 1);
         skull = type === 1 ? makeSkull(true) : makeSkull(false, true, type);
-        S.promotionRemaining = 50;
+        // Sprint: 200-turn opening budget, then a promoted enemy every 10 turns.
+        S.promotionRemaining = S.mode === 'sprint' ? 10 : (clsFlaw() === 'Zealous' ? 42 : 43);
         S.specialsPromoted = (S.specialsPromoted || 0) + 1;
       } else {
         skull = makeSkull(false);
@@ -1557,8 +1558,8 @@
 
     // Priest flaw Cautious: pierce threshold 30% instead of the base 50%.
     if (cls.flaw === 'Cautious') S.pierce = 0.30;
-    // Original promotion/trophy counters.
-    S.promotionRemaining = cls.flaw === 'Zealous' ? 49 : 50;
+    // Original promotion/trophy counters (Sprint gets a 200-turn first budget).
+    S.promotionRemaining = cls.flaw === 'Zealous' ? 49 : (S.mode === 'sprint' ? 200 : 50);
     S.trophyRemaining = randInt(20, 30, 5);
 
     // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
@@ -1578,6 +1579,7 @@
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
   function clsRace() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.race : 'Human'; }
+  function clsFlaw() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.flaw : '—'; }
 
   function activateSkill(id) {
     if (S.over || S.resolving) return;
@@ -3173,7 +3175,20 @@
       && !(S.mode === 'sprint' && sk.id === 'trap')
       && !(S.mode === 'pretzel' && (sk.id === 'teleport' || sk.id === 'chamber'));
     const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
-    const classPool = cls && cls.pool ? ALL_SKILLS.filter(sk => cls.pool.includes(sk.id)) : ALL_SKILLS;
+    // Adventurer (class 0 in the original) has no fixed 20-slot vector: its pool
+    // is *every unlocked* native skill, so the class skills (31..39) join it once
+    // their owning class reaches level 10. Skills 40/41 are native-only and never
+    // unlock (they have no wrapper enum in the original).
+    const adventurerPool = () => ALL_SKILLS.filter(sk => {
+      if (sk.nativeOnly) return false;
+      if (sk.native != null && sk.native >= 31) {
+        const owner = CLASSES.find(c => c.uniqueSkill === sk.id);
+        return !!owner && classLevelOf(owner.id) >= 10;
+      }
+      return true;
+    });
+    const classPool = !cls || cls.id === 'adventurer' ? adventurerPool()
+      : (cls.pool ? ALL_SKILLS.filter(sk => cls.pool.includes(sk.id)) : ALL_SKILLS);
     const basalOptions = shuffle([...classPool].filter(sk => availableSkill(sk) && (!cls || sk.id !== cls.uniqueSkill)));
     // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
     const uniqueOption = cls && cls.uniqueSkill
