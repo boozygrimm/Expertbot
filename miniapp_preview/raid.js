@@ -290,7 +290,8 @@
     { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste',
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
-      clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (паралич)',
+      raceDesc: 'Калечение: в конце твоего хода убивает обычных черепов, если их HP меньше твоей брони.',
+      clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
       uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
   ];
   const CLASS_BY_ID = Object.fromEntries(CLASSES.map(c => [c.id, c]));
@@ -925,6 +926,12 @@
       }
       // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
       cellEl.classList.toggle('frozen', !!cell.frozen);
+      const crippleTarget = S.classId === 'assassin' && !s.special && !s.boss
+        && (s.enteredTurn || 0) < S.turn && s.hp > 0 && s.hp < S.hero.armor;
+      cellEl.classList.toggle('cripple-target', !!crippleTarget);
+      cellEl.title = crippleTarget
+        ? `🐺 Калечение: HP ${s.hp} ниже брони ${S.hero.armor} — череп исчезнет в конце хода.`
+        : '';
       if (img.parentNode !== cellEl) cellEl.appendChild(img);
       // badge: reuse the same element — only the numbers change in place
       let badge = cellEl.querySelector('.skull-badge');
@@ -2183,17 +2190,25 @@
 
     // Cripple (Werewolf/Assassin): enemies with less HP than armor die at end of turn
     if (S.classId && CLASS_BY_ID[S.classId].race === 'Werewolf') {
+      let crippled = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        // New skulls are spawned before enemyPhase in this clone, while the original
-        // runs ProcessCripples before MoveMatchedTiles. Do not cripple this turn's spawns.
-        if (c && c.type === 'skull' && (c.skull.enteredTurn || 0) < S.turn
+        // Original order runs ProcessCripples before MoveMatchedTiles; this clone spawns first.
+        // Only old ordinary skulls qualify (not this-turn spawns, specials, or bosses).
+        if (c && c.type === 'skull' && !c.skull.special && !c.skull.boss
+            && (c.skull.enteredTurn || 0) < S.turn
             && c.skull.hp > 0 && c.skull.hp < S.hero.armor) {
           S.board[i] = { type: 'empty' };
           S.skullsKilled++;
           registerSkullEnd(c.skull);
           audioKill();
+          crippled++;
         }
+      }
+      if (crippled > 0) {
+        const message = `🐺 Калечение Вервольфа: уничтожено обычных черепов — ${crippled} (их HP ниже твоей брони ${S.hero.armor}).`;
+        log(message);
+        flash(message);
       }
     }
 
@@ -3123,6 +3138,7 @@
       const desc = [];
       if (cls.perk !== '—') desc.push(`<span class="pick-perk">⬆ ${cls.perkName || cls.perk}: ${cls.perkDesc}</span>`);
       if (cls.flaw !== '—') desc.push(`<span class="pick-flaw">⬇ ${cls.flawName || cls.flaw}: ${cls.flawDesc}</span>`);
+      if (cls.raceDesc) desc.push(`<span class="pick-race-desc">🧬 ${cls.raceName || cls.race}: ${cls.raceDesc}</span>`);
       const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}</span>`;
       const status = unlocked
         ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}</span>`
