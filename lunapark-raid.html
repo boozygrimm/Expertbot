@@ -4012,11 +4012,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       ? UNIQUE_SKILLS.find(s => s.id === cls.uniqueSkill)
       : null;
     let skillOptions = [];
+    const upgradable = () => S.skills
+      .filter(id => id !== 'wish' && ((S.skillLevels && S.skillLevels[id]) || 1) < 10)
+      .map(id => ({ upgrade: true, id, skill: SKILL_BY_ID[id] }));
     if (skillSlotsLeft <= 0 && S.mode !== 'sprint') {
       // All four slots taken: offer upgrades of existing skills (levels 1..9).
-      const up = S.skills.filter(id => id !== 'wish' && ((S.skillLevels && S.skillLevels[id]) || 1) < 10)
-        .map(id => ({ upgrade: true, id, skill: SKILL_BY_ID[id] }));
-      skillOptions = shuffle(up).slice(0, 2);
+      skillOptions = shuffle(upgradable()).slice(0, 2);
+    } else if (S.skills.length === 3) {
+      // Original limit: with three skills the menu offers ONE new skill (plus an
+      // upgrade of an owned one when available, or nothing in Sprint).
+      if (uniqueOption && availableSkill(uniqueOption)) skillOptions.push(uniqueOption);
+      else if (basalOptions.length > 0) skillOptions.push(basalOptions.shift());
+      const up = S.mode === 'sprint' ? [] : upgradable();
+      if (up.length > 0) skillOptions.push(shuffle(up)[0]);
     } else {
       if (uniqueOption && availableSkill(uniqueOption)) {
         skillOptions.push(uniqueOption);
@@ -4388,7 +4396,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const potions = [];
         for (let j = 0; j < CELL_COUNT; j++) {
           const p = S.board[j];
-          if (p && p.type === 'potion' && !p.mana && !p.acid) potions.push(j);
+          // Original Acidic skips mana, acid and explosive potions.
+          if (p && p.type === 'potion' && !p.mana && !p.acid && !p.explosive) potions.push(j);
         }
         if (potions.length > 0) {
           const pick = potions[randInt(0, potions.length - 1, 5)];
@@ -4541,8 +4550,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         for (let j = 0; j < CELL_COUNT; j++) {
           const tj = S.board[j];
           if (!tj) continue;
+          // Original BreakRandomShieldSword skips arrows and already-broken tiles.
           if (tj.type === 'shield' && !tj.broken) candidates.push(j);
-          else if (tj.type === 'sword' && !tj.broken) candidates.push(j);
+          else if (tj.type === 'sword' && !tj.arrow && !tj.broken) candidates.push(j);
         }
         if (candidates.length > 0) {
           const pick = candidates[randInt(0, candidates.length - 1, 5)];
