@@ -777,6 +777,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // в цепочке; база 20% + 5% за соответствующий стат + 5% за харизматику
   // + классные бонусы (Raider: 100% на 10+ клеток).
   const BONUS_BASE_CHANCE = 0.20;
+  // Confused flaw / Unexpected perk window (turnData.earlyTurns).
+  const EARLY_TURNS = 5;
   const BASE_PIERCING = 0.50;      // вероятность пробития брони черепа (классика)
   const BASE_DURABILITY = 0.50;    // вероятность, что пункт брони героя не списывается
   const MAX_DURABILITY = 0.90;     // потолок долговечности с апгрейдами
@@ -1419,6 +1421,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       skullsKilled: 0,
       swordsHits: 0,
       goldEarned: 0,
+      upgradeEarned: 0,          // всего очков апгрейда за забег (для счёта)
+      pretzelScore: 0,           // очки режима «Крендель» за забег
       potionsUsed: 0,
       chainCount: 0,
       maxLevel: 1,
@@ -2054,12 +2058,39 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return raw;
   }
 
+  // Original GetScore @0x2f868: classic counts collected XP, gold and upgrade
+  // points plus one point per turn and 100 per skill level; Sprint divides the
+  // three resources by 4 (and doubles everything on a win); Pretzel uses its own
+  // pretzel points.
+  function skillLevelPoints() {
+    return (S.skills || []).reduce((sum, id) => sum + (((S.skillLevels && S.skillLevels[id]) || 1) * 100), 0);
+  }
+  function runScore() {
+    const xp = Math.round(S.hero.xpLevelCum || 0);
+    const gold = Math.round(S.goldEarned || 0);
+    const up = Math.round(S.upgradeEarned || 0);
+    if (S.mode === 'pretzel') return Math.round(S.pretzelScore || 0);
+    if (S.mode === 'sprint') {
+      const base = Math.floor(xp / 4) + Math.floor(gold / 4) + Math.floor(up / 4);
+      return base * (S.won ? 2 : 1);
+    }
+    return xp + gold + up + S.turn + skillLevelPoints();
+  }
+
+  // Confused flaw: no chain damage for the first five turns.
+  function isEarlyGame() { return (S.turn || 0) < EARLY_TURNS; }
+  function damageBlockedEarly() {
+    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
+    return !!(cls && cls.flaw === 'Confused') && isEarlyGame();
+  }
+
   // Pактический враг расы присутствует на доске (mortal enemy).
   function hasMortalEnemy(type) {
     if (!S || !S.board) return false;
     return S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === type && c.skull.hp > 0);
   }
   function swordDamage(swordCount) {
+    if (damageBlockedEarly()) return 0;   // Confused: no damage in the first 5 turns
     const raw = baseDamage() + S.hero.weaponDamage * swordCount;
     return Math.round(raw * (S.swordBoost > 0 ? 2 : 1));
   }
@@ -2206,7 +2237,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(baseDamage())} + ${fmt(h.weaponDamage)}×меч`;
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
-      const score = S.skullsKilled * 10 + Math.max(0, S.maxLevel - 1) * 100 + Math.floor(S.goldEarned / 10);
+      const score = runScore();
       S.score = score;
       el('status-line').textContent = `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
     }
@@ -2906,6 +2937,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   function addUpgradeBar(amount) {
     const v = amount * (S.mode === 'sprint' ? 2 : 1);
+    S.upgradeEarned = (S.upgradeEarned || 0) + v;
     S.upgradeBar = Math.min(UPGRADE_BAR_MAX, S.upgradeBar + v);
   }
 
@@ -3284,11 +3316,38 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return result;
   }
 
+  // Pretzel mode: every diagonal step whose (min x, min y) key repeats in the
+  // chain counts as a crossing; 5/10/15 crossings rate 1/2/3, and 15+ is a
+  // "legend" worth a flat 100 points (original ProcessPretzels).
+  function pretzelCrossings(chain) {
+    const seen = new Set();
+    let crosses = 0;
+    for (let i = 1; i < chain.length; i++) {
+      const a = chain[i - 1], b = chain[i];
+      const ax = a % COLS, ay = Math.floor(a / COLS), bx = b % COLS, by = Math.floor(b / COLS);
+      if (ax === bx || ay === by) continue;
+      const key = Math.min(ax, bx) + 6 * Math.min(ay, by);
+      if (seen.has(key)) crosses++; else seen.add(key);
+    }
+    return crosses;
+  }
+  function pretzelPoints(crosses) {
+    const rating = [5, 10, 15].filter(t => crosses >= t).length;
+    if (rating >= 3) return { rating, points: 100 };
+    return { rating, points: crosses * [1, 2, 3][rating] };
+  }
+
   function resolveChain() {
     if (S.resolving || S.over) return;
     const chain = S.selected.slice();
     if (!chain || chain.length < 3) { clearChain(); return; }
     const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+
+    if (S.mode === 'pretzel') {
+      const p = pretzelPoints(pretzelCrossings(chain));
+      S.pretzelScore = (S.pretzelScore || 0) + p.points;
+      if (p.rating > 0) flash('🥨 Крендель: ' + p.points + ' очков (пересечений ' + pretzelCrossings(chain) + ')');
+    }
 
     // Raider flaw: 3-tile chain gives nothing
     if (cls && cls.flaw === 'Cocky' && chain.length === 3) {
@@ -3514,9 +3573,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       }
     }
 
+    // Unexpected perk: enemies simply do not attack during the first five turns.
+    const noAttackWindow = (() => {
+      const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+      return !!(cls && cls.perk === 'Unexpected') && isEarlyGame();
+    })();
+
     let hpDamageThisPhase = 0;
     let poisonDamageThisPhase = 0;
     living.forEach(cell => {
+      if (noAttackWindow) return;
       const s = cell.skull;
       if (s.hp <= 0) return;   // already dead by burn
       if (s.frozenTurn === S.turn) { s.frozenTurn = 0; return; }  // Freezing: не атакует в ход заморозки
@@ -4049,14 +4115,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
                 }
               }
             });
-            // Assassin perk (Cunning): −1 к кулдауну 4-го навыка, выбранного до этого момента
-            if (S.classId === 'assassin' && chosenSkills.length > 0) {
+            // Cunning perk (Assassin): the fourth skill costs one turn less — both
+            // now and on every later activation.
+            if (cls && cls.perk === 'Cunning' && chosenSkills.length > 0 && S.skills.length >= 4) {
               const sk = chosenSkills[chosenSkills.length - 1];
-              if (S.skills.length >= 4) {
-                S.cooldownAdjust = S.cooldownAdjust || {};
-                S.cooldownAdjust[sk] = (S.cooldownAdjust[sk] || 0) - 1;
-                flash('🗡 Хитрость: кд навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
-              }
+              S.cooldownAdjust = S.cooldownAdjust || {};
+              S.cooldownAdjust[sk] = (S.cooldownAdjust[sk] || 0) - 1;
+              S.skillCooldowns[sk] = Math.max(0, (S.skillCooldowns[sk] || 0) - 1);
+              flash('🗡 Хитрость: кд навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
             }
             // Faun Rejuvenate (Priest race): HP ≥ 25% max
             if (clsRace() === 'Faun') {
@@ -4768,6 +4834,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     interiorCells,
     swordDamage,
     baseDamage,
+    runScore,
+    pretzelPoints,
+    pretzelCrossings,
     showClassPicker,
     chooseLevelOptions,
     checkTrophy,
