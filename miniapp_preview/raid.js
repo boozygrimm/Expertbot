@@ -434,8 +434,12 @@
     return pool[randInt(0, pool.length - 1, 4)];
   }
   function makeUpgradeOffer(slotId) {
-    const slot = itemSlotById(slotId), item = S.equipment.find(entry => entry.slot === slotId);
+    const item = S.equipment.find(entry => entry.slot === slotId);
     const key = randomItemUpgrade(slotId, !itemValue(item, 'quicken')), value = itemStep(key);
+    return describeUpgradeOffer(slotId, key, value);
+  }
+  function describeUpgradeOffer(slotId, key, value) {
+    const slot = itemSlotById(slotId), item = S.equipment.find(entry => entry.slot === slotId);
     const before = itemValue(item, key);
     return { slot: slot.id, slotName: slot.name, icon: slot.icon, key, value, name: ITEM_STAT[key].name,
       label: itemModText(key, value), desc: ITEM_STAT[key].desc,
@@ -768,12 +772,15 @@
   // Matching creates resource events; arrival is a separate, ordered pass.
   // Nested blasts share the batch, so a physical cell can only pay once.
   let RESOURCE_BATCH = null;
-  let AFTER_ARRIVALS = null;
+  let AFTER_ARRIVALS = null; // serialisable next step, never a closure
+  let SCHEDULED_STEP = null;
+  let ACTION_TIMER = null;
   let DRAINING_ARRIVALS = false;
   // Идентификатор забега: отложенные setTimeout резолва/enemy phase не должны
   // попадать в новый забег после рестарта (см. newGame + resolveChain).
   let RUN_ID = 0;
   let SCROLL_LABEL_TIMER = null;
+  let SCROLL_LABEL_DEADLINE = 0;
 
   // --- DOM helpers ---------------------------------------------------------
   const el = id => document.getElementById(id);
@@ -816,6 +823,7 @@
       board: [],
       classId: 'adventurer',       // текущий класс забега (см. CLASSES)
       classConfig: null,           // immutable next-run configuration snapshot
+      seed: 0, rngSeeds: [],
       mode: 'classic',             // classic | sprint | pretzel
       difficulty: 1,               // 0 Easy, 1 Normal, 2 Hard, 3 Harder
       skillLevels: {},             // skill id -> level (Sprint starts at 5)
@@ -835,7 +843,7 @@
         stats: { strength: 1, vitality: 1, luck: 1, dexterity: 1, charisma: 0, damage: 0, defense: 0 },
       },
       equipment: [], equipmentApplied: null,
-      skillDurations: {}, nextTurnFlags: {}, menuCandidates: [],
+      skillDurations: {}, nextTurnFlags: {}, menuCandidates: [], levelDraft: [],
       compatibilityNotices: [], scrollNativeWords: null,
       scrollPolicy: 'classic-memory-v1',
       scrollLeechLabel: { version: 1, number: 0, active: false, inFlight: false },
@@ -856,12 +864,14 @@
       slashCombo: 0, hackCombo: 0, shockCombo: 0, aweCombo: 0,
       berserkActive: 0,            // лекарство от этого хода (Barbarian perk)
       cooldownAdjust: {},          // skill id -> extra cooldown (−1 для Cunning)
+      runeActive: 0,
       runeUsedThisTurn: 0,         // замкнутая цепочка собрана этим ходом
       runeCollected: 0,            // замкнутая цепочка уже собрана
       lastStand: 0,                // полное лечение при смерти этого хода
       lastStandUsed: 0,            // Last Stand уже использован за забег
       brokenShields: 0,            // сколько щитов выпало сломанными (rogue flaw)
       baseDamageBonus: 0,           // equipment stat1: flat chain-damage bonus
+      specialsPromoted: 0,
       specialsKilled: 0,            // total rewarded special collections this run
       unlocksThisRun: 0,          // claimed unlocks, not the trophy-generation limit
       trophiesThisRun: 0,         // сколько трофеев забрано за забег
@@ -901,6 +911,375 @@
       _chainOrder: null,           // упорядоченный путь для направления атаки Armoured
       _lastChainCells: null,       // клетки цепочки для Burn-тайля
     };
+  }
+
+  // --- local active-run protocol (not an Android binary import) -------------
+  // Only complete JS task boundaries are written. Timed actions and reward
+  // continuations have named steps; choices and result identities are data.
+  const RUN_SAVE_KEY = 'raid:activeRun';
+  const RUN_SAVE_LIMIT = 512 * 1024;
+  const REWARD_KINDS = ['level', 'gold', 'armor'];
+  const RUN_SAVE_SKIP = new Set(['selected', 'chainType', 'pendingModal', 'menuCandidates', 'levelDraft',
+    'arrivals', 'rngSeeds', '_runePathSet', '_chainOrder', '_lastChainCells']);
+  let RUN_SAVE_BASE;
+  let SAVED_RUN = null;
+  let SAVE_TIMER = null;
+  let SAVE_CONFLICT = false;
+  let SAVE_REVISION = 0;
+  let NEW_RUN_REQUEST = null;
+  let RUN_SAVE_STATUS = { state: 'empty', message: 'Сохранённого забега пока нет.' };
+
+  function saveCheck(ok) { if (!ok) throw new Error('Invalid local run'); }
+  function saveNumber(value, min = 0, max = 1e12, integer = false) {
+    saveCheck(typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isInteger(value)));
+    return value;
+  }
+  function saveObject(value, keys, required = keys) {
+    saveCheck(value && typeof value === 'object' && !Array.isArray(value));
+    saveCheck(Object.keys(value).every(key => keys.includes(key)) && required.every(key => Object.hasOwn(value, key)));
+    return value;
+  }
+  function saveText(value, max = 300) {
+    saveCheck(typeof value === 'string' && value.length <= max && !/[<>&\u0000-\u001f]/u.test(value));
+    return value;
+  }
+  function saveArray(value, max, min = 0) { saveCheck(Array.isArray(value) && value.length >= min && value.length <= max); return value; }
+  function saveBool(value) { saveCheck(typeof value === 'boolean'); return value; }
+  function saveMap(value, keys, min = 0, max = 1e12, integer = false) {
+    saveObject(value, keys, []);
+    for (const n of Object.values(value)) saveNumber(n, min, max, integer);
+    return value;
+  }
+  function saveConfig(value, classId) {
+    saveObject(value, ['classId', 'race', 'perks', 'flaws', 'replacements']);
+    saveCheck(value.classId === classId && Object.hasOwn(RACE_INFO, value.race));
+    const base = defaultClassConfig(classId);
+    for (const kind of ['perks', 'flaws']) {
+      saveArray(value[kind], 4, 4);
+      saveCheck(value[kind][0] === base[kind][0]);
+      const used = value[kind].filter(name => name !== null);
+      saveCheck(used.every(name => typeof name === 'string' && Object.hasOwn(CLASS_TRAITS[kind], name)) && new Set(used).size === used.length);
+    }
+    saveCheck(value.perks.every((perk, i) => perk === null || value.flaws[i] !== null));
+    saveArray(value.replacements, 20, 20);
+    saveCheck(value.replacements[0] === null && value.replacements.every(id => id === null || typeof id === 'string' && Object.hasOwn(SKILL_BY_ID, id) && !SKILL_BY_ID[id].nativeOnly));
+    if (classId === 'adventurer') saveCheck(value.race === base.race && ['perks', 'flaws', 'replacements'].every(key => value[key].every(entry => entry === null)));
+    // Do not revalidate against today's donor levels/editor. This is the
+    // already-started run's frozen configuration, not next-run preferences.
+    return value;
+  }
+  function savedSkill(option) {
+    return { kind: 'skill', id: option.id, duration: option.duration, charge: option.charge, level: option.level, upgrade: !!option.upgrade };
+  }
+  function readSavedSkill(value) {
+    saveObject(value, ['kind', 'id', 'duration', 'charge', 'level', 'upgrade']);
+    saveCheck(value.kind === 'skill' && typeof value.id === 'string' && Object.hasOwn(SKILL_BY_ID, value.id));
+    saveNumber(value.duration, -64, 100000, true); saveNumber(value.charge, -64, 100000, true);
+    saveNumber(value.level, 1, 10, true); saveBool(value.upgrade);
+    return value;
+  }
+  function savedItem(item) {
+    const value = {};
+    for (const key of ['slot', 'appearance', 'prefixAnchor', 'displayPrefix', 'suffixIndex', 'name', 'mods']) value[key] = item[key];
+    if (item.scroll) value.scroll = savedSkill(item.scroll);
+    if (item.scrollBlocked) value.scrollBlocked = true;
+    return value;
+  }
+  function readSavedItem(value, offer = false) {
+    saveObject(value, ['slot', 'appearance', 'prefixAnchor', 'displayPrefix', 'suffixIndex', 'name', 'mods', ...(offer ? ['scroll', 'scrollBlocked'] : [])],
+      ['slot', 'appearance', 'prefixAnchor', 'displayPrefix', 'suffixIndex', 'name', 'mods']);
+    const slot = itemSlotById(value.slot); saveCheck(!!slot);
+    saveNumber(value.appearance, slot.appearance[0], slot.appearance[1], true);
+    for (const key of ['prefixAnchor', 'displayPrefix', 'suffixIndex']) saveNumber(value[key], -1, 10000, true);
+    saveText(value.name, 160); saveMap(value.mods, ITEM_KEYS);
+    if (Object.hasOwn(value, 'scroll')) { readSavedSkill(value.scroll); saveCheck(!value.scroll.upgrade); }
+    if (Object.hasOwn(value, 'scrollBlocked')) saveBool(value.scrollBlocked);
+    saveCheck(!(value.scroll && value.scrollBlocked));
+    return value;
+  }
+  function readSavedCell(cell) {
+    saveObject(cell, ['type', 'skull', 'broken', 'mana', 'acid', 'explosive', 'magicSword', 'arrow', 'frozen', 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'matched', 'appearance'], ['type']);
+    saveCheck(['potion', 'skull', 'coin', 'shield', 'sword', 'arrow', 'chain', 'trophy'].includes(cell.type));
+    for (const [key, value] of Object.entries(cell)) {
+      if (key === 'type' || key === 'skull') continue;
+      if (key === 'frozenTurn') saveNumber(value, -1, 1e12, true);
+      else if (key === 'burn' && typeof value === 'number' || ['fireDamage', 'appearance'].includes(key)) saveNumber(value);
+      else saveBool(value);
+    }
+    if (cell.type !== 'skull') { saveCheck(!Object.hasOwn(cell, 'skull')); return cell; }
+    const skull = cell.skull;
+    const required = ['boss', 'special', 'type', 'countdown', 'uid', 'art', 'atk', 'def', 'hp', 'maxHp', 'promotionInterval', 'enteredTurn', 'poison'];
+    saveObject(skull, [...required, 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'phylactery', 'lichDelay'], required);
+    for (const key of ['boss', 'special', 'fireSafe', 'stunned', 'phylactery', 'lichDelay']) if (Object.hasOwn(skull, key)) saveBool(skull[key]);
+    for (const key of ['atk', 'def', 'maxHp', 'fireDamage']) if (Object.hasOwn(skull, key)) saveNumber(skull[key]);
+    saveNumber(skull.hp, 1); saveNumber(skull.uid, 1, 1e12, true); saveNumber(skull.type, 0, 32, true);
+    for (const key of ['countdown', 'enteredTurn', 'frozenTurn']) if (Object.hasOwn(skull, key)) saveNumber(skull[key], -1, 1e12, true);
+    if (skull.promotionInterval !== null) saveNumber(skull.promotionInterval, 0, 1e12, true);
+    if (Object.hasOwn(skull, 'burn')) typeof skull.burn === 'boolean' ? saveBool(skull.burn) : saveNumber(skull.burn);
+    saveCheck([REGULAR_SKULL_KEY, ...SPECIAL_SKULL_KEYS, BOSS_KEY].includes(skull.art));
+    saveArray(skull.poison, 3, 3).forEach(n => saveNumber(n));
+    return cell;
+  }
+  function readSavedMenu(menu) {
+    if (menu === null) return null;
+    saveObject(menu, ['kind', 'choices', 'picked']); saveCheck(REWARD_KINDS.includes(menu.kind));
+    const count = menu.kind === 'gold' ? 3 : 4;
+    saveArray(menu.choices, count, count);
+    for (const option of menu.choices) {
+      if (menu.kind === 'gold') readSavedItem(option, true);
+      else if (menu.kind === 'armor') {
+        saveObject(option, ['slot', 'key', 'value']);
+        saveCheck(!!itemSlotById(option.slot) && itemSlotById(option.slot).pool.includes(option.key));
+        saveNumber(option.value, Number.MIN_VALUE);
+      } else if (option?.kind === 'stat') {
+        saveObject(option, ['kind', 'id']); saveCheck(STATS.some(stat => stat.id === option.id));
+      } else readSavedSkill(option);
+    }
+    saveArray(menu.picked, menu.kind === 'level' ? 2 : 0);
+    menu.picked.forEach(n => saveNumber(n, 0, count - 1, true));
+    saveCheck(new Set(menu.picked).size === menu.picked.length);
+    return menu;
+  }
+  function readSavedState(data) {
+    const state = newGameState(), keys = Object.keys(state).filter(key => !RUN_SAVE_SKIP.has(key));
+    saveObject(data, keys);
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof state[key] === 'number') saveNumber(value);
+      else if (typeof state[key] === 'boolean') saveBool(value);
+      state[key] = value;
+    }
+    saveCheck(!!classDefinition(state.classId) && ['classic', 'sprint', 'pretzel'].includes(state.mode));
+    saveNumber(state.difficulty, 0, 3, true); saveNumber(state.seed, 0, 0xffffffff, true);
+    saveNumber(state.turn, 0, 1e12, true); saveNumber(state.trophyRemaining, 0, 30, true);
+    saveCheck(!state.over && !state.won && state.scrollPolicy === 'classic-memory-v1');
+    saveConfig(state.classConfig, state.classId);
+    const heroKeys = Object.keys(newGameState().hero);
+    saveObject(state.hero, heroKeys);
+    for (const key of heroKeys.filter(key => key !== 'stats')) saveNumber(state.hero[key]);
+    saveNumber(state.hero.level, 1, 1e12, true);
+    saveCheck(state.hero.hp <= state.hero.maxHp && state.hero.armor <= state.hero.maxArmor && state.hero.maxHp > 0);
+    saveMap(state.hero.stats, Object.keys(newGameState().hero.stats));
+    saveCheck(Object.keys(state.hero.stats).length === 7);
+    saveArray(state.board, CELL_COUNT, CELL_COUNT).forEach(readSavedCell);
+    const uids = state.board.filter(cell => cell.type === 'skull').map(cell => cell.skull.uid);
+    saveCheck(new Set(uids).size === uids.length);
+    saveArray(state.equipment, ITEM_SLOTS.length, ITEM_SLOTS.length).forEach(item => readSavedItem(item));
+    saveCheck(new Set(state.equipment.map(item => item.slot)).size === ITEM_SLOTS.length);
+    saveObject(state.equipmentApplied, [...ITEM_KEYS, 'health']);
+    Object.values(state.equipmentApplied).forEach(n => saveNumber(n));
+    const skillIds = ALL_SKILLS.map(skill => skill.id);
+    saveArray(state.skills, 4).forEach(id => saveCheck(typeof id === 'string' && Object.hasOwn(SKILL_BY_ID, id)));
+    saveCheck(new Set(state.skills).size === state.skills.length);
+    saveMap(state.skillLevels, skillIds, 1, 10, true);
+    saveMap(state.skillCooldowns, skillIds, 0, 100000, true);
+    saveMap(state.skillDurations, skillIds, -64, 100000, true);
+    saveMap(state.cooldownAdjust, skillIds, -1, 0, true);
+    saveObject(state.usedSkillIds, skillIds, []); Object.values(state.usedSkillIds).forEach(saveBool);
+    saveMap(state.nextTurnFlags, ['runeActive', 'swordBoost', 'shieldBoost', 'potionBoost', 'coinBoost', 'berserkActive', 'stealActive', 'lastStand', 'oneHealthSkulls', 'forceCoins'], 0, 1, true);
+    saveObject(state.resourceCarry, ['xp', 'gold', 'upgrade']); Object.values(state.resourceCarry).forEach(n => saveNumber(n, 0, 1));
+    saveMap(state.collectionCounts, ['potion', 'xp', 'coin', 'shield', 'sword', 'arrow', 'chain', 'trophy'], 0, 0x7fffffff, true);
+    saveObject(state.refillFilter, ['enabled', 'excludeSwords']); Object.values(state.refillFilter).forEach(saveBool);
+    saveObject(state.scrollLeechLabel, ['version', 'number', 'active', 'inFlight']);
+    saveCheck(state.scrollLeechLabel.version === 1); saveNumber(state.scrollLeechLabel.number, 0, 99999, true);
+    saveBool(state.scrollLeechLabel.active); saveBool(state.scrollLeechLabel.inFlight);
+    if (state.scrollNativeWords !== null) saveArray(state.scrollNativeWords, 42, 42).forEach(n => saveNumber(n, -0x80000000, 0xffffffff, true));
+    saveArray(state.rewardMenus, 128).forEach(kind => saveCheck(REWARD_KINDS.includes(kind)));
+    saveArray(state.log, 5).forEach(text => saveText(text, 500));
+    saveArray(state.compatibilityNotices, 16).forEach(text => saveText(text, 500));
+    return state;
+  }
+  function decodeRunSave(raw) {
+    saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
+    const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
+    saveCheck(data && data.format === 'lunapark-raid-run' && data.version === 1);
+    if (data.status === 'finished') { saveObject(data, ['format', 'version', 'status']); return null; }
+    saveObject(data, ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs']);
+    saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
+    saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
+    saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
+    data.state = readSavedState(data.state);
+    saveArray(data.rng, 6, 6).forEach(n => saveNumber(n, 0, 0xffffffff, true));
+    saveNumber(data.skullUid, 1, 1e12, true);
+    saveCheck(data.state.board.every(cell => cell.type !== 'skull' || cell.skull.uid < data.skullUid));
+    readSavedMenu(data.menu);
+    const results = saveArray(data.results, 2048).map(result => {
+      saveObject(result, Object.keys(collectionResult())); Object.values(result).forEach(n => saveNumber(n)); return result;
+    });
+    const resultAt = index => { saveNumber(index, 0, results.length - 1, true); return results[index]; };
+    data.state.arrivals = saveArray(data.arrivals, 2048).map(event => {
+      saveObject(event, ['kind', 'result', 'token', 'amount', 'leech', 'lastStand'], ['kind', 'result']);
+      const copy = { ...event, result: resultAt(event.result) };
+      if (event.kind === 'resource') {
+        saveObject(event, ['kind', 'result', 'token']);
+        saveObject(event.token, ['type', 'variant', 'skillSlot'], ['type', 'variant']);
+        saveCheck(['potion', 'xp', 'coin', 'shield'].includes(event.token.type)); saveNumber(event.token.variant, 0, 2, true);
+        if (Object.hasOwn(event.token, 'skillSlot')) saveNumber(event.token.skillSlot, 0, 3, true);
+      } else {
+        saveCheck(['healing', 'damage'].includes(event.kind));
+        saveObject(event, ['kind', 'result', 'amount', ...(event.kind === 'healing' ? ['leech'] : ['lastStand'])], ['kind', 'result', 'amount']);
+        saveNumber(event.amount);
+        for (const key of ['leech', 'lastStand']) if (Object.hasOwn(event, key)) saveBool(event[key]);
+      }
+      return copy;
+    });
+    if (data.next !== null) {
+      const next = data.next;
+      saveObject(next, ['phase', 'chain', 'committed', 'result'], ['phase']);
+      saveCheck(['skill', 'ready', 'end-turn', 'chain', 'match-chain', 'enemy'].includes(next.phase));
+      saveObject(next, next.phase === 'chain' ? ['phase', 'committed', 'result'] : next.phase === 'match-chain' ? ['phase', 'chain'] : ['phase']);
+      if (next.phase === 'chain') { saveBool(next.committed); next.result = resultAt(next.result); }
+      else if (next.phase === 'match-chain') {
+        saveArray(next.chain, CELL_COUNT, 3).forEach(n => saveNumber(n, 0, CELL_COUNT - 1, true));
+        saveCheck(new Set(next.chain).size === next.chain.length);
+        saveCheck(next.chain.every((slot, i) => canChainSelect(slot, next.chain.slice(0, i), data.state.board) && (!i || isAdjacent(next.chain[i - 1], slot))));
+        const effective = next.chain.filter((slot, i) => !i || data.state.board[next.chain[i - 1]].type !== 'arrow' || ['sword', 'arrow', 'skull'].includes(data.state.board[slot].type));
+        saveCheck(effective.length >= 3 || data.state.runeActive > 0 && interiorCells(next.chain).length > 0);
+        saveCheck(data.state.actionCommitted === (effective.length >= 3));
+      }
+      if (['match-chain', 'enemy'].includes(next.phase)) saveCheck(data.menu === null && !data.state.arrivals.length && !data.state.rewardMenus.length);
+    }
+    saveCheck(!data.state.resolving || data.next !== null);
+    saveCheck(data.next === null || data.state.resolving);
+    saveCheck(!data.state.scrollLeechLabel.inFlight || data.state.scrollLeechLabel.active && data.state.arrivals.some(event => event.kind === 'healing' && event.leech));
+    if (data.leechFadeMs !== null) saveNumber(data.leechFadeMs, 0, 200);
+    return data;
+  }
+  function encodeRunSave() {
+    const state = {};
+    for (const key of Object.keys(newGameState())) if (!RUN_SAVE_SKIP.has(key)) state[key] = S[key];
+    state.equipment = S.equipment.map(savedItem);
+    if (S.scrollNativeWords !== null) state.scrollNativeWords = Array.from({ length: 42 }, (_, n) => S.scrollNativeWords[n]);
+    const results = [], resultRef = value => {
+      const old = results.indexOf(value); if (old >= 0) return old;
+      results.push(value); return results.length - 1;
+    };
+    let next = SCHEDULED_STEP || AFTER_ARRIVALS;
+    if (next?.phase === 'match-chain') next = { phase: next.phase, chain: next.snapshot?.chain || next.chain };
+    else if (next?.phase === 'chain') next = { ...next, result: resultRef(next.result) };
+    const arrivals = S.arrivals.map(event => ({ ...event, result: resultRef(event.result) }));
+    let menu = null;
+    if (REWARD_KINDS.includes(S.pendingModal)) {
+      const kind = S.pendingModal;
+      const choices = S.menuCandidates.map(option => kind === 'gold' ? savedItem(option)
+        : kind === 'armor' ? { slot: option.slot, key: option.key, value: option.value }
+        : STATS.includes(option) ? { kind: 'stat', id: option.id } : savedSkill(option));
+      menu = { kind, choices, picked: kind === 'level' ? [...S.levelDraft] : [] };
+    }
+    const label = S.scrollLeechLabel;
+    const leechFadeMs = SCROLL_LABEL_TIMER !== null ? Math.max(0, Math.min(200, SCROLL_LABEL_DEADLINE - Date.now()))
+      : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
+    return JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
+      build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
+      menu, results, arrivals, next, leechFadeMs });
+  }
+  function saveStatus(state, message) {
+    RUN_SAVE_STATUS = { state, message };
+    for (const id of ['picker-save-status', 'menu-save-status', 'save-status']) {
+      const node = el(id); if (!node) continue;
+      node.textContent = message;
+      if (id === 'save-status') node.hidden = !['unavailable', 'invalid', 'conflict'].includes(state);
+    }
+  }
+  function readRunSlot() {
+    let raw;
+    try { raw = localStorage.getItem(RUN_SAVE_KEY); }
+    catch (e) { saveStatus('unavailable', 'Хранилище браузера недоступно. Продолжить после закрытия страницы не получится.'); return false; }
+    RUN_SAVE_BASE = raw;
+    try {
+      SAVED_RUN = raw === null ? null : decodeRunSave(raw);
+      if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
+      saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${SAVED_RUN.state.turn}.` : 'Сохранённого забега пока нет.');
+      return true;
+    } catch (e) {
+      SAVED_RUN = null;
+      saveStatus('invalid', 'Сохранение повреждено или создано несовместимой версией. Оно не загружено; можно начать новый забег.');
+      return false;
+    }
+  }
+  function ownsRunSlot() {
+    if (SAVE_CONFLICT) return false;
+    try {
+      const current = localStorage.getItem(RUN_SAVE_KEY);
+      if (RUN_SAVE_BASE !== undefined && current !== RUN_SAVE_BASE) {
+        SAVE_CONFLICT = true;
+        saveStatus('conflict', 'Сохранение изменено в другой вкладке. Эта вкладка приостановлена: обнови страницу, чтобы продолжить актуальный забег.');
+        return false;
+      }
+      if (RUN_SAVE_BASE === undefined) RUN_SAVE_BASE = current;
+    } catch (e) { /* saveRun reports blocked storage; offline play still works. */ }
+    return true;
+  }
+  function queueRunSave() {
+    clearTimeout(SAVE_TIMER);
+    SAVE_TIMER = setTimeout(() => { SAVE_TIMER = null; saveRun(); }, 0);
+  }
+  function saveRun() {
+    if (!S || RESOURCE_BATCH || DRAINING_ARRIVALS || S.resolving && !AFTER_ARRIVALS && !SCHEDULED_STEP && !S.over) return false;
+    if (!ownsRunSlot()) return false;
+    let raw, decoded;
+    try {
+      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'finished' }) : encodeRunSave();
+      decoded = decodeRunSave(raw);
+    } catch (e) {
+      saveStatus('invalid', 'Текущая точка не записана: состояние не прошло проверку. Предыдущее корректное сохранение не изменено.');
+      return false;
+    }
+    try {
+      localStorage.setItem(RUN_SAVE_KEY, raw);
+      RUN_SAVE_BASE = raw; SAVED_RUN = decoded;
+      if (decoded) SAVE_REVISION = decoded.revision;
+      saveStatus(decoded ? 'saved' : 'empty', decoded ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
+      return true;
+    } catch (e) {
+      // Small tombstones/removal usually still work when a large write hits the
+      // quota. Never leave a pre-death or pre-trophy checkpoint looking current.
+      try { localStorage.removeItem(RUN_SAVE_KEY); RUN_SAVE_BASE = null; SAVED_RUN = null; } catch (ignored) {}
+      saveStatus('unavailable', 'Не удалось сохранить забег. Разреши локальное хранилище и освободи место; до успешной записи не закрывай страницу.');
+      return false;
+    }
+  }
+  function savedRunInfo() {
+    if (RUN_SAVE_BASE === undefined) readRunSlot();
+    if (!SAVED_RUN) return null;
+    const { state, savedAt } = SAVED_RUN;
+    return { classId: state.classId, mode: state.mode, difficulty: state.difficulty, turn: state.turn, hp: state.hero.hp, level: state.hero.level,
+      pendingModal: SAVED_RUN.menu?.kind || null, savedAt };
+  }
+  function restoreMenuChoices(menu) {
+    const skill = value => ({ ...SKILL_BY_ID[value.id], skill: SKILL_BY_ID[value.id],
+      duration: value.duration, charge: value.charge, level: value.level, upgrade: value.upgrade });
+    if (menu.kind === 'level') return menu.choices.map(value => value.kind === 'stat' ? STATS.find(stat => stat.id === value.id) : skill(value));
+    if (menu.kind === 'armor') return menu.choices.map(value => describeUpgradeOffer(value.slot, value.key, value.value));
+    return menu.choices.map(value => ({ ...value, slotName: itemSlotById(value.slot).name, icon: itemSlotById(value.slot).icon,
+      ...(value.scroll ? { scroll: skill(value.scroll) } : {}) }));
+  }
+  function resumeSavedRun() {
+    if (!readRunSlot() || !SAVED_RUN) return false;
+    const data = SAVED_RUN;
+    RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null;
+    clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
+    ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
+    SCHEDULED_STEP = AFTER_ARRIVALS = RESOURCE_BATCH = null; DRAINING_ARRIVALS = false;
+    activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
+    S = data.state;
+    S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
+    for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
+    S.equipment = S.equipment.map(item => ({ ...item, slotName: itemSlotById(item.slot).name, icon: itemSlotById(item.slot).icon }));
+    closeClassEditor(false); pickerOpen = false; pickerGeneration++;
+    for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'restart-modal']) el(id)?.classList.remove('show');
+    const board = el('board'); if (board) { board.innerHTML = ''; delete board.dataset.cellsReady; }
+    renderBoard(); renderHUD(); renderChainTip();
+    const logNode = el('log'); if (logNode) logNode.innerHTML = S.log.map(text => `<div>${text}</div>`).join('');
+    if (data.leechFadeMs !== null) fadeScrollLeechLabel(data.leechFadeMs);
+    if (data.next && ['match-chain', 'enemy'].includes(data.next.phase)) scheduleRunStep(data.next, data.next.phase === 'match-chain' ? 420 : 550);
+    else {
+      AFTER_ARRIVALS = data.next;
+      if (data.menu) { S.levelDraft = [...data.menu.picked]; openModal(data.menu.kind, restoreMenuChoices(data.menu)); }
+      else resumeRewards();
+    }
+    saveRun();
+    return true;
   }
 
   // Original TileType order is POTION(0), SKULL(1), COIN(2), SHIELD(3), SWORD(4),
@@ -1306,7 +1685,7 @@
   }
 
   function tryExtendChain(cellIdx) {
-    if (S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
+    if (!S || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
     const chain = S.selected;
     const repeated = chain.indexOf(cellIdx);
     if (repeated >= 0) {
@@ -1328,6 +1707,7 @@
 
   function onChainChanged() {
     updateScrollLeechPreview();
+    queueRunSave();
     renderSelection();
     renderChainLine();
     renderChainTip();
@@ -1777,10 +2157,16 @@
   function newGame(seed) {
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     RUN_ID++;
+    SAVE_CONFLICT = false; NEW_RUN_REQUEST = null;
+    try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
+    clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
+    for (const id of ['restart-modal', 'menu-modal', 'help-modal']) el(id)?.classList.remove('show');
+    activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeClassEditor(false);
     pickerOpen = false; pickerGeneration++;
     const picker = el('class-picker'); if (picker) picker.classList.remove('show');
     AFTER_ARRIVALS = null;
+    SCHEDULED_STEP = null; clearTimeout(ACTION_TIMER); ACTION_TIMER = null;
     RESOURCE_BATCH = null;
     seedRandom(runSeed);
     const remaining = S ? S.trophyRemaining : readTrophyRemaining();
@@ -1788,7 +2174,7 @@
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState();
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
-    // reload starts fresh; restarting this Game instance retains its history.
+    // starts fresh unless explicitly resuming a saved run (including history).
     if (previousLabel) S.scrollLeechLabel = { ...previousLabel, active: false, inFlight: false };
     S.trophyRemaining = remaining;
     saveTrophyRemaining();
@@ -1846,6 +2232,7 @@
     renderHUD();
     renderChainTip();
     log('✦ Новый забег: ' + cls.name + ' спускается в рейд');
+    saveRun();
   }
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
@@ -1922,7 +2309,7 @@
   }
 
   function activateSkill(id) {
-    if (S.over || S.resolving || S.pendingModal || S.selected.length) return;
+    if (!S || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
     const left = S.skillCooldowns[id] || 0;
     if (left > 0) return;
     const skill = SKILL_BY_ID[id];
@@ -1938,10 +2325,7 @@
       if (!hasLegalChain(S.board)) ensureChainable();
     });
     renderHUD(); renderBoard();
-    continueAfterRewards(() => {
-      S.resolving = false;
-      renderHUD(); renderBoard();
-    });
+    continueAfterRewards({ phase: 'skill' });
   }
 
   function fireBreathOnSkill() {
@@ -2498,7 +2882,7 @@
   // between resources/leech/fire/spikes (C2) are not claimed to be reproduced.
   // A full bar opens its menu immediately; the remaining events wait unchanged.
   function drainArrivals() {
-    if (DRAINING_ARRIVALS || RESOURCE_BATCH || S.pendingModal || S.over) return;
+    if (DRAINING_ARRIVALS || RESOURCE_BATCH || S.pendingModal || S.over || SAVE_CONFLICT) return;
     DRAINING_ARRIVALS = true;
     try {
       while (S.arrivals.length && !S.pendingModal && !S.over) {
@@ -2522,15 +2906,45 @@
     if (!S.pendingModal && !S.over && !S.arrivals.length && AFTER_ARRIVALS) {
       const next = AFTER_ARRIVALS;
       AFTER_ARRIVALS = null;
-      next();
+      runContinuation(next);
     }
   }
 
   function continueAfterRewards(next) {
-    if (S.over) { S.resolving = false; return; }
-    const runId = RUN_ID;
-    AFTER_ARRIVALS = () => { if (runId === RUN_ID && !S.over) next(); };
+    if (S.over) { S.resolving = false; saveRun(); return; }
+    AFTER_ARRIVALS = next;
     drainArrivals();
+    saveRun();
+  }
+
+  // These named steps are also the save/resume boundary. An interrupted menu
+  // must not recreate a closure, reroll rewards, or run an enemy volley twice.
+  function runContinuation(next) {
+    if (S.over || SAVE_CONFLICT) return;
+    if (next.phase === 'end-turn') { endEnemyTurn(); return; }
+    if (next.phase === 'chain') {
+      const result = next.result;
+      if (result.xpGained > 0 || result.goldGained > 0) log(`⚔ +${result.xpGained} XP · +${result.goldGained} золота · убийств ${result.kills}`);
+      if (next.committed) { scheduleRunStep({ phase: 'enemy' }, 550); return; }
+    } else if (next.phase === 'ready' && !hasLegalChain(S.board)) {
+      ensureChainable(); log('♻ Нет ходов — поле перемешано');
+    }
+    S.resolving = false;
+    renderBoard(); renderHUD();
+    if (next.phase === 'ready') checkTrophy();
+  }
+
+  function scheduleRunStep(step, delay) {
+    const runId = RUN_ID;
+    clearTimeout(ACTION_TIMER);
+    SCHEDULED_STEP = step;
+    ACTION_TIMER = setTimeout(() => {
+      if (runId !== RUN_ID || S.over || !ownsRunSlot()) return;
+      SCHEDULED_STEP = null; ACTION_TIMER = null;
+      if (step.phase === 'match-chain') settleChain(step.snapshot || chainSnapshot(step.chain));
+      else enemyPhase();
+    }, delay);
+    saveRun();
   }
 
   function requestRewardMenu(kind) {
@@ -2816,23 +3230,28 @@
     return { rating, points: crosses * [1, 2, 3][rating] };
   }
 
-  function resolveChain() {
-    if (S.resolving || S.over || S.pendingModal) return;
-    const chain = S.selected.slice(), effective = effectiveChain(chain);
-    if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
+  function chainSnapshot(chain) {
+    const effective = effectiveChain(chain);
     const rune = S.runeActive ? interiorCells(chain) : [];
     const committed = effective.length >= 3;
-    if (!committed && !rune.length) { clearChain(); return; }
     const skulls = effective.filter(idx => S.board[idx].type === 'skull' && !isPhylacteryCell(S.board[idx]));
     const swords = effective.reduce((sum, idx) => sum + (S.board[idx].broken ? 0 : swordWeight(S.board[idx])), 0);
     const damage = (skulls.length ? baseDamage() : 0) + S.hero.weaponDamage * swords * (S.swordBoost > 0 ? 2 : 1);
-    const snapshot = { chain, effective, hasSkull: skulls.length > 0, damage,
+    return { chain, effective, rune, committed, skulls, swords, hasSkull: skulls.length > 0, damage,
       spiky: skulls.some(idx => S.board[idx].skull.type === 2),
       targetDamage: new Map(skulls.map(idx => [idx, chainDamageFor(idx, chain, damage)])),
       burning: effective.reduce((sum, idx) => {
         const cell = S.board[idx], target = cell.type === 'skull' ? cell.skull : cell;
         return sum + (target.burn && !target.fireSafe ? target.fireDamage ?? (typeof target.burn === 'number' ? target.burn : 0) : 0);
       }, 0) };
+  }
+
+  function resolveChain() {
+    if (!S || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
+    const chain = S.selected.slice();
+    if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
+    const snapshot = chainSnapshot(chain), { committed, rune, skulls, effective } = snapshot;
+    if (!committed && !rune.length) { clearChain(); return; }
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
     S.actionCommitted = committed;
@@ -2841,52 +3260,49 @@
       if (S.mode === 'pretzel') S.pretzelScore += pretzelPoints(pretzelCrossings(chain)).points;
     }
     S.selected = []; S.chainType = null;
-    const runId = RUN_ID;
     renderSelection(); renderChainLine(); renderChainTip();
     for (const idx of committed ? effective : []) {
       const node = qs(`.cell[data-idx="${idx}"]`);
       if (node && S.board[idx].type !== 'skull') node.classList.add('pop');
     }
-    setTimeout(() => {
-      if (runId !== RUN_ID) return;
-      const result = withResourceBatch(batch => {
-        // Rune deliberately precedes minimum-chain validation and the normal
-        // MatchTiles counter reset. Interior ordinary skulls are COLLECTION,
-        // ignoring HP/defence and not contributing to direct kills or Guts.
-        for (const idx of rune) {
-          const cell = S.board[idx];
-          if (cell && !(cell.type === 'skull' && (cell.skull.special || cell.skull.boss))) matchCell(idx);
-        }
-        if (!committed) {
-          // Keep the playable board full after a Rune-only arrow cancellation;
-          // no ordinary matching, no counter reset and no enemy turn.
-          compactBoardAndRefill(); markExistingSkullsOld();
-          return batch.result;
-        }
-        resetCollectionCounts();
-        applyChainEffects(swords, 0, 0, 0, skulls, snapshot);
-        S.killsThisTurn = batch.result.kills;
-        markExistingSkullsOld();
-        placeNewTiles({});
-        // AddRevengeHealth and post-kill passives run after refill, so a newly
-        // generated Vengeful also receives this chain's direct kill count.
-        for (const cell of S.board) if (cell && cell.type === 'skull' && cell.skull.type === 21) cell.skull.atk += batch.result.kills;
-        if (clsRace() === 'Halfling' && batch.result.kills >= 15) {
-          const armour = S.equipment.find(item => item.slot === 'armour');
-          armour.mods.maxArmor = (armour.mods.maxArmor || 0) + 1;
-          updateEquipmentStats();
-          flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
-        }
-        if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
+    scheduleRunStep({ phase: 'match-chain', snapshot }, 420);
+  }
+
+  function settleChain(snapshot) {
+    const { committed, rune, skulls, swords } = snapshot;
+    const result = withResourceBatch(batch => {
+      // Rune deliberately precedes minimum-chain validation and the normal
+      // MatchTiles counter reset. Interior ordinary skulls are COLLECTION,
+      // ignoring HP/defence and not contributing to direct kills or Guts.
+      for (const idx of rune) {
+        const cell = S.board[idx];
+        if (cell && !(cell.type === 'skull' && (cell.skull.special || cell.skull.boss))) matchCell(idx);
+      }
+      if (!committed) {
+        // Keep the playable board full after a Rune-only arrow cancellation;
+        // no ordinary matching, no counter reset and no enemy turn.
+        compactBoardAndRefill(); markExistingSkullsOld();
         return batch.result;
-      });
-      renderBoard(); renderHUD();
-      continueAfterRewards(() => {
-        if (result.xpGained > 0 || result.goldGained > 0) log(`⚔ +${result.xpGained} XP · +${result.goldGained} золота · убийств ${result.kills}`);
-        if (!committed) { S.resolving = false; renderBoard(); renderHUD(); return; }
-        setTimeout(() => { if (runId === RUN_ID && !S.over) enemyPhase(); }, 550);
-      });
-    }, 420);
+      }
+      resetCollectionCounts();
+      applyChainEffects(swords, 0, 0, 0, skulls, snapshot);
+      S.killsThisTurn = batch.result.kills;
+      markExistingSkullsOld();
+      placeNewTiles({});
+      // AddRevengeHealth and post-kill passives run after refill, so a newly
+      // generated Vengeful also receives this chain's direct kill count.
+      for (const cell of S.board) if (cell && cell.type === 'skull' && cell.skull.type === 21) cell.skull.atk += batch.result.kills;
+      if (clsRace() === 'Halfling' && batch.result.kills >= 15) {
+        const armour = S.equipment.find(item => item.slot === 'armour');
+        armour.mods.maxArmor = (armour.mods.maxArmor || 0) + 1;
+        updateEquipmentStats();
+        flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
+      }
+      if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
+      return batch.result;
+    });
+    renderBoard(); renderHUD();
+    continueAfterRewards({ phase: 'chain', committed, result });
   }
 
   function isCrippleTarget(skull) {
@@ -2969,13 +3385,13 @@
   }
 
   function enemyPhase() {
-    if (S.over || S.pendingModal) return;
+    if (S.over || S.pendingModal || !ownsRunSlot()) return;
     S.resolving = true;
     S.actionCommitted = true;
     processEnemyAttack();
     renderBoard(); renderHUD();
     // Spikes/counter resources (and their menus) settle before turn++.
-    continueAfterRewards(endEnemyTurn);
+    continueAfterRewards({ phase: 'end-turn' });
   }
 
   function endEnemyTurn() {
@@ -3052,17 +3468,13 @@
       // Victory is at the tail, never before lethal turn-100 poison/abilities.
       if (S.mode === 'sprint' && S.turn >= 100) {
         S.won = true; S.over = true; S.resolving = false; S.actionCommitted = false;
-        S.arrivals = []; S.rewardMenus = []; AFTER_ARRIVALS = null;
+        S.arrivals = []; S.rewardMenus = []; AFTER_ARRIVALS = SCHEDULED_STEP = null;
+        saveRun();
         openModal('gameover');
       }
     });
     renderBoard(); renderHUD();
-    continueAfterRewards(() => {
-      if (!hasLegalChain(S.board)) { ensureChainable(); log('♻ Нет ходов — поле перемешано'); }
-      renderBoard(); renderHUD();
-      S.resolving = false;
-      checkTrophy();
-    });
+    continueAfterRewards({ phase: 'ready' });
   }
 
   function damageHero(amount, isBoss, bypassArmor) {
@@ -3089,8 +3501,10 @@
   }
 
   // --- modals ---------------------------------------------------------------
-  function openModal(kind) {
+  function openModal(kind, restoredChoices = null) {
+    const runId = RUN_ID;
     S.pendingModal = kind;
+    if (kind === 'level' && !restoredChoices) S.levelDraft = [];
     const wrap = el('modal');
     const title = el('modal-title');
     const body = el('modal-body');
@@ -3106,16 +3520,16 @@
     if (kind === 'level') {
       title.textContent = '⬆ УРОВЕНЬ!';
       body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений и подтверди. Повторный тап по выбранной карточке снимает выбор.</p>';
-      const options = chooseLevelOptions();
+      const options = restoredChoices || chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
       title.textContent = '💰 МАГАЗИН!';
       body.innerHTML = '<p class="modal-hint">Выбери 1 из 3 замен. Бонусы старой вещи снимаются, а не складываются с новой.</p>';
-      renderEquipChoices(body);
+      renderEquipChoices(body, restoredChoices);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
       body.innerHTML = '<p class="modal-hint">Добавь бонус одной из 4 надетых вещей. Остальные её параметры не меняются.</p>';
-      renderUpgradeChoices(body);
+      renderUpgradeChoices(body, restoredChoices);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
       body.innerHTML = '';
@@ -3127,7 +3541,7 @@
       btn.type = 'button';
       btn.className = 'btn';
       btn.textContent = 'Закрыть';
-      btn.addEventListener('click', () => closeModal());
+      btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'stats') closeModal(); });
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? '🏆 ПОБЕДА!' : '☠ ИГРА ОКОНЧЕНА';
@@ -3142,9 +3556,10 @@
       restart.type = 'button';
       restart.className = 'btn secondary';
       restart.textContent = '↻ Ещё раз';
-      restart.addEventListener('click', () => { closeModal(); newGame(); });
+      restart.addEventListener('click', () => { if (runId === RUN_ID && S.over) { closeModal(); newGame(); } });
       body.appendChild(restart);
     }
+    queueRunSave();
   }
 
   function closeModal() {
@@ -3152,14 +3567,16 @@
     if (wrap) wrap.classList.remove('show');
     S.pendingModal = null;
     const runId = RUN_ID;
-    setTimeout(() => {
-      if (runId !== RUN_ID) return;
-      if (S.pendingModal || S.over) return;
-      if (S.rewardMenus.length) openModal(S.rewardMenus.shift());
-      else { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); }
-      drainArrivals();
-      if (!S.resolving && !S.pendingModal && !S.over) checkTrophy();
-    }, 80);
+    setTimeout(() => { if (runId === RUN_ID) resumeRewards(); }, 80);
+    queueRunSave();
+  }
+  function resumeRewards() {
+    if (S.pendingModal || S.over || !ownsRunSlot()) return;
+    if (S.rewardMenus.length) openModal(S.rewardMenus.shift());
+    else { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); }
+    drainArrivals();
+    if (!S.resolving && !S.pendingModal && !S.over) checkTrophy();
+    saveRun();
   }
 
   // --- особые черепа: особенности по тапу на спец/босс ---
@@ -3174,6 +3591,7 @@
   }
 
   function showSkullModal(skull) {
+    const runId = RUN_ID;
     const wrap = el('modal');
     const title = el('modal-title');
     const body = el('modal-body');
@@ -3217,7 +3635,7 @@
     btn.type = 'button';
     btn.className = 'btn';
     btn.textContent = 'Понятно';
-    btn.addEventListener('click', () => closeModal());
+    btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'skull') closeModal(); });
     body.appendChild(btn);
   }
 
@@ -3270,7 +3688,7 @@
     return S.board.flatMap((cell, slot) => cell.type === 'trophy' && !cell.frozen && !cell.matched ? [slot] : []);
   }
   function claimTrophy(slot) {
-    if (S.over || S.resolving || S.pendingModal || !Number.isInteger(slot)) return false;
+    if (!S || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
     const cell = S.board[slot];
     if (!cell || cell.type !== 'trophy' || cell.frozen || cell.matched) return false;
     // Outcome draws happen on the tap, so class state may change between drops.
@@ -3286,7 +3704,7 @@
       if (!hasLegalChain(S.board)) ensureChainable();
     });
     flash(outcome.text); log(outcome.text);
-    renderBoard(); renderHUD(); audioLevel();
+    renderBoard(); renderHUD(); audioLevel(); saveRun();
     return true;
   }
 
@@ -3329,7 +3747,7 @@
     grid.className = 'lv-grid';
     grid.setAttribute('role', 'group');
     grid.setAttribute('aria-label', 'Два улучшения уровня');
-    const picked = new Set();
+    const picked = new Set(S.levelDraft);
     let committed = false;
     const actions = document.createElement('div');
     actions.className = 'lv-actions';
@@ -3345,12 +3763,13 @@
     confirm.setAttribute('aria-describedby', 'level-choice-status');
 
     function isCurrent() {
-      return !committed && runId === RUN_ID && !S.over
+      return !committed && runId === RUN_ID && !S.over && ownsRunSlot()
         && S.pendingModal === 'level' && S.menuCandidates === options;
     }
     function mark() {
       choiceRow.textContent = `Выбрано ${picked.size} из 2`;
       confirm.disabled = picked.size !== 2;
+      S.levelDraft = [...picked];
       grid.querySelectorAll('.lv-card').forEach((node, i) => {
         const selected = picked.has(i);
         node.classList.toggle('picked', selected);
@@ -3369,7 +3788,7 @@
         else installSkillOption(option);
       });
       S.hero.xpNext = 100;
-      closeModal(); renderBoard(); renderHUD(); audioLevel();
+      closeModal(); renderBoard(); renderHUD(); audioLevel(); saveRun();
     });
 
     options.forEach((opt, i) => {
@@ -3410,6 +3829,7 @@
           audioPick();
         }
         mark();
+        saveRun();
       });
       grid.appendChild(btn);
     });
@@ -3487,20 +3907,23 @@
   function showScrollLeechLabel(number, inFlight = false) {
     if (!(number > 0)) return;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
+    SCROLL_LABEL_DEADLINE = 0;
     S.scrollLeechLabel.number = number;
     S.scrollLeechLabel.active = true;
     S.scrollLeechLabel.inFlight = inFlight;
   }
-  function fadeScrollLeechLabel() {
+  function fadeScrollLeechLabel(delay = 200) {
     const label = S.scrollLeechLabel;
     if (!label.active || label.inFlight || SCROLL_LABEL_TIMER !== null) return;
     const runId = RUN_ID;
     // Our arrival-order C2 policy: a cancelled preview or settled healing fades
     // for 200ms. Native frame/flight races are not claimed as bit-exact timing.
+    SCROLL_LABEL_DEADLINE = Date.now() + delay;
     SCROLL_LABEL_TIMER = setTimeout(() => {
       if (runId !== RUN_ID || S.scrollLeechLabel !== label) return;
-      label.active = false; SCROLL_LABEL_TIMER = null;
-    }, 200);
+      label.active = false; SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
+      queueRunSave();
+    }, delay);
   }
   function updateScrollLeechPreview() {
     const effective = effectiveChain(S.selected);
@@ -3559,18 +3982,16 @@
       if (!S.actionCommitted) markExistingSkullsOld();
       if (!hasLegalChain(S.board)) ensureChainable();
     });
-    if (!continuedAction && !continuation) continueAfterRewards(() => {
-      S.resolving = false; renderBoard(); renderHUD();
-    });
+    if (!continuedAction && !continuation) continueAfterRewards({ phase: 'skill' });
   }
   function purchaseShopItem(index) {
-    if (S.pendingModal !== 'gold' || !Number.isInteger(index)) return false;
+    if (!S || S.pendingModal !== 'gold' || !Number.isInteger(index) || !ownsRunSlot()) return false;
     const item = S.menuCandidates[index];
     if (!item || !itemSlotById(item.slot)) return false;
     equipItem(item); // Recompute BEFORE scroll activation.
     closeModal();   // Remove the shop BEFORE Enchant can open another menu.
     if (item.scroll) castPurchasedScroll(item.scroll);
-    renderBoard(); renderHUD(); audioLevel();
+    renderBoard(); renderHUD(); audioLevel(); saveRun();
     return true;
   }
   function appendEquipmentChoices(body, grid) {
@@ -3596,8 +4017,8 @@
     body.appendChild(grid);
     body.appendChild(summary);
   }
-  function renderEquipChoices(body) {
-    const options = makeShopOffers();
+  function renderEquipChoices(body, restoredChoices = null) {
+    const options = restoredChoices || makeShopOffers();
     S.menuCandidates = options;
     const grid = document.createElement('div');
     grid.className = 'shop-grid';
@@ -3628,8 +4049,8 @@
     appendEquipmentChoices(body, grid);
   }
 
-  function renderUpgradeChoices(body) {
-    const options = drawItemSlots(4, 4, makeUpgradeOffer);
+  function renderUpgradeChoices(body, restoredChoices = null) {
+    const options = restoredChoices || drawItemSlots(4, 4, makeUpgradeOffer);
     S.menuCandidates = options;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
@@ -3650,9 +4071,9 @@
           <span class="lv-effs"><span class="lv-line item-change better">${opt.name}: ${opt.comparison} (+${itemNumber(opt.key, opt.value)})</span><span class="lv-line">${opt.desc}</span></span>
         </span>`;
       btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'armor' || S.menuCandidates !== options) return;
+        if (S.pendingModal !== 'armor' || S.menuCandidates !== options || !ownsRunSlot()) return;
         applyUpgradeOffer(opt);
-        closeModal(); renderBoard(); renderHUD(); audioLevel();
+        closeModal(); renderBoard(); renderHUD(); audioLevel(); saveRun();
       });
       grid.appendChild(btn);
     });
@@ -3685,7 +4106,9 @@
     S.actionCommitted = false;
     S.arrivals = [];
     S.rewardMenus = [];
-    AFTER_ARRIVALS = null;
+    AFTER_ARRIVALS = SCHEDULED_STEP = null;
+    clearTimeout(ACTION_TIMER); ACTION_TIMER = null;
+    saveRun();
     audioGameOver();
     const runId = RUN_ID;
     setTimeout(() => { if (runId === RUN_ID) openModal('gameover'); }, 600);
@@ -4144,7 +4567,7 @@
     if (!board) return;
 
     board.addEventListener('pointerdown', e => {
-      if (S.over || S.resolving || S.pendingModal) return;
+      if (!S || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
       if (!cell) return;
@@ -4189,7 +4612,7 @@
       btn.addEventListener('click', () => {
         if (!current()) return;
         if (!isClassUnlocked(cls.id)) { flash('⚠ Класс закрыт: подбери трофей после победы над особыми черепами'); return; }
-        setSelectedClassId(cls.id); hideClassPickerAndStart();
+        requestNewGame(cls.id);
       });
       row.appendChild(btn);
       const edit = document.createElement('button');
@@ -4319,27 +4742,73 @@
     const picker = el('class-picker');
     if (!picker) { newGame(); return true; }
     closeClassEditor(false); renderClassPicker(); pickerOpen = true;
-    const resume = el('picker-resume'); if (resume) resume.hidden = !S || S.over;
+    const resume = el('picker-resume'), info = savedRunInfo();
+    if (resume) {
+      resume.hidden = !(S && !S.over || info);
+      resume.textContent = S && !S.over ? 'Вернуться в забег'
+        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn}` : 'Продолжить';
+    }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
     return true;
   }
-  function hideClassPickerAndStart() { newGame(); }
   function resumeFromClassPicker() {
-    if (!pickerOpen || !S || S.over) return;
+    if (!pickerOpen) return;
+    if (!S || S.over) { resumeSavedRun(); return; }
+    if (SAVE_CONFLICT) { flash('Обнови страницу: сохранение изменено в другой вкладке'); return; }
     closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
     el('menu-btn')?.focus();
   }
 
+  function requestNewGame(classId = getSelectedClassId()) {
+    if (!isClassUnlocked(classId)) return false;
+    if ((!S || S.over) && !savedRunInfo()) { setSelectedClassId(classId); newGame(); return true; }
+    const wrap = el('restart-modal');
+    if (!wrap) return false;
+    NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement };
+    const text = el('restart-confirm-text');
+    if (text) text.textContent = `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни классов сохранятся.`;
+    wrap.classList.add('show'); el('restart-cancel')?.focus();
+    return false;
+  }
+  function cancelNewGame() {
+    const previous = NEW_RUN_REQUEST; NEW_RUN_REQUEST = null;
+    el('restart-modal')?.classList.remove('show'); previous?.focus?.focus();
+  }
+
   // --- init -----------------------------------------------------------------
   function init() {
+    readRunSlot();
     initInput();
+    window.addEventListener?.('pagehide', () => saveRun());
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveRun(); });
+    window.addEventListener?.('storage', event => {
+      if (event.key !== RUN_SAVE_KEY && event.key !== null) return;
+      if (S && !S.over) ownsRunSlot();
+      else { readRunSlot(); if (pickerOpen && !classEditor) showClassPicker(); }
+    });
+    el('restart-cancel')?.addEventListener('click', cancelNewGame);
+    el('restart-confirm')?.addEventListener('click', () => {
+      const request = NEW_RUN_REQUEST;
+      if (!request || request.runId !== RUN_ID) return;
+      setSelectedClassId(request.classId); newGame();
+    });
+    el('restart-modal')?.addEventListener('keydown', event => {
+      if (!NEW_RUN_REQUEST) return;
+      if (event.key === 'Escape') { event.preventDefault(); cancelNewGame(); }
+      if (event.key === 'Tab') {
+        const first = el('restart-cancel'), last = el('restart-confirm');
+        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+        }
+      }
+    });
     const restartBtn = qs('#restart');
-    if (restartBtn) restartBtn.addEventListener('click', () => newGame());
+    if (restartBtn) restartBtn.addEventListener('click', () => requestNewGame());
     const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
     const picker = el('class-picker');
     if (picker) picker.addEventListener('keydown', event => {
-      if (!pickerOpen) return;
+      if (!pickerOpen || NEW_RUN_REQUEST) return;
       if (event.key === 'Escape') { event.preventDefault(); if (classEditor) closeClassEditor(); else resumeFromClassPicker(); }
       if (event.key !== 'Tab') return;
       const controls = [...picker.querySelectorAll('button:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(node => node.getClientRects().length);
@@ -4349,7 +4818,7 @@
     const menuBtn = qs('#menu-btn');
     const menuModal = qs('#menu-modal');
     if (menuBtn && menuModal) {
-      menuBtn.addEventListener('click', () => menuModal.classList.add('show'));
+      menuBtn.addEventListener('click', () => { if (S) saveRun(); menuModal.classList.add('show'); });
       const hide = () => menuModal.classList.remove('show');
       const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
       const close = qs('#menu-close'); if (close) close.addEventListener('click', hide);
@@ -4357,7 +4826,7 @@
         if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return; }
         hide(); showClassPicker();
       });
-      const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => { hide(); newGame(); });
+      const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => requestNewGame());
       const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
         hide();
         const wrap = qs('#help-modal');
@@ -4366,7 +4835,7 @@
     }
     const statsBtn = qs('#stats-btn');
     if (statsBtn) statsBtn.addEventListener('click', () => {
-      if (!S.resolving && !S.pendingModal && !S.over) openModal('stats');
+      if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
     const helpBtn = qs('#help');
     if (helpBtn) helpBtn.addEventListener('click', () => {
@@ -4385,6 +4854,10 @@
   window.RAID = {
     get state() { return S; },
     newGame,
+    saveRun,
+    resumeSavedRun,
+    savedRunInfo,
+    get saveStatus() { return { ...RUN_SAVE_STATUS }; },
     tryExtendChain,
     resolveChain,
     activateSkill,
