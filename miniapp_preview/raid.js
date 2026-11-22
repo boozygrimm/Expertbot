@@ -1770,7 +1770,8 @@
       let n = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        if (c && c.type === 'sword') { S.board[i] = { type: 'coin' }; n++; }
+        // Original ConvertTiles skips arrows and special/boss skulls.
+        if (c && c.type === 'sword' && !c.arrow) { S.board[i] = { type: 'coin' }; n++; }
       }
       flash('🪙 Золотое касание: мечей → монет ' + n);
     } else if (id === 'teleport') {
@@ -1816,8 +1817,7 @@
         idxs = [];
         for (let c = 0; c < COLS; c++) {
           const i = r * COLS + c;
-          const cell = S.board[i];
-          if (cell && cell.type !== 'skull') idxs.push(i);
+          if (S.board[i]) idxs.push(i);
         }
         flash('🗡 Рассечение: строка ' + (r + 1));
       }
@@ -1834,7 +1834,7 @@
       let n = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        if (c && c.type === 'sword') { S.board[i] = { type: 'shield' }; n++; }
+        if (c && c.type === 'sword' && !c.arrow) { S.board[i] = { type: 'shield' }; n++; }
       }
       flash('🛡 Сбор: мечей → щитов ' + n);
     } else if (id === 'disarm') {
@@ -1849,6 +1849,7 @@
       flash('⚔ Обезоруживание: черепов → мечей ' + n);
     } else if (id === 'dazzle') {
       let n = 0;
+      // Original ConvertTiles: skipping special tiles only; coins are not special.
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
         if (c && c.type === 'coin') { S.board[i] = { type: 'sword' }; n++; }
@@ -1922,16 +1923,19 @@
     } else if (id === 'explosivearmour') {
       const amount = Math.max(0, S.hero.armor) * 2;
       let hit = 0;
-      liveSkullIndices(true).forEach(i => { if (hitSkullAt(i, amount, { ignoreDefence: true })) hit++; });
+      // Original Explosive Armour: AttackSkull(armour × 2) — defence still applies.
+      liveSkullIndices(true).forEach(i => { if (hitSkullAt(i, amount)) hit++; });
       flash('🛡 Взрывная броня: ' + amount + ' урона по всем черепам');
     } else if (id === 'fireball') {
+      // Original Fireball draws both coordinates in 1..4 and collects the whole
+      // 3×3 area, enemies included.
       const r = randInt(1, Math.max(1, ROWS - 2), 5), c = randInt(1, Math.max(1, COLS - 2), 5);
       const idxs = [];
       for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
         const nr = r + dr, nc = c + dc;
         if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
           const i = nr * COLS + nc;
-          if (S.board[i] && S.board[i].type !== 'skull') idxs.push(i);
+          if (S.board[i]) idxs.push(i);
         }
       }
       collectIndices(idxs, { skipAcid: true });
@@ -2078,8 +2082,8 @@
       for (let i = 0; i < CELL_COUNT; i++) {
         const r = Math.floor(i / COLS), c = i % COLS;
         if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
-          const cell = S.board[i];
-          if (cell && cell.type !== 'skull' && cell.type !== 'empty') idxs.push(i);
+          // Original Charge collects the whole rim, enemies included.
+          if (S.board[i]) idxs.push(i);
         }
       }
       collectIndices(idxs, { skipAcid: true });
