@@ -583,11 +583,11 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <section class="hud" aria-label="Статус героя">
     <div class="hud-row">
       <div class="hud-cell">
-        <div class="hud-label"><span>❤️ HP</span><span id="hp-text">60 / 60</span></div>
+        <div class="hud-label"><span>❤️ HP</span><span id="hp-text">50 / 50</span></div>
         <div class="bar"><i id="hp-bar" class="fill-hp"></i></div>
       </div>
       <div class="hud-cell">
-        <div class="hud-label"><span>🛡 Броня</span><span id="armor-text">15 / 15</span></div>
+        <div class="hud-label"><span>🛡 Броня</span><span id="armor-text">4 / 4</span></div>
         <div class="bar"><i id="armor-bar" class="fill-armor"></i></div>
       </div>
     </div>
@@ -873,7 +873,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     { id: 'xp_up', name: 'Буст опыта', icon: '⭐', desc: '+0.25 к опыту за черепа', apply: () => { S.xpPerSkull += 0.25; } },
     { id: 'durability', name: 'Долговечность', icon: '🛡', desc: '+10% стойкости брони (≤90%)', apply: () => { S.durability = Math.min(MAX_DURABILITY, S.durability + 0.10); } },
     { id: 'leech', name: 'Сок', icon: '🩸', desc: '+5% лечения за вред', apply: () => { S.leech += 0.05; } },
-    { id: 'quicken', name: 'Ускорение кулдаунов', icon: '⏱', desc: '-1 к кулдауну следующего навыка', apply: () => { S.quicken += 1; } },
+    { id: 'quicken', name: 'Ускорение кулдаунов', icon: '⏱', desc: '−1 ко всем кулдаунам навыков (постоянно)', apply: () => { S.quicken += 1; } },
     { id: 'regen', name: 'Регенерация', icon: '♻', desc: '+1 HP в конце хода', apply: () => { S.regen += 1; } },
     { id: 'repair', name: 'Ремонт брони', icon: '⚒', desc: '+1 броня за щит', apply: () => { S.armorPerShield += 1; } },
     { id: 'spikes', name: 'Шипы', icon: '🗡', desc: '+1 урон черепу за каждый бросок', apply: () => { S.spikes += 1; } },
@@ -962,7 +962,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       perk: '—', flaw: '—', raceName: 'Человек',
       perkDesc: 'нет пассивов', flawDesc: 'нет изъянов',
       clsDesc: 'Стартовый класс: нет пассива или изъяна, свой навык — Телепорт',
-      uniqueSkillDesc: 'Телепорт (12): все клетки без черепов → новые' },
+      uniqueSkillDesc: 'Телепорт (20): все клетки без черепов → новые' },
     { id: 'barbarian', name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk',
       perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Орк',
       perkDesc: '+1 базового урона', flawDesc: '-10% шанс бонусных щитов',
@@ -1042,10 +1042,18 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function loadClassLevels() {
     try {
       const raw = localStorage.getItem(CLASS_LEVELS_KEY);
-      const obj = raw ? JSON.parse(raw) : {};
-      if (!obj || typeof obj !== 'object') obj = {};
-      obj.adventurer = Math.max(1, obj.adventurer || 1);
-      return obj;
+      let obj = raw ? JSON.parse(raw) : {};
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) obj = {};
+      // localStorage — внешние данные: чистим значения, иначе строка из него
+      // попадёт в innerHTML карточки класса (и в арифметику levelUpClass).
+      const clean = {};
+      for (const id of Object.keys(obj)) {
+        if (!CLASS_BY_ID[id]) continue;
+        const lvl = Number(obj[id]);
+        if (Number.isFinite(lvl) && lvl >= 1) clean[id] = Math.floor(lvl);
+      }
+      clean.adventurer = Math.max(1, clean.adventurer || 1);
+      return clean;
     } catch (e) { return { adventurer: 1 }; }
   }
   function saveClassLevels() {
@@ -1086,6 +1094,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   const SKULL_IMAGES = new Map(); // uid -> cached <img> (same sprite never re-created)
 
   let S = null;
+  // Идентификатор забега: отложенные setTimeout резолва/enemy phase не должны
+  // попадать в новый забег после рестарта (см. newGame + resolveChain).
+  let RUN_ID = 0;
 
   // --- DOM helpers ---------------------------------------------------------
   const el = id => document.getElementById(id);
@@ -1183,6 +1194,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       lastKillCount: 0,           // статистика цепочки (для Guts/Volley/Uppercut)
       killsThisTurn: 0,            // убийств за текущий ход (Vengeful)
       poison: 0,                   // урон длительного яда (Poisonous)
+      usedSkillIds: {},            // одноразовые навыки (Wish) — не предлагать повторно
       _runePathSet: null,          // цепочка для uppercut / Armoured
       _chainOrder: null,           // упорядоченный путь для направления атаки Armoured
       _lastChainCells: null,       // клетки цепочки для Burn-тайля
@@ -1273,7 +1285,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       atk: atk,
       def: def,
       hp: hp,
-      maxHp: 0,
+      maxHp: hp,
     };
   }
 
@@ -1302,6 +1314,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   // guarantee at least one legal chain exists (classic dead-board rule)
   function ensureChainable() {
+    // Ситуация «ходов нет» — снимаем заморозку, иначе замороженные клетки
+    // останутся недоступными и перемешивание не поможет.
+    for (let j = 0; j < CELL_COUNT; j++) {
+      const cell = S.board[j];
+      if (!cell) continue;
+      if (cell.frozen) cell.frozen = false;
+      if (cell.type === 'skull' && cell.skull) cell.skull.frozenTurn = 0;
+    }
     for (let tries = 0; tries < 30; tries++) {
       if (hasLegalChain(S.board)) return;
       for (let j = 0; j < CELL_COUNT; j++) {
@@ -1314,33 +1334,38 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   // a guaranteed chainable run must exist: same-category (or sword+skull) adjacent x3
   function hasLegalChain(board) {
-    // есть ли на доске цепочка из 3+ клеток в одном направлении (прямой/диагональный).
-    // стрелы и черепа — категория меча.
+    // Ищем не только прямые линии, но и любую связную цепочку: если в одной
+    // категории есть компонента из 3+ клеток, в ней всегда найдётся путь из 3.
+    // Замороженные клетки не выбираются (Freezing), поэтому их не считаем.
     function catOf(cell) {
-      if (!cell) return null;
+      if (!cell || cell.type === 'empty' || cell.frozen) return null;
       if (cell.type === 'skull' || cell.type === 'arrow') return 'sword';
       return cell.type;
     }
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const startCat = catOf(board[r * COLS + c]);
-        if (!startCat || startCat === 'empty') continue;
-        for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
-          let cat = startCat;
-          const cells = [r * COLS + c];
-          let cur = { r, c };
-          for (let k = 0; k < 2; k++) {
-            const nr = cur.r + dr, nc = cur.c + dc;
-            if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
-            const ncat = catOf(board[nr * COLS + nc]);
-            if (!ncat || ncat === 'empty') break;
-            if (!chainAllows(ncat, cat)) break;
-            cells.push(nr * COLS + nc);
-            cur = { r: nr, c: nc };
-          }
-          if (cells.length >= 3) return true;
+    const seen = new Set();
+    for (let start = 0; start < CELL_COUNT; start++) {
+      const startCat = catOf(board[start]);
+      if (!startCat || seen.has(start)) continue;
+      const stack = [start];
+      seen.add(start);
+      let count = 0;
+      while (stack.length > 0) {
+        const idx = stack.pop();
+        count++;
+        const r = Math.floor(idx / COLS), c = idx % COLS;
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = r + dr, nc = c + dc;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+          const nIdx = nr * COLS + nc;
+          if (seen.has(nIdx)) continue;
+          const nCat = catOf(board[nIdx]);
+          if (!nCat || !chainAllows(nCat, startCat)) continue;
+          seen.add(nIdx);
+          stack.push(nIdx);
         }
       }
+      if (count >= 3) return true;
     }
     return false;
   }
@@ -1954,6 +1979,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
+    RUN_ID++;
     seedRandom(runSeed);
     S = newGameState();
     S.seed = runSeed;
@@ -2036,20 +2062,36 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       S.freezeNextTurn = 1;
       flash('❄ Черепа не бьют в этом ходу');
     } else if (id === 'heal') {
-      let total = 0;
+      let total = 0, acid = 0, mana = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
-        if (S.board[i].type === 'potion') {
-          total += HEAL_PER_POTION + (S.hero.stats.luck || 0);
-          S.board[i] = { type: randomTileType() };
+        const c = S.board[i];
+        if (c.type !== 'potion') continue;
+        if (c.acid) acid++;
+        else if (c.mana) mana++;
+        else total += HEAL_PER_POTION + (S.hero.stats.luck || 0);
+        S.board[i] = { type: randomTileType() };
+      }
+      // Кислотные зелья ранят, а не лечат.
+      const acidDmg = acid * (HEAL_PER_POTION + (S.hero.stats.luck || 0));
+      if (acidDmg > 0) {
+        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
+        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
+        floatOn('💥 -' + acidDmg, 'hurt');
+        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
+          gameOver();
+          return;
         }
       }
       heal(total);
+      if (mana > 0) reduceSkillCooldowns(mana);
       flash('❤ Все зелья собраны (+' + total + ' HP)');
     } else if (id === 'repair') {
       let total = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
-        if (S.board[i].type === 'shield') {
-          total += S.armorPerShield + (S.hero.stats.dexterity || 0) + S.hero.stats.defense * 2;
+        const c = S.board[i];
+        if (c.type === 'shield') {
+          // Сломанный щит не даёт брони — его нельзя засчитывать как целый.
+          if (!c.broken) total += S.armorPerShield + (S.hero.stats.dexterity || 0) + S.hero.stats.defense * 2;
           S.board[i] = { type: randomTileType() };
         }
       }
@@ -2139,20 +2181,39 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     } else if (id === 'wish') {
       // Priest: Желание — одноразовый навык; собрать все клетки доски
       // (зелья/щиты/монетки → эффекты, черепа — атакуются current sword damage)
-      let hpBefore = S.hero.hp, shieldCount = 0, coinCount = 0, potionCount = 0;
+      let shieldCount = 0, coinCount = 0, normalPotions = 0, acidPotions = 0, manaPotions = 0;
       const skullIdxs = [];
       for (let i = 0; i < CELL_COUNT; i++) {
         const cell = S.board[i];
         if (!cell) continue;
-        if (cell.type === 'potion') potionCount++;
-        else if (cell.type === 'shield' && !cell.broken) shieldCount++;
+        if (cell.type === 'potion') {
+          if (cell.acid) acidPotions++;
+          else if (cell.mana) manaPotions++;
+          else normalPotions++;
+        } else if (cell.type === 'shield' && !cell.broken) shieldCount++;
         else if (cell.type === 'coin') coinCount++;
         else if (cell.type === 'skull') skullIdxs.push(i);
       }
-      // эффекты зелий/щитов/монет
       const charisma = S.hero.stats.charisma;
-      const gainHeal = Math.round(potionCount * (HEAL_PER_POTION + S.hero.stats.luck) * (1 + 0.05 * charisma));
+      const healBase = HEAL_PER_POTION + S.hero.stats.luck;
+      // Кислота ранит, а не лечит (в т.ч. при сборе «Желанием»).
+      const acidDmg = Math.round(acidPotions * healBase * (1 + 0.05 * charisma));
+      if (acidDmg > 0) {
+        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
+        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
+        floatOn('💥 -' + acidDmg, 'hurt');
+        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
+          gameOver();
+          return;
+        }
+      }
+      // эффекты зелий/щитов/монет
+      const gainHeal = Math.round(normalPotions * healBase * (1 + 0.05 * charisma));
       heal(gainHeal);
+      if (manaPotions > 0) {
+        const reduced = reduceSkillCooldowns(manaPotions);
+        flash('📖 Мана: кулдауны −' + reduced);
+      }
       const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
       const armorGain = shieldCount * perShield;
       const headroom = S.hero.maxArmor - S.hero.armor;
@@ -2161,20 +2222,24 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const overflow = Math.max(0, armorGain - headroom);
       if (overflow > 0) addUpgradeBar(overflow * 2);
       const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma));
-      gainGold(gold);
-      S.goldEarned += gold;
+      if (gold > 0) gainGold(gold);   // gainGold сам учитывает goldEarned
       // черепата — атаковать (обычный current-damage)
       const base = baseDamage();
-      const weapons = swordCountFrom(S.board) ; // не используется — просто = 1 оружие
       const dmg = Math.round(base + S.hero.weaponDamage);
       skullIdxs.forEach(idx => {
         const s = S.board[idx].skull;
+        if (!s || s.hp <= 0) return;
         if (randInt(0, 100, 5) < S.pierce * 100) { s.hp -= dmg; }
         else {
           const toDef = Math.min(dmg, s.def);
           s.def -= toDef; s.hp -= (dmg - toDef);
         }
-        if (s.hp <= 0) { S.board[idx] = { type: 'empty' }; S.skullsKilled++; registerSkullEnd(s); }
+        if (s.hp <= 0) {
+          S.board[idx] = { type: 'empty' };
+          S.skullsKilled++;
+          registerSkullEnd(s);
+          awardKillXp(s);
+        }
       });
       // очистка собранных клеток (без черепов/пусто)
       S.board = S.board.map(cell => {
@@ -2182,6 +2247,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (cell.type === 'skull') return cell;
         return { type: 'empty' };
       });
+      // Пустая доска — не «нет ходов», а недоделанный сбор: заполняем поле,
+      // иначе цепочку собрать нельзя и ход не передаётся (софтлок).
+      compactBoardAndRefill();
+      if (!hasLegalChain(S.board)) ensureChainable();
+      if (!S.usedSkillIds) S.usedSkillIds = {};
+      S.usedSkillIds.wish = true;
       flash('✨ ЖЕЛАНИЕ: собрано всё (+' + gainHeal + ' HP, +' + armorLocked + ' брони, +' + gold + ' золота)');
       // одноразовый навык: удаляем из S.skills
       S.skills = S.skills.filter(sid => sid !== 'wish');
@@ -2212,8 +2283,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       flash('🏹 Воллей: ' + converted + ' меч → стрелы');
     } else if (id === 'charge') {
       // Warrior: Charge — собрать все клетки по краю поля
-      let swords = 0, shields = 0, coins = 0, potions = 0;
-      const skullsInBorder = [];
+      let swords = 0, shields = 0, coins = 0, normalPotions = 0, acidPotions = 0, manaPotions = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const r = Math.floor(i / COLS), c = i % COLS;
         if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
@@ -2222,8 +2292,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           if (cell.type === 'sword') swords++;
           else if (cell.type === 'shield' && !cell.broken) shields++;
           else if (cell.type === 'coin') coins++;
-          else if (cell.type === 'potion') potions++;
-          else if (cell.type === 'skull') skullsInBorder.push(i);
+          else if (cell.type === 'potion') {
+            if (cell.acid) acidPotions++;
+            else if (cell.mana) manaPotions++;
+            else normalPotions++;
+          }
         }
       }
       // sword-attack: skulls in ANY cell (not just border) take charge damage
@@ -2232,20 +2305,37 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const cell = S.board[i];
         if (!cell || cell.type !== 'skull') continue;
         const s = cell.skull;
+        if (!s || s.hp <= 0) continue;
         if (randInt(0, 100, 5) < S.pierce * 100) { s.hp -= chargeDmg; }
         else {
           const toDef = Math.min(chargeDmg, s.def);
           s.def -= toDef; s.hp -= (chargeDmg - toDef);
         }
-        if (s.hp <= 0) { S.board[i] = { type: 'empty' }; S.skullsKilled++; registerSkullEnd(s); }
+        if (s.hp <= 0) {
+          S.board[i] = { type: 'empty' };
+          S.skullsKilled++;
+          registerSkullEnd(s);
+          awardKillXp(s);
+        }
       }
       // resource effects (border only)
       const charisma = S.hero.stats.charisma;
+      const healBase = HEAL_PER_POTION + S.hero.stats.luck;
+      const acidDmg = Math.round(acidPotions * healBase * (1 + 0.05 * charisma));
+      if (acidDmg > 0) {
+        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
+        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
+        floatOn('💥 -' + acidDmg, 'hurt');
+        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
+          gameOver();
+          return;
+        }
+      }
       const gold = Math.round(coins * S.goldPerCoin * (1 + 0.05 * charisma));
-      gainGold(gold);
-      S.goldEarned += gold;
-      const heal = Math.round(potions * (HEAL_PER_POTION + S.hero.stats.luck) * (1 + 0.05 * charisma));
-      heal(heal);
+      if (gold > 0) gainGold(gold);   // gainGold сам учитывает goldEarned
+      const healAmount = Math.round(normalPotions * healBase * (1 + 0.05 * charisma));
+      heal(healAmount);
+      if (manaPotions > 0) reduceSkillCooldowns(manaPotions);
       const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
       const armorGain = shields * perShield;
       const headroom2 = S.hero.maxArmor - S.hero.armor;
@@ -2262,7 +2352,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         }
         return cell;
       });
-      flash('⚔️ Рывок: собрано края (+' + heal + ' HP, +' + lockArmor + ' брони, +' + gold + ' золота)');
+      compactBoardAndRefill();
+      if (!hasLegalChain(S.board)) ensureChainable();
+      flash('⚔️ Рывок: собрано края (+' + healAmount + ' HP, +' + lockArmor + ' брони, +' + gold + ' золота)');
     }
   }
 
@@ -2284,6 +2376,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S.hero.xp += amount;
     S.hero.xpLevelCum += amount;
     return amount;
+  }
+
+  // Mana potions: снять по 1 с самых длинных кулдаунов.
+  function reduceSkillCooldowns(count) {
+    let left = count;
+    while (left > 0) {
+      const cdIds = Object.keys(S.skillCooldowns).filter(id => S.skillCooldowns[id] > 0);
+      if (cdIds.length === 0) break;
+      const longest = cdIds.reduce((a, b) => (S.skillCooldowns[a] > S.skillCooldowns[b] ? a : b));
+      S.skillCooldowns[longest] = Math.max(0, S.skillCooldowns[longest] - 1);
+      left--;
+    }
+    return count - left;
   }
 
   function heal(amount) {
@@ -2399,8 +2504,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         // Lich phylactery: collecting the box grants 25 gold and removes it.
         if (s.type === 32 && s.phylactery) {
           S.board[idx] = { type: 'empty' };
+          S.skullsKilled++;
+          registerSkullEnd(s);   // сбор филактерия — это и есть убийство Лича
+          result.kills++;
+          result.xpGained += XP_PER_BOSS;
           gainGold(25);
           result.goldGained += 25;
+          audioKill();
           log('💀 Филактерий Лича: +25 золота');
           flash('💀 Филактерий: +25 золота');
           return;
@@ -2489,7 +2599,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           }
           const xp = isBoss ? XP_PER_BOSS : (S.xpPerSkull || XP_PER_SKULL);
           result.xpGained += xp;
-          if (S.stealActive > 0) result.goldGained += 4;
+          if (S.stealActive > 0) { gainGold(4); result.goldGained += 4; }
           // Золотой (3): убит до конца таймера — +40 золота
           if (s.type === 3) {
             gainGold(40);
@@ -2528,26 +2638,38 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           }
         }
       }
+      // Смерть от эффектов цепочки: Last Stand имеет право спасти, и только
+      // после этого — game over. Остальные эффекты цепочки уже не применяем.
+      const chainDeathCheck = () => {
+        if (S.hero.hp > 0) return false;
+        if (lastStandTriggerIfNeeded()) return false;
+        gameOver();
+        return true;
+      };
       // Spiky (2): отдача — игрок получает сумма урона по Spiky (armor bypass)
+      let chainDead = false;
       if (spikyReflect > 0) {
         S.hero.hp = Math.max(0, S.hero.hp - spikyReflect);
         flash('🛡 Острый: возвращено ' + spikyReflect + ' HP');
         floatOn('💥 -' + spikyReflect, 'hurt');
-        if (S.hero.hp <= 0) gameOver();
+        chainDead = chainDeathCheck();
       }
       // Burned tiles (Flaming 7): собранные обгоревшие клетки — урон героям (armor bypass)
-      let burnDamage = 0;
-      (S._lastChainCells || []).forEach(idx => {
-        const c = S.board[idx];
-        if (c && typeof c.burn === 'number' && c.burn > 0) burnDamage += c.burn;
-      });
-      if (burnDamage > 0) {
-        S.hero.hp = Math.max(0, S.hero.hp - burnDamage);
-        flash('🔥 Пламя: −' + burnDamage + ' HP');
-        floatOn('💥 -' + burnDamage, 'hurt');
-        if (S.hero.hp <= 0) gameOver();
+      if (!chainDead) {
+        let burnDamage = 0;
+        (S._lastChainCells || []).forEach(idx => {
+          const c = S.board[idx];
+          if (c && typeof c.burn === 'number' && c.burn > 0) burnDamage += c.burn;
+        });
+        if (burnDamage > 0) {
+          S.hero.hp = Math.max(0, S.hero.hp - burnDamage);
+          flash('🔥 Пламя: −' + burnDamage + ' HP');
+          floatOn('💥 -' + burnDamage, 'hurt');
+          chainDead = chainDeathCheck();
+        }
       }
       if (result.dmgShown > 0) floatOn('💥 ' + result.dmgShown, 'hurt');
+      if (chainDead) return result;
     }
 
     // --- shields ---
@@ -2626,7 +2748,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
         flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
         floatOn('💥 -' + acidDmg, 'hurt');
-        if (S.hero.hp <= 0) gameOver();
+        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
+          gameOver();
+          return result;
+        }
       }
       // Обычное зелье лечит и снимает яд, кроме случая, когда Poisonous ещё на поле.
       const poisonousPresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 9);
@@ -2680,6 +2805,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S.chainCount++;
     S.selected = [];
     S.chainType = null;
+    const runId = RUN_ID;
     renderChainLine();
     renderChainTip();
 
@@ -2730,6 +2856,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S._chainOrder = chain.slice();
 
     setTimeout(() => {
+      // Рестарт во время анимации: старая цепочка не должна резолвиться
+      // в новый забег.
+      if (runId !== RUN_ID) return;
       // --- основная цепочка ---
       S._lastChainCells = chain.slice();
       S._potionIdxs = [];
@@ -2776,12 +2905,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         runeInterior.forEach(idx => { const c = S.board[idx]; if (c && c.type === 'potion') runePotions.push(idx); });
         const savedBurnCells = S._lastChainCells;
         S._lastChainCells = [];
-        const res2 = applyChainEffects(swords, shields, coins, potions, runeSk, chain.length >= 10, new Set(), runePotions);
+        // Руна бьёт черепов внутри мечами самой цепочки: у интерьера своих
+        // мечей может не быть, и тогда урон был бы нулевым.
+        const res2 = applyChainEffects(swordCount, shields, coins, potions, runeSk, chain.length >= 10, new Set(), runePotions);
         S._lastChainCells = savedBurnCells;
         runeXp += res2.xpGained;
         runeKills = res2.kills;
-        // получить эффекты: закрыть все интерьерные клетки
-        S.board = S.board.map((cell, i) => runeInterior.includes(i) ? { type: 'empty' } : cell);
+        // Закрываем интерьер, но выжившего черепа оставляем на доске —
+        // иначе он молча исчезал без убийства, XP и трофея.
+        S.board = S.board.map((cell, i) => {
+          if (!runeInterior.includes(i)) return cell;
+          if (cell && cell.type === 'skull' && cell.skull && cell.skull.hp > 0) return cell;
+          return { type: 'empty' };
+        });
         S._runePathSet = new Set(chain);
         S._chainOrder = chain.slice();
       }
@@ -2797,11 +2933,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       });
 
       // xp + bonus XP (classic): каждый лишний череп сверх трёх убитых этим ходом даёт шанс бонуса
+      const totalKills = result.kills + (typeof runeKills === 'number' ? runeKills : 0);
+      S.killsThisTurn = totalKills;
       if (result.xpGained > 0 || runeXp > 0) {
         gainXp(result.xpGained + runeXp);
-        if (S.leech > 0) heal(S.leech * (result.dmgShown));
-        const totalKills = result.kills + (typeof runeKills === 'number' ? runeKills : 0);
-      S.killsThisTurn = totalKills;
         const extraKills = Math.max(0, totalKills - 3);
         if (extraKills > 0 && totalKills > 0) {
           let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.strength + 0.05 * S.hero.stats.charisma;
@@ -2814,7 +2949,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         log(`⚔ ${result.xpGained + runeXp} XP за ${S.skullsKilled} черепа`);
       }
 
-      // реген leech за damage dealt уже применено
+      // Leech («Сок»): лечит за нанесённый урон, даже если череп не убит.
+      if (S.leech > 0 && result.dmgShown > 0) heal(S.leech * result.dmgShown);
 
       // refill: gravity + skulls enter from the top (new enemies cannot
       // attack until the next turn — enteredTurn tag)
@@ -2832,9 +2968,26 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
       // enemy phase
       setTimeout(() => {
+        if (runId !== RUN_ID) return;
         enemyPhase();
       }, 550);
     }, 420);
+  }
+
+  function awardKillXp(skull) {
+    gainXp(skull && skull.boss ? XP_PER_BOSS : (S.xpPerSkull || XP_PER_SKULL));
+  }
+
+  // Смерть в enemy phase: сначала Last Stand, только потом game over.
+  function enemyPhaseDeathCheck() {
+    if (S.hero.hp > 0) return false;
+    lastStandTriggerIfNeeded();
+    if (S.hero.hp > 0) return false;
+    renderBoard();
+    renderHUD();
+    gameOver();
+    S.resolving = false;
+    return true;
   }
 
   function enemyPhase() {
@@ -2842,6 +2995,15 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     // spawned this turn — only they do damage (enemy phase at the START of the turn)
     const living = S.board.filter(c => c && c.type === 'skull' && (c.skull.enteredTurn || 0) < S.turn);
     const poisonousPresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 9);
+
+    // Яд тикает в начале хода врага — до того, как Poisonous успеет наложить
+    // новый яд (иначе первый ход бьёт дважды: атакой и ядом).
+    if (S.poison > 0) {
+      S.hero.hp = Math.max(0, S.hero.hp - S.poison);
+      floatOn('☠️ -' + S.poison, 'hurt');
+      flash('☠️ Яд: −' + S.poison + ' HP');
+      if (enemyPhaseDeathCheck()) return;
+    }
 
     // Fire Breath: burned skulls take base damage at the start of the enemy phase (Dragonkin)
     const baseDmg = baseDamage();
@@ -2855,6 +3017,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           if (idx >= 0) S.board[idx] = { type: 'empty' };
           S.skullsKilled++;
           registerSkullEnd(s);
+          awardKillXp(s);
           audioKill();
         }
       }
@@ -2883,6 +3046,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           if (idx >= 0) S.board[idx] = { type: 'empty' };
           S.skullsKilled++;
           registerSkullEnd(s);
+          awardKillXp(s);
         }
       }
     });
@@ -2897,10 +3061,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       });
     }
 
-    // Last Stand (Paladin): при смерти этого хода — полное лечение
-    if (lastStandTriggerIfNeeded()) {
-      // герой выжил — продолжаем ход
-    }
+    // Last Stand (Paladin): при смерти этого хода — полное лечение.
+    // Если герой всё равно мёртв, реген НЕ должен его воскрешать.
+    if (enemyPhaseDeathCheck()) return;
 
     // regenerate (Priest perk Faithful: double effect)
     if (S.regen > 0) {
@@ -2923,6 +3086,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         S.board[targetIndex] = { type: 'empty' };
         S.skullsKilled++;
         registerSkullEnd(skull);
+        awardKillXp(skull);
         audioKill();
         const message = `🐺 Калечение Вервольфа: уничтожен 1 старый обычный череп с минимальным HP (${skull.hp} < броня ${S.hero.armor}); максимум один за ход.`;
         log(message);
@@ -2995,8 +3159,17 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
     const armorHit = Math.min(S.hero.armor, amount);
     const defilerPresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 29);
-    // Defiler short-circuits durability RNG: every blocked point loses one armor.
-    const loss = defilerPresent ? armorHit : Math.round(armorHit * (1 - S.durability));
+    // Стойкость — вероятность сохранить КАЖДЫЙ пункт брони (см. BASE_DURABILITY),
+    // а не доля с округлением: иначе при 50% атака в 1 всегда снимает броню.
+    let loss = 0;
+    if (defilerPresent) {
+      // Defiler short-circuits durability: every blocked point loses one armor.
+      loss = armorHit;
+    } else {
+      for (let k = 0; k < armorHit; k++) {
+        if (!chance(S.durability)) loss++;
+      }
+    }
     S.hero.armor = Math.max(0, S.hero.armor - loss);
     const overflow = amount - armorHit;
     if (overflow > 0) {
@@ -3083,7 +3256,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const wrap = el('modal');
     if (wrap) wrap.classList.remove('show');
     S.pendingModal = null;
-    setTimeout(() => { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); checkTrophy(); }, 80);
+    const runId = RUN_ID;
+    setTimeout(() => {
+      if (runId !== RUN_ID) return;
+      checkLevelUp(); checkGoldBox(); checkUpgradeBar(); checkTrophy();
+    }, 80);
   }
 
   // --- особые черепа: особенности по тапу на спец/босс ---
@@ -3166,10 +3343,18 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function checkTrophy() {
     if (S.over || S.pendingModal) return;
     if (S.pendingTrophy) return;
-    if (S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN) return;
     if (S.specialsKilled < TROPHY_KILLS_PER_TROPHY) return;
     S.specialsKilled = 0;
-    S.pendingTrophy = computeTrophyOutcome();
+    let outcome = computeTrophyOutcome();
+    // Лимит разблокировок за забег не должен полностью отключать трофеи:
+    // после него падает только шанс нового класса, а уровень класса растёт.
+    if (S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN && outcome.kind === 'unlock') {
+      const cls = CLASS_BY_ID[S.classId];
+      const clsName = cls ? cls.name : S.classId;
+      const nextLvl = (classLevelOf(S.classId) || 1) + 1;
+      outcome = { kind: 'levelup', clsId: S.classId, text: '⬆ Класс «' + clsName + '» поднялся на ур. ' + nextLvl + '! (лимит разблокировок)' };
+    }
+    S.pendingTrophy = outcome;
     openModal('trophy');
   }
   function claimTrophy() {
@@ -3195,14 +3380,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     // выборе 2-из-4 на уровень, как обычный базальный навык).
     const skillSlotsLeft = Math.max(0, 4 - S.skills.length);
     const statOptions = shuffle([...STATS]).slice(0, 2);
-    const basalOptions = shuffle([...SKILLS].filter(sk => !S.skills.includes(sk.id)));
+    // Одноразовые навыки после использования не возвращаются в пул.
+    const availableSkill = sk => !S.skills.includes(sk.id) && !(S.usedSkillIds && S.usedSkillIds[sk.id]);
+    const basalOptions = shuffle([...SKILLS].filter(availableSkill));
     // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
     const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
     const uniqueOption = cls && cls.uniqueSkill
       ? UNIQUE_SKILLS.find(s => s.id === cls.uniqueSkill)
       : null;
     let skillOptions = [];
-    if (uniqueOption && !S.skills.includes(uniqueOption.id)) {
+    if (uniqueOption && availableSkill(uniqueOption)) {
       skillOptions.push(uniqueOption);
     }
     while (skillOptions.length < 2 && skillOptions.length < skillSlotsLeft && basalOptions.length > 0) {
@@ -3394,9 +3581,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function gameOver() {
+    if (S.over) return;
     S.over = true;
     audioGameOver();
-    setTimeout(() => openModal('gameover'), 600);
+    const runId = RUN_ID;
+    setTimeout(() => { if (runId === RUN_ID) openModal('gameover'); }, 600);
   }
 
   function flashOn(idx, text) {
@@ -3464,13 +3653,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function applySpecialAbilities() {
     // Flame marks suppress duplicate hits only within one activation pass.
     S.board.forEach(c => { if (c && c.type === 'skull' && c.skull) c.skull._flamedThisTurn = false; });
-    // Яд: каждый ход до исцеления (Poisonous)
-    if (S.poison > 0) {
-      S.hero.hp = Math.max(0, S.hero.hp - S.poison);
-      floatOn('☠️ -' + S.poison, 'hurt');
-      flash('☠️ Яд: −' + S.poison + ' HP');
-    }
-
+    // Яд тикает в начале enemyPhase (см. enemyPhase), чтобы не бить дважды
+    // в ход, когда Poisonous только что наложил его.
     const abilityDone = new Set();
     for (let i = 0; i < CELL_COUNT; i++) {
       const cell = S.board[i];
