@@ -440,8 +440,10 @@
       comparison: `${itemNumber(key, before)} → ${itemNumber(key, before + value)}` };
   }
   function applyUpgradeOffer(offer) {
-    const item = S.equipment.find(entry => entry.slot === offer.slot);
-    if (!item || !ITEM_STAT[offer.key]) return false;
+    const item = S.equipment.find(entry => entry.slot === offer?.slot);
+    // An upgrade only adds to this item. Trade-offs belong to shop generation;
+    // reductions by Devourer use their separate path below.
+    if (!item || !ITEM_KEYS.includes(offer.key) || !Number.isFinite(offer.value) || offer.value <= 0) return false;
     addItemModifier(item, offer.key, offer.value);
     updateEquipmentStats();
     return true;
@@ -2962,7 +2964,7 @@
 
     if (kind === 'level') {
       title.textContent = '⬆ УРОВЕНЬ!';
-      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений</p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений и подтверди. Повторный тап по выбранной карточке снимает выбор.</p>';
       const options = chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
@@ -2971,7 +2973,7 @@
       renderEquipChoices(body);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений надетых вещей. Бонус останется на выбранном предмете.</p>';
+      body.innerHTML = '<p class="modal-hint">Добавь бонус одной из 4 надетых вещей. Остальные её параметры не меняются.</p>';
       renderUpgradeChoices(body);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
@@ -3180,20 +3182,53 @@
 
   function renderLevelChoices(options, body) {
     S.menuCandidates = options;
+    const runId = RUN_ID;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Два улучшения уровня');
     const picked = new Set();
+    let committed = false;
+    const actions = document.createElement('div');
+    actions.className = 'lv-actions';
     const choiceRow = document.createElement('div');
+    choiceRow.id = 'level-choice-status';
     choiceRow.className = 'lv-status';
-    choiceRow.textContent = 'Выбери 2 из 4 (0/2)';
-    body.appendChild(choiceRow);
+    choiceRow.setAttribute('role', 'status');
+    choiceRow.setAttribute('aria-live', 'polite');
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'btn lv-confirm';
+    confirm.textContent = 'Подтвердить';
+    confirm.setAttribute('aria-describedby', 'level-choice-status');
 
+    function isCurrent() {
+      return !committed && runId === RUN_ID && !S.over
+        && S.pendingModal === 'level' && S.menuCandidates === options;
+    }
     function mark() {
-      choiceRow.textContent = `Выбери 2 из 4 (${picked.size}/2)`;
+      choiceRow.textContent = `Выбрано ${picked.size} из 2`;
+      confirm.disabled = picked.size !== 2;
       grid.querySelectorAll('.lv-card').forEach((node, i) => {
-        node.classList.toggle('picked', picked.has(i));
+        const selected = picked.has(i);
+        node.classList.toggle('picked', selected);
+        node.setAttribute('aria-pressed', String(selected));
+        node.disabled = picked.size === 2 && !selected;
       });
     }
+    confirm.addEventListener('click', () => {
+      if (!isCurrent() || picked.size !== 2) return;
+      committed = true;
+      confirm.disabled = true;
+      // Only the final draft is applied, once, in its selection order.
+      picked.forEach(idx => {
+        const option = options[idx];
+        if (STATS.includes(option)) option.apply();
+        else installSkillOption(option);
+      });
+      S.hero.xpNext = 100;
+      closeModal(); renderBoard(); renderHUD(); audioLevel();
+    });
 
     options.forEach((opt, i) => {
       const isStat = STATS.includes(opt);
@@ -3225,34 +3260,22 @@
           </span>`;
       }
       btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'level' || S.menuCandidates !== options || picked.size >= 2) return;
-        if (picked.has(i)) {
-          picked.delete(i);
-          mark();
-          return;
-        } else {
+        if (!isCurrent()) return;
+        if (picked.has(i)) picked.delete(i);
+        else {
+          if (picked.size >= 2) return;
           picked.add(i);
           audioPick();
-          mark();
-          if (picked.size === 2) {
-            // Preserve click order; a prepared skill is not initialised twice.
-            picked.forEach(idx => {
-              const option = options[idx];
-              if (STATS.includes(option)) option.apply();
-              else installSkillOption(option);
-            });
-            S.hero.xpNext = 100;
-            closeModal();
-            renderBoard();
-            renderHUD();
-            audioLevel();
-          }
         }
         mark();
       });
       grid.appendChild(btn);
     });
     body.appendChild(grid);
+    actions.appendChild(choiceRow);
+    actions.appendChild(confirm);
+    body.appendChild(actions);
+    mark();
   }
 
   function noteCompatibility(message) {

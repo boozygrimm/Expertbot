@@ -320,6 +320,17 @@ body { display: flex; align-items: stretch; justify-content: center; }
 /* --- LEVEL UP / SHOP / UPGRADE modals (classic parity) --- */
 .lv-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
 .lv-status { text-align: center; font-size: 13px; font-weight: 800; color: #b9f0a8; margin: 6px 0 8px; }
+.lv-actions {
+  position: sticky; bottom: -14px; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #1d142e; border-top: 1px solid #665078;
+  padding: 10px 2px; margin-top: 8px; box-shadow: 0 -6px 12px rgba(15,8,24,.6);
+}
+.lv-actions .lv-status { margin: 0; text-align: left; font-size: 12px; }
+.lv-confirm { flex: none; margin-top: 0; min-height: 44px; }
+.lv-confirm:disabled { opacity: .45; cursor: default; }
+.lv-confirm:disabled:active { transform: none; }
+.modal.level .modal-card { scroll-padding-block: 12px 84px; }
 .lv-card {
   display: flex; align-items: center; gap: 12px; text-align: left;
   border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
@@ -330,6 +341,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .lv-card:hover { border-color: #8a5fb0; }
 .lv-card:active { transform: scale(0.98); }
 .lv-card.picked { border-color: #b9f0a8; box-shadow: 0 0 16px rgba(185,240,168,0.45); background: linear-gradient(160deg, #2e4a26, #1d2c1a); }
+.lv-card:disabled { opacity: .65; cursor: default; }
+.lv-card:disabled:hover { border-color: #4a3a68; }
+.lv-card:disabled:active { transform: none; }
+.lv-card:focus-visible, .lv-confirm:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .lv-icon-box {
   position: relative; width: 64px; height: 58px; flex-shrink: 0;
   display: grid; place-items: center;
