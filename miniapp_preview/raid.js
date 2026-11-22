@@ -11,7 +11,7 @@
   // ============================================================
   const COLS = 6, ROWS = 6, CELL_COUNT = COLS * ROWS;
   const START_SKULLS = [3, 4];
-  const START_HP = 60, START_MAX_ARMOR = 15;
+  const START_HP = 50, START_MAX_ARMOR = 4;
 
   // --- формулы урона (классика) ---
   // Урон цепочки со мечом: (база + сила + рост «Урона» + наследник класса)
@@ -19,7 +19,7 @@
   // Пробитие брони (pierce) — вероятность, что атака игнорирует оборону черепа.
   // DPS по черепу = суммарный урон; применяется сначала к обороны, потом к HP.
   // (не путать с бронёй героя, где работает «долговечность»)
-  const BASE_DAMAGE = 0;           // базовый урон без мечей (сила/рост Урона — выше основного)
+  const BASE_DAMAGE = 3;           // базовый урон без мечей (по исходной спецификации)
   const HP_PER_SHIELD_ARMOR = 1;   // базовая броня за щит (+ точность + 2 × защита)
   const SHIELD_UPGRADE_POINTS = 8; // очки upgrade bar за каждый щит (калибровка клона)
   const HEAL_PER_POTION = 1;       // базовая лечение за зелье (+ удача)
@@ -227,6 +227,70 @@
     { id: 'spikes', name: 'Шипы', icon: '🗡', desc: '+1 урон черепу за каждый бросок', apply: () => { S.spikes += 1; } },
     { id: 'weapon', name: 'Оружие', icon: '⚔', desc: '+1 урон оружия', apply: () => { S.hero.weaponDamage += 1; } },
   ];
+  function upgradePreview(opt) {
+    const h = S.hero, st = h.stats;
+    const pct = n => Math.round(n * 100) + '%';
+    switch (opt.id) {
+      case 'pierce': return `Пробитие черепов: ${pct(S.pierce)} → ${pct(Math.min(1, S.pierce + 0.10))}`;
+      case 'armor': return `Макс. броня: ${fmt(h.maxArmor)} → ${fmt(h.maxArmor + 3)}; сейчас: ${fmt(h.armor)} → ${fmt(h.armor + 3)}`;
+      case 'base': return `Базовый урон: ${fmt(baseDamage())} → ${fmt(baseDamage() + 1)}`;
+      case 'blunt': return `Урон каждого черепа: −${fmt(S.blunt)} → −${fmt(S.blunt + 1)}`;
+      case 'dex_up': return `Точность: ${fmt(st.dexterity)} → ${fmt(st.dexterity + 1)}; броня за щит +1`;
+      case 'gold_up': return `Золото за монету: ${S.goldPerCoin.toFixed(2)} → ${(S.goldPerCoin + 0.25).toFixed(2)}`;
+      case 'luck_up': return `Удача: ${fmt(st.luck)} → ${fmt(st.luck + 1)}; лечение зелий +1`;
+      case 'str_up': return `Сила: ${fmt(st.strength)} → ${fmt(st.strength + 1)}; базовый урон +1`;
+      case 'up_up': return `Очки апгрейда за щит: ${fmt(S.upgradePerShield)} → ${fmt(S.upgradePerShield + 1)}`;
+      case 'vit_up': return `Живучесть: ${fmt(st.vitality)} → ${fmt(st.vitality + 1)}; макс. HP: ${fmt(h.maxHp)} → ${fmt(h.maxHp + 5)}`;
+      case 'xp_up': return `Опыт за обычного черепа: ${S.xpPerSkull.toFixed(2)} → ${(S.xpPerSkull + 0.25).toFixed(2)}`;
+      case 'durability': return `Стойкость брони: ${pct(S.durability)} → ${pct(Math.min(MAX_DURABILITY, S.durability + 0.10))}`;
+      case 'leech': return `Возврат урона лечением: ${pct(S.leech)} → ${pct(S.leech + 0.05)}`;
+      case 'quicken': return `Сокращение кулдаунов: ${fmt(S.quicken)} → ${fmt(S.quicken + 1)}`;
+      case 'regen': return `Лечение в конце хода: ${fmt(S.regen)} → ${fmt(S.regen + 1)} HP`;
+      case 'repair': return `Броня за щит: ${fmt(perShield())} → ${fmt(perShield() + 1)}`;
+      case 'spikes': return `Ответный урон черепам: ${fmt(S.spikes)} → ${fmt(S.spikes + 1)}`;
+      case 'weapon': return `Урон каждого меча: ${fmt(h.weaponDamage)} → ${fmt(h.weaponDamage + 1)}`;
+      default: return opt.desc || '';
+    }
+  }
+
+  function equipPreview(opt) {
+    const h = S.hero;
+    if (opt.eff === 'hp') return `Макс. HP: ${fmt(h.maxHp)} → ${fmt(h.maxHp + opt.value)}; текущее HP: ${fmt(h.hp)} → ${fmt(h.hp + opt.value)}`;
+    if (opt.eff === 'dmg') return `Урон каждого меча: ${fmt(h.weaponDamage)} → ${fmt(h.weaponDamage + opt.value)}`;
+    if (opt.eff === 'def') return `Макс. броня: ${fmt(h.maxArmor)} → ${fmt(h.maxArmor + opt.value)}; текущая броня: ${fmt(h.armor)} → ${fmt(h.armor + opt.value)}`;
+    return opt.desc || '';
+  }
+
+  function renderCharacterSummary(panel) {
+    const h = S.hero, st = h.stats;
+    const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
+    const rows = [
+      ['Класс', cls.name + ' · ' + (cls.raceName || cls.race)],
+      ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
+      ['Броня', `${fmt(h.armor)} / ${fmt(h.maxArmor)}`],
+      ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
+      ['Сила / Урон', `${fmt(st.strength)} / ${fmt(st.damage)}`],
+      ['Точность / Защита', `${fmt(st.dexterity)} / ${fmt(st.defense)}`],
+      ['Живучесть / Удача / Хитрость', `${fmt(st.vitality)} / ${fmt(st.luck)} / ${fmt(st.charisma)}`],
+      ['Броня за щит', `${fmt(perShield())}; +${fmt(S.upgradePerShield)} очков апгрейда`],
+      ['Лечение за зелье', `${fmt(HEAL_PER_POTION + st.luck)} HP`],
+      ['Золото за монету / опыт за черепа', `${S.goldPerCoin.toFixed(2)} / ${S.xpPerSkull.toFixed(2)}`],
+      ['Пробитие / стойкость брони', `${Math.round(S.pierce*100)}% / ${Math.round(S.durability*100)}%`],
+      ['Регенерация / ответный урон', `${fmt(S.regen)} HP/ход / ${fmt(S.spikes)}`],
+      ['Навыки', S.skills.length ? S.skills.map(id => (SKILL_BY_ID[id] || {}).name || id).join(', ') : 'пока нет'],
+    ];
+    panel.innerHTML = '<p class="summary-hint">Итоговые параметры с учётом выбранных улучшений и снаряжения.</p>';
+    const list = document.createElement('div');
+    list.className = 'character-summary-list';
+    rows.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'character-summary-row';
+      row.innerHTML = `<span>${label}</span><b>${value}</b>`;
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+  }
+
   // --- магазин предметов (классика: золото → 1 из 4 предметов) ---
   // 3 предмета + 1 пустой слот (как в оригинале). Эффект: «name + effect»
   const EQUIP = [
@@ -290,7 +354,7 @@
     { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste',
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
-      raceDesc: 'Калечение: в конце твоего хода убивает обычных черепов, если их HP меньше твоей брони.',
+      raceDesc: 'Калечение: в конце твоего хода убивает не более одного старого обычного черепа с HP ниже твоей брони.',
       clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
       uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
   ];
@@ -416,13 +480,13 @@
         maxHp: START_HP,
         armor: START_MAX_ARMOR,
         maxArmor: START_MAX_ARMOR,
-        weaponDamage: 3,
+        weaponDamage: 2,
         level: 1,
         xp: 0,
         xpNext: 10,
         gold: 0,
         goldBox: 0,
-        stats: { strength: 0, vitality: 0, luck: 0, dexterity: 0, charisma: 0, damage: 0, defense: 0 },
+        stats: { strength: 1, vitality: 1, luck: 1, dexterity: 1, charisma: 0, damage: 0, defense: 0 },
       },
       skills: [],                  // active skill ids (class-unique + chosen in level-ups)
       skillCooldowns: {},         // id -> turns remaining (cooldowns may be reduced by Quicken)
@@ -926,11 +990,15 @@
       }
       // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
       cellEl.classList.toggle('frozen', !!cell.frozen);
-      const crippleTarget = S.classId === 'assassin' && !s.special && !s.boss
+      const crippleCandidate = S.classId === 'assassin' && !s.special && !s.boss
         && (s.enteredTurn || 0) < S.turn && s.hp > 0 && s.hp < S.hero.armor;
+      const crippleTarget = crippleCandidate && S.board
+        .filter(c => c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss
+          && (c.skull.enteredTurn || 0) < S.turn && c.skull.hp > 0 && c.skull.hp < S.hero.armor)
+        .sort((a, b) => a.skull.hp - b.skull.hp)[0]?.skull === s;
       cellEl.classList.toggle('cripple-target', !!crippleTarget);
       cellEl.title = crippleTarget
-        ? `🐺 Калечение: HP ${s.hp} ниже брони ${S.hero.armor} — череп исчезнет в конце хода.`
+        ? `🐺 Калечение: выбран самый слабый старый обычный череп (HP ${s.hp} < броня ${S.hero.armor}); не более одного за ход.`
         : '';
       if (img.parentNode !== cellEl) cellEl.appendChild(img);
       // badge: reuse the same element — only the numbers change in place
@@ -1021,7 +1089,7 @@
   function baseDamage() {
     // Классика: урон = база (+Сила + 2×Урон + Ускорение) + оружие × (число мечей)
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    return S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
+    return BASE_DAMAGE + S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
   }
   function swordDamage(swordCount) {
     return Math.round(baseDamage() + S.hero.weaponDamage * swordCount);
@@ -2188,25 +2256,23 @@
       heal(cls && cls.perk === 'Faithful' ? S.regen * 2 : S.regen);
     }
 
-    // Cripple (Werewolf/Assassin): enemies with less HP than armor die at end of turn
+    // Cripple (Werewolf/Assassin): at most one old ordinary skull under armor dies per turn.
     if (S.classId && CLASS_BY_ID[S.classId].race === 'Werewolf') {
-      let crippled = 0;
+      // Exclude this-turn spawns, special skulls, and bosses; choose the weakest eligible target.
+      let targetIndex = -1;
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        // Original order runs ProcessCripples before MoveMatchedTiles; this clone spawns first.
-        // Only old ordinary skulls qualify (not this-turn spawns, specials, or bosses).
         if (c && c.type === 'skull' && !c.skull.special && !c.skull.boss
-            && (c.skull.enteredTurn || 0) < S.turn
-            && c.skull.hp > 0 && c.skull.hp < S.hero.armor) {
-          S.board[i] = { type: 'empty' };
-          S.skullsKilled++;
-          registerSkullEnd(c.skull);
-          audioKill();
-          crippled++;
-        }
+            && (c.skull.enteredTurn || 0) < S.turn && c.skull.hp > 0 && c.skull.hp < S.hero.armor
+            && (targetIndex < 0 || c.skull.hp < S.board[targetIndex].skull.hp)) targetIndex = i;
       }
-      if (crippled > 0) {
-        const message = `🐺 Калечение Вервольфа: уничтожено обычных черепов — ${crippled} (их HP ниже твоей брони ${S.hero.armor}).`;
+      if (targetIndex >= 0) {
+        const skull = S.board[targetIndex].skull;
+        S.board[targetIndex] = { type: 'empty' };
+        S.skullsKilled++;
+        registerSkullEnd(skull);
+        audioKill();
+        const message = `🐺 Калечение Вервольфа: уничтожен 1 старый обычный череп с минимальным HP (${skull.hp} < броня ${S.hero.armor}); максимум один за ход.`;
         log(message);
         flash(message);
       }
@@ -2526,6 +2592,7 @@
         btn.innerHTML = `<span class="lv-chip" style="color:${opt.color}">${opt.chip}</span>
           <span class="lv-body">
             <span class="lv-name">+ ${opt.name}</span>
+            <span class="lv-desc">${opt.desc || ''}</span>
             <span class="lv-effs">${lines}</span>
           </span>`;
       } else {
@@ -2593,13 +2660,28 @@
   function renderEquipChoices(body) {
     // Магазин (классика): 3 предмета + 1 пустой слот.
     const options = shuffle([...EQUIP]).slice(0, 3);
+    const summaryBtn = document.createElement('button');
+    summaryBtn.type = 'button';
+    summaryBtn.className = 'btn secondary shop-summary-toggle';
+    summaryBtn.textContent = '📊 Итог персонажа';
     const grid = document.createElement('div');
     grid.className = 'shop-grid';
+    const summary = document.createElement('div');
+    summary.className = 'character-summary';
+    summary.hidden = true;
+    renderCharacterSummary(summary);
+    summaryBtn.addEventListener('click', () => {
+      const show = summary.hidden;
+      summary.hidden = !show;
+      grid.hidden = show;
+      summaryBtn.textContent = show ? '↩ К снаряжению' : '📊 Итог персонажа';
+    });
+    body.appendChild(summaryBtn);
     options.forEach(opt => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'shop-item';
-      btn.innerHTML = `<span class="shop-icon">${opt.icon}</span><span class="shop-name">${opt.name}</span><span class="shop-eff">${opt.desc}</span>`;
+      btn.innerHTML = `<span class="shop-icon">${opt.icon}</span><span class="shop-body"><span class="shop-name">${opt.name}</span><span class="shop-eff">${opt.desc}</span><span class="shop-preview">${equipPreview(opt)}</span></span>`;
       btn.addEventListener('click', () => {
         opt.apply();
         S.hero.gold = 0;
@@ -2616,6 +2698,7 @@
     empty.setAttribute('aria-hidden', 'true');
     grid.appendChild(empty);
     body.appendChild(grid);
+    body.appendChild(summary);
   }
 
   function renderUpgradeChoices(body) {
@@ -2630,6 +2713,7 @@
         <span class="lv-body">
           <span class="lv-name">${opt.name}</span>
           <span class="lv-desc">${opt.desc}</span>
+          <span class="lv-effs"><span class="lv-line">${upgradePreview(opt)}</span></span>
         </span>`;
       btn.addEventListener('click', () => {
         opt.apply();

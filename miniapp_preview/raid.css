@@ -518,3 +518,14 @@ body { display: flex; align-items: stretch; justify-content: center; }
 
 .cell.cripple-target { border-color: #f07a64 !important; box-shadow: inset 0 0 0 2px #f07a64, 0 0 12px rgba(240,122,100,.55) !important; }
 .cell.cripple-target::after { content: '🐺'; position: absolute; top: 1px; right: 2px; z-index: 5; font-size: 10px; line-height: 1; pointer-events: none; }
+
+/* Detailed effects and full character sheet inside shop choices. */
+.shop-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.shop-preview { display: block; color: #cfc8de; font-size: 10.5px; line-height: 1.35; }
+.shop-summary-toggle { display: block; width: 100%; margin: 6px 0 8px; }
+.character-summary { max-height: 58vh; overflow-y: auto; border: 1px solid #4a3a68; border-radius: 12px; padding: 10px; background: rgba(20,13,33,.72); }
+.summary-hint { color: #cdb8d0; font-size: 11px; line-height: 1.4; margin: 0 0 8px; text-align: center; }
+.character-summary-list { display: flex; flex-direction: column; gap: 4px; }
+.character-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid rgba(106,90,138,.35); padding: 4px 1px; font-size: 11px; line-height: 1.35; }
+.character-summary-row span { color: #cdb8d0; }
+.character-summary-row b { color: #ffe2a9; text-align: right; font-weight: 700; }
