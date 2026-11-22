@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#140e22">
-<meta name="raid-build" content="30c23b55ab1b">
+<meta name="raid-build" content="8a4b2d8f2a0a">
 <title>Lunapark · Рейд</title>
 <style>
 /* miniapp_preview/raid.css — пробник Рейда */
@@ -639,6 +639,39 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-trophy .ic { filter: drop-shadow(0 0 5px #c68a39); }
 .cell.type-trophy.frozen { border-color: #8fccef; }
 
+/* Next-run class configuration, deliberately separate from the reward modal. */
+.picker-main { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.picker-main .picker-grid { min-height: 180px; }
+.picker-main .picker-modes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.picker-main .picker-modes select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; font-size: 11px; }
+.picker-main #picker-resume { flex: none; min-height: 44px; margin: 0; }
+
+.picker-card { max-height: calc(100dvh - 40px); overflow-y: auto; }
+.picker-class { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.picker-class .picker-card-btn { width: 100%; flex: 1; }
+.class-config-btn { border: 1px solid #5f437a; border-radius: 8px; padding: 8px; min-height: 44px; background: #281a39; color: #e6d2f5; font: inherit; font-size: 12px; cursor: pointer; }
+.class-config-btn:hover { border-color: var(--gold); }
+.picker-card.editor-open { height: calc(100dvh - 40px); overflow: hidden; }
+.class-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+.class-editor-fields { min-height: 0; overflow-y: auto; padding: 2px 4px 16px; overscroll-behavior: contain; }
+.class-config-section { min-width: 0; border: 1px solid #5f437a; border-radius: 10px; padding: 10px; margin: 0 0 14px; }
+.class-config-section legend { padding: 0 5px; font-weight: 800; font-size: 14px; color: #ffe2a9; }
+.class-config-note { font-size: 12px; line-height: 1.45; color: #c1adce; margin: 6px 0 10px; overflow-wrap: anywhere; }
+.class-config-label { display: flex; flex-direction: column; gap: 5px; min-width: 0; margin: 8px 0; color: #e7d7ec; font-size: 12px; }
+.class-config-label select { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #79558c; border-radius: 8px; background: #1b1228; color: #f5e9ff; font: inherit; font-size: 14px; }
+.class-config-label select:disabled { opacity: .65; }
+.class-config-pair { border-top: 1px solid #49315b; padding-top: 4px; margin-top: 10px; }
+.class-editor-status { flex: none; min-height: 2.5em; margin: 0; color: #d4c38f; font-size: 12px; line-height: 1.3; }
+.class-editor-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; flex: none; }
+.class-editor-actions .btn { margin: 0; padding: 10px 8px; min-height: 44px; font-size: 13px; }
+.class-editor-actions .btn:disabled { opacity: .45; cursor: default; }
+.class-editor-actions .btn:disabled:active { transform: none; }
+.class-config-btn:focus-visible, .class-config-label select:focus-visible, .class-editor-actions .btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .class-editor-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .class-editor-actions #class-editor-save { grid-column: 1 / -1; }
+}
+
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */
 [hidden] { display: none !important; }
 
@@ -647,10 +680,11 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <body>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
-  <div class="picker-card">
+  <div class="picker-card" id="picker-card">
+    <div class="picker-main" id="class-picker-main">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="build-label">Сборка 30c23b55ab1b</p>
-    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: подбирай трофеи на поле после побед над особыми черепами.</p>
+    <p class="build-label">Сборка 8a4b2d8f2a0a</p>
+    <p class="picker-hint">Карточка — новый забег. Кнопка под ней — настройка класса, его способности и правила развития.</p>
     <div class="picker-modes">
       <label>Режим
         <select id="mode-select">
@@ -669,7 +703,20 @@ body { display: flex; align-items: stretch; justify-content: center; }
       </label>
     </div>
     <div class="picker-grid" id="picker-grid"></div>
-    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). У других классов уникальный навык предложат на уровне 2 (кроме Желания в Спринте); брать его необязательно. В Спринте новые навыки сразу 5 уровня, но выжить нужно 100 ходов.</p>
+    <button class="btn secondary" id="picker-resume" type="button" hidden>Вернуться в забег</button>
+    <p class="picker-foot">Авантюрист открыт сразу. Остальные классы открываются за трофеи на поле. Настройки действуют только на новые забеги.</p>
+    </div>
+    <section class="class-editor" id="class-editor" hidden aria-labelledby="class-editor-title">
+      <h3 class="picker-title" id="class-editor-title" tabindex="-1"></h3>
+      <p class="picker-hint" id="class-editor-hint"></p>
+      <div class="class-editor-fields" id="class-editor-fields"></div>
+      <p class="class-editor-status" id="class-editor-status" role="status" aria-live="polite"></p>
+      <div class="class-editor-actions">
+        <button class="btn secondary" id="class-editor-back" type="button">Назад</button>
+        <button class="btn secondary" id="class-editor-reset" type="button">По умолчанию</button>
+        <button class="btn" id="class-editor-save" type="button">Сохранить</button>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -750,9 +797,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
     <h3>⚔ Меню рейда</h3>
-    <p class="build-label">Сборка 30c23b55ab1b</p>
+    <p class="build-label">Сборка 8a4b2d8f2a0a</p>
     <button class="btn" id="menu-resume" type="button">Продолжить</button>
     <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
+    <button class="btn secondary" id="menu-classes" type="button">Классы и настройки</button>
     <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
     <button class="btn secondary" id="menu-close" type="button">Закрыть</button>
   </div>
@@ -771,7 +819,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="help-card">
     <h3>⚔ Как играть</h3>
     <p><b>Пробник классического Рейда</b> на своих графике и коде.</p>
-    <p class="build-label">Сборка 30c23b55ab1b</p>
+    <p class="build-label">Сборка 8a4b2d8f2a0a</p>
     <ul>
       <li>Смахни по 3+ клеток одной категории (меч/щит/монета/зелье).</li>
       <li>Череп идёт в цепочку с мечом/стрелой и сам может начинать её.</li>
@@ -783,6 +831,8 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения. На уровне отметь два варианта и нажми «Подтвердить»: до этого повторный тап снимает отметку, а награды ещё не применяются. Пока выбор не подтверждён, следующие награды и ход врагов ждут; остаток шкалы сохраняется.</li>
       <li>Руна: активируй навык и проведи контур из 4+ узлов с соседними концами. Подсвеченный интерьер собирается до основной цепочки: обычные черепа — без проверки HP/защиты, с опытом, но без счётчика убийств. Особые и боссы остаются (пунктирная подсветка).</li>
       <li>20% новых клеток — черепа; первый особый — после 50 ходов, затем интервал зависит от хода и сложности (1 из 32 типов, босс — тип 1). Первый трофей нового профиля — после одной победы над особым; далее интервал 20–30 переносится между забегами.</li>
+      <li>Каждый забег начинается без навыков. У остальных классов первый уникальный навык предложат на уровне героя 2 (кроме Желания в Спринте); брать его необязательно. Авантюрист выбирает из всех открытых навыков. В Спринте новые навыки сразу уровня 5, но выжить нужно 100 ходов.</li>
+      <li>Настройка класса — под его карточкой или через «Меню → Классы и настройки». Уровень класса растёт от трофеев, отдельно от уровня героя. На 3/7/9 открываются пары пассивов и изъянов, с 5 можно сменить расу, на чётных уровнях — заменить 2/4/6/8/10 навыков пула. Расы других классов открываются на их уровне 5, уникальные навыки — на 10. Основная пара и первый навык фиксированы; Авантюрист не настраивается. Изменения сохраняются в этом браузере и действуют только на следующие забеги.</li>
       <li>Трофей остаётся клеткой 🏆 на месте особого. Тапни по нему: откроется случайный закрытый класс или вырастет текущий (потолок 10). Подбор не тратит ход; замороженный трофей сначала нужно разморозить. На лёгком трофеев нет, в Спринте счётчик уменьшается с шансом 50/101; максимум 3 появления за забег, даже если трофеи не забрать.</li>
       <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Бывают и обмены: −1 к одному параметру ради двойного прироста другого, например +2 к урону оружия. Карточка показывает обе вещи, улучшения зелёным и ухудшения красным.</li>
       <li>Апгрейд только добавляет бонус конкретной надетой вещи: остальные её параметры не уменьшаются. Это не вечная прибавка персонажу. При следующей покупке учитываются все параметры надетой вещи; если их нет у замены — бонус исчезнет. В обоих меню можно посмотреть всю экипировку. «Ускорение навыков» не складывается с другим таким же предметом.</li>
@@ -1044,7 +1094,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const h = S.hero, st = h.stats;
     const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
     const rows = [
-      ['Класс', cls.name + ' · ' + (cls.raceName || cls.race)],
+      ['Класс', cls.name + ' · ' + RACE_INFO[clsRace()].name],
+      ['Пассивы', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
+      ['Изъяны', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
       ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
       ['Броня', `${fmt(h.armor)} / ${fmt(h.maxArmor)}`],
       ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
@@ -1146,7 +1198,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       name: 'Стартовое: ' + slot.name.toLowerCase(),
       mods: slot.id === 'weapon' ? { weaponDamage: 2 } : slot.id === 'accessory'
         ? { maxHp: S.mode === 'pretzel' ? 0 : 10 }
-        : { maxArmor: slot.id === 'armour' ? (clsFlaw() === 'Slim' ? 1 : 2) : 1 } }));
+        : { maxArmor: slot.id === 'armour' ? (hasFlaw('Slim') ? 1 : 2) : 1 } }));
   }
   function equipmentTotals() {
     const totals = {};
@@ -1173,7 +1225,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S.armorPerShield += delta('armorPerShield');
     for (const key of ['spikes', 'leech', 'weaponPoison', 'blunt', 'regen']) S[key] = Math.max(0, Number((S[key] + delta(key)).toFixed(2)));
     for (const key of ['xpPerSkull', 'goldPerCoin', 'upgradePerShield']) S[key] = 2 + next[key];
-    S.pierce = Math.min(.95, Number(((clsFlaw() === 'Cautious' ? .30 : .50) + next.pierce).toFixed(2)));
+    S.pierce = Math.min(.95, Number(((hasFlaw('Cautious') ? .30 : .50) + next.pierce).toFixed(2)));
     S.durability = Math.min(MAX_DURABILITY, Number((BASE_DURABILITY + next.durability).toFixed(2)));
     const quicken = next.quicken > 0 ? 1 : 0;
     if (quicken !== S.quicken) {
@@ -1211,7 +1263,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (key === 'maxHp') return S.mode === 'pretzel' ? 0 : 10;
     if (key === 'weaponPoison') return 2;
     if (key === 'pierce') return .10;
-    if (key === 'regen') return CLASS_BY_ID[S.classId]?.perk === 'Faithful' ? 2 : 1;
+    if (key === 'regen') return hasPerk('Faithful') ? 2 : 1;
     return ITEM_STAT[key]?.unit === .25 ? .25 : 1;
   }
   function itemUpgradeAllowed(key) {
@@ -1385,7 +1437,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function loadStoredClassId() {
     try {
       const raw = localStorage.getItem('raid:class');
-      return (raw && CLASS_BY_ID[raw]) ? raw : 'adventurer';
+      return (raw && classDefinition(raw)) ? raw : 'adventurer';
     } catch (e) { return 'adventurer'; }
   }
   // --- уровни классов (персистентные, localStorage) ---
@@ -1400,7 +1452,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       // попадёт в innerHTML карточки класса (и в арифметику levelUpClass).
       const clean = {};
       for (const id of Object.keys(obj)) {
-        if (!CLASS_BY_ID[id]) continue;
+        if (!classDefinition(id)) continue;
         const lvl = Number(obj[id]);
         if (Number.isFinite(lvl) && lvl >= 1) clean[id] = Math.min(10, Math.floor(lvl));
       }
@@ -1414,12 +1466,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function classLevelOf(id) { return (classLevels && classLevels[id]) || 0; }
   function isClassUnlocked(id) { return classLevelOf(id) >= 1; }
   function unlockClass(id) {
-    if (!CLASS_BY_ID[id]) return;
+    if (!classDefinition(id)) return;
     classLevels[id] = Math.max(1, classLevelOf(id));
     saveClassLevels();
   }
   function levelUpClass(id) {
-    if (!CLASS_BY_ID[id]) return;
+    if (!classDefinition(id)) return;
     if (!isClassUnlocked(id)) classLevels[id] = 1;
     else classLevels[id] = Math.min(10, (classLevelOf(id) || 1) + 1);   // original cap: level 10
     saveClassLevels();
@@ -1430,11 +1482,125 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return isClassUnlocked(selectedClassId) ? selectedClassId : 'adventurer';
   }
   function setSelectedClassId(id) {
-    if (!CLASS_BY_ID[id]) return;
+    if (!classDefinition(id)) return;
     if (!isClassUnlocked(id)) return;
     selectedClassId = id;
     try { localStorage.setItem('raid:class', id); } catch (e) {}
   }
+  // --- persistent class setup; the live run owns a separate frozen snapshot ---
+  const CLASS_CONFIG_KEY = 'raid:classConfigs';
+  const CLASS_PAIR_LEVELS = [1, 3, 7, 9];
+  const RACE_INFO = {
+    Human: { name: 'Человек', desc: 'Без расового бонуса и особого смертного врага.' },
+    Elf: { name: 'Эльф', desc: 'Яд на враге ослабляет его атаку. Смертный враг — Отравленный: пока он на поле, зелья не снимают яд героя.' },
+    Dwarf: { name: 'Дворф', desc: 'Удар снизу вверх по вертикальной цепочке усиливается. Смертный враг — Хаотический: блокирует другие прямые удары цепочкой.' },
+    Sauren: { name: 'Саурен', desc: 'Вдвое выше шанс розыгрыша свитка в магазине. Смертный враг — Вор: кража золота также ранит героя.' },
+    Faun: { name: 'Фавн', desc: 'При повышении уровня поднимает HP хотя бы до 25% максимума. Смертный враг — Убийца: может убрать клетку под собой и спуститься.' },
+    Orc: { name: 'Орк', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
+    Halfling: { name: 'Халфлинг', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
+    Werewolf: { name: 'Вервольф', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
+    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
+    Changeling: { name: 'Изменник', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
+  };
+  const CLASS_TRAITS = {
+    perks: Object.fromEntries([
+      ['Unexpected', { name: 'Неожиданность', desc: 'Первые 5 ходов враги пропускают общий залп' }],
+      ...CLASSES.filter(c => c.perk !== '—').map(c => [c.perk, { name: c.perkName, desc: c.perkDesc }]),
+    ]),
+    flaws: Object.fromEntries([
+      ['Confused', { name: 'Растерянность', desc: 'Первые 5 ходов прямой урон цепочкой блокируется' }],
+      ...CLASSES.filter(c => c.flaw !== '—').map(c => [c.flaw, { name: c.flawName, desc: c.flawDesc }]),
+    ]),
+  };
+  function classDefinition(id) {
+    return typeof id === 'string' && Object.hasOwn(CLASS_BY_ID, id) ? CLASS_BY_ID[id] : null;
+  }
+  function defaultClassConfig(id) {
+    const cls = classDefinition(id);
+    if (!cls) return null;
+    return { classId: id, race: cls.race,
+      perks: [cls.perk === '—' ? null : cls.perk, null, null, null],
+      flaws: [cls.flaw === '—' ? null : cls.flaw, null, null, null],
+      replacements: Array(20).fill(null) };
+  }
+  function classRules(id) {
+    const level = classDefinition(id) ? classLevelOf(id) : 0;
+    const editable = id !== 'adventurer' && level > 0;
+    return { level, editable, pairSlots: CLASS_PAIR_LEVELS.map(at => editable && level >= at),
+      canChangeRace: editable && level >= 5, replacementLimit: editable ? Math.floor(level / 2) * 2 : 0 };
+  }
+  function isRaceUnlocked(race) {
+    if (typeof race !== 'string' || !Object.hasOwn(RACE_INFO, race)) return false;
+    return race === 'Human' || CLASSES.some(c => c.race === race && classLevelOf(c.id) >= 5);
+  }
+  function isTraitUnlocked(kind, name) {
+    if (!Object.hasOwn(CLASS_TRAITS, kind) || typeof name !== 'string' || !Object.hasOwn(CLASS_TRAITS[kind], name)) return false;
+    return name === 'Unexpected' || name === 'Confused'
+      || CLASSES.some(c => (kind === 'perks' ? c.perk : c.flaw) === name && isClassUnlocked(c.id));
+  }
+  function classEditorInfo(id) {
+    const cls = classDefinition(id);
+    if (!cls) return null;
+    return { id, name: cls.name, ...classRules(id),
+      baseSkills: id === 'adventurer'
+        ? ALL_SKILLS.filter(s => s.native < 20).sort((a,b) => a.native-b.native).map(s => s.id) : [...cls.pool] };
+  }
+  // Loading is tolerant of external/old data. Whitelists, progression gates and
+  // fixed slots are enforced here too, not just by disabled browser controls.
+  function normaliseClassConfig(id, raw) {
+    const config = defaultClassConfig(id), rules = classRules(id);
+    if (!rules.editable || !raw || typeof raw !== 'object') return config;
+    if (rules.canChangeRace && isRaceUnlocked(raw.race)) config.race = raw.race;
+    for (const kind of ['flaws', 'perks']) {
+      const seen = new Set(config[kind].filter(Boolean));
+      for (let i = 1; i < 4; i++) {
+        const value = Array.isArray(raw[kind]) ? raw[kind][i] : null;
+        if (!rules.pairSlots[i] || !isTraitUnlocked(kind, value) || seen.has(value)) continue;
+        if (kind === 'perks' && !config.flaws[i]) continue;
+        config[kind][i] = value; seen.add(value);
+      }
+    }
+    let replacements = 0;
+    for (let i = 1; i < 20; i++) {
+      const value = Array.isArray(raw.replacements) ? raw.replacements[i] : null;
+      if (replacements >= rules.replacementLimit || value === CLASS_BY_ID[id].pool[i] || !isSkillUnlocked(value)) continue;
+      config.replacements[i] = value; replacements++;
+    }
+    return config;
+  }
+  function loadClassConfigs() {
+    const configs = {};
+    try {
+      const raw = JSON.parse(localStorage.getItem(CLASS_CONFIG_KEY));
+      if (raw?.version !== 1 || !raw.classes || typeof raw.classes !== 'object' || Array.isArray(raw.classes)) return configs;
+      for (const cls of CLASSES) if (Object.hasOwn(raw.classes, cls.id)) configs[cls.id] = normaliseClassConfig(cls.id, raw.classes[cls.id]);
+    } catch (e) { /* A broken or unavailable local profile must not block play. */ }
+    return configs;
+  }
+  let classConfigs = loadClassConfigs();
+  function getClassConfig(id) {
+    return classDefinition(id) ? normaliseClassConfig(id, classConfigs[id]) : null;
+  }
+  function saveClassConfig(id, raw) {
+    if (!classDefinition(id) || !classRules(id).editable || !raw || typeof raw !== 'object') return false;
+    const next = { ...classConfigs, [id]: normaliseClassConfig(id, raw) };
+    try { localStorage.setItem(CLASS_CONFIG_KEY, JSON.stringify({ version: 1, classes: next })); }
+    catch (e) { return false; }
+    classConfigs = next;
+    return true;
+  }
+  function runClassConfig(state = S) {
+    return state?.classConfig || defaultClassConfig(state?.classId || 'adventurer');
+  }
+  function hasPerk(name, state = S) { return typeof name === 'string' && name !== '—' && !!runClassConfig(state)?.perks.includes(name); }
+  function hasFlaw(name, state = S) { return typeof name === 'string' && name !== '—' && !!runClassConfig(state)?.flaws.includes(name); }
+  function clsRace(state = S) { return runClassConfig(state)?.race || 'Human'; }
+  function classSkillPool(state = S) {
+    if (state.classId === 'adventurer') return ALL_SKILLS.filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.id);
+    const config = runClassConfig(state), base = CLASS_BY_ID[state.classId].pool;
+    return [...new Set(base.map((id, i) => config.replacements[i] || id))].sort((a,b) => SKILL_BY_ID[a].native-SKILL_BY_ID[b].native);
+  }
+
   // concept-art sprites from the catalog (window.SKULL_ART injected by the build)
   const SKULL_ART = (typeof window !== 'undefined' && window.SKULL_ART) || {};
   // Рядовой череп — одна внешность; спец-черепы — другие (свои арты); босс — boss_lich
@@ -1495,6 +1661,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return {
       board: [],
       classId: 'adventurer',       // текущий класс забега (см. CLASSES)
+      classConfig: null,           // immutable next-run configuration snapshot
       mode: 'classic',             // classic | sprint | pretzel
       difficulty: 1,               // 0 Easy, 1 Normal, 2 Hard, 3 Harder
       skillLevels: {},             // skill id -> level (Sprint starts at 5)
@@ -1597,15 +1764,15 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // 5% of potions mana potions / 5% of swords arrows.
   // Perk/flaw decorations of a freshly generated resource tile.
   function decorateTile(t) {
-    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    if (t === 'shield' && cls && cls.flaw === 'Clumsy' && randInt(1, 100, 1) < 4) {
+
+    if (t === 'shield' && hasFlaw('Clumsy') && randInt(1, 100, 1) < 4) {
       S.brokenShields++;
       return { type: 'shield', broken: true };
     }
-    if (t === 'potion' && cls && cls.perk === 'Gifted' && randInt(1, 100, 1) < 6) {
+    if (t === 'potion' && hasPerk('Gifted') && randInt(1, 100, 1) < 6) {
       return { type: 'potion', mana: true };
     }
-    if (t === 'sword' && cls && cls.perk === 'Agile' && randInt(1, 100, 1) < 6) {
+    if (t === 'sword' && hasPerk('Agile') && randInt(1, 100, 1) < 6) {
       return { type: 'arrow' };
     }
     return { type: t };
@@ -1620,14 +1787,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function randSpecialType() {
     let type = randInt(1, 32, 1);
     const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
-    if (cls && cls.id !== 'adventurer' && randInt(1, 200, 1) <= (cls.perk === 'Intimidating' ? 5 : 10)) {
-      type = MORTAL_BY_RACE[cls.race];
+    if (cls && cls.id !== 'adventurer' && randInt(1, 200, 1) <= (hasPerk('Intimidating') ? 5 : 10)) {
+      type = MORTAL_BY_RACE[clsRace()];
     }
     return type;
   }
 
   function makeSkull(boss, special, typeId) {
-    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
+
     const effType = boss ? 1 : special ? (typeId != null ? typeId : randSpecialType()) : 0;
     boss = effType === 1;
     special = effType > 1;
@@ -1671,7 +1838,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const root = Math.fround(Math.sqrt(q));
       promotionInterval = randInt(Math.floor(Math.fround((difficulty >= 2 ? 150 : 200) / root)),
         Math.floor(Math.fround(300 / root)), 1) + (difficulty === 0 ? 5 : 0);
-      if (cls && cls.flaw === 'Zealous') promotionInterval = Math.max(1, promotionInterval - 1);
+      if (hasFlaw('Zealous')) promotionInterval = Math.max(1, promotionInterval - 1);
     } else {
       random(1);
     }
@@ -1692,20 +1859,20 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
     // Halfling's mortal enemy (Invisible): while it is alive, every other
     // generated monster gets double armour.
-    if (cls && cls.race === 'Halfling' && S && S.board && effType !== 5
+    if (clsRace() === 'Halfling' && S && S.board && effType !== 5
         && S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 5 && c.skull.hp > 0)) {
       def *= 2;
     }
     // Оригинал (Tile::GenerateStats): Sneaky (flaw=3) даёт +1 HP только обычным черепам
-    const flawBonusHp = (!boss && !special && cls && cls.flaw === 'Sneaky') ? 1 : 0;
+    const flawBonusHp = (!boss && !special && hasFlaw('Sneaky')) ? 1 : 0;
     // Оригинал: Noisy (flaw=9) → спец/босс +5% HP
-    const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;
+    const noisy = (boss || special) && hasFlaw('Noisy') ? 1.05 : 1;
     hp = Math.floor(Math.fround(Math.fround(hp) * Math.fround(noisy))) + flawBonusHp;
     // Спец/босс: минимальные значения
     if (boss) atk = Math.max(1, atk);
     if (special && effType !== 3 && effType !== 30) atk = Math.max(1, atk); // Golden (3): A=0; Meat Shield (30): trunc(A/2)
     // Orc's mortal enemy (Corrosive): its appearance drops the hero's armour to 0.
-    if (special && effType === 12 && cls && cls.race === 'Orc' && S && S.hero) {
+    if (special && effType === 12 && clsRace() === 'Orc' && S && S.hero) {
       S.hero.armor = 0;
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
@@ -1842,7 +2009,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function isTimeToPromote() {
     if (S.promotionRemaining === 0) return true;
     if (S.mode !== 'sprint' || S.promotionRemaining === 200) return false;
-    const zealous = clsFlaw() === 'Zealous';
+    const zealous = hasFlaw('Zealous');
     if ((S.turn - (zealous ? 3 : 4)) % (zealous ? 9 : 10) !== 0) return false;
     S.promotionRemaining = 0;
     return true;
@@ -2165,10 +2332,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // --- классические формулы урона ---
   function baseDamage() {
     // Классика: урон = база (+Сила + 2×Урон + Ускорение) + оружие × (число мечей)
-    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    const raw = BASE_DAMAGE + S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
+
+    const raw = BASE_DAMAGE + S.hero.stats.strength + 2 * S.hero.stats.damage + (hasPerk('Strong') ? 1 : 0) + (S.baseDamageBonus || 0);
     // Mortal enemy Frozen: пока он на доске, базовый урон героя усечён вдвое.
-    if (cls && cls.race === 'Dragonkin' && hasMortalEnemy(8)) return Math.floor(raw / 2);
+    if (clsRace() === 'Dragonkin' && hasMortalEnemy(8)) return Math.floor(raw / 2);
     return raw;
   }
 
@@ -2194,8 +2361,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // Confused flaw: no chain damage for the first five turns.
   function isEarlyGame() { return (S.turn || 0) < EARLY_TURNS; }
   function damageBlockedEarly() {
-    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    return !!(cls && cls.flaw === 'Confused') && isEarlyGame();
+
+    return hasFlaw('Confused') && isEarlyGame();
   }
 
   // Pактический враг расы присутствует на доске (mortal enemy).
@@ -2216,7 +2383,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const skulls = effective.filter(idx => S.board[idx].type === 'skull' && !isPhylacteryCell(S.board[idx]))
       .map(idx => ({ idx, skull: S.board[idx].skull }));
     const swordCount = effective.reduce((sum, idx) => sum + (S.board[idx].broken ? 0 : swordWeight(S.board[idx])), 0);
-    const damage = (skulls.length ? baseDamage() : 0) + S.hero.weaponDamage * swordCount * (S.swordBoost > 0 ? 2 : 1);
+    const damage = damageBlockedEarly() ? 0
+      : (skulls.length ? baseDamage() : 0) + S.hero.weaponDamage * swordCount * (S.swordBoost > 0 ? 2 : 1);
     for (const target of skulls) target.damage = chainDamageFor(target.idx, chain, damage);
     const lethals = skulls.filter(target => target.skull.type !== 32 && target.damage >= target.skull.hp + target.skull.def);
     const interior = S.runeActive ? interiorCells(chain) : [];
@@ -2244,7 +2412,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       tokens.push({ type, variant: cell.type === 'potion' && cell.acid ? 2 : 0 });
     }
     for (const slot of interior) collect(slot);
-    const cocky = clsFlaw() === 'Cocky' && chain.length <= 3;
+    const cocky = hasFlaw('Cocky') && chain.length <= 3;
     for (const slot of effective) {
       const cell = S.board[slot];
       if (cell.type === 'skull' && !isPhylacteryCell(cell)) {
@@ -2352,9 +2520,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const base = BONUS_BASE_CHANCE;
     const luck = S.hero.stats.luck, dex = S.hero.stats.dexterity, vit = S.hero.stats.vitality, str = S.hero.stats.strength, cha = S.hero.stats.charisma;
     const per = { coin: luck, shield: dex, potion: vit, xp: str }[kind] || 0;
-    const cls = CLASS_BY_ID[S.classId];
-    const offset = kind === 'coin' && cls && cls.perk === 'Frugal' ? 10
-      : kind === 'shield' && cls && cls.flaw === 'Reckless' ? -10 : 0;
+
+    const offset = kind === 'coin' && hasPerk('Frugal') ? 10
+      : kind === 'shield' && hasFlaw('Reckless') ? -10 : 0;
     const key = { coin: 'luck', shield: 'dexterity', potion: 'vitality', xp: 'strength' }[kind];
     const equipment = S.equipmentApplied?.[key] || 0;
     return Math.min(100, Math.round((base + .05 * (per - equipment) + .05 * cha) * 100) + offset + baseIncrease) + 5 * equipment;
@@ -2451,6 +2619,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function newGame(seed) {
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     RUN_ID++;
+    closeClassEditor(false);
+    pickerOpen = false; pickerGeneration++;
+    const picker = el('class-picker'); if (picker) picker.classList.remove('show');
     AFTER_ARRIVALS = null;
     RESOURCE_BATCH = null;
     seedRandom(runSeed);
@@ -2475,6 +2646,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S.difficulty = Math.max(0, Math.min(3, S.difficulty || 0));
     try { localStorage.setItem('raid:mode', S.mode); localStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
     S.classId = getSelectedClassId();
+    S.classConfig = getClassConfig(S.classId);
+    for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]);
+    Object.freeze(S.classConfig);
     let cls = CLASS_BY_ID[S.classId];
     if (!cls) {       // класс недоступен (заблокирован) — Adventurer как старт
       S.classId = 'adventurer';
@@ -2484,17 +2658,17 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     // Pretzel: base HP 100 and HP growth is removed.
     if (S.mode === 'pretzel') { S.hero.maxHp = 100; S.hero.hp = 100; }
     // Perps классов (fixed at start):
-    if (cls.flaw === 'Slim') { S.hero.maxArmor = Math.max(1, S.hero.maxArmor - 1); S.hero.armor = Math.min(S.hero.armor, S.hero.maxArmor); }
-    if (cls.perk === 'Tough') { S.hero.maxHp += 10; S.hero.hp += 10; }   // Warrior perk
-    if (cls.flaw === 'Frail') { S.hero.maxHp = Math.max(1, S.hero.maxHp - 10); S.hero.hp = Math.min(S.hero.hp, S.hero.maxHp); }  // Mage flaw
+    if (hasFlaw('Slim')) { S.hero.maxArmor = Math.max(1, S.hero.maxArmor - 1); S.hero.armor = Math.min(S.hero.armor, S.hero.maxArmor); }
+    if (hasPerk('Tough')) { S.hero.maxHp += 10; S.hero.hp += 10; }   // Warrior perk
+    if (hasFlaw('Frail')) { S.hero.maxHp = Math.max(1, S.hero.maxHp - 10); S.hero.hp = Math.min(S.hero.hp, S.hero.maxHp); }  // Mage flaw
 
     S.equipment = initialEquipment();
     S.equipmentApplied = equipmentTotals();
 
     // Priest flaw Cautious: pierce threshold 30% instead of the base 50%.
-    if (cls.flaw === 'Cautious') S.pierce = 0.30;
+    if (hasFlaw('Cautious')) S.pierce = 0.30;
     // Original promotion counter (Sprint gets a 200 sentinel, not a delay).
-    S.promotionRemaining = S.mode === 'sprint' ? 200 : (cls.flaw === 'Zealous' ? 49 : 50);
+    S.promotionRemaining = S.mode === 'sprint' ? 200 : (hasFlaw('Zealous') ? 49 : 50);
 
     // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
     // на уровень (см. chooseLevelOptions) — не сразу при старте забега.
@@ -2512,8 +2686,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
-  function clsRace() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.race : 'Human'; }
-  function clsFlaw() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.flaw : '—'; }
 
   // State stores turns LEFT, whereas the native skill stores elapsed charge.
   // Retain the total separately so upgrades/Quicken can preserve elapsed charge.
@@ -2540,7 +2712,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     let duration = option.duration;
     if (!existing) {
       S.skills.push(id);
-      const cunning = S.skills.length === 4 && CLASS_BY_ID[S.classId]?.perk === 'Cunning';
+      const cunning = S.skills.length === 4 && hasPerk('Cunning');
       S.cooldownAdjust[id] = cunning ? -1 : 0;
       duration -= S.quicken + (cunning ? 1 : 0);
     }
@@ -2550,6 +2722,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return true;
   }
   function isSkillUnlocked(id) {
+    if (typeof id !== 'string' || !Object.hasOwn(SKILL_BY_ID, id)) return false;
     const skill = SKILL_BY_ID[id];
     if (!skill || skill.nativeOnly) return false;
     return skill.native < 31 || CLASSES.some(cls => cls.id !== 'adventurer'
@@ -2609,7 +2782,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function fireBreathOnSkill() {
-    if (S.classId && CLASS_BY_ID[S.classId].race === 'Dragonkin') {
+    if (S.classId && clsRace() === 'Dragonkin') {
       // Original Fire Breath (skills.ts @0x29c34): a random ORDINARY enemy is
       // ignited for base damage; specials and the boss are immune.
       const skulls = S.board
@@ -3203,7 +3376,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function levelReached(state) {
     state.hero.level++;
     state.maxLevel = Math.max(state.maxLevel, state.hero.level);
-    if (CLASS_BY_ID[state.classId]?.race !== 'Faun') return 0;
+    if (clsRace(state) !== 'Faun') return 0;
     const before = state.hero.hp;
     state.hero.hp = Math.max(before, Math.floor(state.hero.maxHp * .25));
     return state.hero.hp - before;
@@ -3259,8 +3432,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (cell.type === 'potion' && (cell.mana || cell.acid)) return;
     const count = batch.counts[type];
     if (count >= 4) {
-      const cls = CLASS_BY_ID[S.classId];
-      const threshold = cls && cls.perk === 'Daring' && count >= 10 ? 100 : bonusPct(type);
+
+      const threshold = hasPerk('Daring') && count >= 10 ? 100 : bonusPct(type);
       if (randInt(1, 100, 5) <= threshold) queueResource(type);
     }
   }
@@ -3283,7 +3456,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     state = state || S;
     const result = collectionResult(), hero = state.hero;
     const hasEnemy = type => state.board.some(cell => cell && cell.type === 'skull' && cell.skull.type === type);
-    const cls = CLASS_BY_ID[state.classId];
+
     if (token.type === 'potion') {
       const skillId = state.skills[token.skillSlot];
       if (token.variant === 1 && skillId) {
@@ -3300,7 +3473,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const before = hero.hp;
         hero.hp = Math.min(hero.maxHp, hero.hp + amount * (state.potionBoost > 0 ? 2 : 1));
         result.healGained = hero.hp - before;
-        if (!(cls && cls.race === 'Elf' && hasEnemy(9))) state.poison = 0;
+        if (!(clsRace(state) === 'Elf' && hasEnemy(9))) state.poison = 0;
       }
     } else if (token.type === 'shield' && hero.armor !== hero.maxArmor && !hasEnemy(12)) {
       const before = hero.armor;
@@ -3439,7 +3612,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (!cell || cell.type === 'empty') continue;
         if (cell.type === 'skull' && !cell.skull.phylactery) {
           hitSkullAt(idx, targetDamage.get(idx) ?? 0, { direct: true });
-        } else matchCell(idx, { reward: !(clsFlaw() === 'Cocky' && chain.length <= 3) });
+        } else matchCell(idx, { reward: !(hasFlaw('Cocky') && chain.length <= 3) });
       }
       for (const idx of meatShields) hitSkullAt(idx, damage, { direct: false });
       batch.result.dmgShown = hasSkull ? damage : 0;
@@ -3579,9 +3752,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // the snapshot, poison, spikes and Counterattack without later abilities.
   function processEnemyAttack() {
     return withResourceBatch(() => {
-      const cls = CLASS_BY_ID[S.classId];
+
       const attackers = S.board.filter(cell => oldSkull(cell) && !frozenSkull(cell) && enemyGetAttack(cell.skull) > 0);
-      if (!attackers.length || (cls && cls.perk === 'Unexpected' && isEarlyGame())) return null;
+      if (!attackers.length || (hasPerk('Unexpected') && isEarlyGame())) return null;
       const attack = attackers.reduce((sum, cell) => sum + enemyGetAttack(cell.skull), 0);
       const incomingPoison = attackers.reduce((sum, cell) => sum + (cell.skull.type === 9 ? enemyGetAttack(cell.skull) : 0), 0);
       if (S.counterattack > 0) {
@@ -3951,8 +4124,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const upgradable = owned.filter(id => id !== 'wish' && (S.skillLevels[id] || 1) < 10);
     const cls = CLASS_BY_ID[S.classId];
     const ordered = ALL_SKILLS.slice().sort((a, b) => a.native - b.native);
+    const allowed = new Set(classSkillPool());
     let pool = ordered.filter(skill => owned.length === 4 ? owned.includes(skill.id)
-      : cls.id === 'adventurer' ? isSkillUnlocked(skill.id) : cls.pool.includes(skill.id)).map(skill => skill.id);
+      : allowed.has(skill.id)).map(skill => skill.id);
     pool = pool.filter(id => !(owned.includes(id) && (sprint || id === 'wish' || (S.skillLevels[id] || 1) >= 10))
       && !S.usedSkillIds[id] && !(sprint && id === 'trap')
       && !(S.mode === 'pretzel' && ['teleport', 'chamber'].includes(id)));
@@ -4052,7 +4226,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       } else {
         btn.innerHTML = `<span class="lv-icon-box"><span class="lv-icon">${opt.icon}<\/span><span class="lv-corner">${opt.level}<\/span><\/span>
           <span class="lv-body">
-            <span class="lv-row"><span class="lv-name">${opt.name}<\/span><span class="lv-cool">${opt.duration > 0 ? 'Кулдаун: ' + (opt.duration - S.quicken - (S.skills.length === 3 && CLASS_BY_ID[S.classId]?.perk === 'Cunning' ? 1 : 0)) : 'Одноразовый'}<\/span><\/span>
+            <span class="lv-row"><span class="lv-name">${opt.name}<\/span><span class="lv-cool">${opt.duration > 0 ? 'Кулдаун: ' + (opt.duration - S.quicken - (S.skills.length === 3 && hasPerk('Cunning') ? 1 : 0)) : 'Одноразовый'}<\/span><\/span>
             <span class="lv-desc">${opt.desc}<\/span>
           <\/span>`;
       }
@@ -4717,50 +4891,175 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   function flashOnInvalid() {}
 
-  // --- class picker (start screen) ----------------------------------------
+  // --- class picker / next-run editor ---------------------------------------
+  let pickerOpen = false;
+  let pickerGeneration = 0;
+  let classEditor = null;
+
   function renderClassPicker() {
     const grid = el('picker-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    CLASSES.forEach(cls => {
-      const unlocked = isClassUnlocked(cls.id);
-      const lvl = classLevelOf(cls.id);
-      const selected = getSelectedClassId() === cls.id;
+    const generation = ++pickerGeneration;
+    const current = () => pickerOpen && !classEditor && generation === pickerGeneration;
+    for (const cls of CLASSES) {
+      const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
+      const row = document.createElement('div'); row.className = 'picker-class';
       const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'picker-card-btn' + (unlocked ? '' : ' locked') + (selected ? ' selected' : '');
+      btn.type = 'button'; btn.dataset.classId = cls.id;
+      btn.className = 'picker-card-btn' + (unlocked ? '' : ' locked') + (getSelectedClassId() === cls.id ? ' selected' : '');
+      btn.setAttribute('aria-label', (unlocked ? 'Новый забег: ' : 'Закрытый класс: ') + cls.name);
       const desc = [];
-      if (cls.perk !== '—') desc.push(`<span class="pick-perk">⬆ ${cls.perkName || cls.perk}: ${cls.perkDesc}<\/span>`);
-      if (cls.flaw !== '—') desc.push(`<span class="pick-flaw">⬇ ${cls.flawName || cls.flaw}: ${cls.flawDesc}<\/span>`);
-      if (cls.raceDesc) desc.push(`<span class="pick-race-desc">🧬 ${cls.raceName || cls.race}: ${cls.raceDesc}<\/span>`);
-      const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}<\/span>`;
-      const status = unlocked
-        ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}<\/span>`
-        : `<span class="pick-locked">🔒 Подбери трофей на поле<\/span>`;
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}<\/span><span><span class="pick-name">${cls.name}<\/span><br><span class="pick-race">${cls.raceName || cls.race}<\/span><\/span><\/span>${desc.join('')}${uniqueInfo}${status}`;
+      for (const kind of ['perks', 'flaws']) {
+        const names = config[kind].filter(Boolean).map(name => CLASS_TRAITS[kind][name].name), positive = kind === 'perks';
+        if (names.length) desc.push(`<span class="${positive ? 'pick-perk' : 'pick-flaw'}">${positive ? '⬆' : '⬇'} ${names.join(' · ')}<\/span>`);
+      }
+      const status = unlocked ? `<span class="pick-lvl">Уровень класса ${classLevelOf(cls.id)} · начать новый забег<\/span>`
+        : '<span class="pick-locked">🔒 Подбери трофей на поле<\/span>';
+      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}<\/span><span><span class="pick-name">${cls.name}<\/span><br><span class="pick-race">${RACE_INFO[config.race].name}<\/span><\/span><\/span>${desc.join('')}<span class="pick-race-desc">${RACE_INFO[config.race].desc}<\/span><span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}<\/span>${status}`;
       btn.addEventListener('click', () => {
-        if (!unlocked) {
-          flash('⚠ «' + cls.name + '» заблокирован — подбери трофей на поле после победы над особыми');
-          return;
-        }
-        setSelectedClassId(cls.id);
-        hideClassPickerAndStart();
+        if (!current()) return;
+        if (!isClassUnlocked(cls.id)) { flash('⚠ Класс закрыт: подбери трофей после победы над особыми черепами'); return; }
+        setSelectedClassId(cls.id); hideClassPickerAndStart();
       });
-      grid.appendChild(btn);
-    });
+      row.appendChild(btn);
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
+      edit.textContent = classRules(cls.id).editable ? 'Настроить класс' : 'О классе и развитии';
+      edit.setAttribute('aria-label', edit.textContent + ': ' + cls.name);
+      edit.addEventListener('click', () => { if (current()) openClassEditor(cls.id); });
+      row.appendChild(edit); grid.appendChild(row);
+    }
   }
-
+  function closeClassEditor(focus = true) {
+    const id = classEditor?.id;
+    classEditor = null;
+    const main = el('class-picker-main'), editor = el('class-editor'), card = el('picker-card');
+    if (main) main.hidden = false;
+    if (editor) editor.hidden = true;
+    if (card) card.classList.remove('editor-open');
+    if (focus && id) document.querySelector(`.class-config-btn[data-class-id="${id}"]`)?.focus();
+  }
+  function openClassEditor(id, reset = false) {
+    const info = classEditorInfo(id), fields = el('class-editor-fields');
+    if (!pickerOpen || !info || !fields) return false;
+    const session = { id, runId: RUN_ID, draft: reset ? defaultClassConfig(id) : getClassConfig(id) };
+    classEditor = session;
+    const current = () => pickerOpen && classEditor === session && RUN_ID === session.runId;
+    el('class-picker-main').hidden = true; el('class-editor').hidden = false;
+    el('picker-card').classList.add('editor-open');
+    const title = el('class-editor-title'); title.textContent = 'Класс «' + info.name + '»'; title.focus();
+    el('class-editor-hint').textContent = !info.editable
+      ? id === 'adventurer' ? 'Авантюрист не настраивается: Человек, без пассивов и изъянов; пул — все открытые навыки.'
+        : 'Класс закрыт. Можно посмотреть правила; настройка откроется после трофея.'
+      : `Уровень класса: ${info.level}. Это не уровень героя в забеге. Сохранение действует только на следующие забеги.`;
+    fields.innerHTML = '';
+    const controls = [], draft = session.draft;
+    function block(label) {
+      const section = document.createElement('fieldset'); section.className = 'class-config-section';
+      const legend = document.createElement('legend'); legend.textContent = label; section.appendChild(legend); fields.appendChild(section);
+      return section;
+    }
+    function note(parent, text) {
+      const p = document.createElement('p'); p.className = 'class-config-note'; p.textContent = text; parent.appendChild(p); return p;
+    }
+    function select(parent, labelText, key, index, options, disabled) {
+      const label = document.createElement('label'); label.className = 'class-config-label';
+      const caption = document.createElement('span'); caption.textContent = labelText; label.appendChild(caption);
+      const input = document.createElement('select'); input.dataset.kind = key;
+      if (index != null) input.dataset.slot = String(index);
+      for (const entry of options) {
+        const option = document.createElement('option'); option.value = entry.value || ''; option.textContent = entry.label;
+        option.disabled = !!entry.locked; input.appendChild(option);
+      }
+      input.value = (index == null ? draft[key] : draft[key][index]) || '';
+      input.disabled = disabled; label.appendChild(input); parent.appendChild(label);
+      controls.push({ input, key, index, options });
+      input.addEventListener('change', () => {
+        if (!current() || input.disabled || input.selectedOptions[0]?.disabled) return;
+        if (index == null) draft[key] = input.value;
+        else draft[key][index] = input.value || null;
+        refresh();
+      });
+      return input;
+    }
+    const raceSection = block('Раса');
+    select(raceSection, 'Раса следующего забега', 'race', null,
+      Object.entries(RACE_INFO).map(([race, data]) => {
+        const donor = CLASSES.find(c => c.race === race);
+        const locked = !isRaceUnlocked(race);
+        return { value: race, label: data.name + (locked ? ` · ${donor.name}, ур. 5` : ''), locked };
+      }), !info.canChangeRace);
+    note(raceSection, info.canChangeRace ? 'Доступны Человек и расы классов, достигших уровня 5.' : 'Смена расы — с уровня класса 5.');
+    const raceDesc = note(raceSection, RACE_INFO[draft.race].desc);
+    const traits = block('Пассивы и изъяны');
+    note(traits, 'Первая пара фиксирована. Новые пары — на уровнях класса 3, 7 и 9. Пассиву нужен изъян в той же паре; повторы не складываются.');
+    for (let i = 0; i < 4; i++) {
+      const pair = document.createElement('div'); pair.className = 'class-config-pair'; traits.appendChild(pair);
+      note(pair, `Пара ${i + 1}` + (i === 0 ? ' · основная' : ` · с уровня ${CLASS_PAIR_LEVELS[i]}`));
+      for (const kind of ['perks', 'flaws']) select(pair, kind === 'perks' ? 'Пассив' : 'Изъян', kind, i,
+        [{ value: '', label: 'Нет' }, ...Object.entries(CLASS_TRAITS[kind]).map(([name, data]) => ({
+          value: name, label: data.name + ' — ' + data.desc + (isTraitUnlocked(kind, name) ? '' : ' · класс ещё закрыт'), locked: !isTraitUnlocked(kind, name),
+        }))], !info.editable || i === 0 || !info.pairSlots[i]);
+    }
+    const skillSection = block(id === 'adventurer' ? 'Все открытые навыки' : 'Пул навыков: 20 позиций');
+    const count = note(skillSection, ''); count.id = 'class-replacement-count'; count.setAttribute('role', 'status');
+    note(skillSection, 'Это возможные награды уровня, не стартовые умения. Первый классовый навык фиксирован. Повторы не увеличивают шанс выпадения.');
+    if (id === 'adventurer') note(skillSection, ALL_SKILLS.filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
+    else for (let i = 0; i < 20; i++) {
+      const base = SKILL_BY_ID[info.baseSkills[i]];
+      select(skillSection, `${i + 1}. ${base.name}` + (i === 0 ? ' · классовый' : ''), 'replacements', i,
+        [{ value: '', label: base.name + ' · по умолчанию' }, ...ALL_SKILLS.filter(s => !s.nativeOnly && s.id !== base.id).sort((a,b) => a.native-b.native).map(skill => ({
+          value: skill.id, label: skill.name + (isSkillUnlocked(skill.id) ? '' : ' · класс-источник: ур. 10'), locked: !isSkillUnlocked(skill.id),
+        }))], !info.editable || i === 0 || info.replacementLimit === 0);
+    }
+    const growth = block('Развитие класса');
+    note(growth, '1 — основная пара доступна другим классам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — смена расы и открытие своей расы другим; 10 — уникальный навык доступен другим классам. Рост — за трофеи, не за опыт героя.');
+    const status = el('class-editor-status'), save = el('class-editor-save');
+    const back = el('class-editor-back'), defaults = el('class-editor-reset');
+    save.hidden = !info.editable; defaults.hidden = !info.editable;
+    status.textContent = '';
+    function refresh() {
+      if (!current()) return;
+      const used = draft.replacements.filter(Boolean).length;
+      count.textContent = `Заменено ${used} из ${info.replacementLimit}`;
+      raceDesc.textContent = RACE_INFO[draft.race].desc;
+      for (const { input, key, index, options } of controls) for (let n = 0; n < options.length; n++) {
+        const option = options[n], value = option.value;
+        const duplicate = ['perks','flaws'].includes(key) && value && draft[key].some((other, i) => i !== index && other === value);
+        const exhausted = key === 'replacements' && value && !draft.replacements[index] && used >= info.replacementLimit;
+        input.options[n].disabled = !!(option.locked || duplicate || exhausted);
+      }
+      const unpaired = draft.perks.findIndex((perk, i) => perk && !draft.flaws[i]);
+      save.disabled = !info.editable || unpaired >= 0 || used > info.replacementLimit;
+      status.textContent = unpaired >= 0 ? `Выбери изъян для пары ${unpaired + 1} или убери её пассив.` : 'Изменения ещё не сохранены.';
+    }
+    // on* is replaced on every opening; the session identity also guards detached
+    // controls and queued events after cancel/reset/newGame or switching classes.
+    back.onclick = () => { if (current()) closeClassEditor(); };
+    defaults.onclick = () => { if (current()) openClassEditor(id, true); };
+    save.onclick = () => {
+      if (!current() || save.disabled || !info.editable) return;
+      if (!saveClassConfig(id, draft)) { status.textContent = 'Не удалось сохранить настройки в браузере. Освободи место или разреши локальное хранилище.'; return; }
+      renderClassPicker(); closeClassEditor();
+    };
+    refresh(); return true;
+  }
   function showClassPicker() {
+    if (S?.resolving || S?.pendingModal) return false;
     const picker = el('class-picker');
-    if (!picker) { newGame(); return; }   // test harness / environments without the picker
-    renderClassPicker();
+    if (!picker) { newGame(); return true; }
+    closeClassEditor(false); renderClassPicker(); pickerOpen = true;
+    const resume = el('picker-resume'); if (resume) resume.hidden = !S || S.over;
     picker.classList.add('show');
+    const card = el('picker-card'); if (card) card.scrollTop = 0;
+    return true;
   }
-
-  function hideClassPickerAndStart() {
-    const picker = el('class-picker');
-    if (picker) picker.classList.remove('show');
-    newGame();
+  function hideClassPickerAndStart() { newGame(); }
+  function resumeFromClassPicker() {
+    if (!pickerOpen || !S || S.over) return;
+    closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
+    el('menu-btn')?.focus();
   }
 
   // --- init -----------------------------------------------------------------
@@ -4768,6 +5067,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     initInput();
     const restartBtn = qs('#restart');
     if (restartBtn) restartBtn.addEventListener('click', () => newGame());
+    const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
+    const picker = el('class-picker');
+    if (picker) picker.addEventListener('keydown', event => {
+      if (!pickerOpen) return;
+      if (event.key === 'Escape') { event.preventDefault(); if (classEditor) closeClassEditor(); else resumeFromClassPicker(); }
+      if (event.key !== 'Tab') return;
+      const controls = [...picker.querySelectorAll('button:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(node => node.getClientRects().length);
+      const target = event.shiftKey ? controls[controls.length - 1] : controls[0];
+      if (controls.length && (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls[controls.length - 1])) { event.preventDefault(); target.focus(); }
+    });
     const menuBtn = qs('#menu-btn');
     const menuModal = qs('#menu-modal');
     if (menuBtn && menuModal) {
@@ -4775,6 +5084,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const hide = () => menuModal.classList.remove('show');
       const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
       const close = qs('#menu-close'); if (close) close.addEventListener('click', hide);
+      const classes = el('menu-classes'); if (classes) classes.addEventListener('click', () => {
+        if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return; }
+        hide(); showClassPicker();
+      });
       const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => { hide(); newGame(); });
       const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
         hide();
@@ -4808,6 +5121,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     activateSkill,
     setSelectedClassId,
     getSelectedClassId,
+    classRules,
+    openClassEditor,
+    closeClassEditor,
+    classEditorInfo,
+    defaultClassConfig,
+    getClassConfig,
+    saveClassConfig,
+    classSkillPool,
+    hasPerk,
+    hasFlaw,
+    clsRace,
+    isRaceUnlocked,
+    isTraitUnlocked,
     interiorCells,
     swordDamage,
     baseDamage,
