@@ -300,7 +300,7 @@
       ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
       ['Сила / Урон', `${fmt(st.strength)} / ${fmt(st.damage)}`],
       ['Точность / Защита', `${fmt(st.dexterity)} / ${fmt(st.defense)}`],
-      ['Живучесть / Удача / Хитрость', `${fmt(st.vitality)} / ${fmt(st.luck)} / ${fmt(st.charisma)}`],
+      ['Живучесть / Удача / Все бонусы', `${fmt(st.vitality)} / ${fmt(st.luck)} / ${fmt(st.charisma)}`],
       ['Броня за щит', `${fmt(perShield())}; +${fmt(S.upgradePerShield)} очков апгрейда`],
       ['Лечение за зелье', `${fmt(HEAL_PER_POTION + st.luck)} HP`],
       ['Золото за монету / опыт за черепа', `${S.goldPerCoin.toFixed(2)} / ${S.xpPerSkull.toFixed(2)}`],
@@ -796,9 +796,10 @@
     }
     // Спец/босс: броня не ниже 1 (ориг: defence = max(1, defence))
     if (boss || (special && effType !== 17)) def = Math.max(1, def);
-    // Invisible mortal enemy: while it is on the board, newly generated
-    // ordinary enemies get double defence.
-    if (!boss && !special && S && S.board && S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 5)) {
+    // Halfling's mortal enemy (Invisible): while it is alive, every other
+    // generated monster gets double armour.
+    if (cls && cls.race === 'Halfling' && S && S.board && effType !== 5
+        && S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 5 && c.skull.hp > 0)) {
       def *= 2;
     }
     // Оригинал (Tile::GenerateStats): Sneaky (flaw=3) даёт +1 HP только обычным черепам
@@ -809,8 +810,8 @@
     // Спец/босс: минимальные значения
     if (boss) atk = Math.max(1, atk);
     if (special && effType !== 3 && effType !== 30) atk = Math.max(1, atk); // Golden (3): A=0; Meat Shield (30): trunc(A/2)
-    // Коррозия (12): появление — броня героя обнуляется (фанконн-вал; Mortal enemy effect)
-    if (special && effType === 12 && S && S.hero) {
+    // Orc's mortal enemy (Corrosive): its appearance drops the hero's armour to 0.
+    if (special && effType === 12 && cls && cls.race === 'Orc' && S && S.hero) {
       S.hero.armor = 0;
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
@@ -1366,8 +1367,8 @@
       const baseDmg = swordDamage(swordCount);
       const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
       const shieldGain = Math.max(0, shieldCount - 0) * perShield; // broken shields preview: 0 (approx)
-      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * S.hero.stats.charisma));
-      const heal = Math.round(potionCount * (HEAL_PER_POTION + S.hero.stats.luck) * (1 + 0.05 * S.hero.stats.charisma));
+      const gold = Math.round(coinCount * S.goldPerCoin);
+      const heal = Math.round(potionCount * (HEAL_PER_POTION + S.hero.stats.luck));
       const lethals = skulls.filter(x => baseDmg >= x.skull.def + x.skull.hp);
       return { kind: 'mixed', count: chain.length, damage: baseDmg, swordCount, gain: shieldGain, gold, heal, skulls, lethals };
     }
@@ -1382,14 +1383,12 @@
       return { kind: 'shield', count: chain.length, gain };
     }
     if (chainType === 'coin') {
-      const charisma = S.hero.stats.charisma;
-      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma));
+      const gold = Math.round(coinCount * S.goldPerCoin);
       return { kind: 'coin', count: chain.length, gold };
     }
     if (chainType === 'potion') {
       const luck = S.hero.stats.luck;
-      const charisma = S.hero.stats.charisma;
-      const gain = Math.round(potionCount * (HEAL_PER_POTION + luck) * (1 + 0.05 * charisma));
+      const gain = Math.round(potionCount * (HEAL_PER_POTION + luck));
       return { kind: 'potion', count: chain.length, gain };
     }
     return null;
@@ -1644,10 +1643,15 @@
 
   function fireBreathOnSkill() {
     if (S.classId && CLASS_BY_ID[S.classId].race === 'Dragonkin') {
-      const skulls = S.board.filter(c => c && c.type === 'skull').map(c => c.skull);
+      // Original Fire Breath (skills.ts @0x29c34): a random ORDINARY enemy is
+      // ignited for base damage; specials and the boss are immune.
+      const skulls = S.board
+        .filter(c => c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss)
+        .map(c => c.skull);
       if (skulls.length > 0) {
         const target = skulls[randInt(0, skulls.length - 1, 5)];
         target.burn = true;
+        target.fireDamage = baseDamage();
         flash('🔥 Дыхание дракона: «' + targetArtName(target) + '» подожжен');
       }
     }
@@ -2315,7 +2319,9 @@
           // Meat Shield blocks ordinary direct damage; Dwarf/Armoured priority branches precede it.
           return;
         }
-        if (s.type === 14 && !dwarfUppercut) return; // hostile Chaotic blocks direct chain damage
+        // Dwarf's mortal enemy Chaotic can ONLY be hurt by an uppercut; a
+        // Chaotic skull is otherwise a normal target.
+        if (s.type === 14 && cls && cls.race === 'Dwarf' && !dwarfUppercut) return;
         let dmg = totalDamage;
         // Dwarf Uppercut: chain must pass straight down → skull → straight up.
         if (dwarfUppercut) dmg += S.hero.weaponDamage;
@@ -2483,8 +2489,7 @@
 
     // --- coins ---
     if (coinCount > 0) {
-      const charisma = S.hero.stats.charisma;
-      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma) * (S.coinBoost > 0 ? 2 : 1));
+      const gold = Math.round(coinCount * S.goldPerCoin * (S.coinBoost > 0 ? 2 : 1));
       gainGold(gold);
       result.goldGained += gold;
       audioGold();
@@ -2497,7 +2502,7 @@
         chanceP = Math.min(1, chanceP);
         for (let k = 0; k < extra; k++) {
           if (chance(chanceP)) {
-            const bonus = Math.round(S.goldPerCoin * (1 + 0.05 * charisma) * (S.coinBoost > 0 ? 2 : 1));
+            const bonus = Math.round(S.goldPerCoin * (S.coinBoost > 0 ? 2 : 1));
             gainGold(bonus);
             result.goldGained += bonus;
           }
@@ -2511,7 +2516,6 @@
       const normalPotionIdxs = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && !c.acid && !c.mana; });
       const actualAcidCount = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && c.acid; }).length;
       const luck = S.hero.stats.luck;
-      const charisma = S.hero.stats.charisma;
       const healBase = (HEAL_PER_POTION + luck) * (S.potionBoost > 0 ? 2 : 1);
       if (actualAcidCount > 0) {
         const acidDmg = Math.max(0, healBase * actualAcidCount);
@@ -2534,7 +2538,7 @@
       const healPotionCount = normalPotionIdxs.length;
       // mana potions (Mage Gifted): collected mana potions reduce longest cooldown by 1
       const manaIdxs = brokenSet ? [] : []; // no mana info here — mana handled in resolveChain via caller chain
-      let gain = Math.round(healPotionCount * healBase * (1 + 0.05 * charisma));
+      let gain = Math.round(healPotionCount * healBase);
       const before = S.hero.hp;
       heal(gain);
       result.healGained = S.hero.hp - before;
@@ -2547,7 +2551,7 @@
         chanceP = Math.min(1, chanceP);
         for (let k = 0; k < extra; k++) {
           if (chance(chanceP)) {
-            const bonus = Math.round(healBase * (1 + 0.05 * charisma));
+            const bonus = Math.round(healBase);
             const before2 = S.hero.hp;
             heal(bonus);
             result.healGained += S.hero.hp - before2;
@@ -2769,23 +2773,26 @@
       if (enemyPhaseDeathCheck()) return;
     }
 
-    // Fire Breath: burned skulls take base damage at the start of the enemy phase (Dragonkin)
+    // Burning tiles take their stored fire damage at the start of the enemy
+    // phase — every burning skull, including ones that arrived this turn
+    // (original EndOfTurn has no newThisTurn filter here).
     const baseDmg = baseDamage();
-    living.forEach(cell => {
+    for (let i = 0; i < CELL_COUNT; i++) {
+      const cell = S.board[i];
+      if (!cell || cell.type !== 'skull' || !cell.skull || !cell.skull.burn) continue;
       const s = cell.skull;
-      if (s.burn) {
-        s.burn = false;
-        s.hp -= baseDmg;
-        if (s.hp <= 0) {
-          const idx = S.board.indexOf(cell);
-          if (idx >= 0) S.board[idx] = { type: 'empty' };
-          S.skullsKilled++;
-          registerSkullEnd(s);
-          awardKillXp(s);
-          audioKill();
-        }
+      const burnDmg = typeof s.fireDamage === 'number' && s.fireDamage > 0 ? s.fireDamage : baseDmg;
+      s.burn = false;
+      s.fireDamage = 0;
+      s.hp -= burnDmg;
+      if (s.hp <= 0) {
+        S.board[i] = { type: 'empty' };
+        S.skullsKilled++;
+        registerSkullEnd(s);
+        awardKillXp(s);
+        audioKill();
       }
-    });
+    }
 
     let hpDamageThisPhase = 0;
     let poisonDamageThisPhase = 0;
@@ -3600,13 +3607,11 @@
           if (nc.type === 'skull') {
             if (nc.skull && nc.skull.type === 7) continue; // другие Огненные — не поджигать
             if (!nc.skull._flamedThisTurn) {
-              nc.skull.hp -= enemyGetAttack(s);
               nc.skull._flamedThisTurn = true;
-              if (nc.skull.hp <= 0) {
-                S.board[ni] = { type: 'empty' };
-                S.skullsKilled++;
-                registerSkullEnd(nc.skull);
-              }
+              // Original IgniteTiles: the target simply starts burning with the
+              // Flaming skull's attack as fire damage (no immediate HP loss).
+              nc.skull.burn = true;
+              nc.skull.fireDamage = (nc.skull.fireDamage || 0) + enemyGetAttack(s);
             }
           } else {
             nc.burn = (typeof nc.burn === 'number' ? nc.burn : 0) + s.atk;
