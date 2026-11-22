@@ -137,12 +137,14 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-arrow .ic { color: #f5d28a; }
 /* concept-art skull sprites (from the catalog) */
 .cell.type-skull .skull-art {
-  width: 72%; height: 72%; max-height: 76%;
+  width: 64%; height: 64%; max-height: 62%;
   object-fit: contain;
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6));
   z-index: 1;
+  align-self: center;
+  margin-bottom: 11px;
 }
-.cell.type-skull.boss .skull-art { width: 90%; height: 90%; }
+.cell.type-skull.boss .skull-art { width: 78%; height: 78%; max-height: 74%; }
 .cell.type-skull.boss { border-color: #d96a5a; box-shadow: inset 0 0 0 1px #d96a5a55, 0 0 14px rgba(217, 106, 90, 0.4); }
 .cell.type-skull.boss .ic { color: #ff9a8a; }
 .cell.type-skull.special {

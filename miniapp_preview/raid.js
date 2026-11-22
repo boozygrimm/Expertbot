@@ -44,12 +44,14 @@
   const UPGRADE_BAR_MAX = 80;     // синяя полоса (от щитов) → выбор 1-из-4
   const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
 
-  // Черепа (база калибровки клона; формулы — классические: рост каждый ход)
-  const SKULL_BASE = { hp: 6, def: 2, atk: 2 };
+  // Черепа (классика: стартовые значения рядового монстра — 1⚔️·0🛡·4❤️
+  // или 1⚔️·1🛡·4❤️; рост каждый ход)
+  const SKULL_BASE = { hp: 4, def: 0, atk: 1 };
   const SKULL_GROWTH = { hp: 0.55, def: 0.3, atk: 0.4 };
   const SKULL_START_FREE = 3;     // первые 3 хода — база без роста
-  // Босс: «черепу — гораздо сильнее обычного» (Atk/Def/HP)
-  const BOSS_STATS = { atk: 2.0, def: 2.0, hp: 3.0 };
+  // Босс: «черепу — гораздо сильнее обычного» (владелец: ×1.8/×1.5/×2.2,
+  // было ×2.0/×2.0/×3.0 — избыточно слабый клон; пересборка в 4710f0b затирала ×1.8)
+  const BOSS_STATS = { atk: 1.8, def: 1.5, hp: 2.2 };
 
   const SKILLS = [
     { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 12, desc: 'Все клетки без черепов → новые' },
@@ -344,16 +346,42 @@
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
     const flawBonusHp = cls && cls.flaw === 'Sneaky' ? 1 : 0;      // Assassin Flaw: +1 HP у всех черепов
     const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;  // Warrior Flaw: спец-череп +5% HP
+    const growthTurns = Math.max(0, S.turn - SKULL_START_FREE);
+    // Классика: рядовой монстр на старте — 1⚔️·0🛡·4❤️ или 1⚔️·1🛡·4❤️ (def 0/1)
+    const startDef = boss ? 0 : (Math.random() < 0.5 ? 0 : 1);
     return {
       boss: !!boss,
       special: !!special,
       uid: SKULL_UID++,
       art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
-      atk: Math.round((SKULL_BASE.atk + SKULL_GROWTH.atk * Math.max(0, S.turn - SKULL_START_FREE)) * (boss ? BOSS_STATS.atk : 1)),
-      def: Math.round((SKULL_BASE.def + SKULL_GROWTH.def * Math.max(0, S.turn - SKULL_START_FREE)) * (boss ? BOSS_STATS.def : 1)),
-      hp: Math.round((SKULL_BASE.hp + SKULL_GROWTH.hp * Math.max(0, S.turn - SKULL_START_FREE)) * (boss ? BOSS_STATS.hp : 1) * noisy) + flawBonusHp,
+      atk: Math.round((SKULL_BASE.atk + SKULL_GROWTH.atk * growthTurns) * (boss ? BOSS_STATS.atk : 1)),
+      def: Math.round((startDef + SKULL_GROWTH.def * growthTurns) * (boss ? BOSS_STATS.def : 1)),
+      hp: Math.round((SKULL_BASE.hp + SKULL_GROWTH.hp * growthTurns) * (boss ? BOSS_STATS.hp : 1) * noisy) + flawBonusHp,
       maxHp: 0,
     };
+  }
+
+  // Compact the board bottom-up (skulls pack with tiles) and refill empty
+  // cells with fresh tiles — keeps the board full and empty cells out of the
+  // middle of the grid after enemy-phase kills (burn / spikes / cripple).
+  function compactBoardAndRefill() {
+    const emptySlots = [];
+    for (let c = 0; c < COLS; c++) {
+      const columnItems = [];
+      for (let r = ROWS - 1; r >= 0; r--) {
+        const cell = S.board[r * COLS + c];
+        if (cell && cell.type !== 'empty') columnItems.push(cell);
+      }
+      let writeRow = ROWS - 1;
+      for (const cell of columnItems) {
+        S.board[writeRow * COLS + c] = cell;
+        writeRow--;
+      }
+      for (let r = 0; r <= writeRow; r++) emptySlots.push({ col: c, row: r });
+    }
+    emptySlots.forEach(slot => {
+      S.board[slot.row * COLS + slot.col] = createNewTile();
+    });
   }
 
   // guarantee at least one legal chain exists (classic dead-board rule)
@@ -1784,6 +1812,11 @@
     if (S.runeActive > 0) S.runeActive = 0;
     if (S.runeUsedThisTurn > 0) S.runeUsedThisTurn = 0;
 
+    // убийство черепа в enemy phase оставило пустое место — уплотняем
+    // доску и снова наполняем пустые клетки, чтобы пустое место не торчало
+    // посреди поля
+    compactBoardAndRefill();
+
     if (!hasLegalChain(S.board)) {
       ensureChainable();
       log('♻ Нет ходов — поле перемешано');
@@ -2241,6 +2274,8 @@
     isClassUnlocked,
     classLevelOf,
     specialSpawnCount,
+    makeSkull,
+    placeNewTiles,
     createTile,
     hasLegalChain,
     chainTypeForCell,
