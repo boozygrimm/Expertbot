@@ -1229,7 +1229,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
       raceDesc: 'Калечение: в конце твоего хода убивает не более одного старого обычного черепа с HP ниже твоей брони.',
       clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
-      uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
+      uniqueSkillDesc: 'Спешка (16): ставит на поле цепную клетку — она подходит к любому типу' },
   ];
   // Mortal enemy per race (original GetMortalEnemyType table).
   const MORTAL_BY_RACE = {
@@ -1249,7 +1249,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     { id: 'wish', name: 'Желание', icon: '✨', cooldown: 0, desc: 'Одноразовый навык: собрать все клетки доски' },
     { id: 'masochism', name: 'Мазохизм', icon: '🏴', cooldown: 15, desc: 'Все монетки → черепа' },
     { id: 'charge', name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
-    { id: 'haste', name: 'Хействие', icon: '🗡', cooldown: 16, desc: 'Цепочка может смешивать 2 разных типа (1 ход)' },
+    { id: 'haste', name: 'Спешка', icon: '🗡', cooldown: 16, desc: 'Ставит цепную клетку: подходит к любому типу меток' },
     { id: 'volley', name: 'Воллей', icon: '🏹', cooldown: 15, desc: 'Все мечи → стрелы (стрелы стреляют на 1 клетку)' },
     { id: 'shock', name: 'Шок', icon: '⚡', cooldown: 14, native: 40, nativeOnly: true, desc: 'Собрать щиты и монеты в верхней половине; с «Благоговением» — цепь' },
     { id: 'awe', name: 'Благоговение', icon: '🌀', cooldown: 14, native: 41, nativeOnly: true, desc: 'Собрать щиты и зелья в нижней половине; с «Шоком» — цепь' },
@@ -1403,7 +1403,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       slashCombo: 0, hackCombo: 0, shockCombo: 0, aweCombo: 0,
       berserkActive: 0,            // лекарство от этого хода (Barbarian perk)
       cooldownAdjust: {},          // skill id -> extra cooldown (−1 для Cunning)
-      hasteActive: 0,              // 2 разных типа в цепочке (1 ход)
       runeUsedThisTurn: 0,         // замкнутая цепочка собрана этим ходом
       runeCollected: 0,            // замкнутая цепочка уже собрана
       lastStand: 0,                // полное лечение при смерти этого хода
@@ -1814,17 +1813,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) === 2;
   }
 
-  function distinctNonSkullTypes(chain) {
-    const set = new Set();
-    for (const idx of chain) {
-      const cell = S.board[idx];
-      if (!cell) continue;
-      if (cell.type === 'skull') continue;
-      set.add(cell.type === 'arrow' ? 'sword' : cell.type);
-    }
-    return set;
-  }
-
   function tryExtendChain(cellIdx) {
     if (S.resolving || S.over) return;
     if (cellIdx < 0 || cellIdx >= CELL_COUNT) return;
@@ -1863,18 +1851,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (chain.includes(cellIdx)) return;
 
     const cellType = S.board[cellIdx].type;
-    // Haste (Assassin): смешивать 2 типа меток в цепочке (череп/стрелы — меч-категория)
-    if (S.hasteActive > 0) {
-      const types = distinctNonSkullTypes(chain);
-      const mapped = cellType === 'skull' || cellType === 'arrow' ? 'sword' : cellType;
-      if (mapped !== 'skull' && !types.has(mapped)) {
-        if (types.size >= 2) return;  // больше 2 типов — запрет
-        types.add(mapped);
-      }
-      // skull допускается всегда в цепочках (как категория меча)
-    } else {
-      if (!chainAllows(cellType, S.chainType)) return;
-    }
+    // Chain tiles (Shock+Awe, Haste) are wildcards; everything else must match
+    // the chain's type (skulls and arrows count as swords).
+    if (!chainAllows(cellType, S.chainType)) return;
 
     let adjacent = isAdjacent(last, cellIdx);
     if (!adjacent) {
@@ -2100,22 +2079,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     });
     const first = S.board[chain[0]];
     const chainType = S.chainType || (first ? (first.type === 'skull' || first.type === 'arrow' ? 'sword' : first.type) : null);
-    // haste active / mixed chain → preview all effects
-    const distinctTypes = new Set();
-    chain.forEach(idx => {
-      const c = S.board[idx];
-      if (!c) return;
-      distinctTypes.add(c.type === 'skull' || c.type === 'arrow' ? 'sword' : c.type);
-    });
-    if (S.hasteActive > 0 && distinctTypes.size > 1) {
-      const baseDmg = swordDamage(swordCount);
-      const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
-      const shieldGain = Math.max(0, shieldCount - 0) * perShield; // broken shields preview: 0 (approx)
-      const gold = Math.round(coinCount * S.goldPerCoin);
-      const heal = Math.round(potionCount * (HEAL_PER_POTION + S.hero.stats.luck));
-      const lethals = skulls.filter(x => baseDmg >= x.skull.def + x.skull.hp);
-      return { kind: 'mixed', count: chain.length, damage: baseDmg, swordCount, gain: shieldGain, gold, heal, skulls, lethals };
-    }
     if (chainType === 'sword') {
       const damage = swordDamage(swordCount);
       const lethals = skulls.filter(x => damage >= x.skull.def + x.skull.hp);
@@ -2150,15 +2113,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
     tip.classList.add('show');
     let effect;
-    if (p.kind === 'mixed') {
-      const parts = [];
-      if (p.damage > 0 && p.swordCount > 0) parts.push(`💥 ${p.damage} урона`);
-      if (p.skulls && p.skulls.length > 0) parts.push(`☠ ${p.lethals.length}/${p.skulls.length} убиты`);
-      if (p.gain > 0) parts.push(`🛡 +${p.gain} брони`);
-      if (p.gold > 0) parts.push(`💰 +${p.gold} золота`);
-      if (p.heal > 0) parts.push(`❤ +${p.heal} HP`);
-      effect = parts.join(' · ');
-    } else if (p.kind === 'sword') {
+    if (p.kind === 'sword') {
       effect = p.skulls.length > 0
         ? `💥 ${p.damage} урона · ☠ ${p.lethals.length}/${p.skulls.length} убиты`
         : `💥 ${p.damage} урона · ${p.swordCount} мечей`;
@@ -2788,8 +2743,20 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       S.runeUsedThisTurn = 0;
       flash('🔮 РУНА: замкнутая цепочка соберёт всё внутри');
     } else if (id === 'haste') {
-      S.hasteActive = 1;
-      flash('🗡 СПЕШКА: цепочка из 2 типов меток в этом ходу');
+      // Original Haste (skill 39) = CreateChain: up to 10 tries to turn a
+      // random non-special cell into a wildcard chain tile.
+      let placed = false;
+      for (let n = 0; n < 10 && !placed; n++) {
+        const idx = randInt(0, CELL_COUNT - 1, 5);
+        const cell = S.board[idx];
+        if (!cell || cell.type === 'empty') continue;
+        // Original CreateChain skips only *special* enemies — ordinary skulls
+        // and every resource tile can become the wildcard.
+        if (cell.type === 'skull' && cell.skull && (cell.skull.special || cell.skull.boss)) continue;
+        S.board[idx] = { type: 'chain' };
+        placed = true;
+      }
+      flash(placed ? '🗡 СПЕШКА: создана цепная клетка (подходит к любому типу)' : '🗡 СПЕШКА: некуда поставить цепную клетку');
     } else if (id === 'greed') {
       let killed = 0;
       const coinCells = [];
@@ -3650,7 +3617,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (S.freezeNextTurn > 0) S.freezeNextTurn = 0;
     if (S.stealActive > 0) S.stealActive--;
     if (S.berserkActive > 0) S.berserkActive = 0;
-    if (S.hasteActive > 0) S.hasteActive = 0;
     if (S.lastStand > 0) S.lastStand = 0;
     if (S.runeActive > 0) S.runeActive = 0;
     if (S.runeUsedThisTurn > 0) S.runeUsedThisTurn = 0;
