@@ -93,6 +93,69 @@ class ProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(search_api.search_mode('история Пифагора'), (False, None))
         self.assertEqual(search_api.search_mode('история новостей'), (True, None))
 
+    def test_mode_reads_the_requested_period(self):
+        for query, expected in [
+            ('новости за сутки', 1), ('новости за последние сутки', 1),
+            ('новости за 24 часа', 1), ('новости за последний день', 1),
+            ('новости вчера', 1), ('news for the last 24 hours', 1),
+            ('новости за неделю', 7), ('новости за 7 дней', 7),
+            ('новости за месяц', 30), ('новости bitcoin', 30),
+        ]:
+            with self.subTest(query=query):
+                self.assertEqual(search_api.search_mode(query), (True, expected))
+
+    def test_provider_query_keeps_only_the_subject(self):
+        # The window is a provider parameter, so the wrapper words are noise.
+        self.assertEqual(search_api.news_terms('новости за сутки включая курс bitcoin и gram'),
+                         'курс bitcoin и gram')
+        self.assertEqual(search_api.news_terms('последние новости телескопа Уэбб'), 'телескопа Уэбб')
+        self.assertEqual(search_api.news_terms('bitcoin news for the last 24 hours'), 'bitcoin')
+        # Nothing left but the wrapper: search it as the user wrote it.
+        self.assertEqual(search_api.news_terms('новости за сутки'), 'новости за сутки')
+        self.assertEqual(search_api.news_terms('новости'), 'новости')
+
+    def test_date_formats_providers_return(self):
+        for value in ['2026-11-21', '2026-11-21T10:00:00Z', 'Fri, 21 Nov 2026 12:00:00 GMT',
+                      '21 Nov 2026', '21 November 2026', 'Nov 21, 2026', '21.11.2026',
+                      '2026/11/21', '12 hours ago', 'an hour ago', 'yesterday', 'вчера',
+                      1763712000]:
+            with self.subTest(value=value):
+                self.assertIsNotNone(search_api._date(value))
+        for value in ['', '   ', 'bad date', None, True, [1], float('nan')]:
+            with self.subTest(value=value):
+                self.assertIsNone(search_api._date(value))
+
+    def test_bare_date_covers_its_whole_day(self):
+        now = datetime.now(timezone.utc)
+        yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+        week_old = (now - timedelta(days=9)).strftime('%Y-%m-%d')
+        items = [{'title': str(i), 'href': f'https://example.org/{i}', 'date': date}
+                 for i, date in enumerate([yesterday, week_old])]
+        # Read as midnight UTC, yesterday's article would fail a 24-hour window.
+        self.assertEqual([r['title'] for r in search_api._normalize(items, days=1)], ['0'])
+        self.assertEqual([r['title'] for r in search_api._normalize(items, days=30)], ['0', '1'])
+
+    async def test_tavily_week_window(self):
+        cm, session = mocked_session({'results': []})
+        with patch.dict(os.environ, {'TAVILY_API_KEY': 'secret'}), \
+             patch.object(search_api.aiohttp, 'ClientSession', return_value=cm):
+            await search_api.fetch_tavily('новости', news=True, days=7)
+        self.assertEqual(session.post.call_args.kwargs['json']['time_range'], 'week')
+
+    def test_dropped_items_are_reported_in_the_log(self):
+        now = datetime.now(timezone.utc)
+        items = [{'title': 'без даты', 'href': 'https://example.org/1', 'date': ''},
+                 {'title': 'не распознана', 'href': 'https://example.org/2', 'date': 'дата неизвестна'},
+                 {'title': 'старое', 'href': 'https://example.org/3',
+                  'date': (now - timedelta(days=40)).isoformat()}]
+        with self.assertLogs('handlers.search_api', level='INFO') as logs:
+            self.assertEqual(search_api._normalize(items, days=1, source='Tavily'), [])
+        line = '\n'.join(logs.output)
+        self.assertIn('Tavily', line)
+        self.assertIn('без даты — 2', line)
+        self.assertIn('вне окна — 1', line)
+        self.assertIn('дат не распознано — 1', line)
+
 
 class SearchFlowTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -159,10 +222,59 @@ class SearchFlowTests(unittest.IsolatedAsyncioTestCase):
              patch.object(search_api, 'fetch_firecrawl', new=AsyncMock(return_value=[])) as second, \
              patch.object(web_search, '_fetch_wikipedia', new_callable=AsyncMock) as wiki:
             answer = await web_search.smart_web_search('последние новости Уэбб')
-        first.assert_awaited_once_with('последние новости Уэбб', news=True, days=30)
-        second.assert_awaited_once_with('последние новости Уэбб', news=True, days=30)
+        # The provider gets the subject; «последние новости» is the wrapper the
+        # topic and the date window already express.
+        first.assert_awaited_once_with('Уэбб', news=True, days=30)
+        second.assert_awaited_once_with('Уэбб', news=True, days=30)
         wiki.assert_not_awaited()
         self.assertIn('свежих новостей', answer)
+
+    async def test_day_window_news_reaches_the_provider_as_the_subject(self):
+        dated = [{'title': 'Bitcoin', 'body': 'Курс вырос', 'href': 'https://example.org/btc',
+                  'date': '2026-11-22'}]
+        with patch.object(search_api, 'fetch_tavily', new=AsyncMock(return_value=dated)) as first, \
+             patch.object(search_api, 'fetch_firecrawl', new_callable=AsyncMock) as backup, \
+             patch.object(web_search, 'generate_with_retry',
+                          new=AsyncMock(return_value='STATUS: OK\nКурс bitcoin подрос.')):
+            answer = await web_search.smart_web_search('новости за сутки включая курс bitcoin и gram')
+        first.assert_awaited_once_with('курс bitcoin и gram', news=True, days=1)
+        backup.assert_not_awaited()
+        self.assertIn('Курс bitcoin подрос.', answer)
+
+    async def test_partial_coverage_is_not_a_refusal(self):
+        # A digest request is never fully answerable from five snippets; the gate
+        # must reject off-topic results only, or every news search ends empty.
+        dated = [{'title': 'Bitcoin', 'body': 'Курс вырос', 'href': 'https://example.org/btc',
+                  'date': '2026-11-22'}]
+        with patch.object(search_api, 'fetch_tavily', new=AsyncMock(return_value=dated)), \
+             patch.object(search_api, 'fetch_firecrawl', new_callable=AsyncMock), \
+             patch.object(web_search, 'generate_with_retry',
+                          new=AsyncMock(return_value='STATUS: OK\nВот что есть.')) as ai:
+            answer = await web_search.smart_web_search('новости за сутки')
+        prompt = ai.await_args.args[0]
+        self.assertIn('Неполнота отказом не считается', prompt)
+        self.assertIn('STATUS: NO только если фрагменты не по теме', prompt)
+        self.assertNotIn('или информации недостаточно', prompt)
+        self.assertIn('Вот что есть.', answer)
+
+    async def test_empty_and_rejected_searches_are_distinguishable_in_the_log(self):
+        dated = [{'title': 'Bitcoin', 'body': 'Курс', 'href': 'https://example.org/btc',
+                  'date': '2026-11-22'}]
+        with patch.object(search_api, 'fetch_tavily', new=AsyncMock(return_value=[])), \
+             patch.object(search_api, 'fetch_firecrawl', new=AsyncMock(return_value=[])), \
+             self.assertLogs('handlers.web_search', level='INFO') as logs:
+            await web_search.smart_web_search('новости за сутки')
+        self.assertIn('ни одного подходящего результата', '\n'.join(logs.output))
+        self.assertIn('Поиск без ответа', '\n'.join(logs.output))
+
+        with patch.object(search_api, 'fetch_tavily', new=AsyncMock(return_value=dated)), \
+             patch.object(search_api, 'fetch_firecrawl', new=AsyncMock(return_value=[])), \
+             patch.object(web_search, 'generate_with_retry', new=AsyncMock(return_value='STATUS: NO')), \
+             self.assertLogs('handlers.web_search', level='INFO') as logs:
+            await web_search.smart_web_search('новости за сутки')
+        joined = '\n'.join(logs.output)
+        self.assertIn('Tavily: 1 результатов, оценка ИИ — irrelevant', joined)
+        self.assertIn('найденное не подошло', joined)
 
     async def test_both_failed_and_one_failed_are_distinct(self):
         with patch.object(search_api, 'fetch_tavily', new=AsyncMock(side_effect=OSError())), \
