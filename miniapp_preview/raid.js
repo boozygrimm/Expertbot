@@ -18,10 +18,10 @@
   // --- формулы урона (классика) ---
   // Урон цепочки со мечом: (база + сила + рост «Урона» + наследник класса)
   //                         + оружие × (число мечей в цепочке).
-  // Пробитие брони (pierce) — вероятность, что атака игнорирует оборону черепа.
-  // DPS по черепу = суммарный урон; применяется сначала к обороны, потом к HP.
+  // Оборона всегда поглощает этот удар; пробитие — шанс снять каждый пункт
+  // поглощённой брони ПОСЛЕ расчёта потери HP (AttackSkull @0x2f630).
   // (не путать с бронёй героя, где работает «долговечность»)
-  const BASE_DAMAGE = 3;           // базовый урон без мечей (по исходной спецификации)
+  const BASE_DAMAGE = 2;           // база 2 + стартовая сила 1 = 3 без мечей
   const HP_PER_SHIELD_ARMOR = 1;   // базовая броня за щит (+ точность + 2 × защита)
   const SHIELD_UPGRADE_POINTS = 8; // очки upgrade bar за каждый щит (калибровка клона)
   const HEAL_PER_POTION = 1;       // базовая лечение за зелье (+ удача)
@@ -76,7 +76,7 @@
     14: { atk: 2,   def: 2,  hp: 4 },    // Chaotic
     15: { atk: 2,   def: 2,  hp: 4 },    // Mage
     16: { atk: 3,   def: 2,  hp: 3 },    // Assassin
-    17: { atk: 2,   def: 2,  hp: 4 },    // Doppelganger (def = текущая броня героя)
+    17: { atk: 2,   def: 1,  hp: 4 },    // Doppelganger (def = текущая броня героя)
     18: { atk: 2,   def: 2,  hp: 4 },    // Alchemist
     19: { atk: 4,   def: 1,  hp: 5 },    // Unstable
     20: { atk: 2,   def: 2,  hp: 4 },    // Vampire
@@ -485,7 +485,7 @@
     { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste', pool: ['haste', 'steal', 'freeze', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'treasure', 'disarm', 'dazzle', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour', 'fireball'],
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
-      raceDesc: 'Калечение: в конце твоего хода убивает не более одного старого обычного черепа с HP ниже твоей брони.',
+      raceDesc: 'Калечение: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты; даёт опыт, не действует на особых и боссов.',
       clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
       uniqueSkillDesc: 'Спешка (16): ставит на поле цепную клетку — она подходит к любому типу' },
   ];
@@ -580,6 +580,9 @@
   const SKULL_IMAGES = new Map(); // uid -> cached <img> (same sprite never re-created)
 
   let S = null;
+  // Resources already scheduled by an enclosing collection must not be paid
+  // twice when a Kamikaze / explosive potion overlaps that selection.
+  let ACTIVE_RESOURCE_CELLS = null;
   // Идентификатор забега: отложенные setTimeout резолва/enemy phase не должны
   // попадать в новый забег после рестарта (см. newGame + resolveChain).
   let RUN_ID = 0;
@@ -637,6 +640,7 @@
         level: 1,
         xp: 0,
         xpNext: 100,
+        xpLevelCum: 0,              // cumulative XP used by score and enemy growth
         gold: 0,
         goldBox: 0,
         stats: { strength: 1, vitality: 1, luck: 1, dexterity: 1, charisma: 0, damage: 0, defense: 0 },
@@ -672,7 +676,6 @@
       trophiesThisRun: 0,         // сколько трофеев забрано за забег
       pendingTrophy: null,        // { kind, cls, text } — ожидает захвата
       upgradeBar: 0,
-      xpLevelCum: 0,
       turn: 0,
       skullsKilled: 0,
       swordsHits: 0,
@@ -705,38 +708,58 @@
     };
   }
 
+  // Original TileType order is POTION(0), SKULL(1), COIN(2), SHIELD(3), SWORD(4),
+  // so a refill tile is a skull 1 time in 5 — the "20% of new tiles" rule.
+  function rollTileType() {
+    const t = randInt(0, 4, 1);
+    return t === 0 ? 'potion' : t === 1 ? 'skull' : t === 2 ? 'coin' : t === 3 ? 'shield' : 'sword';
+  }
+  // Resource tiles only (used where a skull must not appear).
   function randomTileType() {
-    let t = randInt(0, 4, 1);
-    while (t === 1) t = randInt(0, 4, 1); // refill filter excludes skulls, re-rolling consumes RNG
-    return t === 0 ? 'potion' : t === 2 ? 'coin' : t === 3 ? 'shield' : 'sword';
+    let t = rollTileType();
+    while (t === 'skull') t = rollTileType();
+    return t;
   }
 
   // Клетка с возможной сломанностью щита (Rogue Flaw: 3%)
-  function createTile() {
-    const t = randomTileType();
-    // Rogue Clumsy: 3% щитов выпадают сломанными (0 брони/upgrade-очков, 0 бонусов)
-    if (t === 'shield' && S && (S.classId ? CLASS_BY_ID[S.classId].flaw === 'Clumsy' : false) && random() < 0.03) {
+  // Original RandomiseTile: R(1,100)<4 breaks 3% of shields; <6 makes
+  // 5% of potions mana potions / 5% of swords arrows.
+  // Perk/flaw decorations of a freshly generated resource tile.
+  function decorateTile(t) {
+    const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
+    if (t === 'shield' && cls && cls.flaw === 'Clumsy' && randInt(1, 100, 1) < 4) {
       S.brokenShields++;
       return { type: 'shield', broken: true };
     }
-    // Mage Gifted: 5% зелий выпадают как mana-зелья (+1 к кулдауну навыка)
-    if (t === 'potion' && S && (S.classId ? CLASS_BY_ID[S.classId].perk === 'Gifted' : false) && random() < 0.05) {
+    if (t === 'potion' && cls && cls.perk === 'Gifted' && randInt(1, 100, 1) < 6) {
       return { type: 'potion', mana: true };
     }
-    // Ranger Agile: 5% мечей выпадают стрелками (стреляют на 1 клетку)
-    if (t === 'sword' && S && (S.classId ? CLASS_BY_ID[S.classId].perk === 'Agile' : false) && random() < 0.05) {
+    if (t === 'sword' && cls && cls.perk === 'Agile' && randInt(1, 100, 1) < 6) {
       return { type: 'arrow' };
     }
     return { type: t };
   }
 
-  // Спец-череп: определяется рандомно из 31 спец-типа (spec 02-chain-and-turn.md).
+  function createTile() {
+    return decorateTile(randomTileType());
+  }
+
+  // Promote uses the TILE stream: any of the 32 types, then a mortal-enemy
+  // override (including a rolled boss). Explicit makeSkull typeId pins a fixture.
   function randSpecialType() {
-    return SPECIAL_ABILITY_TYPES[randInt(0, SPECIAL_ABILITY_TYPES.length - 1)];
+    let type = randInt(1, 32, 1);
+    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+    if (cls && cls.id !== 'adventurer' && randInt(1, 200, 1) <= (cls.perk === 'Intimidating' ? 5 : 10)) {
+      type = MORTAL_BY_RACE[cls.race];
+    }
+    return type;
   }
 
   function makeSkull(boss, special, typeId) {
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
+    const effType = boss ? 1 : special ? (typeId != null ? typeId : randSpecialType()) : 0;
+    boss = effType === 1;
+    special = effType > 1;
     // Оригинал (Tile::GenerateStats @0x63098, Classic + Normal):
     //   level = trunc(totalXP/100);  q = trunc(t · max(1, 1+(t−500)/700));
     //   level > 40 → q = trunc(q·(1+(level−40)/60))
@@ -750,7 +773,7 @@
       const k = difficulty === 1 ? 700 : difficulty === 2 ? 750 : 500;
       q = Math.floor(turn * Math.max(1, 1 + (turn - 500) / k));
     }
-    if (level > 40) q = Math.floor(q * (1 + (level - 40) / 60));
+    if (difficulty !== 0 && level > 40) q = Math.floor(q * (1 + (level - 40) / 60));
     let a, d, h;
     if (difficulty === 0) {
       a = Math.max(1, randInt(Math.floor(q / 80), Math.floor(q / 70)));
@@ -769,36 +792,33 @@
       d = Math.max(0, randInt(Math.floor(q / 50), Math.floor(q / 40)));
       h = Math.max(4, randInt(Math.floor(q / 20), Math.floor(q / 15)));
     }
+    // GenerateStats always consumes the interval draw, even for an ordinary
+    // skull. q=0 native float-to-int bounds are unresolved: consume its draw,
+    // but do not invent a finite promotion interval for that fixture.
+    let promotionInterval = null;
+    if (q > 0) {
+      const root = Math.fround(Math.sqrt(q));
+      promotionInterval = randInt(Math.floor(Math.fround((difficulty >= 2 ? 150 : 200) / root)),
+        Math.floor(Math.fround(300 / root)), 1) + (difficulty === 0 ? 5 : 0);
+      if (cls && cls.flaw === 'Zealous') promotionInterval = Math.max(1, promotionInterval - 1);
+    } else {
+      random(1);
+    }
     // Sprint overrides the three base stats after the normal rolls.
     if (S.mode === 'sprint') {
       a = Math.max(1, randInt(Math.floor(q / 20), Math.floor(q / 12)));
       d = Math.max(0, randInt(Math.floor(q / 10), Math.floor(q / 6)));
       h = Math.max(4, randInt(Math.floor(q / 8), Math.floor(q / 4)));
     }
-    // спец-череп: тип определяет модификатор статов. Если передан typeId — используем, иначе рана.
-    let effType = (boss || !special) ? (boss ? 1 : 0) : (typeId != null ? typeId : randSpecialType());
-    // Mortal enemy: non-Human races have a 5% (2.5% Intimidating) chance that
-    // a generated special is their personal nemesis.
-    if (special && !boss && cls && cls.race !== 'Human') {
-      const chanceP = cls.perk === 'Intimidating' ? 0.025 : 0.05;
-      if (random(5) < chanceP && MORTAL_BY_RACE[cls.race] != null) {
-        effType = MORTAL_BY_RACE[cls.race];
-      }
-    }
     let atk = a, def = d, hp = h;
-    if (boss) {
-      atk = Math.round(a * BOSS_STATS.atk);
-      def = Math.round(d * BOSS_STATS.def);
-      hp = Math.round(h * BOSS_STATS.hp);
-    } else if (special) {
-      const mod = ENEMY_STAT_OVERRIDES[effType] || { atk: 2, def: 2, hp: 4 };
-      // 0 — Golden (A=0): атака 0; 0.5 — усечение x/2 (Invisible H, Meat Shield A)
-      atk = mod.atk === 0 ? 0 : (mod.atk === 0.5 ? Math.floor(a * 0.5) : Math.round(a * mod.atk));
-      def = effType === 17 ? Math.max(0, (S && S.hero ? S.hero.armor : 0)) : Math.round(d * mod.def);
-      hp = mod.hp === 0.5 ? Math.floor(h * 0.5) : Math.round(h * mod.hp);
+    if (boss || special) {
+      const mod = boss ? BOSS_STATS : (ENEMY_STAT_OVERRIDES[effType] || { atk: 2, def: 2, hp: 4 });
+      // GenerateStats clamps BASE defence before applying special multipliers;
+      // Doppelganger then replaces it with the hero's current armour (even 0).
+      atk = Math.floor(a * mod.atk);
+      def = effType === 17 ? Math.max(0, S.hero.armor) : Math.max(1, d) * mod.def;
+      hp = Math.floor(h * mod.hp);
     }
-    // Спец/босс: броня не ниже 1 (ориг: defence = max(1, defence))
-    if (boss || (special && effType !== 17)) def = Math.max(1, def);
     // Halfling's mortal enemy (Invisible): while it is alive, every other
     // generated monster gets double armour.
     if (cls && cls.race === 'Halfling' && S && S.board && effType !== 5
@@ -809,7 +829,7 @@
     const flawBonusHp = (!boss && !special && cls && cls.flaw === 'Sneaky') ? 1 : 0;
     // Оригинал: Noisy (flaw=9) → спец/босс +5% HP
     const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;
-    hp = Math.round(hp * noisy) + flawBonusHp;
+    hp = Math.floor(Math.fround(Math.fround(hp) * Math.fround(noisy))) + flawBonusHp;
     // Спец/босс: минимальные значения
     if (boss) atk = Math.max(1, atk);
     if (special && effType !== 3 && effType !== 30) atk = Math.max(1, atk); // Golden (3): A=0; Meat Shield (30): trunc(A/2)
@@ -831,6 +851,7 @@
       def: def,
       hp: hp,
       maxHp: hp,
+      promotionInterval,
       enteredTurn: (S && S.turn != null) ? S.turn : 0,
     };
   }
@@ -851,7 +872,7 @@
         S.board[writeRow * COLS + c] = cell;
         writeRow--;
       }
-      for (let r = 0; r <= writeRow; r++) emptySlots.push({ col: c, row: r });
+      for (let r = writeRow; r >= 0; r--) emptySlots.push({ col: c, row: r });
     }
     emptySlots.forEach(slot => {
       S.board[slot.row * COLS + slot.col] = createNewTile();
@@ -965,26 +986,32 @@
     return 1;
   }
 
-  function createNewTile() {
-    // Treasure Chamber: every new tile is a coin this turn.
-    if (S.forceCoins > 0) return { type: 'coin' };
-    // Original refill: 20% of new tiles are skulls. A skull created while the
-    // promotion counter is 0 becomes a special (types 1..32, 1 = boss).
-    if (randInt(0, 99, 1) < 20) {
-      let skull;
-      if ((S.promotionRemaining || 0) <= 0) {
-        const type = randInt(1, 32, 1);
-        skull = type === 1 ? makeSkull(true) : makeSkull(false, true, type);
-        // Sprint: 200-turn opening budget, then a promoted enemy every 10 turns.
-        S.promotionRemaining = S.mode === 'sprint' ? 10 : (clsFlaw() === 'Zealous' ? 42 : 43);
+  function isTimeToPromote() {
+    if (S.promotionRemaining === 0) return true;
+    if (S.mode !== 'sprint' || S.promotionRemaining === 200) return false;
+    const zealous = clsFlaw() === 'Zealous';
+    if ((S.turn - (zealous ? 3 : 4)) % (zealous ? 9 : 10) !== 0) return false;
+    S.promotionRemaining = 0;
+    return true;
+  }
+
+  function createNewTile(options) {
+    const exclude = options && options.exclude;
+    // Force Coin skips the type draw except during a filtered refill.
+    let type = S.forceCoins > 0 && !exclude ? 'coin' : rollTileType();
+    if (S.mode === 'sprint' && isTimeToPromote()) type = 'skull';
+    while (type === exclude) type = rollTileType();
+    if (type === 'skull') {
+      const promote = isTimeToPromote();
+      const specialType = promote ? randSpecialType() : 0;
+      const skull = makeSkull(specialType === 1, specialType > 1, specialType);
+      if (promote) {
+        S.promotionRemaining = S.mode === 'sprint' ? 200 : (skull.promotionInterval ?? 0);
         S.specialsPromoted = (S.specialsPromoted || 0) + 1;
-      } else {
-        skull = makeSkull(false);
       }
-      skull.enteredTurn = S.turn;
       return { type: 'skull', skull };
     }
-    return createTile();
+    return decorateTile(type);
   }
 
   // Gravity: each column compacts its non-empty cells to the bottom (skulls
@@ -1010,7 +1037,7 @@
         S.board[writeRow * COLS + c] = cell;
         writeRow--;
       }
-      for (let r = 0; r <= writeRow; r++) emptySlots.push({ col: c, row: r });
+      for (let r = writeRow; r >= 0; r--) emptySlots.push({ col: c, row: r });
     }
 
     // 2. assign skulls to top slots of random columns (1 skull per column)
@@ -1207,16 +1234,11 @@
         cellEl._renderKey = key;
       }
       // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
-      cellEl.classList.toggle('frozen', !!cell.frozen);
-      const crippleCandidate = S.classId === 'assassin' && !s.special && !s.boss
-        && (s.enteredTurn || 0) < S.turn && s.hp > 0 && s.hp < S.hero.armor;
-      const crippleTarget = crippleCandidate && S.board
-        .filter(c => c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss
-          && (c.skull.enteredTurn || 0) < S.turn && c.skull.hp > 0 && c.skull.hp < S.hero.armor)
-        .sort((a, b) => a.skull.hp - b.skull.hp)[0]?.skull === s;
+      cellEl.classList.toggle('frozen', !!cell.frozen || !!s.stunned);
+      const crippleTarget = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', !!crippleTarget);
       cellEl.title = crippleTarget
-        ? `🐺 Калечение: выбран самый слабый старый обычный череп (HP ${s.hp} < броня ${S.hero.armor}); не более одного за ход.`
+        ? `🐺 Калечение: HP ${s.hp} < собственная защита ${s.def}; будет собран в конце хода с наградой опытом.`
         : '';
       if (img.parentNode !== cellEl) cellEl.appendChild(img);
       // badge: reuse the same element — only the numbers change in place
@@ -1347,8 +1369,8 @@
   }
   function swordDamage(swordCount) {
     if (damageBlockedEarly()) return 0;   // Confused: no damage in the first 5 turns
-    const raw = baseDamage() + S.hero.weaponDamage * swordCount;
-    return Math.round(raw * (S.swordBoost > 0 ? 2 : 1));
+    // Boost Damage doubles the sword contribution, not the base damage.
+    return Math.round(baseDamage() + S.hero.weaponDamage * swordCount * (S.swordBoost > 0 ? 2 : 1));
   }
 
   function chainPreview() {
@@ -1490,7 +1512,12 @@
     if (el('armor-text')) el('armor-text').textContent = `${fmt(h.armor)} / ${fmt(h.maxArmor)}`;
     if (el('xp-text')) el('xp-text').textContent = `Ур. ${h.level} · ${fmt(h.xp)} / ${fmt(h.xpNext)}`;
     if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)} / ${GOLD_BOX_MAX}`;
-    if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(baseDamage())} + ${fmt(h.weaponDamage)}×меч`;
+    const damageLabel = el('dmg-text');
+    if (damageLabel) {
+      const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
+      damageLabel.textContent = `⚔ ${fmt(weapon)}/меч · 💥 ${fmt(baseDamage())}`;
+      damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`;
+    }
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
       const score = runScore();
@@ -1590,7 +1617,7 @@
     // Priest flaw Cautious: pierce threshold 30% instead of the base 50%.
     if (cls.flaw === 'Cautious') S.pierce = 0.30;
     // Original promotion/trophy counters (Sprint gets a 200-turn first budget).
-    S.promotionRemaining = cls.flaw === 'Zealous' ? 49 : (S.mode === 'sprint' ? 200 : 50);
+    S.promotionRemaining = S.mode === 'sprint' ? 200 : (cls.flaw === 'Zealous' ? 49 : 50);
     S.trophyRemaining = randInt(20, 30, 5);
 
     // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
@@ -1666,27 +1693,43 @@
     return out;
   }
 
+  // Shared AttackSkull arithmetic: this hit loses max(D - E, 0) HP, then
+  // each of min(D, E) armour points gets its own R(0,100)<pierce erosion roll.
+  // Direct effects (Orc Stun) are only rolled on survivors, including D=0.
+  function damageSkull(skull, amount, opts) {
+    opts = opts || {};
+    const damage = Math.max(0, Math.round(amount));
+    const defence = Math.max(0, skull.def || 0);
+    const loss = opts.ignoreDefence ? damage : Math.max(0, damage - defence);
+    skull.hp -= loss;
+    if (skull.hp <= 0) return loss;
+    if (!opts.ignoreDefence) {
+      for (let n = Math.min(damage, defence); n > 0; n--) {
+        if (randInt(0, 100, 5) < S.pierce * 100) skull.def--;
+      }
+    }
+    if (opts.direct && clsRace() === 'Orc' && randInt(1, 100, 5) <= 10) {
+      skull.stunned = true;
+      skull.burn = false;
+      skull.fireDamage = 0;
+    }
+    return loss;
+  }
+
   function hitSkullAt(idx, amount, opts) {
     opts = opts || {};
     const cell = S.board[idx];
     if (!cell || cell.type !== 'skull' || !cell.skull || cell.skull.hp <= 0) return false;
     const s = cell.skull;
-    let dmg = Math.max(0, Math.round(amount));
-    if (dmg <= 0) return false;
-    if (!opts.ignoreDefence) {
-      if (randInt(0, 100, 5) >= S.pierce * 100) {
-        const absorbed = Math.min(dmg, Math.max(0, s.def));
-        s.def -= absorbed;
-        dmg -= absorbed;
-      }
-    }
-    s.hp -= dmg;
+    if (s.phylactery) return false;
+    const dmg = damageSkull(s, amount, opts);
     floatOn('💥 ' + dmg, 'hurt');
     if (s.hp <= 0) {
       S.board[idx] = { type: 'empty' };
       S.skullsKilled++;
       registerSkullEnd(s);
       if (opts.reward !== false) awardKillXp(s);
+      if (s.type === 10) explodeKamikazeCell(idx, false);
       audioKill();
       return true;
     }
@@ -1722,7 +1765,7 @@
     const result = applyChainEffects(swords, shields, coins, potions,
       opts.noSkulls ? [] : skullIdxs, uniq.length >= 10, broken, potionIdxs);
     if (result.xpGained > 0) gainXp(result.xpGained);
-    const manaCount = uniq.filter(i => { const c = S.board[i]; return c && c.type === 'potion' && c.mana; }).length;
+    const manaCount = potionIdxs.filter(i => { const c = S.board[i]; return c && c.mana && !c.explosive && !c.broken; }).length;
     if (manaCount > 0) refillRandomSkill(manaCount);
     if (S.leech > 0 && result.dmgShown > 0) heal(S.leech * result.dmgShown);
     // cleared tiles + compact/refill, exactly like a resolved chain
@@ -1736,8 +1779,10 @@
       }
       S.board[i] = { type: 'empty' };
     });
-    compactBoardAndRefill();
-    if (!hasLegalChain(S.board)) ensureChainable();
+    if (!opts.noRefill) {
+      compactBoardAndRefill();
+      if (!hasLegalChain(S.board)) ensureChainable();
+    }
     return result;
   }
 
@@ -2133,7 +2178,16 @@
 
   // спец-череп (босс или спец-череп): счётчик для трофея
   function registerSkullEnd(s) {
-    if (s && (s.boss || s.special)) S.specialsKilled = (S.specialsKilled || 0) + 1;
+    if (!s || !(s.boss || s.special)) return;
+    S.specialsKilled = (S.specialsKilled || 0) + 1;
+    // Native charge=cooldown means ZERO turns remaining in our representation.
+    // Shapeshift may hit a ready slot (unlike mana) and applies to every special
+    // collection path, not just deaths inside a manually selected chain.
+    if (clsRace() === 'Changeling' && S.skills.length > 0) {
+      const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
+      S.skillCooldowns[pick] = 0;
+      flash('🔮 Смена облика: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» готов');
+    }
   }
 
   function gainXp(amount) {
@@ -2143,16 +2197,23 @@
     return v;
   }
 
-  // Mana potion: refill one random equipped skill slot (original AddResource).
+  // Mana potion: original Token::InitialiseFromTile picks ONE equipped skill that
+  // is not fully charged (and is not the Mana skill itself) per token, then
+  // AddResource adds a single charge — i.e. cooldown −1, not a full reset. With
+  // no eligible target the token is never created at all.
   function refillRandomSkill(count) {
     let n = 0;
-    for (let k = 0; k < count; k++) {
-      if (!S.skills || S.skills.length === 0) break;
-      const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
-      if ((S.skillCooldowns[pick] || 0) > 0) n++;
-      S.skillCooldowns[pick] = 0;
+    const eligible = (S.skills || []).filter(id => id !== 'mana' && (S.skillCooldowns[id] || 0) > 0);
+    if (eligible.length === 0) return 0;
+    // Bind targets at creation, before any tokens arrive. Several potions may
+    // choose the same slot; an excess token is clamped, never redirected.
+    const targets = Array.from({ length: count }, () => eligible[randInt(0, eligible.length - 1, 5)]);
+    for (const pick of targets) {
+      const before = S.skillCooldowns[pick];
+      S.skillCooldowns[pick] = Math.max(0, before - 1);
+      n += before - S.skillCooldowns[pick];
     }
-    if (n > 0) flash('🔹 Мана: восстановлено навыков — ' + n);
+    if (n > 0) flash('🔹 Мана: −' + n + ' к кулдауну навыков');
     return n;
   }
 
@@ -2255,6 +2316,16 @@
 
   // --- resolve chain (классика: оружие/щиты/монетки/зелья + бонусные эффекты) ---
   function applyChainEffects(swordCount, shieldCount, coinCount, potionCount, skullIdxs, raidarPerk, brokenSet, potionIdxs) {
+    const previous = ACTIVE_RESOURCE_CELLS;
+    ACTIVE_RESOURCE_CELLS = new Set([...(previous || []), ...(S._chainOrder || [])]);
+    try {
+      return resolveChainEffects(swordCount, shieldCount, coinCount, potionCount, skullIdxs, raidarPerk, brokenSet, potionIdxs);
+    } finally {
+      ACTIVE_RESOURCE_CELLS = previous;
+    }
+  }
+
+  function resolveChainEffects(swordCount, shieldCount, coinCount, potionCount, skullIdxs, raidarPerk, brokenSet, potionIdxs) {
     potionIdxs = potionIdxs || [];
     // Без сторонних побочных эффектов от «выборочности» — чистая арифметика.
     // brokenSet (Set) — индексы брошенных (сломанных) щитов; для рун-интерьера — пусто.
@@ -2336,22 +2407,13 @@
         // Spiky reflect — отдельно накапливается
         if (s.type === 2) spikyReflect = Math.max(spikyReflect, totalDamage);
 
-        if (randInt(0, 100, 5) < S.pierce * 100) {
-          s.hp -= dmg;
-        } else {
-          const dmgToDef = Math.min(dmg, s.def);
-          s.def -= dmgToDef;
-          s.hp -= (dmg - dmgToDef);
-        }
+        damageSkull(s, dmg, { direct: true });
         // Vampire hostile branch: direct attack adds GetAttack even beyond old max HP.
         if (s.type === 20 && s.hp > 0) {
           s.hp += enemyGetAttack(s);
           s.maxHp = Math.max(s.maxHp || 0, s.hp);
         }
 
-        if (cls && cls.race === 'Orc' && randInt(0, 100, 5) < 10 && s.hp > 0) {
-          s.stunned = true;
-        }
         if (s.hp <= 0) {
           // Lich turns into a one-HP phylactery; it is not a kill until the box is collected.
           if (s.type === 32 && !s.phylactery) {
@@ -2370,13 +2432,6 @@
           registerSkullEnd(s);
           result.kills++;
           if (isBoss) result.bossKills++;
-          // Changeling Shapeshift: collecting a special/boss immediately
-          // refills one random equipped skill (may pick a ready one).
-          if ((s.special || isBoss) && cls && cls.race === 'Changeling' && S.skills.length > 0) {
-            const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
-            S.skillCooldowns[pick] = 0;
-            flash('🔮 Меняться: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» готов');
-          }
           const xp = isBoss ? XP_PER_BOSS : (S.xpPerSkull || XP_PER_SKULL);
           result.xpGained += xp;
           if (S.stealActive > 0) { gainGold(4); result.goldGained += 4; }
@@ -2406,10 +2461,7 @@
           for (const i of unselected) {
             const cell = S.board[i];
             if (!cell || cell.type !== 'skull' || cell.skull.hp <= 0) continue;
-            // Original AttackSkull: the skull's defence absorbs damage first.
-            const absorbed = Math.min(totalDamage, Math.max(0, cell.skull.def || 0));
-            cell.skull.def = Math.max(0, (cell.skull.def || 0) - absorbed);
-            cell.skull.hp -= (totalDamage - absorbed);
+            damageSkull(cell.skull, totalDamage, { direct: false });
             if (cell.skull.hp <= 0) {
               S.board[i] = { type: 'empty' };
               S.skullsKilled++;
@@ -2453,6 +2505,13 @@
       }
       if (result.dmgShown > 0) floatOn('💥 ' + result.dmgShown, 'hurt');
       if (chainDead) return result;
+    }
+
+    // Explosive potions recursively collect neighbouring NON-skulls and do
+    // not also issue an ordinary healing / mana token themselves.
+    for (const idx of potionIdxs) {
+      const potion = S.board[idx];
+      if (potion && potion.explosive && !potion.broken) collectBlastResources(idx);
     }
 
     // --- shields ---
@@ -2521,12 +2580,12 @@
     // --- potions ---
     if (potionCount > 0) {
       // Acid (6): кислотное зелье — ранит героя вместо лечения
-      const normalPotionIdxs = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && !c.acid && !c.mana; });
-      const actualAcidCount = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && c.acid; }).length;
+      const normalPotionIdxs = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && !c.acid && !c.mana && !c.explosive && !c.broken; });
+      const actualAcidCount = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && c.acid && !c.explosive && !c.broken; }).length;
       const luck = S.hero.stats.luck;
       const healBase = (HEAL_PER_POTION + luck) * (S.potionBoost > 0 ? 2 : 1);
       if (actualAcidCount > 0) {
-        const acidDmg = Math.max(0, healBase * actualAcidCount);
+        const acidDmg = Math.max(0, (HEAL_PER_POTION + luck) * actualAcidCount);
         S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
         flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
         floatOn('💥 -' + acidDmg, 'hurt');
@@ -2544,8 +2603,7 @@
         flash('💚 Яд снят зельем');
       }
       const healPotionCount = normalPotionIdxs.length;
-      // mana potions (Mage Gifted): collected mana potions reduce longest cooldown by 1
-      const manaIdxs = brokenSet ? [] : []; // no mana info here — mana handled in resolveChain via caller chain
+      // Mana is handled by the caller after all token targets have been bound.
       let gain = Math.round(healPotionCount * healBase);
       const before = S.hero.hp;
       heal(gain);
@@ -2680,7 +2738,7 @@
       if (potionCount > 0) {
         const manaCount = chain.filter(idx => {
           const c = S.board[idx];
-          return c && c.type === 'potion' && c.mana;
+          return c && c.type === 'potion' && c.mana && !c.explosive && !c.broken;
         }).length;
         if (manaCount > 0) refillRandomSkill(manaCount);
       }
@@ -2737,10 +2795,12 @@
       // xp + bonus XP (classic): каждый лишний череп сверх трёх убитых этим ходом даёт шанс бонуса
       const totalKills = result.kills + (typeof runeKills === 'number' ? runeKills : 0);
       S.killsThisTurn = totalKills;
-      // Halfling Guts: 15+ kills in one chain permanently +1 max armour.
+      // Halfling Guts upgrades the BODY ARMOUR item (native stat 11, step 1),
+      // retaining the current armour deficit when equipment stats change.
       if (cls && cls.race === 'Halfling' && totalKills >= 15) {
-        S.hero.maxArmor += 1;
-        S.hero.armor = Math.min(S.hero.maxArmor, S.hero.armor + 1);
+        const armour = S.equipment.find(item => item.slot === 'armour');
+        armour.mods.maxArmor = (armour.mods.maxArmor || 0) + 1;
+        applyItemMod('maxArmor', 1, 1);
         flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
       }
       if (result.xpGained > 0 || runeXp > 0) {
@@ -2775,6 +2835,10 @@
         enemyPhase();
       }, 550);
     }, 420);
+  }
+
+  function isCrippleTarget(skull) {
+    return skull && !skull.special && !skull.boss && skull.hp > 0 && skull.hp < (skull.def || 0);
   }
 
   function awardKillXp(skull) {
@@ -2894,24 +2958,24 @@
       heal(cls && cls.perk === 'Faithful' ? S.regen * 2 : S.regen);
     }
 
-    // Cripple (Werewolf/Assassin): at most one old ordinary skull under armor dies per turn.
+    // ProcessCripples is row-major: collect ALL ordinary skulls with HP below
+    // their own defence. Native MatchTile(5) means "use the tile's type" (not
+    // "no reward": that is 7), so these give XP but are not direct attack kills.
     if (S.classId && CLASS_BY_ID[S.classId].race === 'Werewolf') {
-      // Exclude this-turn spawns, special skulls, and bosses; choose the weakest eligible target.
-      let targetIndex = -1;
+      let crippled = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        if (c && c.type === 'skull' && !c.skull.special && !c.skull.boss
-            && (c.skull.enteredTurn || 0) < S.turn && c.skull.hp > 0 && c.skull.hp < S.hero.armor
-            && (targetIndex < 0 || c.skull.hp < S.board[targetIndex].skull.hp)) targetIndex = i;
-      }
-      if (targetIndex >= 0) {
-        const skull = S.board[targetIndex].skull;
-        S.board[targetIndex] = { type: 'empty' };
-        S.skullsKilled++;
-        registerSkullEnd(skull);
-        awardKillXp(skull);
+        if (!c || c.type !== 'skull' || !c.skull) continue;
+        const sk = c.skull;
+        if (!isCrippleTarget(sk)) continue;
+        S.board[i] = { type: 'empty' };
+        crippled++;
+        awardKillXp(sk);
+        if (crippled >= 4 && randInt(1, 100, 5) <= bonusPct('xp')) awardKillXp(sk);
         audioKill();
-        const message = `🐺 Калечение Вервольфа: уничтожен 1 старый обычный череп с минимальным HP (${skull.hp} < броня ${S.hero.armor}); максимум один за ход.`;
+      }
+      if (crippled > 0) {
+        const message = `🐺 Калечение Вервольфа: уничтожено черепов с HP ниже их защиты — ${crippled}`;
         log(message);
         flash(message);
       }
@@ -2933,9 +2997,6 @@
       if (fc && fc.type === 'skull' && fc.skull) fc.skull.frozenTurn = 0;
     }
 
-    // Promotion countdown (EndOfTurn, before abilities). It only reaches 0;
-    // the next generated skull is the one that gets promoted.
-    if (S.promotionRemaining > 0) S.promotionRemaining--;
     // Mage blocks natural skill recovery (EndOfTurn ordering).
     const magePresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 15);
     if (!magePresent) {
@@ -2961,6 +3022,8 @@
     // доску и снова наполняем пустые клетки, чтобы пустое место не торчало
     // посреди поля
     compactBoardAndRefill();
+    // Native countdown decrements AFTER abilities and the final refill.
+    if (S.promotionRemaining > 0) S.promotionRemaining--;
 
     if (!hasLegalChain(S.board)) {
       ensureChainable();
@@ -3300,6 +3363,7 @@
   }
 
   function renderLevelChoices(options, body) {
+    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
     const picked = new Set();
@@ -3388,9 +3452,10 @@
               S.skillCooldowns[sk] = Math.max(0, (S.skillCooldowns[sk] || 0) - 1);
               flash('🗡 Хитрость: кд навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
             }
-            // Faun Rejuvenate (Priest race): HP ≥ 25% max
+            // Faun Rejuvenate (Priest race): original Healing @0x28c0c raises HP
+            // to trunc(maxHP * 0.25) when a level is gained.
             if (clsRace() === 'Faun') {
-              const need = Math.ceil(S.hero.maxHp * 0.25);
+              const need = Math.floor(S.hero.maxHp * 0.25);
               if (S.hero.hp < need) {
                 S.hero.hp = need;
                 flash('🦌 Возрождение: HP до ' + need + ' (25%)');
@@ -3552,46 +3617,61 @@
 
 
   // --- special-ability helpers -------------------------------------------------
-  // Взрыв Ка-Ми-Казе: убивает 8 не-черепах вокруг, игрок теряет пол-HP (min 1).
-  // idx — клетка калибуса (может быть уже пуста в kill-ветке).
-  function explodeKamikazeCell(idx, hurtHero) {
-    if (idx == null || idx < 0) return;
-    const col = idx % COLS, row = Math.floor(idx / COLS);
-    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      const r = row + dr, c = col + dc;
-      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
-      const ni = r * COLS + c;
-      const nc = S.board[ni];
-      if (!nc || nc.type === 'empty') continue;
-      if (nc.type !== 'skull') S.board[ni] = { type: 'empty' };
+  // Collect a blast without gravity/refill in the middle of an ability pass.
+  // Scan x before y, recursively expanding explosive potions; no skulls die.
+  function collectBlastResources(idx) {
+    const seen = new Set();
+    const collectable = [];
+    const visitNeighbours = centre => {
+      const x = centre % COLS, y = Math.floor(centre / COLS);
+      for (let c = Math.max(0, x - 1); c <= Math.min(COLS - 1, x + 1); c++) {
+        for (let r = Math.max(0, y - 1); r <= Math.min(ROWS - 1, y + 1); r++) {
+          const i = r * COLS + c;
+          if (i === centre || seen.has(i)) continue;
+          seen.add(i);
+          const cell = S.board[i];
+          if (!cell || cell.matched || cell.type === 'empty' || cell.type === 'skull') continue;
+          if (!ACTIVE_RESOURCE_CELLS || !ACTIVE_RESOURCE_CELLS.has(i)) collectable.push(i);
+          if (cell.type === 'potion' && cell.explosive && !cell.broken) visitNeighbours(i);
+        }
+      }
+    };
+    seen.add(idx);
+    visitNeighbours(idx);
+    if (collectable.length === 0) return;
+    const saved = [S._chainOrder, S._runePathSet, S._lastChainCells, S._potionIdxs];
+    try {
+      collectIndices(collectable, { noSkulls: true, noRefill: true, burn: false });
+    } finally {
+      [S._chainOrder, S._runePathSet, S._lastChainCells, S._potionIdxs] = saved;
     }
+  }
+
+  // Kamikaze collects adjacent resources (rather than destroying their reward).
+  // Its timeout additionally halves hero HP; killing it does not hurt the hero.
+  function explodeKamikazeCell(idx, hurtHero) {
+    if (idx == null || idx < 0 || idx >= CELL_COUNT) return;
     const cell = S.board[idx];
-    if (cell && cell.type === 'skull') S.board[idx] = { type: 'empty' };
+    if (cell && cell.type === 'skull' && !cell.matched) S.board[idx] = { type: 'empty' };
     if (hurtHero) {
       const hpBefore = S.hero.hp;
       S.hero.hp = Math.max(1, Math.floor(S.hero.hp / 2));
       if (S.hero.hp < hpBefore) flash('💠 КА-МИ-КАЗЕ: пол-HP → ' + S.hero.hp);
     }
+    if (!cell || !cell.matched) collectBlastResources(idx);
     audioKill();
   }
 
-  // Нестабильный (19): очищает доску, не-черепы возвращаются новыми
   function createAlchemistTile() {
-    if (randInt(0, 4) === 4) {
-      const created = makeSkull(false, false);
-      created.maxHp = created.hp;
-      created.enteredTurn = S.turn;
-      return { type: 'skull', skull: created };
-    }
-    return createTile();
+    return createNewTile();
   }
 
   function unstableTeleport(idx) {
-    // Сброс доски — обычный набор клеток; раньше мечи/стрелы намеренно
-    // исключались, из-за чего на доске не оставалось мечей.
-    for (let j = 0; j < CELL_COUNT; j++) {
-      S.board[j] = createNewTile();
+    // Native filter: normally exclude skulls; only Changeling's mortal enemy
+    // excludes swords instead. Treasure Chamber does not override this filter.
+    const exclude = clsRace() === 'Changeling' ? 'sword' : 'skull';
+    for (let c = 0; c < COLS; c++) for (let r = ROWS - 1; r >= 0; r--) {
+      S.board[r * COLS + c] = createNewTile({ exclude });
     }
     flash('🌀 НЕСТАБИЛЬНЫЙ: поле обновлено');
     log('🌀 Нестабильный: поле обновлено');
@@ -3612,7 +3692,12 @@
     // Яд тикает в начале enemyPhase (см. enemyPhase), чтобы не бить дважды
     // в ход, когда Poisonous только что наложил его.
     const abilityDone = new Set();
-    for (let i = 0; i < CELL_COUNT; i++) {
+    let unstablePending = false;
+    // Original activation order is column-major (x outer, y inner), not
+    // row-major: EndOfTurn iterates ColumnSlots() when calling ActivateAbility.
+    const activationOrder = [];
+    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) activationOrder.push(r * COLS + c);
+    for (const i of activationOrder) {
       const cell = S.board[i];
       if (!cell || cell.type !== 'skull') continue;
       const s = cell.skull;
@@ -3792,9 +3877,11 @@
       } else if (t === 19) { // Unstable — таймер → телепорт
         s.countdown = (s.countdown || 0) - 1;
         if (s.countdown <= 0) {
-          unstableTeleport(i);
-          S.killsThisTurn = 0;
-          return;
+          // Native marks the board for removal but lets the remaining old
+          // specials act; refill occurs only after the entire ability pass.
+          S.board.forEach(old => { if (old) old.matched = true; });
+          unstablePending = true;
+          continue;
         }
       } else if (t === 21) { // Vengeful — атака += killsThisTurn
         if (S.killsThisTurn > 0) {
@@ -3954,6 +4041,7 @@
       // t === 5, 12, 15, 20, 30, 32 — handled elsewhere (stats / spawn / cooldown / attack loop / death)
     }
 
+    if (unstablePending) unstableTeleport();
     // Vengeful counter reset — kills this turn
     S.killsThisTurn = 0;
   }
@@ -4123,10 +4211,13 @@
     unstableTeleport,
     applyChainEffects,
     damageHero,
+    damageSkull,
+    refillRandomSkill,
     checkLevelUp,
     checkGoldBox,
     checkUpgradeBar,
     createTile,
+    createNewTile,
     hasLegalChain,
     chainTypeForCell,
     chainAllows,
