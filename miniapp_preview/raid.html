@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#140e22">
+<title>Lunapark · Рейд</title>
+<style>
+/*__STYLE__*/
+</style>
+</head>
+<body>
+<!-- class picker (стартовый экран) -->
+<div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
+  <div class="picker-card">
+    <h3 class="picker-title">⚔ Выбери класс</h3>
+    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за ~15 убитых спец-черепов.</p>
+    <div class="picker-grid" id="picker-grid"></div>
+    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне.</p>
+  </div>
+</div>
+
+<div class="shell">
+  <!-- top brand -->
+  <header class="brand">
+    <div class="brand-logo">
+      <div class="brand-mark">⚔</div>
+      <div class="brand-text">
+        <small>ЛАВКА ЛУНАПАРКА</small>
+        <strong>Рейд</strong>
+      </div>
+    </div>
+    <div class="brand-actions">
+      <label class="icon-btn" style="cursor:pointer" title="Звук">
+        <input type="checkbox" id="sound-on" checked hidden>
+        🔊
+      </label>
+      <button class="icon-btn" id="help" type="button" title="Как играть">?</button>
+      <button class="icon-btn" id="restart" type="button" title="Начать заново">↻</button>
+    </div>
+  </header>
+
+  <div class="notice">Пробник классики · <strong>свои графика и код</strong> · сложность: Нормал · босс каждые 10 ходов</div>
+
+  <!-- board -->
+  <div class="board-wrap">
+    <div id="chain-tip" class="chain-tip" role="status" aria-live="polite"></div>
+    <div id="board" aria-label="Поле рейда 6 на 6"></div>
+  </div>
+
+  <!-- HUD -->
+  <section class="hud" aria-label="Статус героя">
+    <div class="hud-row">
+      <div class="hud-cell">
+        <div class="hud-label"><span>❤️ HP</span><span id="hp-text">60 / 60</span></div>
+        <div class="bar"><i id="hp-bar" class="fill-hp"></i></div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-label"><span>🛡 Броня</span><span id="armor-text">15 / 15</span></div>
+        <div class="bar"><i id="armor-bar" class="fill-armor"></i></div>
+      </div>
+    </div>
+    <div class="hud-row">
+      <div class="hud-cell">
+        <div class="hud-label"><span>⭐ Опыт</span><span id="xp-text">Ур. 1 · 0 / 10</span></div>
+        <div class="bar xp"><i id="xp-bar" class="fill-xp"></i></div>
+      </div>
+      <div class="hud-cell">
+        <div class="hud-label"><span>💰 Золото</span><span id="gold-text">0 / 100</span></div>
+        <div class="bar"><i id="gold-bar" class="fill-gold"></i></div>
+      </div>
+    </div>
+    <div class="hud-meta">
+      <span class="turn" id="turn-text">ХОД 0</span>
+      <span class="dmg" id="dmg-text">⚔ 6</span>
+      <span class="dmg" id="trophy-text" style="color:#ffd97a">🏆 0 / 15</span>
+      <span class="dmg" id="upgrade-text" style="color:#c9a8ff">⬆ 0 / 80</span>
+    </div>
+    <div class="bar xp" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
+  </section>
+
+  <!-- skills -->
+  <div class="skills" id="skills" aria-label="Умения"></div>
+
+  <div class="log-wrap" id="log" aria-live="polite"></div>
+
+  <div class="flash" id="flash" role="status"></div>
+</div>
+
+<!-- generic modal (level / gold / armor / gameover) -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3 class="modal-title" id="modal-title">⬆ УРОВЕНЬ!</h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- help -->
+<div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
+  <div class="help-card">
+    <h3>⚔ Как играть</h3>
+    <p><b>Пробник классического Рейда</b> на своих графике и коде.</p>
+    <ul>
+      <li>Смахни по 3+ клеток одной категории (меч/щит/монета/зелье).</li>
+      <li>Череп идёт в цепочку с мечом/стрелой и сам может начинать её.</li>
+      <li>Стрелы (Разведчик) — стреляют на 1 клетку от стрелы; комбинируются с мечами в одной цепочке.</li>
+      <li>При наборе цепочки окошко покажет расчётный урон/выгоду; если цепочка убивает монстра — он подсветится и перечеркнётся.</li>
+      <li>Щиты → броня; монеты → золото; зелье → лечение.</li>
+      <li>Черепа атакуют после твоего хода. HP=0 → конец забега.</li>
+      <li>Ассасин / Вервольф — «Калечение»: в конце хода убивает максимум один старый обычный череп — выбирается самый слабый из тех, у кого HP ниже твоей брони. Свежие, особые и боссы не затрагиваются.</li>
+      <li>Уровень 2 из 4; 100 золота → снаряжение; 80 улучшений → апгрейд.</li>
+      <li>Спецскилл (Руна): магическая замкнутая цепочка собирает всё внутри неё.</li>
+      <li>Спецчерепы спавнятся каждые 4 хода (кроме бонусных ходов босса) — ~15 убийств → трофей → новый класс.</li>
+      <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы.</li>
+    </ul>
+    <button class="btn" id="help-close" type="button">Понятно</button>
+  </div>
+</div>
+
+<script>
+/*__SCRIPT__*/
+</script>
+</body>
+</html>
