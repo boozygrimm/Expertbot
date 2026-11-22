@@ -352,3 +352,117 @@ test('built raid a shop trade-off has red/green deltas, while upgrading the boug
     assert.deepEqual(errors, []);
   } finally { dom.window.close(); }
 });
+
+const classIds = ['adventurer','ranger','raider','priest','barbarian','mage','rogue','paladin','warrior','assassin'];
+function growClass(raid, id, level = 10) { raid.unlockClass(id); while (raid.classLevelOf(id) < level) raid.levelUpClass(id); }
+function editClass(doc, raid, id) {
+  raid.showClassPicker(); doc.querySelector(`.class-config-btn[data-class-id="${id}"]`).click();
+  assert.equal(doc.querySelector('#class-editor').hidden, false);
+}
+function editField(doc, kind, value, slot) {
+  const node = doc.querySelector(`#class-editor select[data-kind="${kind}"]` + (slot == null ? '' : `[data-slot="${slot}"]`));
+  node.value = value; node.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true })); return node;
+}
+
+test('built raid class editor previews locked/Adventurer classes without changing profile, state or RNG', async () => {
+  const {dom,raid,errors}=await openRaid();const doc=dom.window.document;
+  try {
+    const before=JSON.stringify(raid.state), profile=JSON.stringify({...dom.window.localStorage});
+    for(const id of ['mage','adventurer']) {
+      editClass(doc,raid,id);
+      assert.equal(doc.querySelector('#class-editor-save').hidden,true);
+      assert.equal(doc.querySelector('#class-picker-main').hidden,true);
+      assert.equal(dom.window.getComputedStyle(doc.querySelector('#class-picker-main')).display,'none');
+      assert.ok([...doc.querySelectorAll('#class-editor select')].every(n=>n.disabled));
+      doc.querySelector('#class-editor-back').click();
+    }
+    assert.equal(JSON.stringify(raid.state),before);assert.equal(JSON.stringify({...dom.window.localStorage}),profile);
+    assert.deepEqual(errors,[]);
+  }finally{dom.window.close()}
+});
+
+test('built raid cancel discards drafts, save persists only next-run setup and resume keeps the live run unchanged', async () => {
+  const {dom,raid,errors}=await openRaid();const doc=dom.window.document;
+  try {
+    for(const id of classIds)growClass(raid,id);
+    raid.setSelectedClassId('barbarian');raid.newGame(913);
+    const before=JSON.stringify(raid.state), oldConfig=JSON.stringify(raid.getClassConfig('barbarian'));
+    function draft(){
+      editField(doc,'race','Faun');editField(doc,'perks','Tough',1);editField(doc,'flaws','Frail',1);editField(doc,'replacements','steal',1);
+      assert.match(doc.querySelector('#class-replacement-count').textContent,/1 из 10/);
+    }
+    editClass(doc,raid,'barbarian');draft();doc.querySelector('#class-editor-back').click();
+    assert.equal(JSON.stringify(raid.getClassConfig('barbarian')),oldConfig);
+    editClass(doc,raid,'barbarian');draft();doc.querySelector('#class-editor-save').click();
+    assert.equal(doc.querySelector('#class-editor').hidden,true);
+    assert.equal(JSON.stringify(raid.state),before);
+    assert.equal(raid.getClassConfig('barbarian').race,'Faun');
+    const saved=JSON.parse(dom.window.localStorage.getItem('raid:classConfigs'));
+    assert.equal(saved.version,1);assert.equal(saved.classes.barbarian.perks[1],'Tough');
+    doc.querySelector('#picker-resume').click();
+    assert.equal(doc.querySelector('#class-picker').classList.contains('show'),false);
+    assert.equal(JSON.stringify(raid.state),before);
+    raid.newGame(913);
+    assert.equal(raid.clsRace(),'Faun');assert.equal(raid.hasPerk('Tough'),true);
+    assert.ok(raid.classSkillPool().includes('steal'));assert.ok(!raid.classSkillPool().includes('repair'));
+    assert.deepEqual(errors,[]);
+  }finally{dom.window.close()}
+});
+
+test('built raid editor enforces replacement budget, fixed first skill, class milestone and paired traits in native controls', async () => {
+  const {dom,raid,errors}=await openRaid();const doc=dom.window.document;
+  try {
+    growClass(raid,'barbarian',2);raid.unlockClass('mage');editClass(doc,raid,'barbarian');
+    const field=(kind,slot)=>doc.querySelector(`select[data-kind="${kind}"][data-slot="${slot}"]`);
+    assert.equal(doc.querySelector('select[data-kind="race"]').disabled,true);
+    assert.equal(field('perks',1).disabled,true);assert.equal(field('replacements',0).disabled,true);
+    editField(doc,'replacements','steal',1);editField(doc,'replacements','freeze',2);
+    const third=field('replacements',3);
+    assert.equal([...third.options].find(n=>n.value==='heal').disabled,true);
+    editField(doc,'replacements','',1);
+    assert.equal([...third.options].find(n=>n.value==='heal').disabled,false);
+    doc.querySelector('#class-editor-save').click();
+    growClass(raid,'barbarian',3);editClass(doc,raid,'barbarian');
+    assert.equal(field('perks',1).disabled,false);assert.equal(field('perks',2).disabled,true);
+    assert.equal([...field('perks',1).options].find(n=>n.value==='Strong').disabled,true);
+    editField(doc,'perks','Gifted',1);assert.equal(doc.querySelector('#class-editor-save').disabled,true);
+    assert.match(doc.querySelector('#class-editor-status').textContent,/изъян/);
+    editField(doc,'flaws','Frail',1);assert.equal(doc.querySelector('#class-editor-save').disabled,false);
+    doc.querySelector('#class-editor-save').click();
+    assert.equal(raid.getClassConfig('barbarian').perks[1],'Gifted');assert.deepEqual(errors,[]);
+  }finally{dom.window.close()}
+});
+
+test('built raid reset is only a draft; old select/save handlers and detached picker cards cannot change a restarted run', async () => {
+  const {dom,raid,errors}=await openRaid();const doc=dom.window.document;
+  try {
+    for(const id of classIds)growClass(raid,id);
+    editClass(doc,raid,'barbarian');editField(doc,'race','Faun');doc.querySelector('#class-editor-save').click();
+    editClass(doc,raid,'barbarian');doc.querySelector('#class-editor-reset').click();
+    assert.equal(doc.querySelector('select[data-kind="race"]').value,'Orc');
+    assert.equal(raid.getClassConfig('barbarian').race,'Faun');doc.querySelector('#class-editor-back').click();
+    const oldCard=doc.querySelector('.picker-card-btn[data-class-id="mage"]');
+    editClass(doc,raid,'barbarian');const oldSelect=doc.querySelector('select[data-kind="race"]'), oldSave=doc.querySelector('#class-editor-save').onclick;
+    raid.newGame(71);const before=JSON.stringify(raid.state), profile=dom.window.localStorage.getItem('raid:classConfigs');
+    oldSelect.value='Human';oldSelect.dispatchEvent(new dom.window.Event('change'));oldSave();
+    assert.equal(JSON.stringify(raid.state),before);assert.equal(dom.window.localStorage.getItem('raid:classConfigs'),profile);
+    raid.showClassPicker();oldCard.click();
+    assert.equal(JSON.stringify(raid.state),before,'detached start button must be stale after reopening the picker');
+    assert.deepEqual(errors,[]);
+  }finally{dom.window.close()}
+});
+
+test('built raid editor reports a blocked local store without pretending that a configuration was saved', async () => {
+  const {dom,raid,errors}=await openRaid();const doc=dom.window.document;
+  try {
+    for(const id of classIds)growClass(raid,id);
+    editClass(doc,raid,'barbarian');editField(doc,'race','Faun');
+    const original=dom.window.Storage.prototype.setItem;
+    dom.window.Storage.prototype.setItem=function(key,value){if(key==='raid:classConfigs')throw new Error('quota');return original.call(this,key,value)};
+    doc.querySelector('#class-editor-save').click();
+    assert.match(doc.querySelector('#class-editor-status').textContent,/Не удалось сохранить/);
+    assert.equal(doc.querySelector('#class-editor').hidden,false);assert.equal(raid.getClassConfig('barbarian').race,'Orc');
+    dom.window.Storage.prototype.setItem=original;doc.querySelector('#class-editor-save').click();
+    assert.equal(raid.getClassConfig('barbarian').race,'Faun');assert.deepEqual(errors,[]);
+  }finally{dom.window.close()}
+});

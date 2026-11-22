@@ -2855,3 +2855,297 @@ test('raid shop can trade one base-damage point for a double weapon increase; an
   elements.get('modal-body').querySelectorAll('.lv-card')[0].click();
   assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage(), raid.state.equipment[0].mods.baseDamage], [5, 4, 1]);
 });
+
+// Class growth edits the next-run configuration, never the live character.
+const raidClassIds = ['adventurer', 'ranger', 'raider', 'priest', 'barbarian', 'mage', 'rogue', 'paladin', 'warrior', 'assassin'];
+function raidClassLevel(raid, id, level = 10) {
+  raid.unlockClass(id);
+  while (raid.classLevelOf(id) < level) raid.levelUpClass(id);
+}
+function raidMasterClasses(raid) { for (const id of raidClassIds) raidClassLevel(raid, id); }
+const raidClassVectors = {
+  ranger: [31,2,3,4,5,7,8,9,10,12,13,14,16,18,21,22,23,24,25,29],
+  raider: [32,2,3,4,6,8,9,11,12,15,16,17,18,19,20,22,23,24,25,27],
+  priest: [33,1,2,5,6,7,8,9,10,12,13,15,18,19,21,20,25,26,28,29],
+  barbarian: [34,3,4,5,7,9,10,11,12,13,14,16,18,19,21,20,22,23,25,27],
+  mage: [35,1,2,3,6,7,8,9,10,12,15,17,18,21,20,24,25,26,28,29],
+  rogue: [36,0,2,3,4,6,8,9,10,11,12,13,14,15,17,18,22,23,24,25],
+  paladin: [37,2,3,4,5,8,9,11,12,13,14,16,18,19,21,20,23,24,25,27],
+  warrior: [38,2,3,4,5,6,7,10,11,12,13,14,15,16,19,21,22,23,25,27],
+  assassin: [39,0,1,4,5,7,8,9,12,14,15,16,18,21,22,23,24,25,27,28],
+};
+for (const [classId, vector] of Object.entries(raidClassVectors)) test(`raid class editor preserves ${classId}'s ordered twenty-slot native vector`, () => {
+  const { raid } = raidBrowser({ classId });
+  const info = raid.classEditorInfo(classId), config = raid.getClassConfig(classId);
+  assert.deepEqual(Array.from(info.baseSkills, id => raid.prepareSkillOption(id).native), vector);
+  assert.equal(config.perks.length, 4); assert.equal(config.flaws.length, 4);
+  assert.equal(config.replacements.length, 20);
+  assert.deepEqual(Array.from(raid.classSkillPool(), id => raid.prepareSkillOption(id).native), [...vector].sort((a,b) => a-b));
+  assert.equal(raid.state.skills.length, 0, 'pool entries are not equipped at start');
+});
+
+test('raid class editor uses class levels: pairs3/7/9, race5, two replacements per even level', () => {
+  for (let level = 1; level <= 10; level++) {
+    const { raid } = raidBrowser({ classId: 'barbarian' }); raidClassLevel(raid, 'barbarian', level);
+    const rules = raid.classRules('barbarian');
+    assert.equal(rules.replacementLimit, 2 * Math.floor(level / 2));
+    assert.equal(rules.canChangeRace, level >= 5);
+    assert.deepEqual(Array.from(rules.pairSlots), [true, level>=3, level>=7, level>=9]);
+  }
+});
+
+test('raid editor donor gates use default class identity: traits1, races5, unique skills10', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian' });
+  assert.equal(raid.isTraitUnlocked('perks', 'Unexpected'), true);
+  assert.equal(raid.isTraitUnlocked('flaws', 'Confused'), true);
+  assert.equal(raid.isRaceUnlocked('Human'), true);
+  assert.equal(raid.isTraitUnlocked('perks', 'Gifted'), false);
+  raid.unlockClass('mage');
+  assert.equal(raid.isTraitUnlocked('perks', 'Gifted'), true);
+  assert.equal(raid.isRaceUnlocked('Changeling'), false);
+  raidClassLevel(raid, 'mage', 5);
+  assert.equal(raid.isRaceUnlocked('Changeling'), true);
+  assert.equal(raid.isSkillUnlocked('rune'), false);
+  raidClassLevel(raid, 'mage'); assert.equal(raid.isSkillUnlocked('rune'), true);
+  for (const id of ['<img>', '__proto__', undefined]) assert.equal(raid.isRaceUnlocked(id), false);
+});
+
+test('raid editor leaves the primary pair and unique skill fixed, caps replacements and strips invalid/locked fields', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian' }); raidClassLevel(raid, 'barbarian', 3);
+  const config = raid.getClassConfig('barbarian');
+  config.race = 'Changeling'; config.perks = ['Gifted','Unexpected','Tough','Frugal'];
+  config.flaws = ['Frail','Confused','Noisy','Clumsy'];
+  config.replacements.fill('steal');
+  assert.equal(raid.saveClassConfig('barbarian', config), true);
+  const saved = raid.getClassConfig('barbarian');
+  assert.equal(saved.race, 'Orc');
+  assert.deepEqual(Array.from(saved.perks), ['Strong','Unexpected',null,null]);
+  assert.deepEqual(Array.from(saved.flaws), ['Reckless','Confused',null,null]);
+  assert.equal(saved.replacements[0], null);
+  assert.equal(saved.replacements.filter(Boolean).length, 2);
+  assert.equal(raid.saveClassConfig('mage', config), false, 'locked class cannot be configured');
+});
+
+test('raid class validation removes duplicate traits/unpaired perks but permits a flaw without a perk', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian' }); raidMasterClasses(raid);
+  const config = raid.getClassConfig('barbarian');
+  config.perks = ['Strong','Strong','Gifted','Tough']; config.flaws = ['Reckless','Frail',null,'Noisy'];
+  raid.saveClassConfig('barbarian', config);
+  const saved = raid.getClassConfig('barbarian');
+  assert.deepEqual(Array.from(saved.perks), ['Strong',null,null,'Tough']);
+  assert.deepEqual(Array.from(saved.flaws), ['Reckless','Frail',null,'Noisy']);
+  config.perks = ['Strong','Gifted','Tough','Frugal']; config.flaws = ['Reckless','Frail','Frail','Clumsy'];
+  raid.saveClassConfig('barbarian', config);
+  assert.deepEqual(Array.from(raid.getClassConfig('barbarian').perks), ['Strong','Gifted',null,'Frugal']);
+});
+
+test('raid class edits save/reload isolated copies and affect only the next run snapshot', () => {
+  const { raid, storage } = raidBrowser({ classId: 'barbarian' }); raidMasterClasses(raid);
+  const before = JSON.stringify(raid.state), original = raid.classSkillPool().join();
+  const config = raid.getClassConfig('barbarian');
+  config.race = 'Faun'; config.perks[1] = 'Tough'; config.flaws[1] = 'Frail'; config.replacements[1] = 'steal';
+  assert.equal(raid.saveClassConfig('barbarian', config), true);
+  config.perks[1] = 'Gifted';
+  assert.equal(JSON.stringify(raid.state), before);
+  assert.equal(raid.classSkillPool().join(), original);
+  assert.equal(raid.getClassConfig('barbarian').perks[1], 'Tough');
+  const reload = raidBrowser({ classId: 'barbarian', saved: Object.fromEntries(storage) }).raid;
+  assert.equal(reload.clsRace(), 'Faun'); assert.equal(reload.hasPerk('Tough'), true);
+  assert.equal(reload.classSkillPool().includes('steal'), true);
+  assert.equal(reload.classSkillPool().includes('repair'), false);
+  raid.newGame(913);
+  assert.equal(raid.clsRace(), 'Faun'); assert.equal(raid.hasFlaw('Frail'), true);
+  assert.equal(Object.isFrozen(raid.state.classConfig), true);
+  assert.equal(Object.isFrozen(raid.state.classConfig.perks), true);
+});
+
+test('raid replacement pool is an ascending unique set, not extra skill weighting; first skill stays class-specific', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian' }); raidMasterClasses(raid);
+  const config = raid.getClassConfig('barbarian');
+  config.replacements[0] = 'rune'; config.replacements[1] = 'rune'; config.replacements[2] = 'rune';
+  config.replacements[3] = 'awe'; config.replacements[4] = 'shock';
+  raid.saveClassConfig('barbarian', config); raid.newGame(913);
+  const pool = Array.from(raid.classSkillPool());
+  assert.equal(pool.filter(id => id === 'rune').length, 1);
+  assert.equal(pool.includes('awe'), false); assert.equal(pool.includes('shock'), false);
+  assert.ok(pool.includes('berserk'));
+  raid.state.hero.level = 2; assert.equal(raid.chooseLevelOptions()[0].id, 'berserk');
+});
+
+test('raid Adventurer stays Human without traits/replacements and uses the live global unlocked skill pool', () => {
+  const { raid } = raidBrowser(); raidMasterClasses(raid);
+  const config = raid.getClassConfig('adventurer');
+  config.race='Orc'; config.perks.fill('Strong'); config.flaws.fill('Reckless'); config.replacements.fill('rune');
+  assert.equal(raid.saveClassConfig('adventurer', config), false);
+  raid.newGame(0);
+  assert.equal(raid.clsRace(), 'Human'); assert.equal(raid.hasPerk('Strong'), false);
+  assert.equal(raid.classRules('adventurer').editable, false);
+  assert.deepEqual(Array.from(raid.classSkillPool(), id => raid.prepareSkillOption(id).native), Array.from({length:40}, (_,n)=>n));
+});
+
+for (const raw of ['broken', 'null', '[]', '{"version":9,"classes":{}}', '{"version":1,"classes":[]}']) test(`raid malformed class configuration storage is harmless: ${raw}`, () => {
+  const { raid } = raidBrowser({ saved: { 'raid:classConfigs': raw } });
+  assert.equal(raid.clsRace(), 'Human'); assert.equal(raid.baseDamage(), 3);
+  assert.equal(raid.getClassConfig('adventurer').perks.filter(Boolean).length, 0);
+});
+
+test('raid external class config values cannot inject names, unlock content or prototype keys', () => {
+  const raw = '{"version":1,"classes":{"barbarian":{"race":"<img src=x>","perks":["Strong","toString","Gifted",null],"flaws":["Reckless","Confused","Frail",null],"replacements":["rune","rune","awe"]},"__proto__":{"race":"Orc"}}}';
+  const { raid } = raidBrowser({ classId:'barbarian', saved:{'raid:classConfigs':raw} });
+  assert.equal(raid.clsRace(), 'Orc');
+  assert.deepEqual(Array.from(raid.state.classConfig.perks), ['Strong',null,null,null]);
+  assert.deepEqual(Array.from(raid.state.classConfig.replacements), Array(20).fill(null));
+  for (const id of ['toString','__proto__','alien']) assert.equal(raid.saveClassConfig(id, {}), false);
+  const config=raid.getClassConfig('barbarian');config.replacements[1]={toString:'not a function',valueOf:null};
+  assert.equal(raid.saveClassConfig('barbarian',config),true);
+  assert.deepEqual(Array.from(raid.getClassConfig('barbarian').replacements),Array(20).fill(null));
+});
+
+test('raid configured extra traits affect HP/armour/base/chances/pierce/item steps together without stacking', () => {
+  const { raid } = raidBrowser({ classId:'barbarian' }); raidMasterClasses(raid);
+  const config = raid.getClassConfig('barbarian');
+  config.perks = ['Strong','Tough','Frugal','Faithful']; config.flaws = ['Reckless','Frail','Cautious','Slim'];
+  raid.saveClassConfig('barbarian',config); raid.newGame(71);
+  assert.deepEqual([raid.state.hero.maxHp,raid.state.hero.hp,raid.state.hero.maxArmor,raid.state.hero.armor],[50,50,3,3]);
+  assert.deepEqual([raid.baseDamage(),raid.bonusPct('coin'),raid.bonusPct('shield'),raid.state.pierce,raid.itemStep('regen')],[4,35,15,.3,2]);
+  for (const name of [null,'—','missing']) assert.equal(raid.hasPerk(name),false);
+});
+
+test('raid extra Gifted/Agile/Clumsy use all three resource decorations in the live run', () => {
+  const { raid } = raidBrowser({ classId:'barbarian' }); raidMasterClasses(raid);
+  const config=raid.getClassConfig('barbarian');
+  config.perks[1]='Gifted';config.perks[2]='Agile';config.flaws[1]='Clumsy';config.flaws[2]='Sneaky';
+  raid.saveClassConfig('barbarian',config);raid.newGame(913);
+  const found=new Set();
+  for(let n=0;n<3000;n++){const cell=raid.createTile();if(cell.mana)found.add('mana');if(cell.type==='arrow')found.add('arrow');if(cell.broken)found.add('broken');}
+  assert.deepEqual([...found].sort(),['arrow','broken','mana']);
+  assert.equal(raid.makeSkull(false,false,0).hp,5,'an additional Sneaky flaw applies');
+});
+
+test('raid additional Cunning shortens only the fourth new skill and Faun heals at level arrival', () => {
+  const { raid }=raidBrowser({classId:'barbarian',menus:true});raidMasterClasses(raid);
+  const config=raid.getClassConfig('barbarian');config.perks[1]='Cunning';config.flaws[1]='Cautious';config.race='Faun';
+  raid.saveClassConfig('barbarian',config);raid.newGame(0);
+  for(const id of ['steal','freeze','repair','heal'])raid.installSkillOption(raid.prepareSkillOption(id));
+  assert.equal(raid.skillDuration('heal'),14);assert.equal(raid.state.skillCooldowns.heal,0);
+  raid.state.hero.hp=1;raid.state.hero.xp=100;raid.checkLevelUp();
+  assert.equal(raid.state.hero.hp,12);
+});
+
+test('raid additional Intimidating uses its reduced mortal-enemy threshold even on a different class', () => {
+  const {raid}=raidBrowser({classId:'barbarian'});raidMasterClasses(raid);
+  const config=raid.getClassConfig('barbarian');config.perks[1]='Intimidating';config.flaws[1]='Confused';
+  raid.saveClassConfig('barbarian',config);
+  for(let seed=0;seed<1000;seed++) {
+    raid.newGame(seed);const first=raidDraw(raid.state.rngSeeds[1],1,32), override=raidDraw(first.seed,1,200);
+    if(override.value>5&&override.value<=10&&first.value!==12){assert.equal(raid.makeSkull(false,true).type,first.value);return;}
+  }
+  assert.fail('no discriminating seed');
+});
+
+test('raid additional Unexpected and Confused affect only early volley/direct-chain damage and expire at turn5', () => {
+  const {raid}=raidBrowser({classId:'barbarian'});raidMasterClasses(raid);
+  const config=raid.getClassConfig('barbarian');config.perks[1]='Unexpected';config.flaws[1]='Confused';
+  raid.saveClassConfig('barbarian',config);raid.newGame(0);raidBoard(raid,'sword');
+  const skull=raidOld(raid,0,{hp:100,maxHp:100,def:0,atk:3});
+  for(const i of [0,1,2])raid.tryExtendChain(i);
+  assert.equal(raid.chainPreview().damage,0);
+  assert.equal(raid.processEnemyAttack(),null);
+  raid.state.turn=5;assert.ok(raid.chainPreview().damage>0);assert.ok(raid.processEnemyAttack());
+  assert.equal(skull.hp,100,'preview and volley do not themselves attack the skull');
+});
+
+test('raid configured Dragonkin and Elf use current race in chain damage and projected potion preview', () => {
+  const {raid}=raidBrowser({classId:'barbarian'});raidMasterClasses(raid);
+  const config=raid.getClassConfig('barbarian');config.race='Dragonkin';raid.saveClassConfig('barbarian',config);raid.newGame(0);
+  raidBoard(raid,'sword');raidOld(raid,0,{hp:20},8);assert.equal(raid.baseDamage(),2);
+  config.race='Elf';raid.saveClassConfig('barbarian',config);raid.newGame(0);raidBoard(raid,'sword');
+  raidOld(raid,10,{hp:20},9);raid.state.poison=3;
+  for(const i of [0,1,2]){raid.state.board[i]={type:'potion'};raid.tryExtendChain(i)}
+  const before=JSON.stringify(raid.state);raid.chainPreview();assert.equal(JSON.stringify(raid.state),before);
+  raid.addResource({type:'potion'});assert.equal(raid.state.poison,3);
+});
+
+test('raid skill replacement quota is enforced at every even class level and restoring defaults frees budget', () => {
+  for(const level of [2,4,6,8,10]) {
+    const {raid}=raidBrowser({classId:'barbarian'});raidClassLevel(raid,'barbarian',level);
+    const config=raid.getClassConfig('barbarian');config.replacements.fill('steal');raid.saveClassConfig('barbarian',config);
+    const limited=raid.getClassConfig('barbarian');assert.equal(limited.replacements.filter(Boolean).length,level);
+    limited.replacements[1]=null;limited.replacements[19]='freeze';raid.saveClassConfig('barbarian',limited);
+    assert.equal(raid.getClassConfig('barbarian').replacements[19],'freeze');
+    assert.equal(raid.getClassConfig('barbarian').replacements.filter(Boolean).length,level);
+  }
+});
+
+for(const mode of ['classic','sprint','pretzel']) test(`raid ${mode}: all nine editable classes x ten races retain their setup through rewards and one real turn`, () => {
+  const {raid,elements,advance}=raidBrowser({mode,menus:true});raidMasterClasses(raid);
+  const races=['Human','Elf','Dwarf','Sauren','Faun','Orc','Halfling','Werewolf','Dragonkin','Changeling'];
+  const perks=['Unexpected','Gifted','Daring','Cunning','Strong','Faithful','Agile','Frugal','Intimidating','Tough'];
+  const flaws=['Confused','Frail','Cocky','Sneaky','Reckless','Cautious','Slim','Clumsy','Zealous','Noisy'];
+  function finish(){
+    for(let n=0;n<20;n++) {
+      const menu=raid.state.pendingModal;
+      if(menu==='level')raidPickLevel(elements);
+      else if(menu==='gold')raidPickShop(elements);
+      else if(menu==='armor')elements.get('modal-body').querySelectorAll('.lv-card')[0].click();
+      else {advance(1000);if(!raid.state.pendingModal)return;continue}
+      advance(1000);
+    }
+    assert.fail('reward menus did not settle');
+  }
+  let count=0;
+  for(const classId of raidClassIds.slice(1))for(const race of races){
+    const config=raid.defaultClassConfig(classId);config.race=race;
+    for(const [kind,values] of [['perks',perks],['flaws',flaws]]){
+      const ordered=values.slice(count%values.length).concat(values.slice(0,count%values.length)).filter(value=>value!==config[kind][0]);
+      for(let i=1;i<4;i++)config[kind][i]=ordered[i-1];
+    }
+    config.replacements[1]='fireball';config.replacements[2]='freeze';
+    raid.saveClassConfig(classId,config);raid.setSelectedClassId(classId);raid.newGame(913+count);
+    assert.equal(raid.clsRace(),race);
+    const snapshot=JSON.stringify(raid.state.classConfig);
+    raid.state.hero.xp=100;raid.checkLevelUp();finish();
+    raid.state.hero.gold=100;raid.checkGoldBox();finish();
+    raid.state.upgradeBar=100;raid.checkUpgradeBar();finish();
+    for(const i of [0,1,2]){raid.state.board[i]={type:'shield'};raid.tryExtendChain(i)}
+    raid.resolveChain();advance(1000);finish();
+    assert.equal(raid.state.turn,1);assert.equal(raid.state.resolving,false);
+    assert.equal(raid.state.board.length,36);assert.ok(raid.state.board.every(cell=>cell&&cell.type!=='empty'));
+    assert.equal(JSON.stringify(raid.state.classConfig),snapshot);
+    for(const key of ['hp','maxHp','armor','maxArmor','weaponDamage','xp','gold'])assert.ok(Number.isFinite(raid.state.hero[key]),`${classId}/${race}/${key}`);
+    count++;
+  }
+  assert.equal(count,90);
+});
+
+test('raid edited races use their mortal-enemy table including Human NORMAL, preserving the class-gated override RNG', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian' }); raidMasterClasses(raid);
+  const mortals = { Human: 0, Elf: 9, Dwarf: 14, Sauren: 13, Faun: 16, Orc: 12, Halfling: 5, Werewolf: 20, Dragonkin: 8, Changeling: 19 };
+  for (const [race, mortal] of Object.entries(mortals)) {
+    const config = raid.getClassConfig('barbarian'); config.race = race;
+    config.perks[1] = 'Intimidating'; config.flaws[1] = 'Confused';
+    raid.saveClassConfig('barbarian', config);
+    let found = false;
+    for (let seed = 1; seed <= 1000; seed++) {
+      raid.newGame(seed);
+      const first = raidDraw(raid.state.rngSeeds[1], 1, 32), override = raidDraw(first.seed, 1, 200);
+      if (override.value > 5 || first.value === mortal) continue;
+      let expectedSeed = override.seed;
+      for (let i = 0; i < 4; i++) expectedSeed = raidDraw(expectedSeed, 0, 0).seed;
+      const skull = raid.makeSkull(false, true);
+      assert.equal(skull.type, mortal, race);
+      assert.equal(skull.special, mortal > 1, race);
+      assert.equal(skull.boss, false, race);
+      assert.equal(raid.state.rngSeeds[1], expectedSeed, race + ': two promotion rolls plus four stat/interval rolls');
+      if (race === 'Human') assert.deepEqual([skull.atk, skull.def, skull.hp, skull.art], [1, 0, 4, 'e1_ghost']);
+      found = true; break;
+    }
+    assert.equal(found, true, race + ': discriminating nonzero seed found');
+  }
+  raid.setSelectedClassId('adventurer'); raid.newGame(913);
+  const first = raidDraw(raid.state.rngSeeds[1], 1, 32);
+  let expectedSeed = first.seed;
+  for (let i = 0; i < 4; i++) expectedSeed = raidDraw(expectedSeed, 0, 0).seed;
+  assert.equal(raid.makeSkull(false, true).type, first.value, 'Adventurer does not roll an override even as Human');
+  assert.equal(raid.state.rngSeeds[1], expectedSeed);
+});
