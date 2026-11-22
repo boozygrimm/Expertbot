@@ -20,9 +20,9 @@
   // DPS по черепу = суммарный урон; применяется сначала к обороны, потом к HP.
   // (не путать с бронёй героя, где работает «долговечность»)
   const BASE_DAMAGE = 0;           // базовый урон без мечей (сила/рост Урона — выше основного)
-  const HP_PER_SHIELD_ARMOR = 2;   // базовая броня за щит (+ точность + 2 × защита)
+  const HP_PER_SHIELD_ARMOR = 1;   // базовая броня за щит (+ точность + 2 × защита)
   const SHIELD_UPGRADE_POINTS = 8; // очки upgrade bar за каждый щит (калибровка клона)
-  const HEAL_PER_POTION = 6;       // базовая лечение за зелье (+ удача)
+  const HEAL_PER_POTION = 1;       // базовая лечение за зелье (+ удача)
   const GOLD_PER_COIN = 2;         // базовая золото за монетку (+ boost gold)
   const XP_PER_SKULL = 1;          // опыт за убитого черепа (+ boost XP)
   const XP_PER_BOSS = 6;           // опыт за убитого босса
@@ -59,21 +59,77 @@
     { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 15, desc: 'Собрать все зелья' },
     { id: 'repair', name: 'Ремонт', icon: '⚒', cooldown: 16, desc: 'Собрать все щиты' },
     { id: 'dazzle', name: 'Слепота', icon: '✦', cooldown: 15, desc: 'Все монеты → мечи' },
-    { id: 'disarm', name: 'Оружие', icon: '⚔', cooldown: 25, desc: 'Все щиты → мечи' },
-    { id: 'treasure', name: 'Кладовая', icon: '💰', cooldown: 18, desc: 'Собрать все монеты' },
+    { id: 'disarm', name: 'Обезоружание', icon: '⚔', cooldown: 25, desc: 'Все щиты → мечи' },
+    { id: 'treasure', name: 'Кладовая', icon: '💎', cooldown: 18, desc: 'Собрать все монеты' },
     { id: 'enchant', name: 'Затачивание', icon: '⚒', cooldown: 35, desc: 'Мгновенно: +2 к оружию, +4 к HP' },
     { id: 'bribe', name: 'Воровство', icon: '🦊', cooldown: 13, desc: 'Атака черепов → золото (1 ход)' },
     { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 18, desc: 'Все зелья дают 2 XP вместо HP' },
   ];
   // 7 уровней-стата (классика: 2 навыка + 2 стата в уровне)
+  // --- уровень: два навыка + два старика, выбор 2 из 4 (классика) ---
+  // Эффекты выводятся как «старое >> новое», как в оригинале.
   const STATS = [
-    { id: 'strength', name: 'Сила', icon: '💪', desc: '+1 урон, +5% шанс бонуса опыта', apply: () => S.hero.stats.strength++ },
-    { id: 'vitality', name: 'Живучесть', icon: '❤', desc: '+5 макс. HP, +5% шанс бонусных зелий', apply: () => { S.hero.stats.vitality++; S.hero.hp += 5; S.hero.maxHp += 5; } },
-    { id: 'luck', name: 'Удача', icon: '🍀', desc: '+1 лечение за зелье, +5% шанс бонусных монет', apply: () => S.hero.stats.luck++ },
-    { id: 'dexterity', name: 'Точность', icon: '🎯', desc: '+1 броня за щит, +5% шанс бонусных щитов', apply: () => S.hero.stats.dexterity++ },
-    { id: 'charisma', name: 'Хитрость', icon: '💎', desc: '+5% ко всем бонусам (монеты, щиты, опыт, зелья)', apply: () => S.hero.stats.charisma++ },
-    { id: 'damage', name: 'Урон', icon: '⚔', desc: '+2 базового урона', apply: () => S.hero.stats.damage++ },
-    { id: 'defense', name: 'Защита', icon: '🛡', desc: '+2 брони за щит', apply: () => S.hero.stats.defense++ },
+    {
+      id: 'strength', name: 'Сила', icon: '💪', chip: '+СИЛ', color: '#ffd97a',
+      desc: '+1 базового урона, +5% шанс бонуса опыта',
+      effects: () => [
+        `Базовый урон: ${fmt(baseDamage())} >> ${fmt(baseDamage() + 1)}`,
+        `Шанс бонуса опыта: ${bonusPct('xp')}% >> ${bonusPct('xp') + 5}%`,
+      ],
+      apply: () => S.hero.stats.strength++
+    },
+    {
+      id: 'dexterity', name: 'Точность', icon: '🎯', chip: '+ТОЧ', color: '#b8a8ff',
+      desc: '+1 броня за щит, +5% шанс бонуса щита',
+      effects: () => [
+        `Броня за щит: ${fmt(perShield())} >> ${fmt(perShield() + 1)}`,
+        `Шанс бонуса щита: ${bonusPct('shield')}% >> ${bonusPct('shield') + 5}%`,
+      ],
+      apply: () => S.hero.stats.dexterity++
+    },
+    {
+      id: 'vitality', name: 'Живучесть', icon: '❤', chip: '+ЖИВ', color: '#ff9d9d',
+      desc: '+5 макс. HP, +5% шанс бонуса зелий',
+      effects: () => [
+        `Макс. HP: ${fmt(S.hero.maxHp)} >> ${fmt(S.hero.maxHp + 5)}`,
+        `Шанс бонуса зелия: ${bonusPct('potion')}% >> ${bonusPct('potion') + 5}%`,
+      ],
+      apply: () => { S.hero.stats.vitality++; S.hero.hp += 5; S.hero.maxHp += 5; }
+    },
+    {
+      id: 'luck', name: 'Удача', icon: '🍀', chip: '+УДА', color: '#ffd94a',
+      desc: '+1 лечение за зелье, +5% шанс бонусных монет',
+      effects: () => [
+        `Лечение за зелье: ${fmt(HEAL_PER_POTION + S.hero.stats.luck)} >> ${fmt(HEAL_PER_POTION + S.hero.stats.luck + 1)}`,
+        `Шанс бонусной монеты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
+      ],
+      apply: () => S.hero.stats.luck++
+    },
+    {
+      id: 'charisma', name: 'Хитрость', icon: '💎', chip: '+ХИТ', color: '#8fd0ff',
+      desc: '+5% ко всем бонусам',
+      effects: () => [
+        `Шанс бонусной монеты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
+        `Шанс бонуса щита: ${bonusPct('shield')}% >> ${bonusPct('shield') + 5}%`,
+      ],
+      apply: () => S.hero.stats.charisma++
+    },
+    {
+      id: 'damage', name: 'Урон', icon: '⚔', chip: '+УРН', color: '#ff8a7a',
+      desc: '+2 базового урона',
+      effects: () => [
+        `Базовый урон: ${fmt(baseDamage())} >> ${fmt(baseDamage() + 2)}`,
+      ],
+      apply: () => S.hero.stats.damage++
+    },
+    {
+      id: 'defense', name: 'Защита', icon: '🛡', chip: '+ЗАЩ', color: '#a8c8ff',
+      desc: '+2 брони за щит',
+      effects: () => [
+        `Броня за щит: ${fmt(perShield())} >> ${fmt(perShield() + 2)}`,
+      ],
+      apply: () => S.hero.stats.defense++
+    },
   ];
   // 18 (из 19) классических апгрейдов — без «Яда» (в клоне нет механики яда).
   const UPGRADES = [
@@ -96,11 +152,13 @@
     { id: 'spikes', name: 'Шипы', icon: '🗡', desc: '+1 урон черепу за каждый бросок', apply: () => { S.spikes += 1; } },
     { id: 'weapon', name: 'Оружие', icon: '⚔', desc: '+1 урон оружия', apply: () => { S.hero.weaponDamage += 1; } },
   ];
+  // --- магазин предметов (классика: золото → 1 из 4 предметов) ---
+  // 3 предмета + 1 пустой слот (как в оригинале). Эффект: «name + effect»
   const EQUIP = [
-    { id: 'weapon', name: 'Оружие', icon: '⚔', desc: '+3 к урону оружия', apply: () => S.hero.weaponDamage += 3 },
-    { id: 'hp', name: 'Жизнь', icon: '❤', desc: '+10 макс. HP', apply: () => { S.hero.maxHp += 10; S.hero.hp += 10; } },
-    { id: 'armor', name: 'Броня', icon: '🛡', desc: '+6 макс. броне', apply: () => { S.hero.maxArmor += 6; S.hero.armor += 6; } },
-    { id: 'pierce', name: 'Пронза', icon: '⚒', desc: '+30% пробитию брони', apply: () => { S.pierce = Math.min(1, S.pierce + 0.30); } },
+    { id: 'necklace', name: 'Ужасное ожерелье', icon: '❤', eff: 'hp', value: 15, desc: '15 HP', apply: () => { S.hero.maxHp += 15; S.hero.hp += 15; } },
+    { id: 'battlemace', name: 'Тусклая булава', icon: '⚔', eff: 'dmg', value: 3, desc: '3 ур.', apply: () => { S.hero.weaponDamage += 3; } },
+    { id: 'spangenhelm', name: 'Сломанный шлем', icon: '🛡', eff: 'def', value: 2, desc: '2 броня', apply: () => { S.hero.maxArmor += 2; S.hero.armor += 2; } },
+    { id: 'amulet', name: 'Храбрый кулон', icon: '💎', eff: 'hp', value: 10, desc: '10 HP', apply: () => { S.hero.maxHp += 10; S.hero.hp += 10; } },
   ];
   // ============================================================
   // КЛАССЫ И РАСЫ (классика: 10 классов, каждый — Perk/Flaw/Race/Уникальный навык)
@@ -110,54 +168,54 @@
   // ============================================================
   const CLASSES = [
     { id: 'adventurer', name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport',
-      perk: '—', flaw: '—',
-      perkDesc: 'нет особенностей', flawDesc: 'нет особенностей',
-      clsDesc: 'Стартовый класс: нет perk/flaw, свой навык — Телепорт',
+      perk: '—', flaw: '—', raceName: 'Человек',
+      perkDesc: 'нет пассивов', flawDesc: 'нет изъянов',
+      clsDesc: 'Стартовый класс: нет пассива или изъяна, свой навык — Телепорт',
       uniqueSkillDesc: 'Телепорт (12): все клетки без черепов → новые' },
     { id: 'barbarian', name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk',
-      perk: 'Strong', flaw: 'Reckless',
+      perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Орк',
       perkDesc: '+1 базового урона', flawDesc: '-10% шанс бонусных щитов',
-      clsDesc: 'perk: Strong · flaw: Reckless · race: Orc (stun 10%)',
+      clsDesc: 'пассив: Сила · изъян: Безрассудство · раса: Орк (оглушение 10%)',
       uniqueSkillDesc: 'Берсерк (14): убийство черепа даёт HP равный его атаке' },
     { id: 'mage', name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune',
-      perk: 'Gifted', flaw: 'Frail',
+      perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Изменник',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
-      clsDesc: 'perk: Gifted · flaw: Frail · race: Changeling (shapeshift)',
+      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · раса: Изменник (менятся)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка собирает все клетки внутри' },
     { id: 'ranger', name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley',
-      perk: 'Agile', flaw: 'Slim',
+      perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Эльф',
       perkDesc: '5% мечей выпадают стрелками (стрелять на 1 клетку)', flawDesc: '-1 броня',
-      clsDesc: 'perk: Agile · flaw: Slim · race: Elf (slow poison)',
-      uniqueSkillDesc: 'Volley (15): все мечи → стрелы (стрелять на 1 клетку)' },
+      clsDesc: 'пассив: Ловкость · изъян: Тощий · раса: Эльф (медленный яд)',
+      uniqueSkillDesc: 'Воллей (15): все мечи → стрелы (стрелы стреляют на 1 клетку)' },
     { id: 'rogue', name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed',
-      perk: 'Frugal', flaw: 'Clumsy',
+      perk: 'Frugal', flaw: 'Clumsy', perkName: 'Бережливость', flawName: 'Неловкость', raceName: 'Саурен',
       perkDesc: '+10% шанс бонусных монет', flawDesc: '3% щитов выпадают сломанными (дают 0)',
-      clsDesc: 'perk: Frugal · flaw: Clumsy · race: Sauren (search — нет магазина)',
+      clsDesc: 'пассив: Бережливость · изъян: Неловкость · раса: Саурен (поиск — нет магазина)',
       uniqueSkillDesc: 'Жадность (25): убивает всех черепов рядом с монеткой' },
     { id: 'paladin', name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand',
-      perk: 'Intimidating', flaw: 'Zealous',
+      perk: 'Intimidating', flaw: 'Zealous', perkName: 'Устрашающий', flawName: 'Рьяный', raceName: 'Драконкин',
       perkDesc: 'смертный враг появляется на 50% реже (нет смертных врагов в клоне)', flawDesc: 'черепа-монстры появляются на 1 ход раньше',
-      clsDesc: 'perk: Intimidating (не реализовано) · flaw: Zealous · race: Dragonkin (fire breath)',
-      uniqueSkillDesc: 'Last Stand (35): полное лечение HP, если герой погибнет в этот ход' },
+      clsDesc: 'пассив: Устрашающий (не реализовано) · изъян: Рьяный · раса: Драконкин (огненное дыхание)',
+      uniqueSkillDesc: 'Последний рубеж (35): полное лечение HP, если герой погибнет в этот ход' },
     { id: 'priest', name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish',
-      perk: 'Faithful', flaw: 'Cautious',
+      perk: 'Faithful', flaw: 'Cautious', perkName: 'Праведный', flawName: 'Осторожный', raceName: 'Фавн',
       perkDesc: 'двойной эффект регенерации', flawDesc: '-20% пробития брони',
-      clsDesc: 'perk: Faithful · flaw: Cautious · race: Faun (rejuvenate)',
+      clsDesc: 'пассив: Праведный · изъян: Осторожный · раса: Фавн (возрождение)',
       uniqueSkillDesc: 'Желание — одноразовый навык: собрать все клетки доски' },
     { id: 'raider', name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism',
-      perk: 'Daring', flaw: 'Cocky',
+      perk: 'Daring', flaw: 'Cocky', perkName: 'Дерзкий', flawName: 'Наглый', raceName: 'Халфлинг',
       perkDesc: '100% шанс бонусов при цепочке 10+ клеток', flawDesc: 'цепочка из ровно 3 клеток ничего не даёт',
-      clsDesc: 'perk: Daring · flaw: Cocky · race: Halfling (guts)',
+      clsDesc: 'пассив: Дерзкий · изъян: Наглый · раса: Халфлинг (храбрость)',
       uniqueSkillDesc: 'Мазохизм (15): превращает все монетки в черепов' },
     { id: 'warrior', name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge',
-      perk: 'Tough', flaw: 'Noisy',
+      perk: 'Tough', flaw: 'Noisy', perkName: 'Прочный', flawName: 'Громкий', raceName: 'Дворф',
       perkDesc: '+10 макс. HP', flawDesc: 'черепа-монстры +5% HP',
-      clsDesc: 'perk: Tough · flaw: Noisy · race: Dwarf (uppercut)',
+      clsDesc: 'пассив: Прочный · изъян: Громкий · раса: Дворф (верховая атака)',
       uniqueSkillDesc: 'Рывок (18): собирать все клетки по краю поля' },
     { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste',
-      perk: 'Cunning', flaw: 'Sneaky',
+      perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у всех черепов',
-      clsDesc: 'perk: Cunning · flaw: Sneaky · race: Werewolf (cripple)',
+      clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (паралич)',
       uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
   ];
   const CLASS_BY_ID = Object.fromEntries(CLASSES.map(c => [c.id, c]));
@@ -168,8 +226,8 @@
   const UNIQUE_SKILLS = [
     { id: 'berserk', name: 'Берсерк', icon: '🪓', cooldown: 14, desc: 'Убийство черепа даёт HP равный его атаке' },
     { id: 'rune', name: 'Руна', icon: '🔮', cooldown: 12, desc: 'Замкнутая цепочка собирает все клетки внутри неё' },
-    { id: 'greed', name: 'Жадность', icon: '🗡', cooldown: 25, desc: 'Убить всех черепов рядом с монеткой' },
-    { id: 'laststand', name: 'Последний рубеж', icon: '🛡', cooldown: 35, desc: 'Полное лечение HP, если герой погибнет этим ходом' },
+    { id: 'greed', name: 'Жадность', icon: '💀', cooldown: 25, desc: 'Убить всех черепов рядом с монеткой' },
+    { id: 'laststand', name: 'Последний рубеж', icon: '🛡', cooldown: 35, desc: 'Полное лечение HP, если герой погибнет в этот ход' },
     { id: 'wish', name: 'Желание', icon: '✨', cooldown: 0, desc: 'Одноразовый навык: собрать все клетки доски' },
     { id: 'masochism', name: 'Мазохизм', icon: '🏴', cooldown: 15, desc: 'Все монетки → черепа' },
     { id: 'charge', name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
@@ -951,6 +1009,18 @@
   // --- HUD ------------------------------------------------------------------
   function fmt(n) { return String(Math.max(0, Math.round(n))); }
 
+  function perShield() {
+    return S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
+  }
+
+  function bonusPct(kind) {
+    // шанс бонуса (классика): 20% + 5% за соответствующий стат + 5% за хитрость
+    const base = BONUS_BASE_CHANCE;
+    const luck = S.hero.stats.luck, dex = S.hero.stats.dexterity, vit = S.hero.stats.vitality, str = S.hero.stats.strength, cha = S.hero.stats.charisma;
+    const per = { coin: luck, shield: dex, potion: vit, xp: str }[kind] || 0;
+    return Math.round((base + 0.05 * per + 0.05 * cha) * 100);
+  }
+
   function renderHUD() {
     const h = S.hero;
     const hpPct = Math.max(0, h.hp / h.maxHp * 100);
@@ -991,7 +1061,7 @@
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
       btn.innerHTML = `<span class="skill-icon">${skill.icon}</span><span class="skill-name">${skill.name}</span>${left > 0 ? `<span class="cd">${left}</span>` : ''}`;
-      btn.title = skill.desc + ' (охлаждение: ' + skill.cooldown + ')';
+      btn.title = skill.desc + ' (кд: ' + skill.cooldown + ')';
       btn.addEventListener('click', () => activateSkill(skillId));
       row.appendChild(btn);
     });
@@ -1155,7 +1225,7 @@
     } else if (id === 'haste') {
       // Assassin: Haste — цепочка смешивает 2 типа меток (этот ход)
       S.hasteActive = 1;
-      flash('🗡 HASTE: цепочка — 2 типа меток (этот ход)');
+      flash('🗡 Хействие: цепочка — 2 типа меток (этот ход)');
     } else if (id === 'greed') {
       // Rogue: Жадность — убить всех черепов рядом с монеткой (без вознаграждения)
       let killed = 0;
@@ -1248,7 +1318,7 @@
         }
       }
       // re-render board once below (caller does renderBoard)
-      flash('🏴 MASOCHISM: ' + skullCount + ' монетки → черепа');
+      flash('🏴 Мазохизм: ' + skullCount + ' монетки → черепа');
     } else if (id === 'volley') {
       // Ranger: Volley — все мечи → стрелы (стрелы стреляют на 1 клетку)
       let converted = 0;
@@ -1259,7 +1329,7 @@
           converted++;
         }
       }
-      flash('🏹 VOLLEY: ' + converted + ' меч → стрелы');
+      flash('🏹 Воллей: ' + converted + ' меч → стрелы');
     } else if (id === 'charge') {
       // Warrior: Charge — собрать все клетки по краю поля
       let swords = 0, shields = 0, coins = 0, potions = 0;
@@ -1312,7 +1382,7 @@
         }
         return cell;
       });
-      flash('⚔️ CHARGE: собрано края (+' + heal + ' HP, +' + lockArmor + ' брони, +' + gold + ' золота)');
+      flash('⚔️ Рывок: собрано края (+' + heal + ' HP, +' + lockArmor + ' брони, +' + gold + ' золота)');
     }
   }
 
@@ -1466,7 +1536,7 @@
               if (cdIds.length > 0) {
                 const longest = cdIds.reduce((a, b) => (S.skillCooldowns[a] > S.skillCooldowns[b] ? a : b));
                 S.skillCooldowns[longest] = 0;
-                flash('🔮 Shapeshift: кулдаун навыка «' + (SKILL_BY_ID[longest] ? SKILL_BY_ID[longest].name : longest) + '» обнулён');
+                flash('🔮 Меняться: кулдаун навыка «' + (SKILL_BY_ID[longest] ? SKILL_BY_ID[longest].name : longest) + '» обнулён');
               }
             }
           }
@@ -1590,7 +1660,7 @@
     // Raider flaw: 3-tile chain gives nothing
     if (cls && cls.flaw === 'Cocky' && chain.length === 3) {
       clearChain();
-      flash('🏴 Cocky: 3 клетки — ничего! (≥4 для урона)');
+      flash('🏴 Наглый: 3 клетки — ничего! (≥4 для урона)');
       return;
     }
 
@@ -1871,7 +1941,7 @@
     if (S.lastStand > 0 && S.hero.hp <= 0) {
       S.hero.hp = S.hero.maxHp;
       S.lastStand = 0;
-      flash('🛡 LAST STAND: полное лечение!');
+      flash('🛡 Последний рубеж: полное лечение!');
       return true;
     }
     return false;
@@ -1884,20 +1954,26 @@
     const title = el('modal-title');
     const body = el('modal-body');
     if (!wrap || !body) return;
-    wrap.classList.add('show');
+    wrap.className = 'modal show';
+    title.className = 'modal-title';
+    if (kind === 'level' || kind === 'gold' || kind === 'armor') {
+      const cssKind = kind === 'gold' ? 'shop' : kind;
+      wrap.classList.add(cssKind);
+      title.classList.add(cssKind);
+    }
 
     if (kind === 'level') {
-      title.textContent = '⬆ УРОВЕНЬ ' + S.hero.level + '!';
-      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений:</p>';
+      title.textContent = '⬆ УРОВЕНЬ!';
+      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений</p>';
       const options = chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
-      title.textContent = '💰 100 золота!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 снаряжения:</p>';
+      title.textContent = '💰 МАГАЗИН!';
+      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 снаряжения</p>';
       renderEquipChoices(body);
     } else if (kind === 'armor') {
-      title.textContent = '🛡 Новая броня!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений:</p>';
+      title.textContent = '🛡 АПГРЕЙД!';
+      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений</p>';
       renderUpgradeChoices(body);
     } else if (kind === 'trophy') {
       title.textContent = '🏆 ТРОФЕЙ!';
@@ -2013,25 +2089,39 @@
 
   function renderLevelChoices(options, body) {
     const grid = document.createElement('div');
-    grid.className = 'choice-grid';
+    grid.className = 'lv-grid';
     const picked = new Set();
     const choiceRow = document.createElement('div');
-    choiceRow.className = 'level-status';
+    choiceRow.className = 'lv-status';
     choiceRow.textContent = 'Выбери 2 из 4 (0/2)';
     body.appendChild(choiceRow);
 
     function mark() {
       choiceRow.textContent = `Выбери 2 из 4 (${picked.size}/2)`;
-      grid.querySelectorAll('.choice').forEach((node, i) => {
+      grid.querySelectorAll('.lv-card').forEach((node, i) => {
         node.classList.toggle('picked', picked.has(i));
       });
     }
 
     options.forEach((opt, i) => {
+      const isStat = STATS.includes(opt);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'choice';
-      btn.innerHTML = `<span class="choice-icon">${opt.icon}</span><span class="choice-name">${opt.name}</span><span class="choice-desc">${opt.desc}</span>`;
+      btn.className = 'lv-card ' + (isStat ? 'lv-stat' : 'lv-skill');
+      if (isStat) {
+        const lines = (opt.effects ? opt.effects() : []).map(e => `<span class="lv-line">${e}</span>`).join('');
+        btn.innerHTML = `<span class="lv-chip" style="color:${opt.color}">${opt.chip}</span>
+          <span class="lv-body">
+            <span class="lv-name">+ ${opt.name}</span>
+            <span class="lv-effs">${lines}</span>
+          </span>`;
+      } else {
+        btn.innerHTML = `<span class="lv-icon-box"><span class="lv-icon">${opt.icon}</span><span class="lv-corner">1</span></span>
+          <span class="lv-body">
+            <span class="lv-row"><span class="lv-name">${opt.name}</span><span class="lv-cool">Кулдаун: ${opt.cooldown}</span></span>
+            <span class="lv-desc">${opt.desc}</span>
+          </span>`;
+      }
       btn.addEventListener('click', () => {
         if (picked.has(i)) {
           picked.delete(i);
@@ -2040,6 +2130,7 @@
         } else {
           picked.add(i);
           audioPick();
+          mark();
           if (picked.size === 2) {
             // apply now
             const chosenSkills = [];
@@ -2058,7 +2149,7 @@
               if (S.skills.length >= 4) {
                 S.cooldownAdjust = S.cooldownAdjust || {};
                 S.cooldownAdjust[sk] = (S.cooldownAdjust[sk] || 0) - 1;
-                flash('🗡 Cunning: кулдаун навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
+                flash('🗡 Хитрость: кд навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
               }
             }
             // Faun Rejuvenate (Priest race): HP ≥ 25% max
@@ -2066,7 +2157,7 @@
               const need = Math.ceil(S.hero.maxHp * 0.25);
               if (S.hero.hp < need) {
                 S.hero.hp = need;
-                flash('🦌 Rejuvenate: HP до ' + need + ' (25%)');
+                flash('🦌 Возрождение: HP до ' + need + ' (25%)');
               }
             }
             S.hero.level++;
@@ -2087,14 +2178,15 @@
   }
 
   function renderEquipChoices(body) {
-    const options = shuffle([...EQUIP]).slice(0, 4);
+    // Магазин (классика): 3 предмета + 1 пустой слот.
+    const options = shuffle([...EQUIP]).slice(0, 3);
     const grid = document.createElement('div');
-    grid.className = 'choice-grid';
-    options.forEach((opt, i) => {
+    grid.className = 'shop-grid';
+    options.forEach(opt => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'choice';
-      btn.innerHTML = `<span class="choice-icon">${opt.icon}</span><span class="choice-name">${opt.name}</span><span class="choice-desc">${opt.desc}</span>`;
+      btn.className = 'shop-item';
+      btn.innerHTML = `<span class="shop-icon">${opt.icon}</span><span class="shop-name">${opt.name}</span><span class="shop-eff">${opt.desc}</span>`;
       btn.addEventListener('click', () => {
         opt.apply();
         S.hero.gold = 0;
@@ -2105,18 +2197,27 @@
       });
       grid.appendChild(btn);
     });
+    // 4-й слот — пустой (как в оригинале)
+    const empty = document.createElement('div');
+    empty.className = 'shop-item shop-empty';
+    empty.setAttribute('aria-hidden', 'true');
+    grid.appendChild(empty);
     body.appendChild(grid);
   }
 
   function renderUpgradeChoices(body) {
     const options = shuffle([...UPGRADES]).slice(0, 4);
     const grid = document.createElement('div');
-    grid.className = 'choice-grid';
+    grid.className = 'lv-grid';
     options.forEach(opt => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'choice';
-      btn.innerHTML = `<span class="choice-icon">${opt.icon}</span><span class="choice-name">${opt.name}</span><span class="choice-desc">${opt.desc}</span>`;
+      btn.className = 'lv-card lv-stat';
+      btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}</span>
+        <span class="lv-body">
+          <span class="lv-name">${opt.name}</span>
+          <span class="lv-desc">${opt.desc}</span>
+        </span>`;
       btn.addEventListener('click', () => {
         opt.apply();
         S.upgradeBar = 0;
@@ -2212,13 +2313,13 @@
       btn.type = 'button';
       btn.className = 'picker-card-btn' + (unlocked ? '' : ' locked') + (selected ? ' selected' : '');
       const desc = [];
-      if (cls.perk !== '—') desc.push(`<span class="pick-perk">⬆ ${cls.perk}: ${cls.perkDesc}</span>`);
-      if (cls.flaw !== '—') desc.push(`<span class="pick-flaw">⬇ ${cls.flaw}: ${cls.flawDesc}</span>`);
+      if (cls.perk !== '—') desc.push(`<span class="pick-perk">⬆ ${cls.perkName || cls.perk}: ${cls.perkDesc}</span>`);
+      if (cls.flaw !== '—') desc.push(`<span class="pick-flaw">⬇ ${cls.flawName || cls.flaw}: ${cls.flawDesc}</span>`);
       const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}</span>`;
       const status = unlocked
         ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}</span>`
         : `<span class="pick-locked">🔒 15 спец-черепов → трофей</span>`;
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}</span><span><span class="pick-name">${cls.name}</span><br><span class="pick-race">${cls.race}</span></span></span>${desc.join('')}${uniqueInfo}${status}`;
+      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}</span><span><span class="pick-name">${cls.name}</span><br><span class="pick-race">${cls.raceName || cls.race}</span></span></span>${desc.join('')}${uniqueInfo}${status}`;
       btn.addEventListener('click', () => {
         if (!unlocked) {
           flash('⚠ «' + cls.name + '» заблокирован — убей ~15 спец-черепов, чтобы получить трофей');
@@ -2284,6 +2385,8 @@
     makeSkull,
     placeNewTiles,
     checkLevelUp,
+    checkGoldBox,
+    checkUpgradeBar,
     createTile,
     hasLegalChain,
     chainTypeForCell,

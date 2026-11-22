@@ -295,32 +295,94 @@ body { display: flex; align-items: stretch; justify-content: center; }
 }
 .modal.show { opacity: 1; pointer-events: auto; }
 .modal-card {
-  width: min(94vw, 400px); max-height: 80dvh; overflow: auto;
-  background: linear-gradient(160deg, #2c1b40, #190f2a);
-  border: 1px solid var(--gold-2); border-radius: 18px;
-  padding: 18px 16px 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,217,122,0.2);
+  width: min(96vw, 460px); max-height: 86dvh; overflow: auto;
+  background: linear-gradient(160deg, #241a3a 0%, #160d26 100%);
+  border: 1px solid #6a5a8a; border-radius: 16px;
+  padding: 14px 16px 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 0 1px rgba(138,95,176,0.3);
 }
 .modal-title {
   font: 700 22px Georgia, serif; color: #ffe2a9; margin: 0 0 4px;
   text-align: center; letter-spacing: 0.02em;
 }
 .modal-hint { text-align: center; font-size: 11px; color: #cdb8d0; margin: 8px 0; line-height: 1.45; }
-.choice-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 6px;
+/* --- LEVEL UP / SHOP / UPGRADE modals (classic parity) --- */
+.lv-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
+.lv-status { text-align: center; font-size: 13px; font-weight: 800; color: #b9f0a8; margin: 6px 0 8px; }
+.lv-card {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
+  border-radius: 12px; padding: 9px 11px; cursor: pointer; color: #f2e9ff;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  width: 100%;
 }
-.choice {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  border: 1px solid #6a4a78; background: linear-gradient(160deg, #3a2244, #241832);
-  border-radius: 13px; padding: 12px 9px; cursor: pointer; color: #ffe9b9;
+.lv-card:hover { border-color: #8a5fb0; }
+.lv-card:active { transform: scale(0.98); }
+.lv-card.picked { border-color: #b9f0a8; box-shadow: 0 0 16px rgba(185,240,168,0.45); background: linear-gradient(160deg, #2e4a26, #1d2c1a); }
+.lv-icon-box {
+  position: relative; width: 64px; height: 58px; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: linear-gradient(160deg, #241231 0%, #170c26 100%);
+  border: 2px solid #ffd23f; border-radius: 10px;
+  box-shadow: 0 0 0 3px #3b2a66, inset 0 0 12px rgba(0,0,0,0.55);
+}
+.lv-icon-box::before, .lv-icon-box::after {
+  content: ''; position: absolute; left: 4px; right: 4px; height: 5px;
+  background: repeating-linear-gradient(135deg, #ffd23f 0 5px, transparent 5px 10px);
+  opacity: 0.9;
+}
+.lv-icon-box::before { top: 2px; }
+.lv-icon-box::after { bottom: 2px; }
+.lv-icon { font-size: 27px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6)); }
+.lv-corner {
+  position: absolute; right: 3px; bottom: 3px; z-index: 2;
+  font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 2px #000, 0 0 4px #000;
+}
+.lv-chip {
+  width: 64px; height: 58px; flex-shrink: 0; display: grid; place-items: center;
+  background: linear-gradient(160deg, #241231 0%, #170c26 100%);
+  border: 1.5px solid #5a4a86; border-radius: 10px;
+  font-size: 17px; font-weight: 900; letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px #000;
+}
+.lv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-left: 2px; }
+.lv-name { font: 700 15px Georgia, serif; color: #ffffff; letter-spacing: 0.02em; }
+.lv-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.lv-cool { font: 400 12px Georgia, serif; color: #b8aed0; white-space: nowrap; }
+.lv-desc { font-size: 11.5px; color: #c9c2d8; line-height: 1.35; }
+.lv-effs { display: flex; flex-direction: column; gap: 1px; }
+.lv-line { font-size: 11.5px; color: #cfc8de; line-height: 1.4; letter-spacing: 0.01em; }
+.lv-line strong { color: #ffffff; }
+
+/* shop (item shop) */
+.shop-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
+.shop-item {
+  display: flex; align-items: center; gap: 13px; text-align: left;
+  border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
+  border-radius: 12px; padding: 9px 12px; cursor: pointer; color: #f2e9ff;
   transition: transform 0.12s ease, border-color 0.12s ease;
+  width: 100%;
 }
-.choice:active { transform: scale(0.96); }
-.choice-icon { font-size: 24px; line-height: 1; }
-.choice-name { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; }
-.choice-desc { font-size: 9px; color: #c3aec9; text-align: center; line-height: 1.35; }
-.level-status { text-align: center; font-size: 11px; font-weight: 800; color: #b9f0a8; margin: 6px 0; }
-.choice.picked { border-color: #b9f0a8; box-shadow: 0 0 16px rgba(185,240,168,0.4); background: linear-gradient(160deg, #3a4a2e, #243020); }
+.shop-item:hover { border-color: #8a5fb0; }
+.shop-item:active { transform: scale(0.98); }
+.shop-item.shop-empty { cursor: default; opacity: 0.55; border-style: dashed; }
+.shop-item.shop-empty:hover { border-color: #4a3a68; }
+.shop-icon {
+  width: 60px; height: 60px; flex-shrink: 0; display: grid; place-items: center;
+  background: linear-gradient(160deg, #2a1e48 0%, #1b1431 100%);
+  border: 1.5px solid #5a4a86; border-radius: 10px;
+  box-shadow: inset 0 0 12px rgba(0,0,0,0.45);
+  font-size: 26px; line-height: 1;
+}
+.shop-name { font: 700 14.5px Georgia, serif; color: #ffffff; line-height: 1.2; display: block; }
+.shop-eff { font-size: 12.5px; font-weight: 800; color: #3dff3d; letter-spacing: 0.02em; text-shadow: 0 1px 1px rgba(0,0,0,0.5); display: block; margin-top: 1px; }
+
+/* titles */
+.modal-title.level { color: #5bf24a; font-size: 30px; text-shadow: 0 0 2px #053d0a, 0 2px 2px #000, 0 0 18px rgba(91,242,74,0.45); }
+.modal-title.shop { color: #ffe14d; font-size: 28px; text-shadow: 0 1px 2px #3d2b00, 0 0 16px rgba(255,225,77,0.4); }
+.modal-title.armor { color: #c9a8ff; font-size: 24px; }
+.modal.level .modal-hint, .modal.armor .modal-hint { color: #b8ff7a; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+.modal.shop .modal-hint { color: #ffd97a; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000; }
 .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
 .stats-grid > div {
   border: 1px solid #4d3058; border-radius: 12px; padding: 10px 8px; text-align: center;
