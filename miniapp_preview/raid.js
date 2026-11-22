@@ -37,6 +37,10 @@
 
   const SPAWN_EVERY_TURNS = 3;
   const BOSS_EVERY_TURNS = 10;
+  // Классика: трофей за ~15 убитых спец-черепов; не более 3 классов unlock за забег
+  const TROPHY_KILLS_PER_TROPHY = 15;
+  const MAX_UNLOCKS_PER_RUN = 3;
+  const SPECIAL_EVERY_TURNS = 4;
   const UPGRADE_BAR_MAX = 80;     // синяя полоса (от щитов) → выбор 1-из-4
   const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
 
@@ -73,7 +77,7 @@
   const UPGRADES = [
     { id: 'pierce', name: 'Пронзание', icon: '🛡', desc: '+10% пробитию брони черепов', apply: () => { S.pierce = Math.min(1, S.pierce + 0.10); } },
     { id: 'armor', name: 'Бронированное кольцо', icon: '🛡', desc: '+3 к макс. броне', apply: () => { S.hero.maxArmor += 3; S.hero.armor += 3; } },
-    { id: 'base', name: 'Ускорение', icon: '⚡', desc: '+1 базового урона', apply: () => { S.hero.stats.damage++; } },
+    { id: 'base', name: 'Ускорение', icon: '⚡', desc: '+1 базового урона', apply: () => { S.baseDamageBonus = (S.baseDamageBonus || 0) + 1; } },
     { id: 'blunt', name: 'Сбивание', icon: '🚫', desc: '-1 к урону черепов', apply: () => { S.blunt += 1; } },
     { id: 'dex_up', name: 'Буст точности', icon: '🎯', desc: '+1 точность', apply: () => { S.hero.stats.dexterity++; } },
     { id: 'gold_up', name: 'Буст золота', icon: '🪙', desc: '+0.25 к золоту за монету', apply: () => { S.goldPerCoin += 0.25; } },
@@ -120,9 +124,9 @@
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка собирает все клетки внутри' },
     { id: 'ranger', name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley',
       perk: 'Agile', flaw: 'Slim',
-      perkDesc: '5% мечей выпадают как стрелы (падают на соседние клетки)', flawDesc: '-1 броня',
-      clsDesc: 'perk: Agile (не реализовано — стрелы) · flaw: Slim',
-      uniqueSkillDesc: 'Volley (15) — не реализовано (механика стрел)', unimplemented: true },
+      perkDesc: '5% мечей выпадают стрелками (стрелять на 1 клетку)', flawDesc: '-1 броня',
+      clsDesc: 'perk: Agile · flaw: Slim · race: Elf (slow poison)',
+      uniqueSkillDesc: 'Volley (15): все мечи → стрелы (стрелять на 1 клетку)' },
     { id: 'rogue', name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed',
       perk: 'Frugal', flaw: 'Clumsy',
       perkDesc: '+10% шанс бонусных монет', flawDesc: '3% щитов выпадают сломанными (дают 0)',
@@ -168,6 +172,7 @@
     { id: 'masochism', name: 'Мазохизм', icon: '🏴', cooldown: 15, desc: 'Все монетки → черепа' },
     { id: 'charge', name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
     { id: 'haste', name: 'Хействие', icon: '🗡', cooldown: 16, desc: 'Цепочка может смешивать 2 разных типа (1 ход)' },
+    { id: 'volley', name: 'Воллей', icon: '🏹', cooldown: 15, desc: 'Все мечи → стрелы (стрелы стреляют на 1 клетку)' },
   ];
   const ALL_SKILLS = SKILLS.concat(UNIQUE_SKILLS);
   const SKILL_BY_ID = Object.fromEntries(ALL_SKILLS.map(s => [s.id, s]));
@@ -179,10 +184,42 @@
       return (raw && CLASS_BY_ID[raw]) ? raw : 'adventurer';
     } catch (e) { return 'adventurer'; }
   }
+  // --- уровни классов (персистентные, localStorage) ---
+  const CLASS_LEVELS_KEY = 'raid:classLevels';
+  let classLevels = loadClassLevels();
+  function loadClassLevels() {
+    try {
+      const raw = localStorage.getItem(CLASS_LEVELS_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      if (!obj || typeof obj !== 'object') obj = {};
+      obj.adventurer = Math.max(1, obj.adventurer || 1);
+      return obj;
+    } catch (e) { return { adventurer: 1 }; }
+  }
+  function saveClassLevels() {
+    try { localStorage.setItem(CLASS_LEVELS_KEY, JSON.stringify(classLevels)); } catch (e) {}
+  }
+  function classLevelOf(id) { return (classLevels && classLevels[id]) || 0; }
+  function isClassUnlocked(id) { return classLevelOf(id) >= 1; }
+  function unlockClass(id) {
+    if (!CLASS_BY_ID[id]) return;
+    classLevels[id] = Math.max(1, classLevelOf(id));
+    saveClassLevels();
+  }
+  function levelUpClass(id) {
+    if (!CLASS_BY_ID[id]) return;
+    if (!isClassUnlocked(id)) classLevels[id] = 1;
+    else classLevels[id] = (classLevelOf(id) || 1) + 1;
+    saveClassLevels();
+  }
+
   let selectedClassId = loadStoredClassId();
-  function getSelectedClassId() { return selectedClassId; }
+  function getSelectedClassId() {
+    return isClassUnlocked(selectedClassId) ? selectedClassId : 'adventurer';
+  }
   function setSelectedClassId(id) {
     if (!CLASS_BY_ID[id]) return;
+    if (!isClassUnlocked(id)) return;
     selectedClassId = id;
     try { localStorage.setItem('raid:class', id); } catch (e) {}
   }
@@ -250,6 +287,11 @@
       lastStand: 0,                // полное лечение при смерти этого хода
       lastStandUsed: 0,            // Last Stand уже использован за забег
       brokenShields: 0,            // сколько щитов выпало сломанными (rogue flaw)
+      baseDamageBonus: 0,           // +1 к базовому урону за апгрейд «Ускорение»
+      specialsKilled: 0,            // сколько спец/боссов убито за забег (прогресс трофея)
+      unlocksThisRun: 0,          // сколько классов разблокировано за забег (cap)
+      trophiesThisRun: 0,         // сколько трофеев забрано за забег
+      pendingTrophy: null,        // { kind, cls, text } — ожидает захвата
       upgradeBar: 0,
       xpLevelCum: 0,
       turn: 0,
@@ -291,15 +333,20 @@
     if (t === 'potion' && S && (S.classId ? CLASS_BY_ID[S.classId].perk === 'Gifted' : false) && Math.random() < 0.05) {
       return { type: 'potion', mana: true };
     }
+    // Ranger Agile: 5% мечей выпадают стрелками (стреляют на 1 клетку)
+    if (t === 'sword' && S && (S.classId ? CLASS_BY_ID[S.classId].perk === 'Agile' : false) && Math.random() < 0.05) {
+      return { type: 'arrow' };
+    }
     return { type: t };
   }
 
-  function makeSkull(level, boss) {
+  function makeSkull(level, boss, special) {
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
     const flawBonusHp = cls && cls.flaw === 'Sneaky' ? 1 : 0;      // Assassin Flaw: +1 HP у всех черепов
-    const noisy = boss && cls && cls.flaw === 'Noisy' ? 1.05 : 1;  // Warrior Flaw: босс +5% HP
+    const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;  // Warrior Flaw: спец-череп +5% HP
     return {
       boss: !!boss,
+      special: !!special,
       uid: SKULL_UID++,
       art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
       atk: Math.round((SKULL_BASE.atk + SKULL_GROWTH.atk * Math.max(0, S.turn - SKULL_START_FREE)) * (boss ? BOSS_STATS.atk : 1)),
@@ -323,29 +370,31 @@
 
   // a guaranteed chainable run must exist: same-category (or sword+skull) adjacent x3
   function hasLegalChain(board) {
-    const TYPES = ['sword', 'shield', 'coin', 'potion'];
+    // есть ли на доске цепочка из 3+ клеток в одном направлении (прямой/диагональный).
+    // стрелы и черепа — категория меча.
+    function catOf(cell) {
+      if (!cell) return null;
+      if (cell.type === 'skull' || cell.type === 'arrow') return 'sword';
+      return cell.type;
+    }
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        for (const t of TYPES) {
-          // 3-in-a-row in this direction is a legal chain, including sword+skull mixes
-          // (we just need at least one legal chain somewhere)
-          const dir = [[0, 1], [1, 0], [1, 1], [1, -1]];
-          for (const [dr, dc] of dir) {
-            const cells = [r * COLS + c];
-            let cur = { r, c };
-            for (let k = 0; k < 2; k++) {
-              const nr = cur.r + dr, nc = cur.c + dc;
-              if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
-              const nt = board[nr * COLS + nc] && board[nr * COLS + nc].type;
-              if (!nt || nt === 'empty') break;
-              const tp = board[cur.r * COLS + cur.c] && board[cur.r * COLS + cur.c].type;
-              const ok = (tp === 'sword' && (nt === 'sword' || nt === 'skull')) || nt === tp;
-              if (!ok) break;
-              cells.push(nr * COLS + nc);
-              cur = { r: nr, c: nc };
-            }
-            if (cells.length >= 3) return true;
+        const startCat = catOf(board[r * COLS + c]);
+        if (!startCat || startCat === 'empty') continue;
+        for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+          let cat = startCat;
+          const cells = [r * COLS + c];
+          let cur = { r, c };
+          for (let k = 0; k < 2; k++) {
+            const nr = cur.r + dr, nc = cur.c + dc;
+            if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
+            const ncat = catOf(board[nr * COLS + nc]);
+            if (!ncat || ncat === 'empty') break;
+            if (!chainAllows(ncat, cat)) break;
+            cells.push(nr * COLS + nc);
+            cur = { r: nr, c: nc };
           }
+          if (cells.length >= 3) return true;
         }
       }
     }
@@ -398,6 +447,16 @@
     return Math.min(4, 2 + Math.floor((t - SPAWN_EVERY_TURNS) / 6));
   }
 
+  // «спец» череп: появляется каждые SPECIAL_EVERY_TURNS ходов (кроме бонусных ходов с боссом).
+  // Классика: трофей за ~15 убитых спец-черепов (см. TROPHY_KILLS_PER_TROPHY).
+  function specialSpawnCount() {
+    const t = S.turn;
+    if (t < 2) return 0;
+    if (t % BOSS_EVERY_TURNS === 0) return 0;
+    if (t % SPECIAL_EVERY_TURNS !== 0) return 0;
+    return 1;
+  }
+
   function createNewTile() {
     // new tiles appear at the top; only non-skull types
     return createTile();
@@ -410,7 +469,8 @@
   function placeNewTiles(options) {
     const skullCount = Math.max(0, (options && options.skullCount) || 0);
     const bossSpawn = !!(options && options.boss);
-    const skullUnits = skullCount + (bossSpawn ? 1 : 0);
+    const specialCount = Math.max(0, (options && options.specialCount) || 0);
+    const skullUnits = skullCount + (bossSpawn ? 1 : 0) + specialCount;
 
     // 1. compact each column bottom-up
     const emptySlots = [];
@@ -441,7 +501,9 @@
         const col = cols[i];
         const slot = slotsByCol.get(col)[0]; // topmost empty slot
         const isBoss = bossSpawn && i === 0;
-        const skull = makeSkull(1 + Math.floor(S.turn / 10), isBoss);
+        const isSpecial = !isBoss && specialCount > 0 && (bossSpawn ? i >= 1 : i >= skullCount);
+        const skull = makeSkull(1 + Math.floor(S.turn / 10), isBoss, isSpecial);
+        if (isSpecial) skull.special = true;
         skull.maxHp = skull.hp;
         skull.enteredTurn = S.turn;
         S.board[slot.row * COLS + slot.col] = { type: 'skull', skull };
@@ -460,8 +522,16 @@
   }
 
   // --- chain rules ----------------------------------------------------------
+  // Стрелы (Ranger): особые меч-клетки — идут в одну цепочку с мечами.
+  // «Стрелять на 1 клетку» — стреляющие на 1 клетку: череп может быть добавлен
+  // в цепочку, если он в 1 клетке от стрелы (1 ячейка зазором).
+  function chainTypeForCell(cell) {
+    if (!cell) return null;
+    if (cell.type === 'skull' || cell.type === 'arrow') return 'sword';
+    return cell.type;
+  }
   function chainAllows(cellType, chainType) {
-    if (chainType === 'sword') return cellType === 'sword' || cellType === 'skull';
+    if (chainType === 'sword') return cellType === 'sword' || cellType === 'arrow' || cellType === 'skull';
     return cellType === chainType;
   }
 
@@ -469,8 +539,11 @@
     return S.board[i].type;
   }
 
-  function getSelIndexAfter(cells) {
-    // none
+  // стрелка: череп в 1 клетке от стрелы (Chebyshev-расстояние 2 = 1 ячейка зазора)
+  function isAdjacentArrow(i, j) {
+    const r1 = Math.floor(i / COLS), c1 = i % COLS;
+    const r2 = Math.floor(j / COLS), c2 = j % COLS;
+    return Math.max(Math.abs(r1 - r2), Math.abs(c1 - c2)) === 2;
   }
 
   function distinctNonSkullTypes(chain) {
@@ -479,7 +552,7 @@
       const cell = S.board[idx];
       if (!cell) continue;
       if (cell.type === 'skull') continue;
-      set.add(cell.type);
+      set.add(cell.type === 'arrow' ? 'sword' : cell.type);
     }
     return set;
   }
@@ -492,11 +565,10 @@
 
     let chain = S.selected;
     if (chain.length === 0) {
-      // любая клетка начинает цепочку; череп = категория меча (меч+череп
-      // идут в одну цепочку, начинаясь с любого из них)
+      // любая клетка начинает цепочку; череп/стрела = категория меча
       chain = [cellIdx];
       S.selected = chain;
-      S.chainType = cell.type === 'skull' ? 'sword' : cell.type;
+      S.chainType = chainTypeForCell(cell);
       onChainChanged();
       return;
     }
@@ -512,21 +584,37 @@
       return;
     }
 
+    // rune: clicking the first cell closes the loop (chain is kept as-is —
+    // rune triggers on resolve if the last cell is adjacent to the first)
+    if (chain.length >= 3 && cellIdx === chain[0] && isAdjacent(last, chain[0])) {
+      return;
+    }
+
     if (chain.includes(cellIdx)) return;
 
     const cellType = S.board[cellIdx].type;
-    // Haste (Assassin): смешивать 2 типа меток в цепочке (череп — всегда меч-категория)
+    // Haste (Assassin): смешивать 2 типа меток в цепочке (череп/стрелы — меч-категория)
     if (S.hasteActive > 0) {
       const types = distinctNonSkullTypes(chain);
-      if (cellType !== 'skull' && !types.has(cellType)) {
+      const mapped = cellType === 'skull' || cellType === 'arrow' ? 'sword' : cellType;
+      if (mapped !== 'skull' && !types.has(mapped)) {
         if (types.size >= 2) return;  // больше 2 типов — запрет
-        types.add(cellType);
+        types.add(mapped);
       }
       // skull допускается всегда в цепочках (как категория меча)
     } else {
       if (!chainAllows(cellType, S.chainType)) return;
     }
-    if (!isAdjacent(last, cellIdx)) return;
+
+    let adjacent = isAdjacent(last, cellIdx);
+    if (!adjacent) {
+      // стрелка может стрелять по черепу в 1 клетке от себя (+череп и стрелка — меч-категория)
+      const lastCell = S.board[last];
+      if (lastCell && lastCell.type === 'arrow' && cellType === 'skull') {
+        adjacent = isAdjacentArrow(last, cellIdx);
+      }
+    }
+    if (!adjacent) return;
 
     chain.push(cellIdx);
     S.selected = chain;
@@ -559,6 +647,7 @@
   function tileSymbol(cell) {
     if (!cell || cell.type === 'empty') return '';
     if (cell.type === 'sword') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M5 19 14.5 9.5 20 4 18 2 12.5 7.5 3 17 2.5 21.5 7 21Z" fill="currentColor"/><path d="M15 6 19.5 10.5 21 9 16.5 4.5Z" fill="currentColor"/><path d="M6 18 4 20 8 20 6 18Z" fill="currentColor"/></svg>';
+    if (cell.type === 'arrow') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M20 4 4 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M4 13 4 20 11 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
     if (cell.type === 'shield') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2 20 5.5V12c0 4.6-3.2 8.4-8 10-4.8-1.6-8-5.4-8-10V5.5L12 2Z" fill="currentColor"/><path d="M12 5 17.5 7.2V12c0 3.3-2.3 6.1-5.5 7.5-3.2-1.4-5.5-4.2-5.5-7.5V7.2L12 5Z" fill="#1c1428" opacity="0.35"/></svg>';
     if (cell.type === 'coin') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor"/><circle cx="12" cy="12" r="6.5" fill="none" stroke="#1c1428" stroke-width="1.4" opacity="0.45"/><text x="12" y="16" text-anchor="middle" font-size="9" font-weight="900" fill="#1c1428" opacity="0.55">¤</text></svg>';
     if (cell.type === 'potion') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M12 2.5 12 6" stroke="#1c1428" stroke-width="1.6"/><circle cx="12" cy="14.6" r="2.4" fill="#fff" opacity="0.5"/></svg>';
@@ -580,6 +669,7 @@
     if (isSkull) {
       const s = cell.skull;
       const boss = !!s.boss;
+      const special = !!s.special && !boss;
       let img = SKULL_IMAGES.get(s.uid);
       if (!img) {
         img = document.createElement('img');
@@ -600,7 +690,7 @@
           }
           child.remove(); // stale tile svg
         });
-        cellEl.className = 'cell tile type-skull' + (boss ? ' boss' : '');
+        cellEl.className = 'cell tile type-skull' + (boss ? ' boss' : special ? ' special' : '');
         cellEl._renderKey = key;
       }
       // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
@@ -611,8 +701,8 @@
         badge = document.createElement('div');
         cellEl.appendChild(badge);
       }
-      badge.className = 'skull-badge' + (boss ? ' boss' : '');
-      const text = `${s.atk}·${s.def}·${s.hp}`;
+      badge.className = 'skull-badge' + (boss ? ' boss' : special ? ' special' : '');
+      const text = (boss ? '👑 ' : special ? '◆ ' : '') + `${s.atk}·${s.def}·${s.hp}`;
       if (badge.textContent !== text) badge.textContent = text;
       return;
     }
@@ -657,42 +747,39 @@
 
   // exact mirror of the resolveChain math, for the live chain preview
   // интерьер цепочки: цель BFS от всех клеток границы (не в пути) — всё не посещённое и не в пути — интерьер
+  // Interior of a closed chain (Rune): the path forms a polygon through cell
+  // centers; cells whose centers fall inside it are the enclosed interior.
+  // Closed if the last cell is adjacent to the first (ray-casting, even-odd).
   function interiorCells(chain) {
+    if (!chain || chain.length < 3) return [];
     const pathSet = new Set(chain);
-    const visited = new Set();
-    const stack = [];
-    // start from border cells (row 0 / row ROWS-1 / col 0 / col COLS-1) that are not on the path
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
-        if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
-          const i = r * COLS + c;
-          if (!pathSet.has(i)) { visited.add(i); stack.push(i); }
+    const pts = chain.map(i => ({ x: i % COLS, y: Math.floor(i / COLS) }));
+    const n = pts.length;
+    function inside(px, py) {
+      let crossings = 0;
+      for (let i = 0; i < n; i++) {
+        const a = pts[i], b = pts[(i + 1) % n];
+        if ((a.y > py) !== (b.y > py)) {
+          const xAtY = a.x + (b.x - a.x) * ((py - a.y) / (b.y - a.y));
+          if (xAtY > px) crossings++;
         }
       }
+      return crossings % 2 === 1;
     }
-    while (stack.length) {
-      const i = stack.pop();
-      const r = Math.floor(i / COLS), c = i % COLS;
-      [[r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]].forEach(([nr, nc]) => {
-        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return;
-        const j = nr * COLS + nc;
-        if (pathSet.has(j) || visited.has(j)) return;
-        visited.add(j); stack.push(j);
-      });
-    }
-    // interior = unvisited cells that are not on the path
     const interior = [];
     for (let i = 0; i < CELL_COUNT; i++) {
-      if (!pathSet.has(i) && !visited.has(i)) interior.push(i);
+      if (pathSet.has(i)) continue;
+      const x = i % COLS, y = Math.floor(i / COLS);
+      if (inside(x, y)) interior.push(i);
     }
     return interior;
   }
 
   // --- классические формулы урона ---
   function baseDamage() {
-    // Классика: урон = база (+силы+Урон) + оружие × (число мечей)
+    // Классика: урон = база (+Сила + 2×Урон + Ускорение) + оружие × (число мечей)
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    return S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0);
+    return S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
   }
   function swordDamage(swordCount) {
     return Math.round(baseDamage() + S.hero.weaponDamage * swordCount);
@@ -706,20 +793,20 @@
     chain.forEach(idx => {
       const cell = S.board[idx];
       if (!cell) return;
-      if (cell.type === 'sword') swordCount++;
+      if (cell.type === 'sword' || cell.type === 'arrow') swordCount++;
       else if (cell.type === 'shield') shieldCount++;
       else if (cell.type === 'coin') coinCount++;
       else if (cell.type === 'potion') potionCount++;
       else if (cell.type === 'skull') skulls.push({ idx, skull: cell.skull });
     });
     const first = S.board[chain[0]];
-    const chainType = S.chainType || (first ? (first.type === 'skull' ? 'sword' : first.type) : null);
+    const chainType = S.chainType || (first ? (first.type === 'skull' || first.type === 'arrow' ? 'sword' : first.type) : null);
     // haste active / mixed chain → preview all effects
     const distinctTypes = new Set();
     chain.forEach(idx => {
       const c = S.board[idx];
       if (!c) return;
-      distinctTypes.add(c.type === 'skull' ? 'sword' : c.type);
+      distinctTypes.add(c.type === 'skull' || c.type === 'arrow' ? 'sword' : c.type);
     });
     if (S.hasteActive > 0 && distinctTypes.size > 1) {
       const baseDmg = swordDamage(swordCount);
@@ -812,8 +899,8 @@
     svg.innerHTML = '';
     if (S.selected.length < 2) { svg.innerHTML = ''; return; }
     const pts = S.selected.map(cellCenter);
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', d);
     path.setAttribute('class', 'line');
     svg.appendChild(path);
@@ -822,6 +909,15 @@
     glow.setAttribute('d', d);
     glow.setAttribute('class', 'line-glow');
     svg.insertBefore(glow, path);
+    // rune: closed chain → dashed line back to the first cell
+    const first = S.selected[0], last = S.selected[S.selected.length - 1];
+    if (S.selected.length >= 3 && isAdjacent(first, last)) {
+      const p0 = pts[0], pn = pts[pts.length - 1];
+      const closing = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      closing.setAttribute('d', 'M' + pn.x.toFixed(1) + ' ' + pn.y.toFixed(1) + ' L' + p0.x.toFixed(1) + ' ' + p0.y.toFixed(1));
+      closing.setAttribute('class', 'line-close');
+      svg.appendChild(closing);
+    }
   }
 
   // --- HUD ------------------------------------------------------------------
@@ -843,6 +939,10 @@
     if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)} / ${GOLD_BOX_MAX}`;
     if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(baseDamage())} + ${fmt(h.weaponDamage)}×меч`;
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
+    if (el('trophy-text')) {
+      const capped = S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN;
+      el('trophy-text').textContent = capped ? '🏆 max' : `🏆 ${Math.min(S.specialsKilled, TROPHY_KILLS_PER_TROPHY)} / ${TROPHY_KILLS_PER_TROPHY}`;
+    }
     // upgrade bar
     const u = el('upgrade-bar'); if (u) u.style.width = Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100) + '%';
     if (el('upgrade-text')) el('upgrade-text').textContent = `${fmt(S.upgradeBar)} / ${UPGRADE_BAR_MAX}`;
@@ -886,8 +986,7 @@
     // --- class setup: perks/flaws/race (сохраняем класс между перезапусками) ---
     S.classId = getSelectedClassId();
     let cls = CLASS_BY_ID[S.classId];
-    if (!cls || cls.unimplemented) {
-      // Ranger (Volley) — механика стрел не реализована; fallback на Adventurer
+    if (!cls) {       // класс недоступен (заблокирован) — Adventurer как старт
       S.classId = 'adventurer';
       cls = CLASS_BY_ID.adventurer;
     }
@@ -900,10 +999,8 @@
     // Priest flaw: -20% pierce
     if (cls.flaw === 'Cautious') S.pierce = Math.max(0, S.pierce * 0.8);
 
-    // Class-unique skill joins the skill bar (counts toward the 4-skill cap)
-    if (cls.uniqueSkill && SKILLS.concat(UNIQUE_SKILLS).some(s => s.id === cls.uniqueSkill)) {
-      S.skills.push(cls.uniqueSkill);
-    }
+    // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
+    // на уровень (см. chooseLevelOptions) — не сразу при старте забега.
 
     setupBoard();
     const board = qs('#board');
@@ -1042,6 +1139,7 @@
           if (cell && cell.type === 'skull') {
             S.board[j] = { type: 'empty' };
             S.skullsKilled++;
+            registerSkullEnd(cell.skull);
             killed++;
             S.lastKillCount = (S.lastKillCount || 0) + 1;
             audioKill();
@@ -1091,7 +1189,7 @@
           const toDef = Math.min(dmg, s.def);
           s.def -= toDef; s.hp -= (dmg - toDef);
         }
-        if (s.hp <= 0) { S.board[idx] = { type: 'empty' }; S.skullsKilled++; }
+        if (s.hp <= 0) { S.board[idx] = { type: 'empty' }; S.skullsKilled++; registerSkullEnd(s); }
       });
       // очистка собранных клеток (без черепов/пусто)
       S.board = S.board.map(cell => {
@@ -1115,7 +1213,18 @@
         }
       }
       // re-render board once below (caller does renderBoard)
-      flash('🏴 Маcohism: ' + skullCount + ' монетки → черепа');
+      flash('🏴 MASOCHISM: ' + skullCount + ' монетки → черепа');
+    } else if (id === 'volley') {
+      // Ranger: Volley — все мечи → стрелы (стрелы стреляют на 1 клетку)
+      let converted = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const cell = S.board[i];
+        if (cell && cell.type === 'sword') {
+          S.board[i] = { type: 'arrow' };
+          converted++;
+        }
+      }
+      flash('🏹 VOLLEY: ' + converted + ' меч → стрелы');
     } else if (id === 'charge') {
       // Warrior: Charge — собрать все клетки по краю поля
       let swords = 0, shields = 0, coins = 0, potions = 0;
@@ -1143,7 +1252,7 @@
           const toDef = Math.min(chargeDmg, s.def);
           s.def -= toDef; s.hp -= (chargeDmg - toDef);
         }
-        if (s.hp <= 0) { S.board[i] = { type: 'empty' }; S.skullsKilled++; }
+        if (s.hp <= 0) { S.board[i] = { type: 'empty' }; S.skullsKilled++; registerSkullEnd(s); }
       }
       // resource effects (border only)
       const charisma = S.hero.stats.charisma;
@@ -1179,6 +1288,11 @@
       if (c && c.type === 'sword') n++;
     }
     return n;
+  }
+
+  // спец-череп (босс или спец-череп): счётчик для трофея
+  function registerSkullEnd(s) {
+    if (s && (s.boss || s.special)) S.specialsKilled = (S.specialsKilled || 0) + 1;
   }
 
   function gainXp(amount) {
@@ -1307,6 +1421,7 @@
           const isBoss = s.boss;
           S.board[idx] = { type: 'empty' };
           S.skullsKilled++;
+          registerSkullEnd(s);
           result.kills++;
           if (isBoss) {
             result.bossKills++;
@@ -1457,7 +1572,7 @@
     chain.forEach(idx => {
       const cell = S.board[idx];
       if (!cell || cell.type === 'empty') return;
-      if (cell.type === 'sword') swordCount++;
+      if (cell.type === 'sword' || cell.type === 'arrow') swordCount++;
       else if (cell.type === 'shield') shieldCount++;
       else if (cell.type === 'coin') coinCount++;
       else if (cell.type === 'potion') potionCount++;
@@ -1520,6 +1635,7 @@
 
       // --- интерьер Руны ---
       let runeXp = 0;
+      let runeKills = 0;
       if (runeInterior) {
         let swords = 0, shields = 0, coins = 0, potions = 0;
         const runeSk = [];
@@ -1527,7 +1643,7 @@
         runeInterior.forEach(idx => {
           const c = S.board[idx];
           if (!c || c.type === 'empty') return;
-          if (c.type === 'sword') swords++;
+          if (c.type === 'sword' || c.type === 'arrow') swords++;
           else if (c.type === 'shield') shields++;
           else if (c.type === 'coin') coins++;
           else if (c.type === 'potion') potions++;
@@ -1536,6 +1652,7 @@
         S._runePathSet = runePathSet; // uppercut внутри интерьера применяется к интерьеру
         const res2 = applyChainEffects(swords, shields, coins, potions, runeSk, chain.length >= 10, new Set());
         runeXp += res2.xpGained;
+        runeKills = res2.kills;
         // получить эффекты: закрыть все интерьерные клетки
         S.board = S.board.map((cell, i) => runeInterior.includes(i) ? { type: 'empty' } : cell);
         S._runePathSet = new Set(chain);
@@ -1553,12 +1670,12 @@
       if (result.xpGained > 0 || runeXp > 0) {
         gainXp(result.xpGained + runeXp);
         if (S.leech > 0) heal(S.leech * (result.dmgShown));
-        const extraKills = Math.max(0, result.kills - 3);
-        if (extraKills > 0 && result.kills > 0) {
+        const totalKills = result.kills + (typeof runeKills === 'number' ? runeKills : 0);
+        const extraKills = Math.max(0, totalKills - 3);
+        if (extraKills > 0 && totalKills > 0) {
           let chanceP = BONUS_BASE_CHANCE + 0.05 * S.hero.stats.strength + 0.05 * S.hero.stats.charisma;
           if (cls && cls.perk === 'Daring' && chain.length >= 10) chanceP = 1.0;
           chanceP = Math.min(1, chanceP);
-          const bonusXp = extraKills * (S.xpPerSkull || XP_PER_SKULL);
           for (let k = 0; k < extraKills; k++) {
             if (chance(chanceP)) gainXp(S.xpPerSkull || XP_PER_SKULL);
           }
@@ -1572,7 +1689,8 @@
       // attack until the next turn — enteredTurn tag)
       const skullCount = skullSpawnCount();
       const bossSpawn = S.turn > 0 && S.turn % BOSS_EVERY_TURNS === (cls && cls.flaw === 'Zealous' ? 9 : 0);
-      const spawned = placeNewTiles({ skullCount, boss: bossSpawn });
+      const specialCount = specialSpawnCount();
+      const spawned = placeNewTiles({ skullCount, boss: bossSpawn, specialCount });
       if (spawned.placed > 0) {
         log(`☠ Появились новые черепа (+${spawned.placed})`);
         if (spawned.bossPlaced) flash('👹 КОНЕЧНЫЙ БОСС');
@@ -1604,6 +1722,7 @@
           const idx = S.board.indexOf(cell);
           if (idx >= 0) S.board[idx] = { type: 'empty' };
           S.skullsKilled++;
+          registerSkullEnd(s);
           audioKill();
         }
       }
@@ -1622,6 +1741,7 @@
           const idx = S.board.indexOf(cell);
           if (idx >= 0) S.board[idx] = { type: 'empty' };
           S.skullsKilled++;
+          registerSkullEnd(s);
         }
       }
     });
@@ -1644,6 +1764,7 @@
         if (c && c.type === 'skull' && c.skull.hp > 0 && c.skull.hp < S.hero.armor) {
           S.board[i] = { type: 'empty' };
           S.skullsKilled++;
+          registerSkullEnd(c.skull);
           audioKill();
         }
       }
@@ -1682,6 +1803,8 @@
     checkGoldBox();
     // check upgrade bar
     checkUpgradeBar();
+    // check trophy (~15 убитых спец-черепов → трофей)
+    checkTrophy();
     S.resolving = false;
   }
 
@@ -1736,6 +1859,20 @@
       title.textContent = '🛡 Новая броня!';
       body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений:</p>';
       renderUpgradeChoices(body);
+    } else if (kind === 'trophy') {
+      title.textContent = '🏆 ТРОФЕЙ!';
+      const t = S.pendingTrophy;
+      body.innerHTML = '';
+      const hint = document.createElement('p');
+      hint.className = 'modal-hint';
+      hint.textContent = t ? t.text : 'Трофей за убитых спец-черепов.';
+      body.appendChild(hint);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = '🏆 Забрать трофей';
+      btn.addEventListener('click', () => claimTrophy());
+      body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = '☠ ИГРА ОКОНЧЕНА';
       body.innerHTML = `<p class="modal-hint">Герой погиб на ходу <strong>${S.turn}</strong></p>
@@ -1743,7 +1880,7 @@
           <div><span>⚔</span><small>убито черепов</small><strong>${S.skullsKilled}</strong></div>
           <div><span>⬆</span><small>максимальный уровень</small><strong>${S.maxLevel}</strong></div>
           <div><span>💰</span><small>золота собрано</small><strong>${S.goldEarned}</strong></div>
-          <div><span>🔗</span><small>цепочек взято</small><strong>${S.chainCount}</strong></div>
+          <div><span>🏆</span><small>трофеев забрано</small><strong>${S.trophiesThisRun || 0}</strong></div>
         </div>`;
       const restart = document.createElement('button');
       restart.type = 'button';
@@ -1758,15 +1895,74 @@
     const wrap = el('modal');
     if (wrap) wrap.classList.remove('show');
     S.pendingModal = null;
-    setTimeout(() => { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); }, 80);
+    setTimeout(() => { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); checkTrophy(); }, 80);
+  }
+
+  // --- трофей: ~15 спец-черепов → трофей ---
+  // Классика: Adventurer — 100% шанс разблокировать любой класс;
+  // другой класс — 50% шанс уровня класса / 50% шанс разблокировать новый класс.
+  // Не более 3 классов разблокируется за забег (далее трофей — в уровень текущего класса).
+  function computeTrophyOutcome() {
+    const locked = CLASSES.filter(c => !isClassUnlocked(c.id));
+    if (locked.length > 0) {
+      const roll = S.classId === 'adventurer' ? 1.0 : 0.5;
+      if (Math.random() < roll) {
+        const cls = locked[randInt(0, locked.length - 1)];
+        return { kind: 'unlock', clsId: cls.id, text: '✨ Класс «' + cls.name + '» разблокирован! (ур. 1)' };
+      }
+    }
+    const currentId = S.classId;
+    const clsName = CLASS_BY_ID[currentId] ? CLASS_BY_ID[currentId].name : currentId;
+    const nextLvl = (classLevelOf(currentId) || 1) + 1;
+    return { kind: 'levelup', clsId: currentId, text: '⬆ Класс «' + clsName + '» поднялся на ур. ' + nextLvl + '!' };
+  }
+  function checkTrophy() {
+    if (S.over || S.pendingModal) return;
+    if (S.pendingTrophy) return;
+    if (S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN) return;
+    if (S.specialsKilled < TROPHY_KILLS_PER_TROPHY) return;
+    S.specialsKilled = 0;
+    S.pendingTrophy = computeTrophyOutcome();
+    openModal('trophy');
+  }
+  function claimTrophy() {
+    const t = S.pendingTrophy;
+    if (!t) return;
+    S.pendingTrophy = null;
+    S.trophiesThisRun = (S.trophiesThisRun || 0) + 1;
+    if (t.kind === 'unlock') {
+      unlockClass(t.clsId);
+      S.unlocksThisRun = (S.unlocksThisRun || 0) + 1;
+    } else {
+      levelUpClass(t.clsId);
+    }
+    flash(t.text);
+    log(t.text);
+    closeModal();
   }
 
   function chooseLevelOptions() {
-    // classic: 2 stats + 2 skills (2-of-4). If 4 skills are taken (class-unique + 3 built-ins),
-    // no more skills can be chosen → 4 stats instead.
+    // classic: 2 stats + 2 skills (2-of-4). If 4 skills are taken, no more skills
+    // can be chosen → 4 stats instead.
+    // Уникальный навык класса предлагается «по желанию» (не сразу — только при
+    // выборе 2-из-4 на уровень, как обычный базальный навык).
     const skillSlotsLeft = Math.max(0, 4 - S.skills.length);
     const statOptions = shuffle([...STATS]).slice(0, 2);
-    const skillOptions = shuffle([...SKILLS].filter(sk => !S.skills.includes(sk.id))).slice(0, Math.min(2, skillSlotsLeft));
+    const basalOptions = shuffle([...SKILLS].filter(sk => !S.skills.includes(sk.id)));
+    // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
+    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+    const uniqueOption = cls && cls.uniqueSkill
+      ? UNIQUE_SKILLS.find(s => s.id === cls.uniqueSkill)
+      : null;
+    let skillOptions = [];
+    if (uniqueOption && !S.skills.includes(uniqueOption.id)) {
+      skillOptions.push(uniqueOption);
+    }
+    while (skillOptions.length < 2 && skillOptions.length < skillSlotsLeft && basalOptions.length > 0) {
+      const b = basalOptions.shift();
+      skillOptions.push(b);
+    }
+    skillOptions = skillOptions.slice(0, Math.min(2, skillSlotsLeft));
     // fill remaining slots with stats to reach 4 options
     while (statOptions.length + skillOptions.length < 4) {
       const extra = shuffle([...STATS].filter(s => !statOptions.includes(s)))[0];
@@ -1810,7 +2006,7 @@
             picked.forEach(idx => {
               const o = options[idx];
               if (STATS.includes(o)) o.apply();
-              else if (SKILLS.includes(o)) {
+              else if (SKILLS.includes(o) || UNIQUE_SKILLS.includes(o)) {
                 if (S.skills.length >= 4) return;
                 chosenSkills.push(o.id);
                 S.skills.push(o.id);
@@ -1969,19 +2165,23 @@
     if (!grid) return;
     grid.innerHTML = '';
     CLASSES.forEach(cls => {
+      const unlocked = isClassUnlocked(cls.id);
+      const lvl = classLevelOf(cls.id);
+      const selected = getSelectedClassId() === cls.id;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'picker-card-btn' + (cls.unimplemented ? ' unimplemented' : '');
+      btn.className = 'picker-card-btn' + (unlocked ? '' : ' locked') + (selected ? ' selected' : '');
       const desc = [];
       if (cls.perk !== '—') desc.push(`<span class="pick-perk">⬆ ${cls.perk}: ${cls.perkDesc}</span>`);
       if (cls.flaw !== '—') desc.push(`<span class="pick-flaw">⬇ ${cls.flaw}: ${cls.flawDesc}</span>`);
-      const uniqueInfo = cls.unimplemented
-        ? `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}</span><span class="pick-unimplemented">не реализовано</span>`
-        : `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}</span>`;
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}</span><span><span class="pick-name">${cls.name}</span><br><span class="pick-race">${cls.race}</span></span></span>${desc.join('')}${uniqueInfo}`;
+      const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}</span>`;
+      const status = unlocked
+        ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}</span>`
+        : `<span class="pick-locked">🔒 15 спец-черепов → трофей</span>`;
+      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}</span><span><span class="pick-name">${cls.name}</span><br><span class="pick-race">${cls.race}</span></span></span>${desc.join('')}${uniqueInfo}${status}`;
       btn.addEventListener('click', () => {
-        if (cls.unimplemented) {
-          flash('⚠ Класс «' + cls.name + '» пока не реализован — механика стрел пока не сделана');
+        if (!unlocked) {
+          flash('⚠ «' + cls.name + '» заблокирован — убей ~15 спец-черепов, чтобы получить трофей');
           return;
         }
         setSelectedClassId(cls.id);
@@ -2000,12 +2200,6 @@
 
   function hideClassPickerAndStart() {
     const picker = el('class-picker');
-    const cls = CLASS_BY_ID[getSelectedClassId()];
-    if (cls && cls.unimplemented) {
-      // Ranger: не стартуем — пикер остался открытым (у пользователя возможность сменить класс)
-      if (picker) picker.classList.add('show');
-      return;
-    }
     if (picker) picker.classList.remove('show');
     newGame();
   }
@@ -2041,6 +2235,17 @@
     swordDamage,
     baseDamage,
     showClassPicker,
+    chooseLevelOptions,
+    checkTrophy,
+    claimTrophy,
+    isClassUnlocked,
+    classLevelOf,
+    specialSpawnCount,
+    createTile,
+    hasLegalChain,
+    chainTypeForCell,
+    chainAllows,
+    isAdjacentArrow,
   };
 
   if (document.readyState === 'loading') {
