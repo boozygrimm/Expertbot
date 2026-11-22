@@ -182,3 +182,86 @@ test('server-provided names are treated as text, not executable markup', async (
     assert.equal(doc.querySelector('#inventory-grid img'), null);
   } finally { dom.window.close(); }
 });
+
+// Use the GENERATED deliverable, including real CSS. Source-only DOM doubles
+// cannot detect display:grid overriding the browser's built-in [hidden] rule.
+async function openRaid() {
+  const errors = [], console = new VirtualConsole();
+  console.on('jsdomError', error => errors.push(error.message));
+  const html = require('node:fs').readFileSync(require('node:path').join(root, 'lunapark-raid.html'), 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'https://raid.test/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: console,
+  });
+  await until(() => dom.window.document.querySelector('.picker-card-btn:not(.locked)'));
+  dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
+  const raid = dom.window.RAID;
+  raid.newGame(0);
+  raid.state.board = Array.from({ length: 36 }, () => ({ type: 'sword' }));
+  return { dom, raid, errors };
+}
+
+for (const kind of ['gold', 'armor']) test(`built raid ${kind}: character/equipment summary really hides choices and never rerolls them`, async () => {
+  const { dom, raid, errors } = await openRaid();
+  const doc = dom.window.document;
+  try {
+    if (kind === 'gold') { raid.state.hero.gold = 100; raid.checkGoldBox(); }
+    else { raid.state.upgradeBar = 100; raid.checkUpgradeBar(); }
+    const grid = doc.querySelector(kind === 'gold' ? '.shop-grid' : '.lv-grid');
+    const summary = doc.querySelector('#modal-body .character-summary');
+    const toggle = doc.querySelector('.shop-summary-toggle');
+    assert.ok(summary && toggle, 'both reward menus expose worn gear, not just generic bonuses');
+    assert.equal(dom.window.getComputedStyle(summary).display, 'none');
+    assert.notEqual(dom.window.getComputedStyle(grid).display, 'none');
+    const before = JSON.stringify([raid.state.hero, raid.state.equipment, raid.state.rngSeeds, raid.state.menuCandidates]);
+    toggle.click();
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(dom.window.getComputedStyle(grid).display, 'none', 'hidden grid must not remain rendered/clickable');
+    assert.notEqual(dom.window.getComputedStyle(summary).display, 'none');
+    for (const item of raid.state.equipment) assert.ok(summary.textContent.includes(item.name));
+    toggle.click();
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    assert.notEqual(dom.window.getComputedStyle(grid).display, 'none');
+    assert.equal(dom.window.getComputedStyle(summary).display, 'none');
+    assert.equal(JSON.stringify([raid.state.hero, raid.state.equipment, raid.state.rngSeeds, raid.state.menuCandidates]), before);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid shop/upgrade cards show item-local before/after and clicks change only the chosen gear', async () => {
+  const { dom, raid, errors } = await openRaid();
+  const doc = dom.window.document;
+  try {
+    const weapon = raid.state.equipment.find(item => item.slot === 'weapon');
+    const shield = raid.state.equipment.find(item => item.slot === 'shield');
+    raid.equipItem({ ...weapon, mods: { weaponDamage: 3 } });
+    raid.equipItem({ ...shield, mods: { maxArmor: 1, weaponDamage: 5 } });
+    assert.equal(raid.state.hero.weaponDamage, 8);
+    raid.state.hero.gold = 100; raid.checkGoldBox();
+    const index = raid.state.menuCandidates.findIndex(item => item.slot === 'weapon');
+    assert.ok(index >= 0);
+    const offer = raid.state.menuCandidates[index];
+    const card = doc.querySelectorAll('button.shop-item')[index];
+    assert.ok(card.querySelector('.item-before').textContent.includes(weapon.name));
+    assert.match(card.querySelector('.item-before').textContent, /Урон оружия \+3/);
+    assert.match(card.querySelector('.item-after').textContent, /Урон оружия \+4/);
+    assert.match(card.querySelector('.item-change').textContent, /Урон оружия: 3 → 4 \(\+1\)/);
+    assert.doesNotMatch(card.textContent, /8 → 12/);
+    card.click();
+    assert.equal(raid.state.hero.weaponDamage, 9, 'five on shield plus four on new weapon, not eight plus four');
+    assert.equal(raid.state.equipment.find(item => item.slot === 'weapon').name, offer.name);
+    const equipped = JSON.parse(JSON.stringify(raid.state.equipment));
+    raid.state.upgradeBar = 100; raid.checkUpgradeBar();
+    const upgrade = raid.state.menuCandidates[0];
+    const old = equipped.find(item => item.slot === upgrade.slot);
+    const upgradeCard = doc.querySelector('.lv-card');
+    assert.ok(upgradeCard.querySelector('.lv-name').textContent.includes(old.name));
+    assert.ok(upgradeCard.querySelector('.item-before').textContent.includes(raid.itemModsText(old)));
+    const after = { ...old, mods: { ...old.mods, [upgrade.key]: (old.mods[upgrade.key] || 0) + upgrade.value } };
+    assert.ok(upgradeCard.querySelector('.item-after').textContent.includes(raid.itemModsText(after)));
+    upgradeCard.click();
+    raid.state.equipment.forEach((item, n) => {
+      assert.deepEqual(JSON.parse(JSON.stringify(item)), item.slot === upgrade.slot ? after : equipped[n]);
+    });
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});

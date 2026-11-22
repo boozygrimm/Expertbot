@@ -386,7 +386,11 @@ body { display: flex; align-items: stretch; justify-content: center; }
   font-size: 26px; line-height: 1;
 }
 .shop-name { font: 700 14.5px Georgia, serif; color: #ffffff; line-height: 1.2; display: block; }
-.shop-eff { font-size: 12.5px; font-weight: 800; color: #3dff3d; letter-spacing: 0.02em; text-shadow: 0 1px 1px rgba(0,0,0,0.5); display: block; margin-top: 1px; }
+.item-state { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #62516e; padding: 3px 0 3px 7px; margin-top: 3px; overflow-wrap: anywhere; }
+.item-state-title { font-size: 10.5px; color: #bdaecb; line-height: 1.35; }
+.item-mods { font-size: 11.5px; color: #ece2f4; line-height: 1.4; }
+.item-after { border-left-color: #99835e; }
+.build-label, .help-card .build-label { margin: 2px 0; color: #ad9abc; font-size: 10px; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
 
 /* titles */
 .modal-title.level { color: #5bf24a; font-size: 30px; text-shadow: 0 0 2px #053d0a, 0 2px 2px #000, 0 0 18px rgba(91,242,74,0.45); }
@@ -610,3 +614,6 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-trophy { color: #ffe195; border-color: #dba85c; background: radial-gradient(ellipse, #604124, #24142d); }
 .cell.type-trophy .ic { filter: drop-shadow(0 0 5px #c68a39); }
 .cell.type-trophy.frozen { border-color: #8fccef; }
+
+/* Keep last: view layout rules must not make a hidden panel visible/clickable. */
+[hidden] { display: none !important; }
