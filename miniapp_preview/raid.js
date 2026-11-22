@@ -54,16 +54,16 @@
   const BOSS_STATS = { atk: 1.8, def: 1.5, hp: 2.2 };
 
   const SKILLS = [
-    { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 12, desc: 'Все клетки без черепов → новые' },
-    { id: 'freeze', name: 'Мороз', icon: '❄', cooldown: 10, desc: 'Черепа не бьют этим ходом' },
-    { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 12, desc: 'Собрать все зелья' },
-    { id: 'repair', name: 'Ремонт', icon: '⚒', cooldown: 12, desc: 'Собрать все щиты' },
-    { id: 'dazzle', name: 'Слепота', icon: '✦', cooldown: 10, desc: 'Все монеты → мечи' },
-    { id: 'disarm', name: 'Оружие', icon: '⚔', cooldown: 10, desc: 'Все щиты → мечи' },
-    { id: 'treasure', name: 'Кладовая', icon: '💰', cooldown: 14, desc: 'Все не-череп клетки → монеты' },
-    { id: 'enchant', name: 'Затачивание', icon: '⚒', cooldown: 15, desc: 'Мгновенно: +2 к оружию, +4 к HP' },
-    { id: 'bribe', name: 'Воровство', icon: '🦊', cooldown: 12, desc: '+12 золота вперёд' },
-    { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 14, desc: 'Все зелья дают 2 XP вместо HP' },
+    { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 20, desc: 'Все клетки без черепов → новые' },
+    { id: 'freeze', name: 'Мороз', icon: '❄', cooldown: 16, desc: 'Черепа не бьют этим ходом' },
+    { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 15, desc: 'Собрать все зелья' },
+    { id: 'repair', name: 'Ремонт', icon: '⚒', cooldown: 16, desc: 'Собрать все щиты' },
+    { id: 'dazzle', name: 'Слепота', icon: '✦', cooldown: 15, desc: 'Все монеты → мечи' },
+    { id: 'disarm', name: 'Оружие', icon: '⚔', cooldown: 25, desc: 'Все щиты → мечи' },
+    { id: 'treasure', name: 'Кладовая', icon: '💰', cooldown: 18, desc: 'Собрать все монеты' },
+    { id: 'enchant', name: 'Затачивание', icon: '⚒', cooldown: 35, desc: 'Мгновенно: +2 к оружию, +4 к HP' },
+    { id: 'bribe', name: 'Воровство', icon: '🦊', cooldown: 13, desc: 'Атака черепов → золото (1 ход)' },
+    { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 18, desc: 'Все зелья дают 2 XP вместо HP' },
   ];
   // 7 уровней-стата (классика: 2 навыка + 2 стата в уровне)
   const STATS = [
@@ -1116,19 +1116,26 @@
       }
       flash('⚔ Все щиты → мечи');
     } else if (id === 'treasure') {
+      // Классика: Treasure — собрать все монеты (монеты → золото)
+      let collected = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const cell = S.board[i];
-        if (cell.type !== 'skull') S.board[i] = { type: 'coin' };
+        if (cell.type === 'coin') {
+          collected++;
+          S.board[i] = createNewTile();
+        }
       }
-      flash('💰 Все клетки → монеты');
+      const gold = Math.round(collected * S.goldPerCoin * (1 + 0.05 * (S.hero.stats.charisma || 0)));
+      if (gold > 0) gainGold(gold);
+      flash('💰 Собрано монет: ' + collected + ' (+' + gold + ' золота)');
     } else if (id === 'enchant') {
       S.hero.weaponDamage += 2;
       S.hero.hp = Math.min(S.hero.maxHp, S.hero.hp + 4);
       flash('⚒ Мгновенный улучшение: +2 оружия');
     } else if (id === 'bribe') {
-      S.hero.gold += 12;
-      S.goldEarned += 12;
-      log('🦊 Воровство: +12 золота');
+      // Классика: Steal — атака черепов даёт золото в этом ходу
+      S.stealActive = 1;
+      log('🦊 Воровство: атака → золото (1 ход)');
     } else if (id === 'elixir') {
       let count = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
@@ -2276,6 +2283,7 @@
     specialSpawnCount,
     makeSkull,
     placeNewTiles,
+    checkLevelUp,
     createTile,
     hasLegalChain,
     chainTypeForCell,
