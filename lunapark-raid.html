@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#140e22">
-<meta name="raid-build" content="2b595776754c">
+<meta name="raid-build" content="30c23b55ab1b">
 <title>Lunapark · Рейд</title>
 <style>
 /* miniapp_preview/raid.css — пробник Рейда */
@@ -329,6 +329,17 @@ body { display: flex; align-items: stretch; justify-content: center; }
 /* --- LEVEL UP / SHOP / UPGRADE modals (classic parity) --- */
 .lv-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
 .lv-status { text-align: center; font-size: 13px; font-weight: 800; color: #b9f0a8; margin: 6px 0 8px; }
+.lv-actions {
+  position: sticky; bottom: -14px; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #1d142e; border-top: 1px solid #665078;
+  padding: 10px 2px; margin-top: 8px; box-shadow: 0 -6px 12px rgba(15,8,24,.6);
+}
+.lv-actions .lv-status { margin: 0; text-align: left; font-size: 12px; }
+.lv-confirm { flex: none; margin-top: 0; min-height: 44px; }
+.lv-confirm:disabled { opacity: .45; cursor: default; }
+.lv-confirm:disabled:active { transform: none; }
+.modal.level .modal-card { scroll-padding-block: 12px 84px; }
 .lv-card {
   display: flex; align-items: center; gap: 12px; text-align: left;
   border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
@@ -339,6 +350,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .lv-card:hover { border-color: #8a5fb0; }
 .lv-card:active { transform: scale(0.98); }
 .lv-card.picked { border-color: #b9f0a8; box-shadow: 0 0 16px rgba(185,240,168,0.45); background: linear-gradient(160deg, #2e4a26, #1d2c1a); }
+.lv-card:disabled { opacity: .65; cursor: default; }
+.lv-card:disabled:hover { border-color: #4a3a68; }
+.lv-card:disabled:active { transform: none; }
+.lv-card:focus-visible, .lv-confirm:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .lv-icon-box {
   position: relative; width: 64px; height: 58px; flex-shrink: 0;
   display: grid; place-items: center;
@@ -634,7 +649,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
   <div class="picker-card">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="build-label">Сборка 2b595776754c</p>
+    <p class="build-label">Сборка 30c23b55ab1b</p>
     <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: подбирай трофеи на поле после побед над особыми черепами.</p>
     <div class="picker-modes">
       <label>Режим
@@ -735,7 +750,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
     <h3>⚔ Меню рейда</h3>
-    <p class="build-label">Сборка 2b595776754c</p>
+    <p class="build-label">Сборка 30c23b55ab1b</p>
     <button class="btn" id="menu-resume" type="button">Продолжить</button>
     <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
     <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
@@ -756,7 +771,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="help-card">
     <h3>⚔ Как играть</h3>
     <p><b>Пробник классического Рейда</b> на своих графике и коде.</p>
-    <p class="build-label">Сборка 2b595776754c</p>
+    <p class="build-label">Сборка 30c23b55ab1b</p>
     <ul>
       <li>Смахни по 3+ клеток одной категории (меч/щит/монета/зелье).</li>
       <li>Череп идёт в цепочку с мечом/стрелой и сам может начинать её.</li>
@@ -765,12 +780,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>Каждый щит либо чинит броню, либо даёт 2 UP: при полной броне или Коррозии на поле. Излишек ремонта этого щита пропадает; следующий щит проверяется заново. Монеты → золото, обычные зелья → лечение.</li>
       <li>Старые незамороженные черепа атакуют общим залпом: весь запас брони поглощает урон до её износа. Пробившийся залп с Отравленным накладывает яд; в конце хода сначала регенерация, затем яд. HP=0 → конец забега.</li>
       <li>Ассасин / Вервольф — «Калечение»: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты и даёт опыт. Твоя броня и возраст черепа не влияют; особые и боссы не затрагиваются.</li>
-      <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения. Остаток шкалы сохраняется; выбор в меню приостанавливает следующие награды и ход врагов.</li>
+      <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения. На уровне отметь два варианта и нажми «Подтвердить»: до этого повторный тап снимает отметку, а награды ещё не применяются. Пока выбор не подтверждён, следующие награды и ход врагов ждут; остаток шкалы сохраняется.</li>
       <li>Руна: активируй навык и проведи контур из 4+ узлов с соседними концами. Подсвеченный интерьер собирается до основной цепочки: обычные черепа — без проверки HP/защиты, с опытом, но без счётчика убийств. Особые и боссы остаются (пунктирная подсветка).</li>
       <li>20% новых клеток — черепа; первый особый — после 50 ходов, затем интервал зависит от хода и сложности (1 из 32 типов, босс — тип 1). Первый трофей нового профиля — после одной победы над особым; далее интервал 20–30 переносится между забегами.</li>
       <li>Трофей остаётся клеткой 🏆 на месте особого. Тапни по нему: откроется случайный закрытый класс или вырастет текущий (потолок 10). Подбор не тратит ход; замороженный трофей сначала нужно разморозить. На лёгком трофеев нет, в Спринте счётчик уменьшается с шансом 50/101; максимум 3 появления за забег, даже если трофеи не забрать.</li>
-      <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Карточка показывает обе вещи и разницу; второстепенные параметры могут уменьшиться (красные строки).</li>
-      <li>Апгрейд меняет параметры конкретной надетой вещи, а не даёт вечный бонус персонажу. Эти параметры учитываются при следующей замене; если их нет у новой вещи — бонус исчезнет. В обоих меню можно посмотреть всю экипировку. «Ускорение навыков» не складывается с другим таким же предметом.</li>
+      <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Бывают и обмены: −1 к одному параметру ради двойного прироста другого, например +2 к урону оружия. Карточка показывает обе вещи, улучшения зелёным и ухудшения красным.</li>
+      <li>Апгрейд только добавляет бонус конкретной надетой вещи: остальные её параметры не уменьшаются. Это не вечная прибавка персонажу. При следующей покупке учитываются все параметры надетой вещи; если их нет у замены — бонус исчезнет. В обоих меню можно посмотреть всю экипировку. «Ускорение навыков» не складывается с другим таким же предметом.</li>
       <li>📜 Свиток прилагается к одному из предметов и разово применяет указанный навык при покупке: не занимает слот и не меняет заряд такого же навыка. Точный фильтр свитков оригинала пока не расшифрован (I1): в пробнике работают подтверждённые 10%-е исключения; остальные свитки явно пропускаются, покупка предмета остаётся доступной.</li>
       <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы. У каждого черепа может быть смертный враг твоей расы.</li>
     </ul>
@@ -1222,8 +1237,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       comparison: `${itemNumber(key, before)} → ${itemNumber(key, before + value)}` };
   }
   function applyUpgradeOffer(offer) {
-    const item = S.equipment.find(entry => entry.slot === offer.slot);
-    if (!item || !ITEM_STAT[offer.key]) return false;
+    const item = S.equipment.find(entry => entry.slot === offer?.slot);
+    // An upgrade only adds to this item. Trade-offs belong to shop generation;
+    // reductions by Devourer use their separate path below.
+    if (!item || !ITEM_KEYS.includes(offer.key) || !Number.isFinite(offer.value) || offer.value <= 0) return false;
     addItemModifier(item, offer.key, offer.value);
     updateEquipmentStats();
     return true;
@@ -3744,7 +3761,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
     if (kind === 'level') {
       title.textContent = '⬆ УРОВЕНЬ!';
-      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений<\/p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений и подтверди. Повторный тап по выбранной карточке снимает выбор.<\/p>';
       const options = chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
@@ -3753,7 +3770,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       renderEquipChoices(body);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений надетых вещей. Бонус останется на выбранном предмете.<\/p>';
+      body.innerHTML = '<p class="modal-hint">Добавь бонус одной из 4 надетых вещей. Остальные её параметры не меняются.<\/p>';
       renderUpgradeChoices(body);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
@@ -3962,20 +3979,53 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   function renderLevelChoices(options, body) {
     S.menuCandidates = options;
+    const runId = RUN_ID;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', 'Два улучшения уровня');
     const picked = new Set();
+    let committed = false;
+    const actions = document.createElement('div');
+    actions.className = 'lv-actions';
     const choiceRow = document.createElement('div');
+    choiceRow.id = 'level-choice-status';
     choiceRow.className = 'lv-status';
-    choiceRow.textContent = 'Выбери 2 из 4 (0/2)';
-    body.appendChild(choiceRow);
+    choiceRow.setAttribute('role', 'status');
+    choiceRow.setAttribute('aria-live', 'polite');
+    const confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'btn lv-confirm';
+    confirm.textContent = 'Подтвердить';
+    confirm.setAttribute('aria-describedby', 'level-choice-status');
 
+    function isCurrent() {
+      return !committed && runId === RUN_ID && !S.over
+        && S.pendingModal === 'level' && S.menuCandidates === options;
+    }
     function mark() {
-      choiceRow.textContent = `Выбери 2 из 4 (${picked.size}/2)`;
+      choiceRow.textContent = `Выбрано ${picked.size} из 2`;
+      confirm.disabled = picked.size !== 2;
       grid.querySelectorAll('.lv-card').forEach((node, i) => {
-        node.classList.toggle('picked', picked.has(i));
+        const selected = picked.has(i);
+        node.classList.toggle('picked', selected);
+        node.setAttribute('aria-pressed', String(selected));
+        node.disabled = picked.size === 2 && !selected;
       });
     }
+    confirm.addEventListener('click', () => {
+      if (!isCurrent() || picked.size !== 2) return;
+      committed = true;
+      confirm.disabled = true;
+      // Only the final draft is applied, once, in its selection order.
+      picked.forEach(idx => {
+        const option = options[idx];
+        if (STATS.includes(option)) option.apply();
+        else installSkillOption(option);
+      });
+      S.hero.xpNext = 100;
+      closeModal(); renderBoard(); renderHUD(); audioLevel();
+    });
 
     options.forEach((opt, i) => {
       const isStat = STATS.includes(opt);
@@ -4007,34 +4057,22 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           <\/span>`;
       }
       btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'level' || S.menuCandidates !== options || picked.size >= 2) return;
-        if (picked.has(i)) {
-          picked.delete(i);
-          mark();
-          return;
-        } else {
+        if (!isCurrent()) return;
+        if (picked.has(i)) picked.delete(i);
+        else {
+          if (picked.size >= 2) return;
           picked.add(i);
           audioPick();
-          mark();
-          if (picked.size === 2) {
-            // Preserve click order; a prepared skill is not initialised twice.
-            picked.forEach(idx => {
-              const option = options[idx];
-              if (STATS.includes(option)) option.apply();
-              else installSkillOption(option);
-            });
-            S.hero.xpNext = 100;
-            closeModal();
-            renderBoard();
-            renderHUD();
-            audioLevel();
-          }
         }
         mark();
       });
       grid.appendChild(btn);
     });
     body.appendChild(grid);
+    actions.appendChild(choiceRow);
+    actions.appendChild(confirm);
+    body.appendChild(actions);
+    mark();
   }
 
   function noteCompatibility(message) {

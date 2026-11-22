@@ -510,7 +510,7 @@ test('raid Faun level selection completes and truncates a fractional 25-percent 
   raid.checkLevelUp();
   const cards = elements.get('modal-body').querySelectorAll('.lv-card.lv-skill');
   assert.equal(cards.length, 2);
-  cards[0].click(); cards[1].click();
+  cards[0].click(); cards[1].click(); raidConfirmLevel(elements);
   assert.equal(s.hero.maxHp, 51);
   assert.equal(s.hero.hp, 12);
   assert.equal(s.hero.level, 2);
@@ -526,7 +526,7 @@ test('raid Cunning fourth-skill level selection completes and retains its cooldo
   raid.checkLevelUp();
   const cards = elements.get('modal-body').querySelectorAll('.lv-card.lv-skill');
   assert.equal(cards.length, 2);
-  cards[0].click(); cards[1].click();
+  cards[0].click(); cards[1].click(); raidConfirmLevel(elements);
   assert.equal(s.skills.length, 4);
   assert.equal(s.hero.level, 2);
   assert.equal(s.cooldownAdjust.haste, -1);
@@ -545,12 +545,18 @@ function raidOld(raid, slot, fields = {}, type = 0) {
   raid.state.board[slot] = { type: 'skull', skull };
   return skull;
 }
+function raidConfirmLevel(elements) {
+  const confirm = elements.get('modal-body').querySelectorAll('.lv-confirm')[0];
+  assert.ok(confirm, 'an explicit confirmation must be present');
+  assert.equal(confirm.disabled, false, 'exactly two picks enable confirmation');
+  confirm.click();
+}
 function raidPickLevel(elements) {
   const cards = elements.get('modal-body').querySelectorAll('.lv-card');
   assert.equal(cards.length, 4);
   const skills = cards.filter(card => card.className.includes('lv-skill'));
   const picks = skills.length >= 2 ? skills : cards;
-  picks[0].click(); picks[1].click();
+  picks[0].click(); picks[1].click(); raidConfirmLevel(elements);
 }
 function raidPickShop(elements) {
   const cards = elements.get('modal-body').querySelectorAll('.shop-item');
@@ -2066,7 +2072,7 @@ test('raid owned skill upgrades are offered before four slots and preserve charg
   s.hero.level = 2; s.hero.xp = 100; raid.checkLevelUp();
   assert.deepEqual(Array.from(s.menuCandidates.slice(0, 2), option => [option.id, option.upgrade]), [['steal', true], ['freeze', false]]);
   const cards = elements.get('modal-body').querySelectorAll('.lv-card');
-  cards[0].click(); cards[1].click();
+  cards[0].click(); cards[1].click(); raidConfirmLevel(elements);
   assert.deepEqual(Array.from(s.skills), ['steal', 'freeze']);
   assert.deepEqual([raid.skillDuration('steal'), s.skillCooldowns.steal, s.skillLevels.steal], [12, 4, 2]);
   assert.equal(s.skillCooldowns.freeze, 0, 'new skill is fully ready');
@@ -2701,4 +2707,151 @@ test('raid standalone displays a reproducible source fingerprint instead of an u
   assert.ok(html.includes(`<meta name="raid-build" content="${id}">`));
   assert.equal((html.match(new RegExp('Сборка ' + id, 'g')) || []).length, 3, 'picker, menu and help identify the same build');
   assert.doesNotMatch(html, /__RAID_BUILD__/);
+});
+
+// Level choices are a draft until an explicit confirmation, unlike buying a
+// replacement or adding a modifier to a worn item.
+test('raid level draft can be changed after both picks without applying stats, skills or RNG', () => {
+  const { raid, elements, advance } = raidBrowser({ menus: true, seed: 0 });
+  raid.state.hero.xp = 100; raid.checkLevelUp();
+  const s = raid.state, body = elements.get('modal-body');
+  const cards = body.querySelectorAll('.lv-card'), confirm = body.querySelectorAll('.lv-confirm')[0];
+  assert.ok(confirm, 'level choices need their own confirmation button');
+  assert.equal(confirm.disabled, true);
+  const snapshot = () => JSON.stringify([s.hero, s.equipment, s.skills, s.skillLevels, s.skillCooldowns, s.skillDurations, s.rngSeeds]);
+  const before = snapshot();
+  cards[0].click(); cards[2].click(); advance(10000);
+  assert.equal(confirm.disabled, false);
+  assert.equal(s.pendingModal, 'level', 'two picks alone must not close/apply the menu');
+  assert.equal(snapshot(), before);
+  assert.equal(cards[0]['aria-pressed'], 'true');
+  assert.equal(cards[2]['aria-pressed'], 'true');
+  cards[3].click(); // At most two; remove a selected option before adding another.
+  assert.equal(cards[3]['aria-pressed'], 'false');
+  cards[0].click();
+  assert.equal(cards[0]['aria-pressed'], 'false');
+  assert.equal(confirm.disabled, true);
+  cards[3].click();
+  assert.equal(confirm.disabled, false);
+  assert.equal(snapshot(), before, 'deselection/reselection must not mutate the run');
+  confirm.click();
+  assert.equal(s.pendingModal, null);
+  assert.equal(s.skills.length, 0, 'the cancelled skill was never installed');
+  assert.deepEqual([s.hero.stats.strength, s.hero.stats.dexterity], [2, 2]);
+  const after = snapshot();
+  confirm.click(); cards[0].click(); advance(1000);
+  assert.equal(snapshot(), after, 'old buttons cannot apply the reward twice');
+});
+
+for (const count of [0, 1]) test(`raid level cannot confirm ${count} picks, even through a direct handler call`, () => {
+  const { raid, elements } = raidBrowser({ menus: true, seed: 0 });
+  raid.state.hero.xp = 100; raid.checkLevelUp();
+  const body = elements.get('modal-body'), confirm = body.querySelectorAll('.lv-confirm')[0];
+  assert.ok(confirm);
+  if (count) body.querySelectorAll('.lv-card')[0].click();
+  const before = JSON.stringify(raid.state);
+  confirm.click();
+  assert.equal(confirm.disabled, true);
+  assert.equal(JSON.stringify(raid.state), before);
+  assert.equal(raid.state.pendingModal, 'level');
+});
+
+test('raid level confirmation retains the final selection order, not the order of cancelled picks', () => {
+  const { raid, elements } = raidBrowser({ menus: true, seed: 0 });
+  raid.state.hero.xp = 100; raid.checkLevelUp();
+  const body = elements.get('modal-body'), cards = body.querySelectorAll('.lv-card');
+  cards[0].click(); cards[1].click(); cards[0].click(); cards[0].click();
+  assert.equal(raid.state.skills.length, 0);
+  body.querySelectorAll('.lv-confirm')[0].click();
+  assert.deepEqual(Array.from(raid.state.skills), ['freeze', 'steal']);
+});
+
+test('raid stale level picks and confirmation are invalid after restart, including another open level menu', () => {
+  const { raid, elements, advance } = raidBrowser({ menus: true, seed: 0 });
+  raid.state.hero.xp = 100; raid.checkLevelUp();
+  const body = elements.get('modal-body'), oldCards = body.querySelectorAll('.lv-card');
+  const oldConfirm = body.querySelectorAll('.lv-confirm')[0];
+  assert.ok(oldConfirm);
+  oldCards[0].click(); oldCards[1].click();
+  raid.newGame(913); raid.state.hero.xp = 100; raid.checkLevelUp();
+  const freshCards = body.querySelectorAll('.lv-card'), freshConfirm = body.querySelectorAll('.lv-confirm')[0];
+  freshCards[0].click(); freshCards[1].click();
+  const before = JSON.stringify(raid.state);
+  oldCards[0].click(); oldConfirm.click(); advance(1000);
+  assert.equal(JSON.stringify(raid.state), before);
+  assert.equal(raid.state.pendingModal, 'level');
+  freshConfirm.click();
+  assert.equal(raid.state.pendingModal, null);
+  assert.equal(raid.state.skills.length, 2);
+});
+
+test('raid each queued level has a fresh empty draft and an old confirmation cannot confirm the next one', () => {
+  const { raid, elements, advance } = raidBrowser({ menus: true, seed: 913 });
+  raid.state.hero.xp = 100; raid.checkLevelUp();
+  const body = elements.get('modal-body'), cards = body.querySelectorAll('.lv-card');
+  const oldConfirm = body.querySelectorAll('.lv-confirm')[0];
+  assert.ok(oldConfirm);
+  raid.state.rewardMenus.push('level'); // Isolate two adjacent queued reward menus.
+  cards[2].click(); cards[3].click(); oldConfirm.click(); advance(80);
+  assert.equal(raid.state.pendingModal, 'level');
+  const confirm = body.querySelectorAll('.lv-confirm')[0];
+  assert.notEqual(confirm, oldConfirm);
+  assert.equal(confirm.disabled, true);
+  assert.ok(body.querySelectorAll('.lv-card').every(card => card['aria-pressed'] === 'false'));
+  const before = JSON.stringify(raid.state);
+  oldConfirm.click();
+  assert.equal(JSON.stringify(raid.state), before);
+});
+
+for (const mode of ['classic', 'sprint', 'pretzel']) test(`raid ${mode}: successive item upgrades only add one modifier and preserve all other worn properties`, () => {
+  const { raid } = raidBrowser({ mode, seed: 913 });
+  for (const slot of Object.keys(raidItemPools)) {
+    for (let n = 0; n < 40; n++) {
+      const item = raid.state.equipment.find(item => item.slot === slot);
+      const before = JSON.parse(JSON.stringify(item));
+      const others = JSON.stringify(raid.state.equipment.filter(item => item.slot !== slot));
+      const offer = raid.makeUpgradeOffer(slot);
+      assert.ok(offer.value > 0 && Number.isFinite(offer.value));
+      assert.equal(raid.applyUpgradeOffer(offer), true);
+      assert.equal(item.name, before.name);
+      assert.equal(item.slot, before.slot);
+      const expected = { ...before.mods, [offer.key]: Number(((before.mods[offer.key] || 0) + offer.value).toFixed(2)) };
+      assert.equal(JSON.stringify(item.mods), JSON.stringify(expected));
+      for (const key of Object.keys(before.mods)) assert.ok(item.mods[key] >= before.mods[key], key);
+      assert.equal(JSON.stringify(raid.state.equipment.filter(item => item.slot !== slot)), others);
+    }
+  }
+});
+
+test('raid item-upgrade entry point rejects non-additive or invalid offers, without changing the item', () => {
+  const { raid } = raidBrowser();
+  const before = JSON.stringify(raid.state);
+  const offers = [-1, 0, NaN, Infinity, -Infinity, undefined, '1']
+    .map(value => ({ slot: 'weapon', key: 'weaponDamage', value }));
+  offers.push(undefined, null, {}, { slot: 'missing', key: 'weaponDamage', value: 1 });
+  for (const key of ['missing', 'toString', '__proto__', undefined]) offers.push({ slot: 'weapon', key, value: 1 });
+  for (const offer of offers) {
+    assert.equal(raid.applyUpgradeOffer(offer), false);
+    assert.equal(JSON.stringify(raid.state), before);
+  }
+});
+
+test('raid shop can trade one base-damage point for a double weapon increase; an upgrade never makes that trade', () => {
+  const { raid, elements } = raidBrowser({ menus: true, seed: 0 }); raidBoard(raid, 'sword');
+  raidGear(raid, 'weapon', { baseDamage: 2 });
+  assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage()], [2, 5]);
+  raidOpenShop(raid);
+  const item = raid.state.menuCandidates[0], card = elements.get('modal-body').querySelectorAll('.shop-item')[0];
+  assert.equal(item.slot, 'weapon');
+  assert.equal(JSON.stringify(item.mods), JSON.stringify({ weaponDamage: 4, baseDamage: 1 }));
+  assert.match(card.innerHTML, /item-change better[^>]*>Урон оружия: 2 → 4 \(\+2\)/);
+  assert.match(card.innerHTML, /item-change worse[^>]*>Базовый урон: 2 → 1 \(−1\)/);
+  card.click();
+  assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage()], [4, 4]);
+  raid.state.upgradeBar = 100; raid.checkUpgradeBar();
+  const upgrade = raid.state.menuCandidates[0];
+  assert.equal(upgrade.slot, 'weapon');
+  assert.equal(upgrade.key, 'weaponDamage');
+  elements.get('modal-body').querySelectorAll('.lv-card')[0].click();
+  assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage(), raid.state.equipment[0].mods.baseDamage], [5, 4, 1]);
 });

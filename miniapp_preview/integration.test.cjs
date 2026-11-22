@@ -265,3 +265,90 @@ test('built raid shop/upgrade cards show item-local before/after and clicks chan
     assert.deepEqual(errors, []);
   } finally { dom.window.close(); }
 });
+
+test('built raid level choices remain editable and uncommitted until the enabled confirmation is clicked', async () => {
+  const { dom, raid, errors } = await openRaid();
+  const doc = dom.window.document;
+  try {
+    raid.state.hero.xp = 100; raid.checkLevelUp();
+    const cards = [...doc.querySelectorAll('.lv-card')], confirm = doc.querySelector('.lv-confirm');
+    assert.ok(confirm);
+    assert.equal(confirm.textContent, 'Подтвердить');
+    assert.equal(confirm.disabled, true);
+    const snapshot = () => JSON.stringify([raid.state.hero, raid.state.skills, raid.state.skillLevels, raid.state.skillCooldowns, raid.state.rngSeeds]);
+    const before = snapshot();
+    confirm.click(); cards[0].click();
+    assert.equal(confirm.disabled, true);
+    cards[1].click();
+    assert.equal(confirm.disabled, false);
+    assert.equal(raid.state.pendingModal, 'level');
+    assert.equal(snapshot(), before);
+    assert.equal(cards[0].getAttribute('aria-pressed'), 'true');
+    assert.equal(cards[1].getAttribute('aria-pressed'), 'true');
+    assert.equal(cards[2].disabled, true);
+    cards[0].click();
+    assert.equal(confirm.disabled, true);
+    assert.equal(cards[2].disabled, false);
+    cards[2].click();
+    assert.equal(snapshot(), before);
+    assert.match(doc.querySelector('.lv-status').textContent, /2.*2/);
+    confirm.click();
+    assert.equal(raid.state.pendingModal, null);
+    assert.deepEqual(Array.from(raid.state.skills), ['freeze']);
+    assert.equal(raid.state.hero.stats.strength, 2);
+    const after = snapshot();
+    confirm.click(); cards[3].click();
+    assert.equal(snapshot(), after);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid an unconfirmed two-pick level keeps resource arrivals and enemy continuation paused', async () => {
+  const { dom, raid, errors } = await openRaid();
+  const doc = dom.window.document, s = raid.state;
+  try {
+    s.forceCoins = 1; s.hero.hp = 10; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+    s.hero.gold = 99; s.goldEarned = 99;
+    const skull = Object.assign(raid.makeSkull(false, false, 0), { hp: 1, maxHp: 1, def: 0, atk: 0, enteredTurn: -1 });
+    s.board[0] = { type: 'skull', skull }; s.board[1] = { type: 'chain' };
+    s.board[2] = { type: 'coin' }; s.board[3] = { type: 'chain' }; s.board[4] = { type: 'potion' };
+    for (const slot of [0, 1, 2, 3, 4]) raid.tryExtendChain(slot);
+    raid.resolveChain();
+    await until(() => s.pendingModal === 'level');
+    const cards = doc.querySelectorAll('.lv-card'); cards[0].click(); cards[1].click();
+    await new Promise(resolve => setTimeout(resolve, 700));
+    assert.equal(s.pendingModal, 'level');
+    assert.deepEqual([s.turn, s.hero.xp, s.hero.gold, s.hero.hp, s.arrivals.length, s.resolving], [0, 1, 99, 10, 2, true]);
+    const confirm = doc.querySelector('.lv-confirm'); confirm.click();
+    await until(() => s.pendingModal === 'gold');
+    assert.equal(s.hero.gold, 1);
+    doc.querySelector('button.shop-item').click();
+    await until(() => s.turn === 1 && !s.resolving);
+    assert.deepEqual([s.pendingModal, s.arrivals.length, s.hero.xp, s.hero.gold], [null, 0, 1, 1]);
+    confirm.click();
+    assert.equal(s.turn, 1);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid a shop trade-off has red/green deltas, while upgrading the bought item has no losses', async () => {
+  const { dom, raid, errors } = await openRaid();
+  const doc = dom.window.document;
+  try {
+    const weapon = raid.state.equipment.find(item => item.slot === 'weapon');
+    raid.equipItem({ ...weapon, mods: { weaponDamage: 2, baseDamage: 2 } });
+    raid.state.hero.gold = 100; raid.checkGoldBox();
+    const card = doc.querySelector('button.shop-item[data-slot="weapon"]');
+    assert.match(card.querySelector('.item-change.better').textContent, /Урон оружия: 2 → 4 \(\+2\)/);
+    assert.match(card.querySelector('.item-change.worse').textContent, /Базовый урон: 2 → 1 \(−1\)/);
+    card.click();
+    assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage()], [4, 4]);
+    raid.state.upgradeBar = 100; raid.checkUpgradeBar();
+    const upgrade = doc.querySelector('.lv-card[data-slot="weapon"]');
+    assert.equal(doc.querySelectorAll('.item-change.worse').length, 0);
+    assert.match(upgrade.querySelector('.item-after').textContent, /Урон оружия \+5.*Базовый урон \+1/s);
+    upgrade.click();
+    assert.deepEqual([raid.state.hero.weaponDamage, raid.baseDamage()], [5, 4]);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
