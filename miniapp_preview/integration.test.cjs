@@ -185,18 +185,24 @@ test('server-provided names are treated as text, not executable markup', async (
 
 // Use the GENERATED deliverable, including real CSS. Source-only DOM doubles
 // cannot detect display:grid overriding the browser's built-in [hidden] rule.
-async function openRaid() {
+async function openRaid({ saved = {}, start = true, setup } = {}) {
   const errors = [], console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
   const html = require('node:fs').readFileSync(require('node:path').join(root, 'lunapark-raid.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'https://raid.test/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: console,
+    beforeParse(window) {
+      for (const [key, value] of Object.entries(saved)) window.localStorage.setItem(key, value);
+      if (setup) setup(window);
+    },
   });
   await until(() => dom.window.document.querySelector('.picker-card-btn:not(.locked)'));
-  dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
   const raid = dom.window.RAID;
-  raid.newGame(0);
-  raid.state.board = Array.from({ length: 36 }, () => ({ type: 'sword' }));
+  if (start) {
+    dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
+    raid.newGame(0);
+    raid.state.board = Array.from({ length: 36 }, () => ({ type: 'sword' }));
+  }
   return { dom, raid, errors };
 }
 
@@ -515,5 +521,157 @@ test('built raid I1 pointer selection persists label geometry across restart; fr
     try { assert.equal(fresh.raid.classicScrollWord(13),0); assert.equal(fresh.raid.classicScrollWord(17),0); assert.deepEqual(fresh.errors,[]); }
     finally { fresh.dom.window.close(); }
     assert.deepEqual(errors,[]);
+  } finally { dom.window.close(); }
+});
+
+
+async function reloadRaid(previous) {
+  previous.dom.window.dispatchEvent(new previous.dom.window.Event('pagehide'));
+  const storage = previous.dom.window.localStorage;
+  const saved = Object.fromEntries(Array.from({ length: storage.length }, (_, index) => {
+    const key = storage.key(index); return [key, storage.getItem(key)];
+  }));
+  assert.deepEqual(previous.errors, []);
+  previous.dom.window.close();
+  return openRaid({ saved, start: false });
+}
+
+test('built raid saves: startup offers an explicit continuation before class cards and never overwrites it', async () => {
+  let b = await openRaid();
+  try {
+    b.raid.state.hero.hp = 13; b.raid.state.poison = 2; assert.equal(b.raid.saveRun(), true);
+    b = await reloadRaid(b);
+    const { dom, raid } = b, doc = dom.window.document;
+    const raw = dom.window.localStorage.getItem('raid:activeRun');
+    assert.equal(raid.state, null);
+    const resume = doc.querySelector('#picker-resume');
+    assert.equal(resume.hidden, false); assert.match(resume.textContent, /Продолжить.*ход 0/);
+    assert.ok(resume.compareDocumentPosition(doc.querySelector('#picker-grid')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+    doc.querySelector('#mode-select').value = 'sprint'; doc.querySelector('#difficulty-select').value = '3';
+    assert.equal(dom.window.localStorage.getItem('raid:activeRun'), raw);
+    resume.click();
+    assert.equal(raid.state.hero.hp, 13); assert.equal(raid.state.poison, 2);
+    assert.equal(raid.state.mode, 'classic'); assert.equal(raid.state.difficulty, 1);
+    assert.equal(doc.querySelector('#class-picker').classList.contains('show'), false);
+    assert.ok(Object.isFrozen(raid.state.classConfig)); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: reload preserves the exact level draft, remaining rewards, shop and one enemy turn', async () => {
+  let b = await openRaid();
+  try {
+    let { raid } = b; let doc = b.dom.window.document, s = raid.state;
+    s.forceCoins = 1; s.hero.hp = 10; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+    s.hero.gold = 99; s.goldEarned = 99;
+    s.board[0] = { type: 'skull', skull: Object.assign(raid.makeSkull(false), { hp: 1, atk: 0 }) };
+    s.board[1] = { type: 'chain' }; s.board[2] = { type: 'coin' };
+    s.board[3] = { type: 'chain' }; s.board[4] = { type: 'potion' };
+    [0, 1, 2, 3, 4].forEach(index => raid.tryExtendChain(index)); raid.resolveChain();
+    await until(() => s.pendingModal === 'level');
+    const cards = doc.querySelectorAll('.lv-card'); cards[1].click(); cards[0].click();
+    const menu = JSON.parse(JSON.stringify(s.menuCandidates)), rng = JSON.stringify(s.rngSeeds);
+    b = await reloadRaid(b); raid = b.raid; doc = b.dom.window.document;
+    doc.querySelector('#picker-resume').click(); s = raid.state;
+    assert.equal(s.pendingModal, 'level'); assert.equal(s.arrivals.length, 2);
+    assert.deepEqual(JSON.parse(JSON.stringify(s.menuCandidates)), menu); assert.equal(JSON.stringify(s.rngSeeds), rng);
+    assert.deepEqual(Array.from(s.levelDraft), [1, 0]);
+    assert.equal(doc.querySelectorAll('.lv-card[aria-pressed="true"]').length, 2);
+    assert.equal(doc.querySelector('.lv-confirm').disabled, false); assert.equal(s.turn, 0);
+    doc.querySelector('.lv-confirm').click();
+    await until(() => s.pendingModal === 'gold');
+    const shop = JSON.parse(JSON.stringify(s.menuCandidates)), shopRng = JSON.stringify(s.rngSeeds);
+    b = await reloadRaid(b); raid = b.raid; doc = b.dom.window.document;
+    doc.querySelector('#picker-resume').click(); s = raid.state;
+    assert.equal(s.pendingModal, 'gold'); assert.deepEqual(JSON.parse(JSON.stringify(s.menuCandidates)), shop);
+    assert.equal(JSON.stringify(s.rngSeeds), shopRng);
+    const pick = s.menuCandidates.findIndex(item => !item.scroll);
+    doc.querySelectorAll('button.shop-item')[pick].click(); await until(() => !s.resolving);
+    assert.equal(s.turn, 1); assert.equal(s.hero.xp, 1); assert.equal(s.hero.gold, 1);
+    assert.equal(s.arrivals.length, 0); assert.equal(s.pendingModal, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: replacement requires confirmation, Escape cancels, and keyboard focus stays inside the dialog', async () => {
+  let b = await openRaid();
+  try {
+    const { raid, dom } = b, doc = dom.window.document;
+    raid.state.hero.hp = 13; raid.saveRun();
+    const before = dom.window.localStorage.getItem('raid:activeRun');
+    doc.querySelector('#restart').click();
+    assert.ok(doc.querySelector('#restart-modal').classList.contains('show'));
+    assert.equal(doc.activeElement.id, 'restart-cancel');
+    doc.querySelector('#restart-confirm').focus();
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement.id, 'restart-cancel');
+    doc.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), false);
+    assert.equal(raid.state.hero.hp, 13); assert.equal(dom.window.localStorage.getItem('raid:activeRun'), before);
+    raid.unlockClass('mage'); raid.showClassPicker();
+    doc.querySelector('.picker-card-btn[data-class-id="mage"]').click();
+    assert.equal(raid.getSelectedClassId(), 'adventurer'); assert.equal(raid.state.classId, 'adventurer');
+    doc.querySelector('#restart-confirm').click();
+    assert.equal(raid.state.classId, 'mage'); assert.equal(raid.state.turn, 0);
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), false);
+    assert.equal(raid.savedRunInfo().classId, 'mage'); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: choosing a new class on a fresh page cannot silently discard its stored run', async () => {
+  let b = await openRaid();
+  try {
+    b.raid.state.hero.hp = 13; b.raid.saveRun(); b = await reloadRaid(b);
+    const doc = b.dom.window.document, raw = b.dom.window.localStorage.getItem('raid:activeRun');
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(b.raid.state, null); assert.ok(doc.querySelector('#restart-modal').classList.contains('show'));
+    doc.querySelector('#restart-cancel').click();
+    assert.equal(b.dom.window.localStorage.getItem('raid:activeRun'), raw);
+    doc.querySelector('#picker-resume').click(); assert.equal(b.raid.state.hero.hp, 13);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: quota errors are visible while the game remains playable, and retry clears the warning', async () => {
+  const b = await openRaid({ setup(window) {
+    window.blockRunSave = true;
+    const original = window.Storage.prototype.setItem;
+    window.Storage.prototype.setItem = function(key, value) {
+      if (key === 'raid:activeRun' && window.blockRunSave) throw new window.DOMException('Quota exceeded', 'QuotaExceededError');
+      return original.call(this, key, value);
+    };
+  } });
+  try {
+    const doc = b.dom.window.document;
+    assert.ok(b.raid.state); assert.equal(b.raid.saveStatus.state, 'unavailable');
+    assert.equal(doc.querySelector('#save-status').hidden, false);
+    assert.match(doc.querySelector('#save-status').textContent, /Не удалось сохранить/);
+    b.dom.window.blockRunSave = false; assert.equal(b.raid.saveRun(), true);
+    assert.equal(doc.querySelector('#save-status').hidden, true); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: damaged storage is reported, not resumed; a new run can replace it', async () => {
+  const b = await openRaid({ start: false, saved: { 'raid:activeRun': '{bad' } });
+  try {
+    const doc = b.dom.window.document;
+    assert.equal(b.raid.state, null); assert.equal(doc.querySelector('#picker-resume').hidden, true);
+    assert.match(doc.querySelector('#picker-save-status').textContent, /повреждено|несовместимой/);
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.ok(b.raid.state); assert.equal(b.raid.saveStatus.state, 'saved'); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid saves: restoring invalidates detached choices and the earlier close/gameover callbacks', async () => {
+  const b = await openRaid(), { raid, dom } = b, doc = dom.window.document;
+  try {
+    raid.state.hero.xp = 100; raid.checkLevelUp();
+    const oldCards = [...doc.querySelectorAll('.lv-card')], oldConfirm = doc.querySelector('.lv-confirm');
+    oldCards[0].click(); oldCards[1].click();
+    assert.equal(raid.resumeSavedRun(), true);
+    const state = raid.state, hero = JSON.stringify(state.hero), rng = JSON.stringify(state.rngSeeds);
+    oldConfirm.click(); oldCards[0].click();
+    assert.equal(raid.state, state); assert.equal(state.pendingModal, 'level');
+    assert.equal(JSON.stringify(state.hero), hero); assert.equal(JSON.stringify(state.rngSeeds), rng);
+    doc.querySelector('.lv-confirm').click(); await until(() => !state.pendingModal);
+    assert.equal(raid.saveStatus.state, 'saved'); assert.deepEqual(b.errors, []);
   } finally { dom.window.close(); }
 });

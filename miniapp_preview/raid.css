@@ -663,5 +663,13 @@ body { display: flex; align-items: stretch; justify-content: center; }
   .class-editor-actions #class-editor-save { grid-column: 1 / -1; }
 }
 
+/* Local continuation / destructive replacement, with the same mobile bounds. */
+.save-note { margin: 4px 0 12px; color: #c9b5d2; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.save-warning { flex: none; margin: 2px 0 4px; padding: 6px 8px; border: 1px solid #bc794c; border-radius: 8px; color: #ffdaab; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
+.restart-modal { z-index: 110; }
+.restart-modal .menu-card { min-width: 0; }
+#picker-resume { white-space: normal; overflow-wrap: anywhere; }
+#picker-save-status { flex: none; margin: 0; }
+
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */
 [hidden] { display: none !important; }

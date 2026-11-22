@@ -88,13 +88,13 @@ function raidNode() {
     },
   };
 }
-function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false, saved = {} } = {}) {
+function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false, saved = {}, start = true, fault = {} } = {}) {
   const elements = new Map([
     ['mode-select', { value: mode }], ['difficulty-select', { value: String(difficulty) }],
     ['dmg-text', { textContent: '', title: '' }],
   ]);
   if (menus) for (const id of ['modal', 'modal-title', 'modal-body']) elements.set(id, raidNode());
-  const storage = new Map(Object.entries(saved));
+  const storage = saved instanceof Map ? saved : new Map(Object.entries(saved));
   let now = 0, nextTimer = 1;
   const timers = new Map();
   const context = vm.createContext({
@@ -107,8 +107,9 @@ function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1,
       createElement: () => raidNode(),
     },
     localStorage: {
-      getItem: key => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, String(value)),
+      getItem: key => { if (fault.read) throw new Error('Storage blocked'); return storage.get(key) ?? null; },
+      setItem: (key, value) => { if (fault.write) throw new Error('Quota exceeded'); storage.set(key, String(value)); },
+      removeItem: key => { if (fault.remove) throw new Error('Storage blocked'); storage.delete(key); },
     },
     setTimeout(fn, delay = 0) {
       const id = nextTimer++;
@@ -119,9 +120,11 @@ function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1,
   });
   vm.runInContext(readFileSync(new URL('./raid.js', import.meta.url), 'utf8'), context);
   const raid = context.window.RAID;
-  raid.unlockClass(classId);
-  raid.setSelectedClassId(classId);
-  raid.newGame(seed);
+  if (start) {
+    raid.unlockClass(classId);
+    raid.setSelectedClassId(classId);
+    raid.newGame(seed);
+  }
   return {
     raid, elements, storage,
     advance(ms) {
@@ -2528,7 +2531,7 @@ test('raid Russian help/styles describe real equipment scrolls, explicit I1 mode
   assert.match(template, /счётчик уменьшается с шансом 50\/101/);
   assert.match(template, /10%-е исключения/);
   assert.match(template, /история надписи сохраняется между забегами в этой вкладке/);
-  assert.match(template, /до перезагрузки страницы/);
+  assert.match(template, /после перезагрузки восстанавливает историю именно сохранённого забега/);
   assert.match(template, /модель совместимости, не точная копия памяти и таймингов оригинала/);
   assert.doesNotMatch(template, /остальные свитки явно пропускаются/);
   assert.match(template, /кроме Желания в Спринте/);
@@ -3419,4 +3422,377 @@ test('raid reward/help/menu cards size to the padded overlay, not a wider viewpo
     assert.ok(rule.includes(`width: min(100%, ${max}px)`),selector);
     assert.ok(rule.includes('min-width: 0'),selector);
   }
+});
+
+
+// Active-run saves are a local, versioned protocol, not the native binary file.
+const RAID_RUN_KEY = 'raid:activeRun';
+const raidJSON = value => JSON.parse(JSON.stringify(value));
+function raidReload(browser, options = {}) {
+  const next = raidBrowser({ ...options, menus: true, start: false, saved: browser.storage });
+  assert.equal(next.raid.resumeSavedRun(), true);
+  return next;
+}
+
+test('raid save: new run is checkpointed; loading the page does not start or replace it', () => {
+  const b = raidBrowser({ menus: true });
+  assert.ok(b.storage.get(RAID_RUN_KEY));
+  const raw = b.storage.get(RAID_RUN_KEY);
+  const next = raidBrowser({ start: false, saved: b.storage });
+  assert.equal(next.raid.state, null);
+  assert.equal(next.raid.savedRunInfo().turn, 0);
+  assert.equal(next.raid.savedRunInfo().classId, 'adventurer');
+  assert.equal(b.storage.get(RAID_RUN_KEY), raw);
+});
+
+test('raid save: ready state preserves all six actual RNG streams, gear, carries, poison and skill flags', () => {
+  const b = raidBrowser({ menus: true, classId: 'mage', seed: 123 });
+  const r = b.raid, s = r.state;
+  s.hero.hp = 17; s.hero.armor = 2; s.hero.xpLevelCum = 143; s.hero.xp = 43;
+  s.poison = 3; s.resourceCarry = { xp: .25, gold: .5, upgrade: .75 };
+  s.skills = ['steal', 'freeze']; s.skillLevels = { steal: 2, freeze: 1 };
+  s.skillDurations = { steal: 12, freeze: 16 }; s.skillCooldowns = { steal: 5, freeze: 0 };
+  s.swordBoost = 1; s.nextTurnFlags.stealActive = 1;
+  s.usedSkillIds.wish = true;
+  r.makeShopOffers(); r.chooseLevelOptions(); r.createNewTile();
+  assert.equal(r.saveRun(), true);
+  const old = raidJSON(s), next = raidReload(b);
+  const restored = next.raid.state;
+  for (const key of ['hero', 'equipment', 'equipmentApplied', 'resourceCarry', 'poison', 'skills', 'skillLevels', 'skillDurations', 'skillCooldowns', 'nextTurnFlags', 'usedSkillIds'])
+    assert.deepEqual(raidJSON(restored[key]), old[key], key);
+  assert.deepEqual(raidJSON(next.raid.makeShopOffers()), raidJSON(r.makeShopOffers()));
+  assert.deepEqual(raidJSON(next.raid.chooseLevelOptions()), raidJSON(r.chooseLevelOptions()));
+  assert.deepEqual(raidJSON(restored.rngSeeds), raidJSON(s.rngSeeds));
+});
+
+test('raid save: restoring never reapplies starting/equipment bonuses or current editor settings', () => {
+  const b = raidBrowser({ menus: true, classId: 'mage', seed: 0 });
+  for (const id of ['mage', 'ranger']) for (let i = 1; i < 10; i++) b.raid.levelUpClass(id);
+  const config = b.raid.getClassConfig('mage'); config.race = 'Elf';
+  assert.equal(b.raid.saveClassConfig('mage', config), true);
+  b.raid.newGame(0);
+  const gear = b.raid.state.equipment[0]; gear.mods.weaponDamage = 7; gear.mods.strength = 3;
+  b.raid.updateEquipmentStats(); b.raid.state.hero.hp = 11;
+  assert.equal(b.raid.saveRun(), true);
+  const hero = raidJSON(b.raid.state.hero);
+  b.raid.saveClassConfig('mage', b.raid.defaultClassConfig('mage'));
+  const next = raidReload(b);
+  assert.equal(next.raid.clsRace(), 'Elf');
+  assert.deepEqual(raidJSON(next.raid.state.hero), hero);
+  assert.ok(Object.isFrozen(next.raid.state.classConfig));
+  assert.ok(Object.isFrozen(next.raid.state.classConfig.perks));
+  next.raid.updateEquipmentStats();
+  assert.deepEqual(raidJSON(next.raid.state.hero), hero, 'derived snapshot makes recompute idempotent');
+});
+
+test('raid save: confirmed chain awaiting its animation resumes once without recounting the chain', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }); raidBoard(b.raid, 'coin');
+  raidSelect(b.raid, [0, 1, 2]); b.raid.resolveChain();
+  assert.equal(b.raid.state.chainCount, 1); assert.equal(b.raid.state.hero.gold, 0);
+  const next = raidReload(b);
+  assert.equal(next.raid.state.resolving, true);
+  next.advance(3000);
+  assert.equal(next.raid.state.turn, 1); assert.equal(next.raid.state.chainCount, 1);
+  assert.ok(next.raid.state.hero.gold >= 6);
+  next.advance(3000); assert.equal(next.raid.state.turn, 1);
+});
+
+test('raid save: level draft and queued shop/healing resume without rerolls, duplicate rewards or enemy turn', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  raidBoard(r, 'sword'); s.forceCoins = 1; s.hero.hp = 10;
+  s.hero.xp = 99; s.hero.xpLevelCum = 99; s.hero.gold = 99; s.goldEarned = 99;
+  raidOld(r, 0, { hp: 1 });
+  s.board[1] = { type: 'chain' }; s.board[2] = { type: 'coin' };
+  s.board[3] = { type: 'chain' }; s.board[4] = { type: 'potion' };
+  raidSelect(r, [0, 1, 2, 3, 4]); r.resolveChain(); b.advance(420);
+  const cards = b.elements.get('modal-body').querySelectorAll('.lv-card');
+  cards[1].click(); cards[0].click();
+  const menu = raidJSON(s.menuCandidates), rng = raidJSON(s.rngSeeds), hp = s.hero.hp;
+  const next = raidReload(b), nr = next.raid, ns = nr.state;
+  assert.equal(ns.pendingModal, 'level'); assert.equal(ns.arrivals.length, 2);
+  assert.deepEqual(raidJSON(ns.menuCandidates), menu); assert.deepEqual(raidJSON(ns.rngSeeds), rng);
+  assert.deepEqual(raidJSON(ns.levelDraft), [1, 0]);
+  assert.equal(ns.hero.hp, hp); assert.equal(ns.turn, 0);
+  assert.equal(next.elements.get('modal-body').querySelectorAll('.lv-confirm')[0].disabled, false);
+  next.elements.get('modal-body').querySelectorAll('.lv-confirm')[0].click(); next.advance(80);
+  assert.equal(ns.pendingModal, 'gold'); assert.equal(ns.hero.gold, 1);
+  raidPickShop(next.elements); next.advance(3000);
+  assert.equal(ns.turn, 1); assert.equal(ns.hero.xp, 1); assert.equal(ns.arrivals.length, 0);
+  assert.equal(ns.resolving, false);
+  assert.match(ns.log.join(' '), /⚔ \+2 XP · \+2 золота · убийств 1/);
+});
+
+test('raid save: valid I1 history survives resume, but a genuinely fresh page starts with zero history', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), s = b.raid.state;
+  s.scrollLeechLabel = { version: 1, number: 2222, active: true, inFlight: false };
+  assert.equal(b.raid.saveRun(), true);
+  const next = raidReload(b);
+  assert.equal(next.raid.state.scrollLeechLabel.number, 2222);
+  assert.equal(next.raid.classicScrollWord(13), 8); assert.equal(next.raid.classicScrollWord(39), 0);
+  next.advance(200); assert.equal(next.raid.state.scrollLeechLabel.active, false);
+  assert.equal(next.raid.state.scrollLeechLabel.number, 2222);
+  assert.equal(raidBrowser().raid.state.scrollLeechLabel.number, 0);
+});
+
+test('raid save: malformed, unknown-version and HTML-bearing saves never change a live run or execute', () => {
+  const b = raidBrowser({ menus: true }), raw = b.storage.get(RAID_RUN_KEY);
+  const variants = ['{', '[]', '{}'];
+  const unknown = JSON.parse(raw); unknown.version = 999; variants.push(JSON.stringify(unknown));
+  const badHP = JSON.parse(raw); badHP.state.hero.hp = null; variants.push(JSON.stringify(badHP));
+  const hostile = JSON.parse(raw); hostile.state.equipment[0].name = '<img src=x onerror=alert(1)>'; variants.push(JSON.stringify(hostile));
+  for (const value of variants) {
+    const next = raidBrowser({ menus: true }); const original = next.raid.state;
+    next.storage.set(RAID_RUN_KEY, value);
+    assert.equal(next.raid.resumeSavedRun(), false); assert.equal(next.raid.state, original);
+    assert.equal(next.raid.saveStatus.state, 'invalid');
+  }
+});
+
+test('raid save: blocked reads/writes fail visibly without preventing a new game', () => {
+  const fault = { read: true, write: true, remove: true };
+  const b = raidBrowser({ menus: true, fault });
+  assert.ok(b.raid.state); assert.equal(b.raid.saveRun(), false);
+  assert.equal(b.raid.saveStatus.state, 'unavailable');
+  assert.equal(b.raid.savedRunInfo(), null);
+  assert.equal(b.raid.resumeSavedRun(), false);
+});
+
+
+test('raid save: awaiting enemy animation resumes after collection, never rematches the paid cells', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }); raidBoard(b.raid, 'coin');
+  raidSelect(b.raid, [0, 1, 2]); b.raid.resolveChain(); b.advance(420);
+  const gold = b.raid.state.hero.gold, rng = raidJSON(b.raid.state.rngSeeds);
+  assert.equal(JSON.parse(b.storage.get(RAID_RUN_KEY)).next.phase, 'enemy');
+  const next = raidReload(b); assert.equal(next.raid.state.hero.gold, gold);
+  assert.deepEqual(raidJSON(next.raid.state.rngSeeds), rng);
+  next.advance(3000);
+  assert.equal(next.raid.state.hero.gold, gold); assert.equal(next.raid.state.turn, 1);
+  assert.equal(next.raid.state.chainCount, 1);
+});
+
+for (const phase of ['volley', 'end-turn']) test(`raid save: ${phase} reward menu continues the correct enemy stage once`, () => {
+  const b = raidCombat({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  s.forceCoins = 1; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+  if (phase === 'volley') { s.spikes = 1; raidOld(r, 0, { hp: 1, atk: 1 }); }
+  else raidOld(r, 0, { hp: 1, burn: true, fireDamage: 1 }, 2);
+  r.enemyPhase();
+  const turn = phase === 'volley' ? 10 : 11;
+  assert.equal(s.turn, turn); assert.equal(s.pendingModal, 'level');
+  const next = raidReload(b); next.advance(3000); assert.equal(next.raid.state.turn, turn);
+  raidPickLevel(next.elements); next.advance(3000);
+  assert.equal(next.raid.state.turn, 11); assert.equal(next.raid.state.resolving, false);
+  next.advance(3000); assert.equal(next.raid.state.turn, 11);
+});
+
+test('raid save: nested Enchant keeps its original offers, suspended tokens, cooldown and single enemy continuation', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  raidBoard(r, 'coin'); s.hero.gold = 99; s.goldEarned = 99; s.forceCoins = 1; s.upgradeBar = 37;
+  raidSelect(r, [0, 1, 2]); r.resolveChain(); b.advance(420);
+  const item = s.menuCandidates[0]; item.scroll = r.prepareSkillOption('enchant'); item.scroll.upgrade = false;
+  r.purchaseShopItem(0);
+  assert.equal(s.pendingModal, 'armor'); assert.equal(s.arrivals.length, 2);
+  const menu = raidJSON(s.menuCandidates), gear = raidJSON(s.equipment), rng = raidJSON(s.rngSeeds);
+  const next = raidReload(b);
+  assert.deepEqual(raidJSON(next.raid.state.menuCandidates), menu);
+  assert.deepEqual(raidJSON(next.raid.state.equipment), gear);
+  assert.deepEqual(raidJSON(next.raid.state.rngSeeds), rng);
+  assert.equal(next.raid.state.upgradeBar, 37);
+  next.elements.get('modal-body').querySelectorAll('.lv-card')[0].click(); next.advance(3000);
+  assert.equal(next.raid.state.turn, 1); assert.equal(next.raid.state.hero.gold, 5);
+  assert.equal(next.raid.state.upgradeBar, 37); assert.equal(next.raid.state.resolving, false);
+});
+
+test('raid save: a free manual Enchant restores an upgrade without losing charge or adding an enemy turn', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  r.state.skills = ['enchant']; r.state.skillLevels.enchant = 1;
+  r.activateSkill('enchant');
+  const charge = r.state.skillCooldowns.enchant;
+  const next = raidReload(b);
+  assert.equal(next.raid.state.skillCooldowns.enchant, charge);
+  next.elements.get('modal-body').querySelectorAll('.lv-card')[0].click(); next.advance(3000);
+  assert.equal(next.raid.state.turn, 0); assert.equal(next.raid.state.resolving, false);
+  assert.equal(next.raid.state.skillCooldowns.enchant, charge);
+});
+
+test('raid save: queued leech and damage stay behind the menu, then settle once in order', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  raidBoard(r, 'sword'); s.forceCoins = 1; s.hero.hp = 10; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+  s.leech = 1; raidOld(r, 0, { hp: 1, burn: true, fireDamage: 2 }, 2);
+  raidSelect(r, [0, 1, 2]); r.resolveChain(); b.advance(420);
+  assert.equal(s.pendingModal, 'level'); assert.equal(s.scrollLeechLabel.inFlight, true);
+  const control = raidBrowser({ menus: true, start: false, saved: Object.fromEntries(b.storage) });
+  assert.equal(control.raid.resumeSavedRun(), true);
+  const next = raidReload(b), before = next.raid.state.hero.hp;
+  next.advance(2000); assert.equal(next.raid.state.hero.hp, before);
+  assert.equal(next.raid.state.scrollLeechLabel.inFlight, true);
+  raidPickLevel(next.elements); next.advance(3000);
+  raidPickLevel(control.elements); control.advance(3000);
+  assert.equal(next.raid.state.hero.hp, control.raid.state.hero.hp);
+  assert.equal(next.raid.state.turn, 1); assert.equal(next.raid.state.scrollLeechLabel.inFlight, false);
+  assert.equal(next.raid.state.scrollLeechLabel.active, false);
+});
+
+test('raid save: all enemy variants, status timers, phylactery and UID allocation survive a ready checkpoint', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  raidBoard(r, 'sword');
+  for (let type = 0; type <= 32; type++) r.state.board[type] = { type: 'skull', skull: r.makeSkull(type === 1, type > 1, type) };
+  Object.assign(r.state.board[0], { frozen: true });
+  Object.assign(r.state.board[0].skull, { poison: [4, 2, 1], stunned: true, frozenTurn: 9 });
+  Object.assign(r.state.board[32].skull, { phylactery: true, lichDelay: true, countdown: 1, hp: 1 });
+  r.state.board[35] = { type: 'potion', explosive: true, burn: true, fireDamage: 3, fireSafe: true };
+  assert.equal(r.saveRun(), true);
+  const next = raidReload(b); assert.deepEqual(raidJSON(next.raid.state.board), raidJSON(r.state.board));
+  assert.equal(next.raid.makeSkull(false).uid, r.makeSkull(false).uid);
+  assert.deepEqual(raidJSON(next.raid.state.rngSeeds), raidJSON(r.state.rngSeeds));
+});
+
+test('raid save: complete raw I1 fixture is restored without silently switching to the model', () => {
+  const b = raidBrowser({ menus: true });
+  b.raid.state.scrollNativeWords = Object.fromEntries(Array.from({ length: 42 }, (_, n) => [n, n % 2 ? 0x80000000 : 0]));
+  assert.equal(b.raid.saveRun(), true);
+  const next = raidReload(b);
+  assert.deepEqual(raidJSON(next.raid.state.scrollNativeWords), Array.from({ length: 42 }, (_, n) => n % 2 ? 0x80000000 : 0));
+  assert.deepEqual(raidJSON(next.raid.makeShopOffers()), raidJSON(b.raid.makeShopOffers()));
+});
+
+test('raid save: an uncommitted gesture is not autoplayed; its I1 preview history remains', () => {
+  const b = raidBrowser({ menus: true }); raidBoard(b.raid, 'sword'); b.raid.state.leech = 1;
+  raidSelect(b.raid, [0, 1, 2]); b.advance(0);
+  const number = b.raid.state.scrollLeechLabel.number, next = raidReload(b);
+  assert.deepEqual(raidJSON(next.raid.state.selected), []);
+  next.advance(3000); assert.equal(next.raid.state.turn, 0); assert.equal(next.raid.state.chainCount, 0);
+  assert.equal(next.raid.state.scrollLeechLabel.number, number);
+});
+
+test('raid save: trophy claim updates the checkpoint so reload cannot claim the same trophy again', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  raidBoard(r, 'sword'); r.state.board[0] = { type: 'trophy' }; r.state.trophiesGenerated = 1;
+  r.state.trophyRemaining = 24; assert.equal(r.claimTrophy(0), true);
+  const levels = JSON.parse(b.storage.get('raid:classLevels'));
+  const next = raidReload(b);
+  assert.equal(next.raid.state.trophiesThisRun, 1); assert.equal(next.raid.state.trophiesGenerated, 1);
+  assert.equal(next.raid.state.trophyRemaining, 24); assert.equal(next.raid.claimTrophy(0), false);
+  assert.equal(next.raid.state.turn, 0);
+  for (const [id, level] of Object.entries(levels)) assert.equal(next.raid.classLevelOf(id), level);
+});
+
+for (const terminal of ['death', 'sprint-win']) test(`raid save: ${terminal} immediately invalidates continuation, including reload before the end modal`, () => {
+  const b = raidBrowser({ menus: true, mode: terminal === 'sprint-win' ? 'sprint' : 'classic' }), r = b.raid;
+  raidBoard(r, 'sword');
+  if (terminal === 'death') { r.state.hero.hp = 1; r.state.poison = 2; }
+  else r.state.turn = 99;
+  r.endEnemyTurn(); assert.equal(r.state.over, true);
+  assert.equal(r.savedRunInfo(), null);
+  const next = raidBrowser({ menus: true, start: false, saved: b.storage });
+  assert.equal(next.raid.resumeSavedRun(), false); assert.equal(next.raid.state, null);
+  assert.equal(next.raid.saveStatus.state, 'empty');
+});
+
+test('raid save: storage quota failure is visible and removes an obsolete checkpoint, then recovers', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault });
+  assert.ok(b.storage.get(RAID_RUN_KEY)); fault.write = true;
+  b.raid.state.hero.hp = 12; assert.equal(b.raid.saveRun(), false);
+  assert.equal(b.raid.saveStatus.state, 'unavailable'); assert.equal(b.storage.has(RAID_RUN_KEY), false);
+  fault.write = false; assert.equal(b.raid.saveRun(), true); assert.equal(b.raid.saveStatus.state, 'saved');
+  assert.equal(raidReload(b).raid.state.hero.hp, 12);
+});
+
+test('raid save: a nonserialisable runtime state cannot replace or remove the previous valid checkpoint', () => {
+  const b = raidBrowser({ menus: true }), raw = b.storage.get(RAID_RUN_KEY);
+  b.raid.state.hero.hp = NaN;
+  assert.equal(b.raid.saveRun(), false); assert.equal(b.raid.saveStatus.state, 'invalid');
+  assert.equal(b.storage.get(RAID_RUN_KEY), raw);
+});
+
+test('raid save: another resumed tab prevents old actions, scheduled matching and stale saves from overwriting it', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid; raidBoard(r, 'coin');
+  raidSelect(r, [0, 1, 2]); r.resolveChain();
+  const next = raidReload(b), raw = b.storage.get(RAID_RUN_KEY);
+  b.advance(3000);
+  assert.equal(r.state.hero.gold, 0); assert.equal(r.saveStatus.state, 'conflict');
+  assert.equal(r.saveRun(), false); assert.equal(b.storage.get(RAID_RUN_KEY), raw);
+  next.advance(3000); assert.equal(next.raid.state.turn, 1);
+  const current = b.storage.get(RAID_RUN_KEY);
+  r.activateSkill('teleport'); r.resolveChain(); assert.equal(r.claimTrophy(0), false);
+  assert.equal(b.storage.get(RAID_RUN_KEY), current);
+});
+
+for (const malformed of ['missing-rng', 'bad-menu', 'bad-result', 'duplicate-uid', 'bad-class', 'proto', 'oversize']) test(`raid save validation: ${malformed} is rejected before touching a live state`, () => {
+  const b = raidBrowser({ menus: true }), data = JSON.parse(b.storage.get(RAID_RUN_KEY));
+  if (malformed === 'missing-rng') data.rng.pop();
+  if (malformed === 'bad-menu') data.menu = { kind: 'level', choices: [], picked: [0, 1, 2] };
+  if (malformed === 'bad-result') data.arrivals = [{ kind: 'resource', result: 99, token: { type: 'coin', variant: 0 } }];
+  if (malformed === 'duplicate-uid') {
+    const cell = { type: 'skull', skull: raidJSON(b.raid.makeSkull(false)) };
+    data.state.board[0] = cell; data.state.board[1] = cell; data.skullUid = cell.skull.uid + 1;
+  }
+  if (malformed === 'bad-class') data.state.classConfig.perks[0] = 'Tough';
+  let raw = JSON.stringify(data);
+  if (malformed === 'proto') raw = raw.replace('"state":{', '"state":{"__proto__":{"polluted":true},');
+  if (malformed === 'oversize') raw += ' '.repeat(512 * 1024);
+  const state = b.raid.state; b.storage.set(RAID_RUN_KEY, raw);
+  assert.equal(b.raid.resumeSavedRun(), false); assert.equal(b.raid.state, state);
+  assert.equal(b.raid.saveStatus.state, 'invalid'); assert.equal({}.polluted, undefined);
+});
+
+
+test('raid save: ready checkpoints for all 10 classes, 3 modes and 4 difficulties restore without RNG or stat drift', () => {
+  const classes = ['adventurer', 'barbarian', 'mage', 'rogue', 'ranger', 'paladin', 'priest', 'raider', 'warrior', 'assassin'];
+  let fixtures = 0;
+  for (const classId of classes) for (const mode of ['classic', 'sprint', 'pretzel']) for (let difficulty = 0; difficulty < 4; difficulty++) {
+    const b = raidBrowser({ menus: true, classId, mode, difficulty, seed: 913 + fixtures });
+    const expected = raidJSON(b.raid.state), next = raidReload(b);
+    for (const key of ['classId', 'classConfig', 'hero', 'equipment', 'board', 'rngSeeds', 'mode', 'difficulty', 'promotionRemaining'])
+      assert.deepEqual(raidJSON(next.raid.state[key]), expected[key], classId + '/' + mode + '/' + difficulty + ':' + key);
+    assert.deepEqual(raidJSON(next.raid.createNewTile()), raidJSON(b.raid.createNewTile()));
+    assert.deepEqual(raidJSON(next.raid.state.rngSeeds), raidJSON(b.raid.state.rngSeeds));
+    fixtures++;
+  }
+  assert.equal(fixtures, 120);
+});
+
+test('raid save: queued mana retains its original skill slot across reload and a level choice', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  raidBoard(r, 'sword'); s.forceCoins = 1; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+  s.skills = ['freeze', 'heal']; s.skillLevels = { freeze: 1, heal: 1 };
+  s.skillCooldowns = { freeze: 5, heal: 0 };
+  raidOld(r, 0, { hp: 1 }); s.board[1] = { type: 'chain' }; s.board[2] = { type: 'potion', mana: true };
+  raidSelect(r, [0, 1, 2]); r.resolveChain(); b.advance(420);
+  assert.equal(s.arrivals[0].token.skillSlot, 0);
+  const next = raidReload(b), ns = next.raid.state;
+  assert.equal(ns.arrivals[0].token.skillSlot, 0); assert.equal(ns.skillCooldowns.freeze, 5);
+  const cards = next.elements.get('modal-body').querySelectorAll('.lv-card.lv-stat');
+  cards[0].click(); cards[1].click(); raidConfirmLevel(next.elements); next.advance(3000);
+  assert.equal(ns.skillCooldowns.freeze, 3, 'one bound mana token then one turn recovery');
+  assert.equal(ns.skillCooldowns.heal, 0); assert.equal(ns.turn, 1);
+});
+
+test('raid save: Rune-only arrow cancellation resumes collection without creating an enemy turn', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid, s = r.state;
+  raidBoard(r, 'coin'); s.runeActive = 1; s.forceCoins = 1;
+  s.board[8] = { type: 'arrow' }; s.board[20] = { type: 'arrow' };
+  raidOld(r, 35, { atk: 100 });
+  raidSelect(r, [8, 15, 20, 13]);
+  assert.equal(r.chainPreview().effectiveLength, 2);
+  r.resolveChain();
+  const next = raidReload(b); next.advance(3000);
+  assert.equal(next.raid.state.turn, 0); assert.equal(next.raid.state.chainCount, 0);
+  assert.equal(next.raid.state.hero.gold, 2); assert.equal(next.raid.state.hero.hp, 50);
+  assert.equal(next.raid.state.resolving, false);
+});
+
+test('raid save: resource cells retain valid thaw metadata, not only skull status fields', () => {
+  const b = raidBrowser({ menus: true, seed: 0 }), r = b.raid;
+  raidBoard(r, 'shield');
+  const types = ['potion', 'coin', 'shield', 'sword', 'arrow', 'chain', 'trophy'];
+  types.forEach((type, i) => { r.state.board[i] = { type, frozen: true }; });
+  r.endEnemyTurn();
+  for (let i = 0; i < types.length; i++) {
+    assert.equal(r.state.board[i].stunned, false);
+    assert.equal(r.state.board[i].frozenTurn, -1);
+  }
+  assert.equal(r.saveRun(), true);
+  const next = raidReload(b);
+  assert.deepEqual(raidJSON(next.raid.state.board), raidJSON(r.state.board));
+  assert.equal(next.raid.saveStatus.state, 'saved');
 });
