@@ -2185,7 +2185,10 @@
     if (S.classId && CLASS_BY_ID[S.classId].race === 'Werewolf') {
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        if (c && c.type === 'skull' && c.skull.hp > 0 && c.skull.hp < S.hero.armor) {
+        // New skulls are spawned before enemyPhase in this clone, while the original
+        // runs ProcessCripples before MoveMatchedTiles. Do not cripple this turn's spawns.
+        if (c && c.type === 'skull' && (c.skull.enteredTurn || 0) < S.turn
+            && c.skull.hp > 0 && c.skull.hp < S.hero.armor) {
           S.board[i] = { type: 'empty' };
           S.skullsKilled++;
           registerSkullEnd(c.skull);
