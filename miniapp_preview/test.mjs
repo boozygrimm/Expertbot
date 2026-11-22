@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 function browser() {
@@ -2596,4 +2597,108 @@ test('raid trophy collection by an area effect is not a free class claim and can
   assert.equal(raid.state.board[7].type, 'empty');
   assert.deepEqual([raid.state.trophiesGenerated, raid.state.trophiesThisRun, raid.state.unlocksThisRun], [1, 0, 0]);
   assert.equal(raid.classLevelOf('ranger'), 0);
+});
+
+// The reported bug was a fixed +3 shop reward, not the legitimate generation
+// of a new weapon one point above the one currently worn. Pin the same offer
+// across separate shop visits to distinguish replacement from accumulation.
+for (const [slot, key, value, total, expected] of [
+  ['weapon', 'weaponDamage', 3, 'weaponDamage', 3],
+  ['helmet', 'maxArmor', 2, 'maxArmor', 5],
+  ['armour', 'maxArmor', 3, 'maxArmor', 5],
+  ['shield', 'maxArmor', 2, 'maxArmor', 5],
+  ['accessory', 'maxHp', 15, 'maxHp', 55],
+]) test(`raid ${slot}: buying an identical item three times replaces its slot, never stacks its full value`, () => {
+  const { raid } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const original = raid.state.equipment.find(item => item.slot === slot);
+  const offer = { ...original, name: 'Повторный предмет', mods: { [key]: value } };
+  const unchanged = JSON.stringify(raid.state.equipment.filter(item => item.slot !== slot));
+  let hero;
+  for (let n = 0; n < 3; n++) {
+    raidOpenShop(raid);
+    raid.state.menuCandidates[0] = offer;
+    assert.equal(raid.purchaseShopItem(0), true);
+    assert.equal(raid.state.hero[total], expected);
+    assert.equal(raid.state.equipment.find(item => item.slot === slot).mods[key], value);
+    assert.equal(raid.state.equipment.length, 5);
+    assert.equal(new Set(raid.state.equipment.map(item => item.slot)).size, 5);
+    assert.equal(JSON.stringify(raid.state.equipment.filter(item => item.slot !== slot)), unchanged);
+    if (n) assert.equal(JSON.stringify(raid.state.hero), hero);
+    hero = JSON.stringify(raid.state.hero);
+  }
+  assert.equal(offer.mods[key], value, 'the purchased offer is not a mutable equipped-item alias');
+});
+
+test('raid replacing a weapon removes its upgrades but keeps another slot and permanent character rewards', () => {
+  const { raid } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.hero.stats.damage = 2; // A level reward, not equipment.
+  raidGear(raid, 'shield', { weaponDamage: 2 });
+  raidGear(raid, 'weapon', { weaponDamage: 8, strength: 2, baseDamage: 4, regen: 1 });
+  raid.applyUpgradeOffer({ slot: 'weapon', key: 'strength', value: 1 });
+  assert.deepEqual([s.hero.weaponDamage, raid.baseDamage(), s.regen], [10, 14, 1]);
+  raidOpenShop(raid);
+  s.menuCandidates[0] = { slot: 'weapon', name: 'Булава', mods: { weaponDamage: 3 } };
+  raid.purchaseShopItem(0);
+  assert.deepEqual([s.hero.weaponDamage, raid.baseDamage(), s.regen, s.hero.stats.damage], [5, 7, 0, 2]);
+  assert.equal(s.equipment.find(item => item.slot === 'shield').mods.weaponDamage, 2);
+  assert.equal(s.equipment[0].mods.strength, undefined, 'no phantom upgraded strength survives replacement');
+});
+
+for (const [slot, key] of [
+  ['weapon', 'baseDamage'], ['helmet', 'regen'], ['armour', 'dexterity'],
+  ['shield', 'armorPerShield'], ['accessory', 'maxHp'],
+]) test(`raid ${slot}: an upgrade belongs only to this worn item and is removed with it`, () => {
+  const { raid } = raidBrowser();
+  const s = raid.state, original = s.equipment.find(item => item.slot === slot);
+  const replacement = { ...original, mods: { ...original.mods } };
+  const others = JSON.stringify(s.equipment.filter(item => item.slot !== slot));
+  const snapshot = () => JSON.stringify([s.hero, s.baseDamageBonus, s.regen, s.armorPerShield, s.equipmentApplied]);
+  const before = snapshot(), amount = raid.itemStep(key);
+  assert.equal(raid.applyUpgradeOffer({ slot, key, value: amount }), true);
+  assert.equal(original.mods[key], (replacement.mods[key] || 0) + amount);
+  assert.equal(JSON.stringify(s.equipment.filter(item => item.slot !== slot)), others);
+  assert.notEqual(snapshot(), before);
+  raid.equipItem(replacement);
+  assert.equal(snapshot(), before, 'removing the item removes its upgrade, not permanent character stats');
+});
+
+test('raid successive newly generated weapons grow from the worn item, not from an additive shop reward', () => {
+  const { raid } = raidBrowser({ seed: 0 });
+  raidGear(raid, 'weapon', { weaponDamage: 8 });
+  for (const expected of [9, 10, 11]) {
+    const offer = raid.makeItem('weapon');
+    assert.equal(offer.mods.weaponDamage, expected);
+    raid.equipItem(offer);
+    assert.equal(raid.state.hero.weaponDamage, expected);
+  }
+});
+
+test('raid upgrade card changes exactly its displayed worn item, once even on a second click', () => {
+  const { raid, elements } = raidBrowser({ seed: 913, menus: true });
+  const s = raid.state, before = JSON.parse(JSON.stringify(s.equipment));
+  s.upgradeBar = 100; raid.checkUpgradeBar();
+  const opt = s.menuCandidates[0], card = elements.get('modal-body').querySelectorAll('.lv-card')[0];
+  assert.ok(card.innerHTML.includes(before.find(item => item.slot === opt.slot).name));
+  card.click();
+  s.equipment.forEach((item, index) => {
+    const expected = before[index];
+    if (item.slot === opt.slot) expected.mods[opt.key] = Number(((expected.mods[opt.key] || 0) + opt.value).toFixed(2));
+    assert.equal(JSON.stringify(item), JSON.stringify(expected));
+  });
+  const after = JSON.stringify([s.equipment, s.hero]);
+  card.click();
+  assert.equal(JSON.stringify([s.equipment, s.hero]), after);
+});
+
+test('raid standalone displays a reproducible source fingerprint instead of an unidentifiable cached build', () => {
+  const hash = createHash('sha256');
+  for (const name of ['build_raid.py', 'raid.html', 'raid.css', 'raid.js', 'skull_sprites.json']) {
+    hash.update(name + '\0'); hash.update(readFileSync(new URL('./' + name, import.meta.url))); hash.update('\0');
+  }
+  const id = hash.digest('hex').slice(0, 12);
+  const html = readFileSync(new URL('../lunapark-raid.html', import.meta.url), 'utf8');
+  assert.ok(html.includes(`<meta name="raid-build" content="${id}">`));
+  assert.equal((html.match(new RegExp('Сборка ' + id, 'g')) || []).length, 3, 'picker, menu and help identify the same build');
+  assert.doesNotMatch(html, /__RAID_BUILD__/);
 });

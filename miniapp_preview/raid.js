@@ -335,9 +335,12 @@
     return keys.length ? keys.map(key => itemModText(key, itemValue(item, key))).join(' · ') : 'без бонусов';
   }
   function itemChanges(old, next) {
-    return ITEM_KEYS.filter(key => itemValue(old, key) !== itemValue(next, key)).map(key => ({ key,
-      before: itemValue(old, key), after: itemValue(next, key),
-      text: `${ITEM_STAT[key].name}: ${itemNumber(key, itemValue(old, key))} → ${itemNumber(key, itemValue(next, key))}` }));
+    return ITEM_KEYS.filter(key => itemValue(old, key) !== itemValue(next, key)).map(key => {
+      const before = itemValue(old, key), after = itemValue(next, key);
+      const delta = `${after > before ? '+' : '−'}${itemNumber(key, Math.abs(after - before))}`;
+      return { key, before, after,
+        text: `${ITEM_STAT[key].name}: ${itemNumber(key, before)} → ${itemNumber(key, after)} (${delta})` };
+    });
   }
   function resourceYield(total) { return 2 + Math.max(0, Math.min(2, total - 2)); }
   function initialEquipment() {
@@ -2964,11 +2967,11 @@
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
       title.textContent = '💰 МАГАЗИН!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 3 предметов. Свиток, если есть, сработает вместе с покупкой.</p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 1 из 3 замен. Бонусы старой вещи снимаются, а не складываются с новой.</p>';
       renderEquipChoices(body);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений</p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений надетых вещей. Бонус останется на выбранном предмете.</p>';
       renderUpgradeChoices(body);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
@@ -3311,16 +3314,15 @@
     renderBoard(); renderHUD(); audioLevel();
     return true;
   }
-  function renderEquipChoices(body) {
-    const options = makeShopOffers();
-    S.menuCandidates = options;
+  function appendEquipmentChoices(body, grid) {
     const summaryBtn = document.createElement('button');
     summaryBtn.type = 'button';
     summaryBtn.className = 'btn secondary shop-summary-toggle';
-    summaryBtn.textContent = '📊 Итог персонажа';
-    const grid = document.createElement('div');
-    grid.className = 'shop-grid';
+    summaryBtn.textContent = '📊 Персонаж и экипировка';
+    summaryBtn.setAttribute('aria-controls', 'equipment-summary');
+    summaryBtn.setAttribute('aria-expanded', 'false');
     const summary = document.createElement('div');
+    summary.id = 'equipment-summary';
     summary.className = 'character-summary';
     summary.hidden = true;
     renderCharacterSummary(summary);
@@ -3328,9 +3330,18 @@
       const show = summary.hidden;
       summary.hidden = !show;
       grid.hidden = show;
-      summaryBtn.textContent = show ? '↩ К снаряжению' : '📊 Итог персонажа';
+      summaryBtn.setAttribute('aria-expanded', String(show));
+      summaryBtn.textContent = show ? '↩ К выбору предмета' : '📊 Персонаж и экипировка';
     });
     body.appendChild(summaryBtn);
+    body.appendChild(grid);
+    body.appendChild(summary);
+  }
+  function renderEquipChoices(body) {
+    const options = makeShopOffers();
+    S.menuCandidates = options;
+    const grid = document.createElement('div');
+    grid.className = 'shop-grid';
     options.forEach((item, index) => {
       const equipped = S.equipment.find(entry => entry.slot === item.slot);
       const changes = itemChanges(equipped, item).map(change =>
@@ -3341,7 +3352,12 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'shop-item';
-      btn.innerHTML = `<span class="shop-icon">${item.icon}</span><span class="shop-body"><span class="shop-slot">${item.slotName}</span><span class="shop-name">${item.name}</span><span class="shop-eff">${itemModsText(item)}</span><span class="shop-preview">Заменяет: ${equipped.name}</span>${changes}${scroll}</span>`;
+      btn.dataset.slot = item.slot;
+      btn.innerHTML = `<span class="shop-icon">${item.icon}</span><span class="shop-body">
+        <span class="shop-slot">${item.slotName} · замена</span><span class="shop-name">${item.name}</span>
+        <span class="item-state item-before"><span class="item-state-title">Заменяет: ${equipped.name}</span><span class="item-mods">${itemModsText(equipped)}</span></span>
+        <span class="item-state item-after"><span class="item-state-title">После замены:</span><span class="item-mods">${itemModsText(item)}</span></span>
+        <span class="shop-preview">Разница в этом слоте:</span>${changes}${scroll}</span>`;
       btn.addEventListener('click', () => { if (S.menuCandidates === options) purchaseShopItem(index); });
       grid.appendChild(btn);
     });
@@ -3350,8 +3366,7 @@
     empty.className = 'shop-item shop-empty';
     empty.setAttribute('aria-hidden', 'true');
     grid.appendChild(empty);
-    body.appendChild(grid);
-    body.appendChild(summary);
+    appendEquipmentChoices(body, grid);
   }
 
   function renderUpgradeChoices(body) {
@@ -3361,14 +3376,19 @@
     grid.className = 'lv-grid';
     options.forEach(opt => {
       const item = S.equipment.find(entry => entry.slot === opt.slot);
+      const upgraded = { ...item, mods: { ...item.mods } };
+      addItemModifier(upgraded, opt.key, opt.value); // Preview only; never mutate worn gear.
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'lv-card lv-stat';
+      btn.dataset.slot = opt.slot;
+      btn.dataset.modifier = opt.key;
       btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}</span>
         <span class="lv-body">
-          <span class="lv-name">${opt.slotName} · ${opt.name}</span>
-          <span class="lv-desc">${item.name}</span>
-          <span class="lv-effs"><span class="lv-line">${opt.label}: ${opt.comparison}</span><span class="lv-line">${opt.desc}</span></span>
+          <span class="lv-name">${opt.slotName} · ${item.name}</span>
+          <span class="item-state item-before"><span class="item-state-title">Сейчас на предмете:</span><span class="item-mods">${itemModsText(item)}</span></span>
+          <span class="item-state item-after"><span class="item-state-title">После улучшения:</span><span class="item-mods">${itemModsText(upgraded)}</span></span>
+          <span class="lv-effs"><span class="lv-line item-change better">${opt.name}: ${opt.comparison} (+${itemNumber(opt.key, opt.value)})</span><span class="lv-line">${opt.desc}</span></span>
         </span>`;
       btn.addEventListener('click', () => {
         if (S.pendingModal !== 'armor' || S.menuCandidates !== options) return;
@@ -3377,7 +3397,7 @@
       });
       grid.appendChild(btn);
     });
-    body.appendChild(grid);
+    appendEquipmentChoices(body, grid);
   }
 
   // The checks also accept manually injected full bars from the debug API.
