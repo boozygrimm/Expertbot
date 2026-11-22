@@ -773,6 +773,7 @@
   // Идентификатор забега: отложенные setTimeout резолва/enemy phase не должны
   // попадать в новый забег после рестарта (см. newGame + resolveChain).
   let RUN_ID = 0;
+  let SCROLL_LABEL_TIMER = null;
 
   // --- DOM helpers ---------------------------------------------------------
   const el = id => document.getElementById(id);
@@ -836,6 +837,9 @@
       equipment: [], equipmentApplied: null,
       skillDurations: {}, nextTurnFlags: {}, menuCandidates: [],
       compatibilityNotices: [], scrollNativeWords: null,
+      scrollPolicy: 'classic-memory-v1',
+      scrollLeechLabel: { version: 1, number: 0, active: false, inFlight: false },
+      refillFilter: { enabled: false, excludeSwords: false },
       skills: [],                  // active skill ids (class-unique + chosen in level-ups)
       skillCooldowns: {},         // id -> turns remaining (cooldowns may be reduced by Quicken)
       pierce: BASE_PIERCING,        // вероятность пробития брони черепа
@@ -1323,6 +1327,7 @@
   }
 
   function onChainChanged() {
+    updateScrollLeechPreview();
     renderSelection();
     renderChainLine();
     renderChainTip();
@@ -1779,7 +1784,12 @@
     RESOURCE_BATCH = null;
     seedRandom(runSeed);
     const remaining = S ? S.trophyRemaining : readTrophyRemaining();
+    const previousLabel = S?.scrollLeechLabel;
+    clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState();
+    // InitNewGame clears active, not the adjacent label's type/vertices. A page
+    // reload starts fresh; restarting this Game instance retains its history.
+    if (previousLabel) S.scrollLeechLabel = { ...previousLabel, active: false, inFlight: false };
     S.trophyRemaining = remaining;
     saveTrophyRemaining();
     const oldModal = el('modal');
@@ -2496,8 +2506,10 @@
         if (event.kind === 'resource') {
           const delta = addResource(event.token);
           for (const key of ['xpGained', 'goldGained', 'upGained', 'armorGained', 'healGained', 'manaCollected']) event.result[key] += delta[key];
-        } else if (event.kind === 'healing') heal(event.amount);
-        else if (event.kind === 'damage') {
+        } else if (event.kind === 'healing') {
+          heal(event.amount);
+          if (event.leech) { S.scrollLeechLabel.inFlight = false; fadeScrollLeechLabel(); }
+        } else if (event.kind === 'damage') {
           damageHero(event.amount, false, true);
           const borrowed = event.lastStand && !S.lastStand;
           if (borrowed) S.lastStand = 1;
@@ -2772,7 +2784,11 @@
       S.swordsHits += hasSkull ? damage : 0;
       // Choose a deterministic creation-order arrival policy, not animation
       // timing. These labels pause behind any resource menu in the same queue.
-      if (S.leech > 0 && hasSkull) queueArrival({ kind: 'healing', amount: Math.floor(Math.fround(damage * Math.fround(S.leech))) });
+      if (S.leech > 0 && hasSkull) {
+        const amount = Math.floor(Math.fround(damage * Math.fround(S.leech)));
+        showScrollLeechLabel(amount, true);
+        queueArrival({ kind: 'healing', amount, leech: true });
+      } else fadeScrollLeechLabel();
       if (burning > 0) queueArrival({ kind: 'damage', amount: burning });
       if (spiky && damage > 0) queueArrival({ kind: 'damage', amount: damage });
       return batch.result;
@@ -2817,6 +2833,7 @@
         const cell = S.board[idx], target = cell.type === 'skull' ? cell.skull : cell;
         return sum + (target.burn && !target.fireSafe ? target.fireDamage ?? (typeof target.burn === 'number' ? target.burn : 0) : 0);
       }, 0) };
+    if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
     S.actionCommitted = committed;
     if (committed) {
@@ -3028,6 +3045,7 @@
       compactBoardAndRefill();
       markExistingSkullsOld();
       rotateTurnFlags(['oneHealthSkulls', 'forceCoins']);
+      S.refillFilter.enabled = S.refillFilter.excludeSwords = false;
       S.freezeNextTurn = 0;
       if (S.promotionRemaining > 0) S.promotionRemaining--;
       S.actionCommitted = false;
@@ -3402,6 +3420,98 @@
     mark();
   }
 
+  // I1: Game+c358+4*n addresses slots, counters, flags and a life-leech label,
+  // NOT the set of owned skill IDs. classic-memory-v1 is an explicit policy:
+  // zero fresh/padding bytes, retain label geometry across same-page new games.
+  // Evidence/limits: LUNAPARK §7, cdriper/DungeonRaid 6c098c1 (field layout),
+  // coolking70/DungeonRaid a708df8 (first 12 words). No foreign renderer/assets.
+  // Return a zero/nonzero EQUIVALENCE word; pointers, RGB and UV use 1, never a
+  // fabricated native address/texture. A supplied raw fixture bypasses this model.
+  function classicScrollWord(n, state = S) {
+    if (!Number.isInteger(n) || n < 0 || n >= 42 || !state || !Array.isArray(state.skills)) return null;
+    if (n < 4) return state.skills[n] ? 1 : 0;
+    if (n === 4) return state.skills.length;
+    if (n < 10) {
+      const keys = ['potion', 'xp', 'coin', 'shield', 'sword'];
+      const counts = state.collectionCounts || {};
+      const count = key => Object.hasOwn(counts, key) ? counts[key] : 0;
+      const value = count(keys[n - 5]), arrows = n === 9 ? count('arrow') : 0;
+      return Number.isInteger(value) && value >= 0 && Number.isInteger(arrows) && arrows >= 0
+        && value + arrows <= 0x7fffffff ? value + arrows : null;
+    }
+    if (n === 10) return (state.refillFilter?.enabled ? 1 : 0) | (state.refillFilter?.excludeSwords ? 0x100 : 0)
+      | (state.counterattack > 0 ? 0x10000 : 0) | (state.stealActive > 0 ? 0x1000000 : 0);
+    if (n === 11) return state.nextTurnFlags?.stealActive > 0 ? 1 : 0;
+    const label = state.scrollLeechLabel;
+    if (!label || label.version !== 1 || !Number.isInteger(label.number) || label.number < 0 || label.number > 99999
+        || typeof label.active !== 'boolean' || typeof label.inFlight !== 'boolean') return null;
+    if (n === 12) return label.active ? 1 : 0;
+    if (n === 13) return label.number ? 8 : 0;
+    const vertex = Math.floor((n - 14) / 5), component = (n - 14) % 5;
+    if (component === 2) return 1; // Start sets nonzero RGB for every vertex; fading only changes alpha.
+    if (!label.number) return 0;   // Explicit fresh-zero policy until the first positive preview.
+    if (component >= 3) return 1; // Every used glyph UV in this range is strictly positive.
+    // Only the first six vertices are read. Their layout is: first word,
+    // positive number at half scale, final word. Widths are rule data because
+    // the erroneous INT comparison observes exactly-zero vertex coordinates.
+    const widths = [20,16,20,20,21,20,20,19,19,20];
+    const digits = String(label.number).split('').map(digit => widths[Number(digit)] / 2);
+    const left = -(38 + 18 + digits.reduce((a,b) => a+b, 0)) / 2;
+    const right = left + 38;
+    const coordinate = component === 0
+      ? [left, right, right, left, right, right + digits[0]][vertex]
+      : (vertex === 2 || vertex === 3 ? 0 : -1);
+    return coordinate === 0 ? 0 : 1;
+  }
+
+  function scrollFilterWords() {
+    try {
+      const raw = S.scrollNativeWords;
+      if (raw !== null) {
+        if (!raw || typeof raw !== 'object') return null;
+        const words = [];
+        for (let n = 0; n < 42; n++) {
+          if (!Object.hasOwn(raw, n)) return null;
+          const word = raw[n]; // Snapshot once; getters cannot change the filter halfway through.
+          if (!Number.isInteger(word) || word < -0x80000000 || word > 0xffffffff) return null;
+          words.push(word);
+        }
+        return words;
+      }
+      if (S.scrollPolicy !== 'classic-memory-v1') return null;
+      const words = Array.from({ length: 42 }, (_, n) => classicScrollWord(n));
+      return words.every(word => word !== null) ? words : null;
+    } catch (e) { return null; } // Malformed external debug/restore data cannot break the shop.
+  }
+
+  function showScrollLeechLabel(number, inFlight = false) {
+    if (!(number > 0)) return;
+    clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
+    S.scrollLeechLabel.number = number;
+    S.scrollLeechLabel.active = true;
+    S.scrollLeechLabel.inFlight = inFlight;
+  }
+  function fadeScrollLeechLabel() {
+    const label = S.scrollLeechLabel;
+    if (!label.active || label.inFlight || SCROLL_LABEL_TIMER !== null) return;
+    const runId = RUN_ID;
+    // Our arrival-order C2 policy: a cancelled preview or settled healing fades
+    // for 200ms. Native frame/flight races are not claimed as bit-exact timing.
+    SCROLL_LABEL_TIMER = setTimeout(() => {
+      if (runId !== RUN_ID || S.scrollLeechLabel !== label) return;
+      label.active = false; SCROLL_LABEL_TIMER = null;
+    }, 200);
+  }
+  function updateScrollLeechPreview() {
+    const effective = effectiveChain(S.selected);
+    const skull = effective.some(slot => S.board[slot].type === 'skull' && !isPhylacteryCell(S.board[slot]));
+    const swords = effective.reduce((sum, slot) => sum + (S.board[slot].broken ? 0 : swordWeight(S.board[slot])), 0);
+    const damage = (skull ? baseDamage() : 0) + S.hero.weaponDamage * swords * (S.swordBoost > 0 ? 2 : 1);
+    const number = Math.floor(Math.fround(damage * Math.fround(S.leech)));
+    if (number > 0) showScrollLeechLabel(number);
+    else fadeScrollLeechLabel();
+  }
+
   function noteCompatibility(message) {
     if (!S.compatibilityNotices.includes(message)) S.compatibilityNotices.push(message);
   }
@@ -3412,20 +3522,22 @@
     const exempt = random(2) < Math.fround(.1);
     const ordered = ALL_SKILLS.slice().sort((a, b) => a.native - b.native)
       .filter(skill => skill.id !== 'wish' && !(S.mode === 'pretzel' && skill.id === 'chamber'));
-    // I1 is an unknown native MEMORY WORD, not "skill already owned".
-    // Safe playable policy: omit only that unproven scroll, never invent the
-    // word or block the equipment purchase. Known 10% exemptions work normally.
-    // A complete raw-word fixture can be supplied through the debug state.
-    if (!exempt && !ordered.every(skill => Number.isInteger(S.scrollNativeWords?.[skill.native]))) {
+    // The exemption MUST NOT even read memory. Otherwise snapshot either a
+    // complete supplied fixture or the named classic model, never a mix of both.
+    const words = exempt ? null : scrollFilterWords();
+    if (!exempt && !words) {
       item.scrollBlocked = true;
-      noteCompatibility('I1: свиток без 10%-го исключения пропущен — неизвестен нативный фильтр.');
+      noteCompatibility('I1: свиток пропущен — нет полных достоверных данных фильтра.');
       return options;
     }
-    const eligible = ordered.filter(skill => (exempt || S.scrollNativeWords[skill.native] === 0)
+    const eligible = ordered.filter(skill => (exempt || words[skill.native] === 0)
       && isSkillUnlocked(skill.id) && canActivateSkill(skill.id));
     if (!eligible.length) {
+      // Native draws before indexing its empty vector. Consume that ITEM call,
+      // but skip the unsafe access and keep all three equipment choices usable.
+      random(2);
       item.scrollBlocked = true;
-      noteCompatibility('I1: предоставленный фильтр свитка не дал кандидатов; свиток пропущен.');
+      noteCompatibility('I1: пустой набор кандидатов свитка; покупка предмета доступна.');
       return options;
     }
     item.scroll = prepareSkillOption(eligible[randInt(0, eligible.length - 1, 2)].id);
@@ -3495,7 +3607,7 @@
         `<span class="item-change ${change.after > change.before ? 'better' : 'worse'}">${change.text}</span>`).join('');
       const scroll = item.scroll
         ? `<span class="shop-scroll">📜 ${item.scroll.name} — разово при покупке</span><span class="shop-preview">${item.scroll.desc}</span>`
-        : item.scrollBlocked ? '<span class="shop-compatibility">Свиток пропущен: фильтр оригинала не расшифрован (I1).</span>' : '';
+        : item.scrollBlocked ? '<span class="shop-compatibility">Свиток пропущен: нет подходящего навыка или полных данных фильтра (I1).</span>' : '';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'shop-item';
@@ -3628,6 +3740,10 @@
     // Native filter: normally exclude skulls; only Changeling's mortal enemy
     // excludes swords instead. Treasure Chamber does not override this filter.
     const exclude = clsRace() === 'Changeling' ? 'sword' : 'skull';
+    // Native keeps both bytes until the end-of-turn refill boundary. They are
+    // observable by I1 independently of Counterattack and the two Steal flags.
+    S.refillFilter.enabled = true;
+    S.refillFilter.excludeSwords = exclude === 'sword';
     for (let c = 0; c < COLS; c++) for (let r = ROWS - 1; r >= 0; r--) {
       S.board[r * COLS + c] = createNewTile({ exclude });
     }
@@ -4313,6 +4429,7 @@
     installSkillOption,
     isSkillUnlocked,
     canActivateSkill,
+    classicScrollWord,
     itemStep,
     itemUpgradeAllowed,
     randomItemUpgrade,

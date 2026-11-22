@@ -2178,17 +2178,18 @@ test('raid confirmed scroll exemption may select an OWNED cooling-down skill and
   assert.equal(s.resolving, false);
 });
 
-test('raid unresolved non-exempt scroll is explicitly skipped, never replaced with an owned-skill heuristic', () => {
+test('raid fixture-only policy skips an unresolved non-exempt scroll, never inventing an owned-skill heuristic', () => {
   const seed = raidShopSeed(result => result.hasScroll && !result.exempt);
   const { raid, elements } = raidBrowser({ seed, menus: true }); raidBoard(raid, 'sword');
   const expected = forecastStartingShop(seed);
+  raid.state.scrollPolicy = 'fixture-only';
   raidOpenShop(raid);
   assert.equal(raid.state.menuCandidates.filter(item => item.scrollBlocked).length, 1);
   assert.equal(raid.state.menuCandidates.filter(item => item.scroll).length, 0);
   assert.equal(raid.state.rngSeeds[2], expected.seed, 'unknown candidate choice must not be fabricated');
   assert.match(raid.state.compatibilityNotices.join('\n'), /I1/);
   const card = elements.get('modal-body').querySelectorAll('.shop-item')[expected.index];
-  assert.match(card.innerHTML, /фильтр оригинала не расшифрован/);
+  assert.match(card.innerHTML, /полных данных фильтра/);
   card.click();
   assert.equal(raid.state.pendingModal, null);
   assert.equal(raid.state.skills.length, 0);
@@ -2518,7 +2519,7 @@ test('raid class profile sanitises excessive levels to10 before trophy and skill
   assert.equal(raid.isSkillUnlocked('rune'), true);
 });
 
-test('raid Russian help/styles describe real equipment scrolls, conservative I1 policy and board trophies', () => {
+test('raid Russian help/styles describe real equipment scrolls, explicit I1 model limits and board trophies', () => {
   const css = readFileSync(new URL('./raid.css', import.meta.url), 'utf8');
   const template = readFileSync(new URL('./raid.html', import.meta.url), 'utf8');
   assert.match(css, /\.item-change\.worse/);
@@ -2526,6 +2527,10 @@ test('raid Russian help/styles describe real equipment scrolls, conservative I1 
   assert.match(template, /3 появления за забег/);
   assert.match(template, /счётчик уменьшается с шансом 50\/101/);
   assert.match(template, /10%-е исключения/);
+  assert.match(template, /история надписи сохраняется между забегами в этой вкладке/);
+  assert.match(template, /до перезагрузки страницы/);
+  assert.match(template, /модель совместимости, не точная копия памяти и таймингов оригинала/);
+  assert.doesNotMatch(template, /остальные свитки явно пропускаются/);
   assert.match(template, /кроме Желания в Спринте/);
   assert.match(template, /не занимает слот и не меняет заряд/);
 });
@@ -3148,4 +3153,270 @@ test('raid edited races use their mortal-enemy table including Human NORMAL, pre
   for (let i = 0; i < 4; i++) expectedSeed = raidDraw(expectedSeed, 0, 0).seed;
   assert.equal(raid.makeSkull(false, true).type, first.value, 'Adventurer does not roll an override even as Human');
   assert.equal(raid.state.rngSeeds[1], expectedSeed);
+});
+
+// I1 is a wrong-memory read, not a set of owned skill IDs. The reproducible
+// classic-memory-v1 policy models zero/non-zero words, not native pointers/art.
+const raidFreshSwordScrollNatives = [6,7,10,11,13,17,18,19,22,24,25,28,30];
+function raidNonExemptSeed(native) {
+  return raidShopSeed(result => result.hasScroll && !result.exempt && (native == null
+    || raidFreshSwordScrollNatives[raidDraw(result.seed, 0, raidFreshSwordScrollNatives.length - 1).value] === native));
+}
+
+test('raid I1 defaults to an explicit classic word model: fresh zero memory except initialized label colours', () => {
+  const {raid}=raidBrowser();
+  assert.equal(raid.state.scrollPolicy,'classic-memory-v1');
+  for(let n=0;n<42;n++) assert.equal(raid.classicScrollWord(n),[16,21,26,31,36,41].includes(n)?1:0,`word ${n}`);
+  for(const n of [-1,42,1.5,'0',null,{},undefined]) assert.equal(raid.classicScrollWord(n),null);
+});
+
+test('raid I1 low words follow occupied slots and count, never the owned skill identity or cooldown', () => {
+  const {raid}=raidBrowser(); const s=raid.state;
+  s.skills=['boostgold','steal'];s.skillCooldowns={boostgold:5,steal:0};
+  assert.deepEqual([0,1,2,3,4].map(n=>raid.classicScrollWord(n)),[1,1,0,0,2]);
+  assert.equal(raid.classicScrollWord(17),0,'owned Boost Gold is not blocked by membership');
+  assert.equal(raid.classicScrollWord(16),1,'unowned Boost Damage reads a colour word');
+  s.skillCooldowns.steal=10;assert.equal(raid.classicScrollWord(0),1);
+});
+
+test('raid I1 collection words use native potion/skull/coin/shield/sword order including arrows', () => {
+  const {raid}=raidBrowser();
+  raid.state.collectionCounts={potion:2,xp:3,coin:5,shield:7,sword:11,arrow:13};
+  assert.deepEqual([5,6,7,8,9].map(n=>raid.classicScrollWord(n)),[2,3,5,7,24]);
+  raid.collectIndices([], {noRefill:true});
+  assert.deepEqual([5,6,7,8,9].map(n=>raid.classicScrollWord(n)),[0,0,0,0,0]);
+});
+
+test('raid I1 packs refill/counter/steal bytes and the following next-turn byte', () => {
+  const {raid}=raidBrowser();const s=raid.state;
+  s.refillFilter={enabled:true,excludeSwords:true};s.counterattack=1;s.stealActive=1;s.nextTurnFlags.stealActive=1;
+  assert.equal(raid.classicScrollWord(10),0x01010101);assert.equal(raid.classicScrollWord(11),1);
+  s.refillFilter.enabled=false;s.counterattack=0;
+  assert.equal(raid.classicScrollWord(10),0x01000100);
+  s.stealActive=0;s.refillFilter.excludeSwords=false;s.nextTurnFlags.stealActive=0;
+  assert.equal(raid.classicScrollWord(10),0);assert.equal(raid.classicScrollWord(11),0);
+});
+
+test('raid I1 actual selection writes life-leech label history without spending RNG or changing hero', () => {
+  const {raid}=raidBrowser();
+  raidBoard(raid,'sword'); raidOld(raid,0,{hp:100,maxHp:100,def:0,atk:0}); raid.state.leech=.5;
+  const before=JSON.stringify(raid.state.hero),seeds=Array.from(raid.state.rngSeeds);
+  for(const slot of [0,1,2]) raid.tryExtendChain(slot);
+  assert.equal(raid.state.scrollLeechLabel.number,3);
+  assert.equal(raid.classicScrollWord(12),1);assert.equal(raid.classicScrollWord(13),8);
+  for(let n=14;n<42;n++)assert.equal(raid.classicScrollWord(n),[25,30].includes(n)?0:1,`word ${n}`);
+  assert.equal(JSON.stringify(raid.state.hero),before);assert.deepEqual(Array.from(raid.state.rngSeeds),seeds);
+  const state=JSON.stringify(raid.state);for(let n=0;n<5;n++)raid.chainPreview();
+  assert.equal(JSON.stringify(raid.state),state,'querying preview is still pure');
+});
+
+for(const [number,zeroXs] of [[1,[]],[20,[19,24,34]],[2222,[39]]]) test(`raid I1 leech label ${number}: zero vertex coordinates are not a blanket post-leech blacklist`,()=>{
+  const {raid}=raidBrowser();
+  raid.state.scrollLeechLabel.number=number;raid.state.scrollLeechLabel.active=true;
+  for(const n of [14,19,24,29,34,39])assert.equal(raid.classicScrollWord(n),zeroXs.includes(n)?0:1,`x word ${n}`);
+  for(const n of [25,30])assert.equal(raid.classicScrollWord(n),0,'first glyph bottom edge is zero');
+  for(const n of [16,21,26,31,36,41])assert.equal(raid.classicScrollWord(n),1,'RGB remains nonzero even after fading');
+});
+
+test('raid I1 cancelling a one-node leech preview fades active after200ms but keeps type and geometry',()=>{
+  const {raid,advance}=raidBrowser();raidBoard(raid,'sword');raid.state.leech=1;
+  raid.tryExtendChain(0);assert.equal(raid.state.scrollLeechLabel.number,2);
+  raid.resolveChain();assert.equal(raid.state.turn,0);assert.equal(raid.classicScrollWord(12),1);
+  advance(199);assert.equal(raid.classicScrollWord(12),1);
+  advance(1);assert.equal(raid.classicScrollWord(12),0);assert.equal(raid.classicScrollWord(13),8);
+  assert.equal(raid.classicScrollWord(17),1);
+});
+
+test('raid I1 label survives a same-tab new run, stale fade cannot affect a new preview, reload starts fresh',()=>{
+  const {raid,advance,storage}=raidBrowser();raidBoard(raid,'sword');raid.state.leech=1;
+  raid.tryExtendChain(0);raid.resolveChain();advance(100);
+  raid.newGame(71);assert.equal(raid.state.scrollLeechLabel.number,2);assert.equal(raid.classicScrollWord(12),0);
+  raidBoard(raid,'sword');raid.state.leech=1;raid.tryExtendChain(0);advance(1000);
+  assert.equal(raid.classicScrollWord(12),1,'an old timer does not expire a new held selection');
+  const reload=raidBrowser({saved:Object.fromEntries(storage)}).raid;
+  assert.equal(reload.classicScrollWord(13),0);assert.equal(reload.classicScrollWord(17),0);
+});
+
+test('raid I1 ordinary non-exempt shop uses the model, one final ITEM choice and no OTHER randomness',()=>{
+  const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed});raidBoard(raid,'sword');
+  const expected=forecastStartingShop(seed),other=raid.state.rngSeeds[5];
+  const draw=raidDraw(expected.seed,0,raidFreshSwordScrollNatives.length-1);
+  const items=raid.makeShopOffers(),item=items[expected.index];
+  assert.equal(items.filter(item=>item.scroll).length,1);assert.ok(!item.scrollBlocked);
+  assert.equal(item.scroll.native,raidFreshSwordScrollNatives[draw.value]);
+  assert.equal(raid.state.rngSeeds[2],draw.seed);assert.equal(raid.state.rngSeeds[5],other);
+});
+
+test('raid I1 a non-exempt scroll may repeat an owned skill without equipping it or changing its charge',()=>{
+  const seed=raidNonExemptSeed(7),{raid,elements}=raidBrowser({seed,menus:true});raidBoard(raid,'sword');
+  raid.installSkillOption(raid.prepareSkillOption('teleport'));raid.state.skillCooldowns.teleport=9;
+  const before=JSON.stringify([raid.state.skills,raid.state.skillCooldowns,raid.state.skillLevels]);raidOpenShop(raid);
+  const index=raid.state.menuCandidates.findIndex(item=>item.scroll);assert.equal(raid.state.menuCandidates[index].scroll.id,'teleport');
+  elements.get('modal-body').querySelectorAll('.shop-item')[index].click();
+  assert.equal(JSON.stringify([raid.state.skills,raid.state.skillCooldowns,raid.state.skillLevels]),before);
+  assert.equal(raid.state.pendingModal,null);assert.equal(raid.state.turn,0);
+});
+
+test('raid I1 confirmed raw words override the model, including a negative-zero float bit pattern',()=>{
+  const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed});raidBoard(raid,'sword');
+  raid.state.scrollNativeWords=Object.fromEntries(Array.from({length:42},(_,n)=>[n,n===7?0:n===6?0x80000000:1]));
+  const item=raid.makeShopOffers().find(item=>item.scroll);
+  assert.equal(item.scroll.id,'teleport','0x80000000 is a nonzero integer word, not numeric float zero');
+});
+
+for(const fixture of [Object.assign(Object.create({7:0}),{6:0}),{16:0},Array(42).fill(NaN),Array(42).fill(2**32)]) test('raid I1 invalid or incomplete supplied words never silently fall back to the model',()=>{
+  const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed});raidBoard(raid,'sword');raid.state.scrollNativeWords=fixture;
+  const items=raid.makeShopOffers();assert.equal(items.filter(item=>item.scrollBlocked).length,1);
+  assert.equal(items.filter(item=>item.scroll).length,0);
+  assert.equal(raid.state.rngSeeds[2],forecastStartingShop(seed).seed);
+});
+
+test('raid I1 a fully known empty raw pool consumes the final ITEM draw but never crashes the shop',()=>{
+  const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed,menus:true});raidBoard(raid,'sword');
+  raid.state.scrollNativeWords=Array(42).fill(1);raidOpenShop(raid);
+  assert.equal(raid.state.menuCandidates.filter(item=>item.scrollBlocked).length,1);
+  assert.equal(raid.state.rngSeeds[2],raidDraw(forecastStartingShop(seed).seed,0,0).seed);
+  assert.equal(raid.purchaseShopItem(0),true);assert.equal(raid.state.pendingModal,null);
+});
+
+test('raid I1 10-percent exemption does not read malformed words or an unknown model policy',()=>{
+  const {raid}=raidBrowser({seed:0});raidBoard(raid,'sword');
+  raid.state.scrollNativeWords={get 6(){throw Error('must not read exempt memory')}};raid.state.scrollPolicy='unsupported';
+  assert.equal(raid.makeShopOffers()[0].scroll.id,'goldtouch');
+});
+
+test('raid I1 unsupported model state fails closed for the scroll, without blocking equipment',()=>{
+  for(const kind of ['version','number','policy']){
+    const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed,menus:true});raidBoard(raid,'sword');
+    if(kind==='policy')raid.state.scrollPolicy='unsupported';
+    else raid.state.scrollLeechLabel[kind]=kind==='version'?2:100000;
+    raidOpenShop(raid);assert.equal(raid.state.menuCandidates.filter(item=>item.scrollBlocked).length,1);
+    assert.equal(raid.purchaseShopItem(0),true);
+  }
+});
+
+test('raid I1 leech healing waits behind a real reward menu, then fades without losing the deferred turn',()=>{
+  const {raid,elements,advance}=raidBrowser({seed:0,menus:true});raidBoard(raid,'sword');
+  raidOld(raid,0,{hp:1,maxHp:1,def:0,atk:0},3);raid.state.leech=.5;raid.state.hero.gold=98;raid.state.hero.hp=10;
+  for(const slot of [0,1,2])raid.tryExtendChain(slot);raid.resolveChain();advance(420);
+  assert.equal(raid.state.pendingModal,'gold');assert.equal(raid.classicScrollWord(12),1);
+  assert.equal(raid.state.hero.hp,10,'healing arrival is still queued');
+  const index=raid.state.menuCandidates.findIndex(item=>!item.scroll);
+  elements.get('modal-body').querySelectorAll('.shop-item')[index].click();
+  advance(80);assert.equal(raid.state.hero.hp,13,'only the queued leech heal, no purchased healing scroll');
+  assert.equal(raid.classicScrollWord(12),1);advance(200);assert.equal(raid.classicScrollWord(12),0);
+  advance(1000);assert.equal(raid.state.turn,1);assert.equal(raid.state.resolving,false);
+});
+
+test('raid I1 dragging backwards rewrites positive geometry; cancelled zero preview retains the last bytes', () => {
+  const {raid,advance}=raidBrowser(); raidBoard(raid,'sword');
+  raid.state.leech=1; raid.state.hero.weaponDamage=10;
+  const seeds=Array.from(raid.state.rngSeeds);
+  raid.tryExtendChain(0); raid.tryExtendChain(1);
+  assert.equal(raid.state.scrollLeechLabel.number,20); assert.equal(raid.classicScrollWord(19),0);
+  raid.tryExtendChain(0);
+  assert.deepEqual(Array.from(raid.state.selected),[0]);
+  assert.equal(raid.state.scrollLeechLabel.number,10); assert.equal(raid.classicScrollWord(19),1);
+  raid.resolveChain(); advance(200);
+  assert.equal(raid.classicScrollWord(12),0); assert.equal(raid.state.scrollLeechLabel.number,10);
+  assert.deepEqual(Array.from(raid.state.rngSeeds),seeds);
+});
+
+test('raid I1 sword-only committed chains start fading on release and never invent a healing flight', () => {
+  const {raid,advance}=raidBrowser(); raidBoard(raid,'sword'); raid.state.leech=1;
+  raid.state.hero.hp=1;
+  raidSelect(raid,[0,1,2]); assert.equal(raid.state.scrollLeechLabel.number,6);
+  raid.resolveChain(); advance(200);
+  assert.equal(raid.classicScrollWord(12),0); assert.equal(raid.state.scrollLeechLabel.inFlight,false);
+  advance(1000);
+  assert.equal(raid.state.hero.hp,1); assert.equal(raid.state.turn,1);
+  assert.equal(raid.classicScrollWord(13),8);
+});
+
+test('raid I1 Counterattack and current/next Steal bytes track actual activation and end-of-turn rotation', () => {
+  const {raid}=raidBrowser(); raidBoard(raid,'sword'); raidOld(raid,0,{atk:0});
+  raid.activateSkill('counter'); assert.equal(raid.classicScrollWord(10),0x10000);
+  raid.activateSkill('steal'); assert.equal(raid.classicScrollWord(10),0x01010000);
+  assert.equal(raid.classicScrollWord(11),0);
+  raid.state.actionCommitted=true; raid.state.skillCooldowns.steal=0; raid.activateSkill('steal');
+  assert.equal(raid.classicScrollWord(11),1);
+  raid.endEnemyTurn(); assert.equal(raid.classicScrollWord(10),0x01000000);
+  assert.equal(raid.classicScrollWord(11),0);
+  raid.endEnemyTurn(); assert.equal(raid.classicScrollWord(10),0);
+});
+
+for(const classId of ['adventurer','mage']) test(`raid I1 ${classId}: Unstable refill flags live until the turn boundary, then clear`, () => {
+  const {raid}=raidBrowser({classId}); raid.unstableTeleport();
+  assert.equal(raid.classicScrollWord(10),classId==='mage'?0x101:1);
+  raidBoard(raid,'sword'); raid.endEnemyTurn();
+  assert.equal(raid.classicScrollWord(10),0);
+  raid.newGame(71); assert.equal(raid.classicScrollWord(10),0);
+});
+
+test('raid I1 invalid raw getters fail only the scroll; complete typed and signed words remain usable', () => {
+  const seed=raidNonExemptSeed();
+  const {raid}=raidBrowser({seed}); raidBoard(raid,'sword');
+  raid.state.scrollNativeWords=Object.fromEntries(Array.from({length:42},(_,n)=>[n,1]));
+  Object.defineProperty(raid.state.scrollNativeWords,7,{get(){throw Error('corrupt fixture')}});
+  assert.equal(raid.makeShopOffers().filter(item=>item.scrollBlocked).length,1);
+  for(const Constructor of [Int32Array,Uint32Array]) {
+    const {raid}=raidBrowser({seed}); raidBoard(raid,'sword');
+    raid.state.scrollNativeWords=new Constructor(42).fill(-1); raid.state.scrollNativeWords[7]=0;
+    assert.equal(raid.makeShopOffers().find(item=>item.scroll).scroll.id,'teleport');
+  }
+});
+
+test('raid I1 externally supplied raw words are snapshotted once, not reread per candidate', () => {
+  const {raid}=raidBrowser({seed:raidNonExemptSeed()}); raidBoard(raid,'sword');
+  const reads=Array(42).fill(0),fixture={};
+  for(let n=0;n<42;n++)Object.defineProperty(fixture,n,{get(){reads[n]++;return n===7?0:1;}});
+  raid.state.scrollNativeWords=fixture;
+  assert.equal(raid.makeShopOffers().find(item=>item.scroll).scroll.id,'teleport');
+  assert.ok(reads.every(count=>count===1));
+});
+
+test('raid I1 first-six-vertex equivalence agrees with independently laid out float32 quads across digit widths', () => {
+  const {raid}=raidBrowser();
+  const numbers=[1,9,10,11,19,20,21,22,24,99,100,111,999,1111,1112,1222,2222,9999,10000,99999];
+  let seed=83;
+  for(let n=0;n<300;n++){seed=Math.imul(seed,16807)>>>0;numbers.push(seed%99999+1);}
+  const bits=new DataView(new ArrayBuffer(4));
+  const word=value=>{bits.setFloat32(0,value/320,true);return bits.getUint32(0,true)===0?0:1;};
+  for(const number of numbers){
+    // Rules/dimensions only, NOT the foreign renderer/texture: type 8 starts
+    // with a 38-wide word, then half-size digits, then an 18-wide word.
+    const digitWidths=[20,16,20,20,21,20,20,19,19,20];
+    const glyphs=[[38,13],...String(number).split('').map(d=>[digitWidths[Number(d)]/2,27/2]),[18,13]];
+    let x=-glyphs.reduce((sum,[width])=>sum+width,0)/2;
+    const expected=[];
+    for(const [width,height] of glyphs){
+      for(const [vx,vy] of [[x,-height],[x+width,-height],[x+width,0],[x,0]]) expected.push(word(vx),word(vy),1,1,1);
+      x+=width;
+    }
+    raid.state.scrollLeechLabel.number=number;
+    assert.deepEqual(Array.from({length:28},(_,n)=>raid.classicScrollWord(n+14)),expected.slice(0,28),`number ${number}`);
+  }
+});
+
+test('raid I1 a real leech preview changes the ordinary shop candidate pool, not just debug display words', () => {
+  const seed=raidNonExemptSeed(),{raid}=raidBrowser({seed});
+  raidBoard(raid,'sword'); raidOld(raid,0,{hp:100,maxHp:100,atk:0,def:0}); raid.state.leech=.5;
+  raidSelect(raid,[0,1,2]);
+  const candidates=[0,1,4,5,6,7,10,11,25,30],forecast=forecastStartingShop(seed);
+  const draw=raidDraw(forecast.seed,0,candidates.length-1);
+  assert.equal(raid.makeShopOffers().find(item=>item.scroll).scroll.native,candidates[draw.value]);
+  assert.equal(raid.state.rngSeeds[2],draw.seed);
+});
+
+test('raid reward/help/menu cards size to the padded overlay, not a wider viewport fraction', () => {
+  const css=readFileSync(new URL('./raid.css',import.meta.url),'utf8');
+  // In Chromium on 320px, 96vw overflowed the grid's 18px padding even though
+  // body overflow:hidden made document.scrollWidth look fine. Keep all three
+  // overlay cards within the available content box; browser acceptance checks
+  // their actual bounding rectangles as well as the document width.
+  for(const [selector,max] of [['modal-card',460],['help-card',430],['menu-card',340]]){
+    const rule=css.match(new RegExp(`\\.${selector} \\{([^}]+)\\}`))[1];
+    assert.ok(rule.includes(`width: min(100%, ${max}px)`),selector);
+    assert.ok(rule.includes('min-width: 0'),selector);
+  }
 });

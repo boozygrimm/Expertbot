@@ -466,3 +466,54 @@ test('built raid editor reports a blocked local store without pretending that a 
     assert.equal(raid.getClassConfig('barbarian').race,'Faun');assert.deepEqual(errors,[]);
   }finally{dom.window.close()}
 });
+
+test('built raid I1 non-exempt scroll is attached and purchased through real DOM without occupying a slot', async () => {
+  const {dom,raid,errors}=await openRaid(); const doc=dom.window.document;
+  try {
+    raid.newGame(10); raid.state.board=Array.from({length:36},()=>({type:'sword'}));
+    raid.state.hero.gold=100; raid.checkGoldBox();
+    const index=raid.state.menuCandidates.findIndex(item=>item.scroll);
+    assert.equal(index,0); assert.equal(raid.state.menuCandidates[index].scroll.id,'trap');
+    const card=doc.querySelectorAll('button.shop-item')[index];
+    assert.match(card.querySelector('.shop-scroll').textContent,/Ловушка.*разово при покупке/);
+    assert.equal(doc.querySelector('.shop-compatibility'),null);
+    const before=JSON.stringify([raid.state.skills,raid.state.skillCooldowns,raid.state.skillLevels]);
+    card.click(); assert.equal(raid.state.oneHealthSkulls,1);
+    assert.equal(JSON.stringify([raid.state.skills,raid.state.skillCooldowns,raid.state.skillLevels]),before);
+    assert.equal(raid.state.pendingModal,null); assert.equal(raid.state.turn,0);
+    const after=JSON.stringify(raid.state); card.click(); assert.equal(JSON.stringify(raid.state),after);
+    assert.deepEqual(errors,[]);
+  } finally { dom.window.close(); }
+});
+
+test('built raid I1 non-exempt Enchant opens the nested item upgrade and releases its continuation once', async () => {
+  const {dom,raid,errors}=await openRaid(); const doc=dom.window.document;
+  try {
+    raid.newGame(25); raid.state.board=Array.from({length:36},()=>({type:'sword'}));
+    raid.state.hero.gold=100; raid.checkGoldBox();
+    const index=raid.state.menuCandidates.findIndex(item=>item.scroll?.id==='enchant');
+    assert.ok(index>=0); doc.querySelectorAll('button.shop-item')[index].click();
+    assert.equal(raid.state.pendingModal,'armor'); assert.equal(doc.querySelectorAll('.lv-card').length,4);
+    doc.querySelector('.lv-card').click(); await until(()=>!raid.state.resolving);
+    assert.equal(raid.state.pendingModal,null); assert.equal(raid.state.turn,0);
+    assert.equal(raid.state.skills.length,0); assert.deepEqual(errors,[]);
+  } finally { dom.window.close(); }
+});
+
+test('built raid I1 pointer selection persists label geometry across restart; fresh document resets its history', async () => {
+  const {dom,raid,errors}=await openRaid(); const doc=dom.window.document;
+  try {
+    raid.state.leech=1; raid.state.hero.weaponDamage=10;
+    doc.querySelector('.cell[data-idx="0"]').dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true,cancelable:true}));
+    assert.equal(raid.state.scrollLeechLabel.number,10); assert.equal(raid.classicScrollWord(12),1);
+    raid.tryExtendChain(1); assert.equal(raid.state.scrollLeechLabel.number,20);
+    assert.equal(raid.classicScrollWord(19),0);
+    dom.window.dispatchEvent(new dom.window.MouseEvent('pointercancel'));
+    assert.equal(raid.state.selected.length,0); await until(()=>raid.classicScrollWord(12)===0);
+    raid.newGame(10); assert.equal(raid.state.scrollLeechLabel.number,20); assert.equal(raid.classicScrollWord(13),8);
+    const fresh=await openRaid();
+    try { assert.equal(fresh.raid.classicScrollWord(13),0); assert.equal(fresh.raid.classicScrollWord(17),0); assert.deepEqual(fresh.errors,[]); }
+    finally { fresh.dom.window.close(); }
+    assert.deepEqual(errors,[]);
+  } finally { dom.window.close(); }
+});
