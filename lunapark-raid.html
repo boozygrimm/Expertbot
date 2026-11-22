@@ -539,6 +539,63 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .character-summary-row span { color: #cdb8d0; }
 .character-summary-row b { color: #ffe2a9; text-align: right; font-weight: 700; }
 
+/* --- original-style run layout (2026-11-22) --- */
+.skills-head {
+  flex: none; display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px;
+}
+.skills-head .skills { flex: 1 1 auto; margin: 0; }
+.run-actions { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+.run-actions .icon-btn { padding: 5px 8px; font-size: 10px; border-radius: 8px; white-space: nowrap; }
+.skills { display: grid; grid-template-columns: repeat(4, 1fr); min-height: 56px; }
+.skill.empty {
+  border-style: dashed; border-color: rgba(255,217,122,0.14);
+  background: rgba(20,13,30,0.55); cursor: default; opacity: 0.6;
+}
+.skill.empty .skill-icon { opacity: 0.25; }
+.status-line {
+  flex: none; text-align: center; font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  color: #e9d4a8; background: rgba(20,13,30,0.7); border: 1px solid #3d2a52;
+  border-radius: 8px; padding: 5px 8px; margin-bottom: 6px;
+}
+.board-foot {
+  position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%);
+  display: flex; gap: 10px; font-size: 9px; color: #bfa8c9; font-weight: 700;
+  background: rgba(14,9,22,0.8); border: 1px solid #3d2a52; border-radius: 999px;
+  padding: 2px 9px; white-space: nowrap;
+}
+.board-wrap { margin-bottom: 14px; }
+.hud { gap: 4px; }
+.hud-row { gap: 4px; }
+.hud-cell { padding: 4px 7px; }
+.hud-meta { padding: 3px 7px; }
+.cell.type-chain { color: #b8e0ff; }
+.cell.type-chain .ic { filter: drop-shadow(0 0 5px #8fd0ff); }
+.picker-modes { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.picker-modes label {
+  display: flex; flex-direction: column; gap: 3px; font-size: 9px; color: #a493b8;
+  font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.picker-modes select {
+  background: #241832; color: #ffe2a9; border: 1px solid #5b3a6b; border-radius: 8px;
+  padding: 6px 8px; font-size: 11px; font-weight: 700; min-width: 130px;
+}
+.menu-modal {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px;
+  background: rgba(8,5,14,0.76); opacity: 0; pointer-events: none; transition: opacity 160ms ease;
+}
+.menu-modal.show { opacity: 1; pointer-events: auto; }
+.menu-card {
+  width: min(92vw, 340px); display: flex; flex-direction: column; gap: 7px;
+  background: linear-gradient(160deg, #2c1b40, #161028); border: 1px solid #8a5fb0;
+  border-radius: 16px; padding: 16px;
+}
+.menu-card h3 { margin: 0 0 6px; text-align: center; color: #ffe2a9; font: 700 19px Georgia, serif; }
+@media (max-height: 720px) {
+  .skills { min-height: 48px; }
+  .run-actions .icon-btn { font-size: 9px; padding: 4px 6px; }
+  .board-foot { font-size: 8px; }
+}
+
 </style>
 </head>
 <body>
@@ -546,9 +603,26 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
   <div class="picker-card">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за ~15 убитых спец-черепов.</p>
+    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за 20–30 убитых спец-черепов.</p>
+    <div class="picker-modes">
+      <label>Режим
+        <select id="mode-select">
+          <option value="classic">Классика</option>
+          <option value="sprint">Спринт (100 ходов)</option>
+          <option value="pretzel">Крендель (100 HP)</option>
+        </select>
+      </label>
+      <label>Сложность
+        <select id="difficulty-select">
+          <option value="0">Лёгкий</option>
+          <option value="1" selected>Обычный</option>
+          <option value="2">Сложный</option>
+          <option value="3">Очень сложный</option>
+        </select>
+      </label>
+    </div>
     <div class="picker-grid" id="picker-grid"></div>
-    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне.</p>
+    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне. В Спринте новые навыки сразу 5 уровня, но выжить нужно 100 ходов.</p>
   </div>
 </div>
 
@@ -572,12 +646,21 @@ body { display: flex; align-items: stretch; justify-content: center; }
     </div>
   </header>
 
-  <div class="notice">Пробник классики · <strong>свои графика и код</strong> · сложность: Нормал · босс каждые 10 ходов</div>
+  <div class="skills-head">
+    <div class="skills" id="skills" aria-label="Умения"></div>
+    <div class="run-actions">
+      <button class="icon-btn" id="menu-btn" type="button">Меню</button>
+      <button class="icon-btn" id="stats-btn" type="button">Свойства</button>
+    </div>
+  </div>
+
+  <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
 
   <!-- board -->
   <div class="board-wrap">
     <div id="chain-tip" class="chain-tip" role="status" aria-live="polite"></div>
     <div id="board" aria-label="Поле рейда 6 на 6"></div>
+    <div class="board-foot"><span id="chain-count">⛓ 0</span><span id="mode-badge">Классика · Обычный</span></div>
   </div>
 
   <!-- HUD -->
@@ -611,12 +694,20 @@ body { display: flex; align-items: stretch; justify-content: center; }
     <div class="bar xp" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
   </section>
 
-  <!-- skills -->
-  <div class="skills" id="skills" aria-label="Умения"></div>
-
   <div class="log-wrap" id="log" aria-live="polite"></div>
 
   <div class="flash" id="flash" role="status"></div>
+</div>
+
+<!-- run menu -->
+<div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
+  <div class="menu-card">
+    <h3>⚔ Меню рейда</h3>
+    <button class="btn" id="menu-resume" type="button">Продолжить</button>
+    <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
+    <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
+    <button class="btn secondary" id="menu-close" type="button">Закрыть</button>
+  </div>
 </div>
 
 <!-- generic modal (level / gold / armor / gameover) -->
@@ -640,10 +731,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>Щиты → броня; монеты → золото; зелье → лечение.</li>
       <li>Черепа атакуют после твоего хода. HP=0 → конец забега.</li>
       <li>Ассасин / Вервольф — «Калечение»: в конце хода убивает максимум один старый обычный череп — выбирается самый слабый из тех, у кого HP ниже твоей брони. Свежие, особые и боссы не затрагиваются.</li>
-      <li>Уровень 2 из 4; 100 золота → снаряжение; 80 улучшений → апгрейд.</li>
+      <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения.</li>
       <li>Спецскилл (Руна): магическая замкнутая цепочка собирает всё внутри неё.</li>
-      <li>Спецчерепы спавнятся каждые 4 хода (кроме бонусных ходов босса) — ~15 убийств → трофей → новый класс.</li>
-      <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы.</li>
+      <li>20% новых клеток — черепа; счётчик 50 ходов превращает одного из них в особого (1 из 32, босс — тип 1). 20–30 особых убийств → трофей → класс.</li>
+      <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы. У каждого черепа может быть смертный враг твоей расы.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
   </div>
@@ -664,6 +755,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // ============================================================
   const COLS = 6, ROWS = 6, CELL_COUNT = COLS * ROWS;
   const START_SKULLS = [3, 4];
+  // Original start: base max health 40 (InitNewGame) + accessory 10 = 50;
+  // armour = helmet 1 + armour 2 + shield 1 = 4; weapon damage 2.
   const START_HP = 50, START_MAX_ARMOR = 4;
 
   // --- формулы урона (классика) ---
@@ -677,7 +770,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   const SHIELD_UPGRADE_POINTS = 8; // очки upgrade bar за каждый щит (калибровка клона)
   const HEAL_PER_POTION = 1;       // базовая лечение за зелье (+ удача)
   const GOLD_PER_COIN = 2;         // базовая золото за монетку (+ boost gold)
-  const XP_PER_SKULL = 1;          // опыт за убитого черепа (+ boost XP)
+  const XP_PER_SKULL = 2;          // опыт за убитого черепа (+ boost XP)
   const XP_PER_BOSS = 6;           // опыт за убитого босса
 
   // Bonus resource (классика): шанс каждого «лишнего» типа сверх первых трёх
@@ -691,10 +784,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   const SPAWN_EVERY_TURNS = 3;
   const BOSS_EVERY_TURNS = 10;
   // Классика: трофей за ~15 убитых спец-черепов; не более 3 классов unlock за забег
-  const TROPHY_KILLS_PER_TROPHY = 15;
+  const TROPHY_KILLS_PER_TROPHY = 25;   // fallback when trophyRemaining is unset (20..30 roll)
   const MAX_UNLOCKS_PER_RUN = 3;
   const SPECIAL_EVERY_TURNS = 4;
-  const UPGRADE_BAR_MAX = 80;     // синяя полоса (от щитов) → выбор 1-из-4
+  const UPGRADE_BAR_MAX = 100;    // полоса UP (от щитов) → выбор 1-из-4
   const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
 
   // Черепа: формула оригинала (Classic, Normal) — docs/spec/01-board.md:
@@ -782,17 +875,41 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   };
 
   const SKILLS = [
-    { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 20, desc: 'Все клетки без черепов → новые' },
-    { id: 'freeze', name: 'Мороз', icon: '❄', cooldown: 16, desc: 'Черепа не бьют этим ходом' },
-    { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 15, desc: 'Собрать все зелья' },
-    { id: 'repair', name: 'Ремонт', icon: '⚒', cooldown: 16, desc: 'Собрать все щиты' },
-    { id: 'dazzle', name: 'Слепота', icon: '✦', cooldown: 15, desc: 'Все монеты → мечи' },
-    { id: 'disarm', name: 'Обезоружание', icon: '⚔', cooldown: 25, desc: 'Все щиты → мечи' },
-    { id: 'treasure', name: 'Кладовая', icon: '💎', cooldown: 18, desc: 'Собрать все монеты' },
-    { id: 'enchant', name: 'Затачивание', icon: '⚒', cooldown: 35, desc: 'Мгновенно: +2 к оружию, +4 к HP' },
-    { id: 'bribe', name: 'Воровство', icon: '🦊', cooldown: 13, desc: 'Атака черепов → золото (1 ход)' },
-    { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 18, desc: 'Все зелья дают 2 XP вместо HP' },
+    // 42 native skills. 0..30 are ordinary level-up skills, 31..39 are class
+    // skills, 40/41 are native-only (Shock/Awe) and can appear only at class 10.
+    { id: 'steal', name: 'Воровство', icon: '🦊', cooldown: 13, native: 0, desc: 'Атака черепов в этом ходу даёт золото' },
+    { id: 'freeze', name: 'Мороз', icon: '❄', cooldown: 16, native: 1, desc: 'Все черепа заморожены и не бьют этот ход' },
+    { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 15, native: 2, desc: 'Собрать все обычные зелья' },
+    { id: 'repair', name: 'Ремонт', icon: '⚒', cooldown: 16, native: 3, desc: 'Собрать все щиты' },
+    { id: 'counter', name: 'Контратака', icon: '↩', cooldown: 18, native: 4, desc: 'Вместо атаки черепа бьют сами себя' },
+    { id: 'shatter', name: 'Раскол', icon: '💥', cooldown: 18, native: 5, desc: 'У всех обычных черепов броня 0, атака не выше 1' },
+    { id: 'goldtouch', name: 'Золотое касание', icon: '🪙', cooldown: 15, native: 6, desc: 'Все мечи → монеты' },
+    { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 20, native: 7, desc: 'Все клетки без черепов → новые' },
+    { id: 'explosive', name: 'Взрывное зелье', icon: '🧨', cooldown: 18, native: 8, desc: 'Все зелья становятся взрывными' },
+    { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 18, native: 9, desc: 'Все зелья дают опыт вместо лечения' },
+    { id: 'enchant', name: 'Затачивание', icon: '🛠', cooldown: 35, native: 10, desc: 'Бесплатно усилить снаряжение (1 из 4)' },
+    { id: 'slash', name: 'Рассечение', icon: '🗡', cooldown: 12, native: 11, desc: 'Собрать случайную строку; с «Взломом» — всю доску' },
+    { id: 'treasure', name: 'Кладовая', icon: '💎', cooldown: 18, native: 12, desc: 'Собрать все монеты' },
+    { id: 'scavenge', name: 'Сбор', icon: '🛡', cooldown: 15, native: 13, desc: 'Все мечи → щиты' },
+    { id: 'disarm', name: 'Обезоруживание', icon: '⚔', cooldown: 25, native: 14, desc: 'Все обычные черепа → мечи' },
+    { id: 'dazzle', name: 'Слепота', icon: '✦', cooldown: 15, native: 15, desc: 'Все монеты → мечи' },
+    { id: 'boostdmg', name: 'Усиление урона', icon: '⚔', cooldown: 14, native: 16, desc: 'Урон оружия ×2 в этом ходу' },
+    { id: 'boostgold', name: 'Усиление золота', icon: '🪙', cooldown: 15, native: 17, desc: 'Золото ×2 в этом ходу' },
+    { id: 'boosthealth', name: 'Усиление лечения', icon: '❤', cooldown: 15, native: 18, desc: 'Лечение зелий ×2 в этом ходу' },
+    { id: 'boostarmour', name: 'Усиление брони', icon: '🛡', cooldown: 15, native: 19, desc: 'Броня и очки улучшений ×2 в этом ходу' },
+    { id: 'exorcise', name: 'Изгнание', icon: '✝', cooldown: 18, native: 20, desc: 'Случайный спец-череп становится обычным' },
+    { id: 'banish', name: 'Уничтожение', icon: '☄', cooldown: 20, native: 21, desc: 'Убрать случайный спец-череп без награды' },
+    { id: 'trap', name: 'Ловушка', icon: '🕸', cooldown: 18, native: 22, desc: 'Новые черепа появляются с 1 HP' },
+    { id: 'biggame', name: 'Крупная дичь', icon: '👹', cooldown: 15, native: 23, desc: 'Случайный обычный череп становится особым' },
+    { id: 'chamber', name: 'Сокровищница', icon: '🪙', cooldown: 25, native: 24, desc: 'Новые клетки — монеты' },
+    { id: 'magicsword', name: 'Магический меч', icon: '✨', cooldown: 14, native: 25, desc: 'Случайный меч бьёт как 5 мечей' },
+    { id: 'earthquake', name: 'Землетрясение', icon: '🌋', cooldown: 12, native: 26, desc: 'Перемешать все клетки поля' },
+    { id: 'explosivearmour', name: 'Взрывная броня', icon: '🛡', cooldown: 16, native: 27, desc: 'Ударить всех черепов на 2× текущую броню' },
+    { id: 'fireball', name: 'Огненный шар', icon: '🔥', cooldown: 14, native: 28, desc: 'Собрать область 3×3 в случайном месте' },
+    { id: 'mana', name: 'Зелье маны', icon: '🔹', cooldown: 20, native: 29, desc: 'Все зелья становятся зельями маны' },
+    { id: 'hack', name: 'Взлом', icon: '🪓', cooldown: 24, native: 30, desc: 'Случайный столбец → мечи; с «Рассечением» — вся доска' },
   ];
+
   // 7 уровней-стата (классика: 2 навыка + 2 стата в уровне)
   // --- уровень: два навыка + два старика, выбор 2 из 4 (классика) ---
   // Эффекты выводятся как «старое >> новое», как в оригинале.
@@ -822,7 +939,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         `Макс. HP: ${fmt(S.hero.maxHp)} >> ${fmt(S.hero.maxHp + 5)}`,
         `Шанс бонуса зелия: ${bonusPct('potion')}% >> ${bonusPct('potion') + 5}%`,
       ],
-      apply: () => { S.hero.stats.vitality++; S.hero.hp += 5; S.hero.maxHp += 5; }
+      apply: () => { S.hero.stats.vitality++; if (S.mode !== 'pretzel') { S.hero.hp += 5; S.hero.maxHp += 5; } }
     },
     {
       id: 'luck', name: 'Удача', icon: '🍀', chip: '+УДА', color: '#ffd94a',
@@ -931,6 +1048,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       ['Пробитие / стойкость брони', `${Math.round(S.pierce*100)}% / ${Math.round(S.durability*100)}%`],
       ['Регенерация / ответный урон', `${fmt(S.regen)} HP/ход / ${fmt(S.spikes)}`],
       ['Навыки', S.skills.length ? S.skills.map(id => (SKILL_BY_ID[id] || {}).name || id).join(', ') : 'пока нет'],
+      ...((S.equipment || []).map(it => [it.slotName, it.name + ' — ' + itemModsText(it)])),
     ];
     panel.innerHTML = '<p class="summary-hint">Итоговые параметры с учётом выбранных улучшений и снаряжения.<\/p>';
     const list = document.createElement('div');
@@ -952,6 +1070,112 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     { id: 'spangenhelm', name: 'Сломанный шлем', icon: '🛡', eff: 'def', value: 2, desc: '2 броня', apply: () => { S.hero.maxArmor += 2; S.hero.armor += 2; } },
     { id: 'amulet', name: 'Храбрый кулон', icon: '💎', eff: 'hp', value: 10, desc: '10 HP', apply: () => { S.hero.maxHp += 10; S.hero.hp += 10; } },
   ];
+  // --- 5 equipment slots (original: weapon/helmet/armour/shield/accessory) --
+  const ITEM_SLOTS = [
+    { id: 'weapon', name: 'Оружие', icon: '⚔', pool: ['weaponDamage', 'pierce', 'leech', 'spikes', 'baseDamage'] },
+    { id: 'helmet', name: 'Шлем', icon: '🪖', pool: ['maxArmor', 'durability', 'baseDamage', 'pierce'] },
+    { id: 'armour', name: 'Доспех', icon: '🥋', pool: ['maxArmor', 'durability', 'maxHp', 'blunt'] },
+    { id: 'shield', name: 'Щит', icon: '🛡', pool: ['armorPerShield', 'upgradePerShield', 'maxArmor', 'durability', 'spikes'] },
+    { id: 'accessory', name: 'Аксессуар', icon: '💎', pool: ['maxHp', 'regen', 'goldPerCoin', 'xpPerSkull', 'leech', 'pierce'] },
+  ];
+  const ITEM_STAT = {
+    weaponDamage: { name: 'Урон оружия', icon: '⚔', step: 1, kind: 'hero' },
+    maxArmor: { name: 'Макс. броня', icon: '🛡', step: 2, kind: 'heroArmor' },
+    maxHp: { name: 'Макс. HP', icon: '❤', step: 8, kind: 'heroHp' },
+    pierce: { name: 'Пробитие брони', icon: '🎯', step: 0.05, kind: 'pierce' },
+    leech: { name: 'Сок (лечение)', icon: '🩸', step: 0.05, kind: 'leech' },
+    durability: { name: 'Стойкость брони', icon: '🪨', step: 0.05, kind: 'durability' },
+    spikes: { name: 'Шипы', icon: '🗡', step: 1, kind: 'spikes' },
+    baseDamage: { name: 'Базовый урон', icon: '💥', step: 1, kind: 'base' },
+    armorPerShield: { name: 'Броня за щит', icon: '🔰', step: 1, kind: 'armorPerShield' },
+    upgradePerShield: { name: 'Очки UP за щит', icon: '⬆', step: 1, kind: 'upgradePerShield' },
+    regen: { name: 'Регенерация', icon: '♻', step: 1, kind: 'regen' },
+    goldPerCoin: { name: 'Золото за монету', icon: '🪙', step: 0.1, kind: 'goldPerCoin' },
+    xpPerSkull: { name: 'Опыт за череп', icon: '⭐', step: 0.1, kind: 'xpPerSkull' },
+    blunt: { name: 'Сбивание атаки', icon: '🚫', step: 1, kind: 'blunt' },
+  };
+  const ITEM_NAMES = {
+    weapon: ['Ржавый клинок', 'Кривая сабля', 'Тяжёлая булава', 'Колючий молот', 'Топор палача', 'Клинок стражи'],
+    helmet: ['Мятый шлем', 'Кожаный капюшон', 'Рогатый венец', 'Шлем рыцаря', 'Каска рудокопа'],
+    armour: ['Стёганый жилет', 'Кольчуга', 'Чешуйчатый панцирь', 'Кираса стража', 'Мантия мага'],
+    shield: ['Щепка', 'Круглый щит', 'Башенный щит', 'Щит-башня', 'Рунический барьер'],
+    accessory: ['Медное кольцо', 'Амулет удачи', 'Кулон охотника', 'Печать жреца', 'Талисман героя'],
+  };
+  const ITEM_PREFIXES = ['Старый', 'Крепкий', 'Блестящий', 'Проклятый', 'Гномий', 'Эльфийский', 'Кровавый', 'Лунный', 'Кованый'];
+
+  function itemSlotById(id) { return ITEM_SLOTS.find(s => s.id === id); }
+  function itemModText(key, value) {
+    const def = ITEM_STAT[key];
+    if (!def) return '';
+    const v = Math.abs(value);
+    return `${def.icon} ${def.name} +${def.kind === 'pierce' || def.kind === 'leech' || def.kind === 'durability' || def.kind === 'goldPerCoin' || def.kind === 'xpPerSkull' ? Math.round(v * 100) + '%' : fmt(v)}`;
+  }
+  function applyItemMod(key, value, sign) {
+    const d = ITEM_STAT[key];
+    if (!d) return;
+    const v = value * sign;
+    switch (d.kind) {
+      case 'hero': S.hero.weaponDamage += v; break;
+      case 'heroArmor':
+        S.hero.maxArmor = Math.max(0, S.hero.maxArmor + v);
+        S.hero.armor = Math.max(0, Math.min(S.hero.maxArmor, S.hero.armor + v));
+        break;
+      case 'heroHp':
+        if (S.mode === 'pretzel') break;
+        S.hero.maxHp = Math.max(1, S.hero.maxHp + v);
+        S.hero.hp = Math.max(1, Math.min(S.hero.maxHp, S.hero.hp + v));
+        break;
+      case 'pierce': S.pierce = Math.max(0, Math.min(1, S.pierce + v)); break;
+      case 'leech': S.leech = Math.max(0, S.leech + v); break;
+      case 'durability': S.durability = Math.max(0, Math.min(MAX_DURABILITY, S.durability + v)); break;
+      case 'spikes': S.spikes = Math.max(0, S.spikes + v); break;
+      case 'base': S.baseDamageBonus = Math.max(0, (S.baseDamageBonus || 0) + v); break;
+      case 'armorPerShield': S.armorPerShield = Math.max(1, S.armorPerShield + v); break;
+      case 'upgradePerShield': S.upgradePerShield = Math.max(1, S.upgradePerShield + v); break;
+      case 'regen': S.regen = Math.max(0, S.regen + v); break;
+      case 'blunt': S.blunt = Math.max(0, S.blunt + v); break;
+      case 'goldPerCoin': S.goldPerCoin = Math.max(0.25, S.goldPerCoin + v); break;
+      case 'xpPerSkull': S.xpPerSkull = Math.max(0.25, S.xpPerSkull + v); break;
+      default: break;
+    }
+  }
+  function applyItem(item, sign) {
+    if (!item || !item.mods) return;
+    Object.keys(item.mods).forEach(k => applyItemMod(k, item.mods[k], sign));
+  }
+  function makeItem(slotId) {
+    const slot = itemSlotById(slotId) || ITEM_SLOTS[0];
+    const keys = shuffle([...slot.pool]).slice(0, randInt(2, 4, 5));
+    const mods = {};
+    keys.forEach(k => {
+      const def = ITEM_STAT[k];
+      const steps = randInt(1, 2, 5);
+      mods[k] = +(def.step * steps).toFixed(2);
+    });
+    const base = ITEM_NAMES[slot.id] || ITEM_NAMES.weapon;
+    const name = ITEM_PREFIXES[randInt(0, ITEM_PREFIXES.length - 1, 5)] + ' ' + base[randInt(0, base.length - 1, 5)].toLowerCase();
+    return { slot: slot.id, slotName: slot.name, icon: slot.icon, name, mods };
+  }
+  function itemModsText(item) {
+    if (!item || !item.mods) return 'пусто';
+    const parts = Object.keys(item.mods).map(k => itemModText(k, item.mods[k]));
+    return parts.length ? parts.join(' · ') : 'без бонусов';
+  }
+  function equipItem(item) {
+    const index = S.equipment.findIndex(e => e.slot === item.slot);
+    if (index < 0) return;
+    const old = S.equipment[index];
+    applyItem(old, -1);
+    applyItem(item, 1);
+    S.equipment[index] = item;
+  }
+  function makeUpgradeOffer(slotId) {
+    const slot = itemSlotById(slotId);
+    const key = slot.pool[randInt(0, slot.pool.length - 1, 5)];
+    const def = ITEM_STAT[key];
+    return { slot: slot.id, slotName: slot.name, icon: slot.icon, key, value: def.step, name: def.name, label: itemModText(key, def.step) };
+  }
+
   // ============================================================
   // КЛАССЫ И РАСЫ (классика: 10 классов, каждый — Perk/Flaw/Race/Уникальный навык)
   // 0 = Аduventurer (стартовый). Остальные — выбираемы в пикeрe (владелец:
@@ -959,58 +1183,63 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // после 100+ забегов; trophy-механика — нет, см. LUNAPARK.md §7).
   // ============================================================
   const CLASSES = [
-    { id: 'adventurer', name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport',
+    { id: 'adventurer', name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport', pool: ['steal', 'freeze', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour'],
       perk: '—', flaw: '—', raceName: 'Человек',
       perkDesc: 'нет пассивов', flawDesc: 'нет изъянов',
       clsDesc: 'Стартовый класс: нет пассива или изъяна, свой навык — Телепорт',
       uniqueSkillDesc: 'Телепорт (20): все клетки без черепов → новые' },
-    { id: 'barbarian', name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk',
+    { id: 'barbarian', name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk', pool: ['berserk', 'repair', 'counter', 'shatter', 'teleport', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
       perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Орк',
       perkDesc: '+1 базового урона', flawDesc: '-10% шанс бонусных щитов',
       clsDesc: 'пассив: Сила · изъян: Безрассудство · раса: Орк (оглушение 10%)',
       uniqueSkillDesc: 'Берсерк (14): убийство черепа даёт HP равный его атаке' },
-    { id: 'mage', name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune',
+    { id: 'mage', name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Изменник',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
       clsDesc: 'пассив: Одарённость · изъян: Хрупкость · раса: Изменник (менятся)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка собирает все клетки внутри' },
-    { id: 'ranger', name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley',
+    { id: 'ranger', name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
       perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Эльф',
       perkDesc: '5% мечей выпадают стрелками (стрелять на 1 клетку)', flawDesc: '-1 броня',
       clsDesc: 'пассив: Ловкость · изъян: Тощий · раса: Эльф (медленный яд)',
       uniqueSkillDesc: 'Воллей (15): все мечи → стрелы (стрелы стреляют на 1 клетку)' },
-    { id: 'rogue', name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed',
+    { id: 'rogue', name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed', pool: ['greed', 'steal', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostgold', 'boosthealth', 'trap', 'biggame', 'chamber', 'magicsword'],
       perk: 'Frugal', flaw: 'Clumsy', perkName: 'Бережливость', flawName: 'Неловкость', raceName: 'Саурен',
       perkDesc: '+10% шанс бонусных монет', flawDesc: '3% щитов выпадают сломанными (дают 0)',
       clsDesc: 'пассив: Бережливость · изъян: Неловкость · раса: Саурен (поиск — нет магазина)',
       uniqueSkillDesc: 'Жадность (25): убивает всех черепов рядом с монеткой' },
-    { id: 'paladin', name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand',
+    { id: 'paladin', name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand', pool: ['laststand', 'heal', 'repair', 'counter', 'shatter', 'explosive', 'elixir', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
       perk: 'Intimidating', flaw: 'Zealous', perkName: 'Устрашающий', flawName: 'Рьяный', raceName: 'Драконкин',
       perkDesc: 'смертный враг появляется на 50% реже (нет смертных врагов в клоне)', flawDesc: 'черепа-монстры появляются на 1 ход раньше',
       clsDesc: 'пассив: Устрашающий (не реализовано) · изъян: Рьяный · раса: Драконкин (огненное дыхание)',
       uniqueSkillDesc: 'Последний рубеж (35): полное лечение HP, если герой погибнет в этот ход' },
-    { id: 'priest', name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish',
+    { id: 'priest', name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish', pool: ['wish', 'freeze', 'heal', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'dazzle', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Faithful', flaw: 'Cautious', perkName: 'Праведный', flawName: 'Осторожный', raceName: 'Фавн',
       perkDesc: 'двойной эффект регенерации', flawDesc: '-20% пробития брони',
       clsDesc: 'пассив: Праведный · изъян: Осторожный · раса: Фавн (возрождение)',
       uniqueSkillDesc: 'Желание — одноразовый навык: собрать все клетки доски' },
-    { id: 'raider', name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism',
+    { id: 'raider', name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism', pool: ['masochism', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'slash', 'treasure', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour', 'exorcise', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
       perk: 'Daring', flaw: 'Cocky', perkName: 'Дерзкий', flawName: 'Наглый', raceName: 'Халфлинг',
       perkDesc: '100% шанс бонусов при цепочке 10+ клеток', flawDesc: 'цепочка из ровно 3 клеток ничего не даёт',
       clsDesc: 'пассив: Дерзкий · изъян: Наглый · раса: Халфлинг (храбрость)',
       uniqueSkillDesc: 'Мазохизм (15): превращает все монетки в черепов' },
-    { id: 'warrior', name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge',
+    { id: 'warrior', name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge', pool: ['charge', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostarmour', 'banish', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
       perk: 'Tough', flaw: 'Noisy', perkName: 'Прочный', flawName: 'Громкий', raceName: 'Дворф',
       perkDesc: '+10 макс. HP', flawDesc: 'черепа-монстры +5% HP',
       clsDesc: 'пассив: Прочный · изъян: Громкий · раса: Дворф (верховая атака)',
       uniqueSkillDesc: 'Рывок (18): собирать все клетки по краю поля' },
-    { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste',
+    { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste', pool: ['haste', 'steal', 'freeze', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'treasure', 'disarm', 'dazzle', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour', 'fireball'],
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
       raceDesc: 'Калечение: в конце твоего хода убивает не более одного старого обычного черепа с HP ниже твоей брони.',
       clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
       uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
   ];
+  // Mortal enemy per race (original GetMortalEnemyType table).
+  const MORTAL_BY_RACE = {
+    Human: 0, Elf: 9, Dwarf: 14, Sauren: 13, Faun: 16,
+    Orc: 12, Halfling: 5, Werewolf: 20, Dragonkin: 8, Changeling: 19,
+  };
   const CLASS_BY_ID = Object.fromEntries(CLASSES.map(c => [c.id, c]));
 
   // --- уникальные навыки классов (заполнение — после парраметров/классов) ---
@@ -1026,6 +1255,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     { id: 'charge', name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
     { id: 'haste', name: 'Хействие', icon: '🗡', cooldown: 16, desc: 'Цепочка может смешивать 2 разных типа (1 ход)' },
     { id: 'volley', name: 'Воллей', icon: '🏹', cooldown: 15, desc: 'Все мечи → стрелы (стрелы стреляют на 1 клетку)' },
+    { id: 'shock', name: 'Шок', icon: '⚡', cooldown: 14, native: 40, nativeOnly: true, desc: 'Собрать щиты и монеты в верхней половине; с «Благоговением» — цепь' },
+    { id: 'awe', name: 'Благоговение', icon: '🌀', cooldown: 14, native: 41, nativeOnly: true, desc: 'Собрать щиты и зелья в нижней половине; с «Шоком» — цепь' },
   ];
   const ALL_SKILLS = SKILLS.concat(UNIQUE_SKILLS);
   const SKILL_BY_ID = Object.fromEntries(ALL_SKILLS.map(s => [s.id, s]));
@@ -1139,6 +1370,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return {
       board: [],
       classId: 'adventurer',       // текущий класс забега (см. CLASSES)
+      mode: 'classic',             // classic | sprint | pretzel
+      difficulty: 1,               // 0 Easy, 1 Normal, 2 Hard, 3 Harder
+      skillLevels: {},             // skill id -> level (Sprint starts at 5)
+      won: false,
       hero: {
         hp: START_HP,
         maxHp: START_HP,
@@ -1147,11 +1382,15 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         weaponDamage: 2,
         level: 1,
         xp: 0,
-        xpNext: 10,
+        xpNext: 100,
         gold: 0,
         goldBox: 0,
         stats: { strength: 1, vitality: 1, luck: 1, dexterity: 1, charisma: 0, damage: 0, defense: 0 },
       },
+      // Five original equipment slots.  Base hero values already include the
+      // starting gear; bought items only add their rolled mods.
+      equipment: ITEM_SLOTS.map(sl => ({ slot: sl.id, slotName: sl.name, icon: sl.icon,
+        name: 'Стартовое ' + sl.name.toLowerCase(), mods: {} })),
       skills: [],                  // active skill ids (class-unique + chosen in level-ups)
       skillCooldowns: {},         // id -> turns remaining (cooldowns may be reduced by Quicken)
       pierce: BASE_PIERCING,        // вероятность пробития брони черепа
@@ -1162,6 +1401,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       upgradePerShield: SHIELD_UPGRADE_POINTS, // очки upgrade bar за щит
       xpPerSkull: XP_PER_SKULL,     // опыт за черепа (base + boost XP)
       freezeNextTurn: 0, stealActive: 0,
+      // Skill flags (native c234..c23b / 1433d/e / 15e72..73).
+      swordBoost: 0, shieldBoost: 0, potionBoost: 0, coinBoost: 0,
+      counterattack: 0, oneHealthSkulls: 0, forceCoins: 0,
+      slashCombo: 0, hackCombo: 0, shockCombo: 0, aweCombo: 0,
       berserkActive: 0,            // лекарство от этого хода (Barbarian perk)
       cooldownAdjust: {},          // skill id -> extra cooldown (−1 для Cunning)
       hasteActive: 0,              // 2 разных типа в цепочке (1 ход)
@@ -1188,6 +1431,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       over: false,
       spawnsDone: 0,
       bossTurn: BOSS_EVERY_TURNS,
+      // Original promotion counter: a new skull becomes a special/boss when
+      // this reaches 0.  Starts at 50 (Zealous 49).
+      promotionRemaining: 50,
+      // Trophy counter: 20..30 special kills, reduced only on non-easy.
+      trophyRemaining: 25,      // re-rolled to 20..30 after each trophy
       selected: [],
       chainType: null,
       pendingModal: null,         // null | 'level' | 'armor' | 'gold' | 'gameover'
@@ -1239,15 +1487,49 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     //   level > 40 → q = trunc(q·(1+(level−40)/60))
     // Обычные черепы — 1⚔️·0🛡·4❤️ у старта, рост ~q/65…/55 атк, q/50…/40 броня, q/20…/15 HP.
     const turn = S.turn;
-    const level = Math.floor(((S.hero && S.hero.xpLevelCum) || 0) / 100);
+    const difficulty = S.mode === 'pretzel' ? 1 : (S.difficulty || 0);
+    const totalXp = (S.hero && S.hero.xpLevelCum) || 0;
+    const level = Math.floor((S.mode === 'sprint' ? Math.floor(totalXp / 4) : totalXp) / 100);
     let q = turn;
-    if (q > 500) q = Math.floor(q * (1 + (q - 500) / 700));
+    if (difficulty !== 0) {
+      const k = difficulty === 1 ? 700 : difficulty === 2 ? 750 : 500;
+      q = Math.floor(turn * Math.max(1, 1 + (turn - 500) / k));
+    }
     if (level > 40) q = Math.floor(q * (1 + (level - 40) / 60));
-    const a = Math.max(1, randInt(Math.floor(q / 65), Math.floor(q / 55)));
-    const d = Math.max(0, randInt(Math.floor(q / 50), Math.floor(q / 40)));
-    const h = Math.max(4, randInt(Math.floor(q / 20), Math.floor(q / 15)));
+    let a, d, h;
+    if (difficulty === 0) {
+      a = Math.max(1, randInt(Math.floor(q / 80), Math.floor(q / 70)));
+      d = Math.max(0, randInt(Math.floor(q / 70), Math.floor(q / 55)));
+      h = Math.max(3, randInt(Math.floor(q / 25), Math.floor(q / 20)));
+    } else if (difficulty === 2) {
+      a = Math.max(1, randInt(Math.floor(q / 50), Math.floor(q / 40)));
+      d = Math.max(0, randInt(Math.floor(q / 40), Math.floor(q / 37)));
+      h = Math.max(4, randInt(Math.floor(q / 17), Math.floor(q / 12)));
+    } else if (difficulty === 3) {
+      a = Math.max(1, randInt(Math.floor(q / 40), Math.floor(q / 35)));
+      d = Math.max(0, randInt(Math.floor(q / 30), Math.floor(q / 35)));
+      h = Math.max(4, randInt(Math.floor(q / 15), Math.floor(q / 10)));
+    } else {
+      a = Math.max(1, randInt(Math.floor(q / 65), Math.floor(q / 55)));
+      d = Math.max(0, randInt(Math.floor(q / 50), Math.floor(q / 40)));
+      h = Math.max(4, randInt(Math.floor(q / 20), Math.floor(q / 15)));
+    }
+    // Sprint overrides the three base stats after the normal rolls.
+    if (S.mode === 'sprint') {
+      a = Math.max(1, randInt(Math.floor(q / 20), Math.floor(q / 12)));
+      d = Math.max(0, randInt(Math.floor(q / 10), Math.floor(q / 6)));
+      h = Math.max(4, randInt(Math.floor(q / 8), Math.floor(q / 4)));
+    }
     // спец-череп: тип определяет модификатор статов. Если передан typeId — используем, иначе рана.
-    const effType = (boss || !special) ? (boss ? 1 : 0) : (typeId != null ? typeId : randSpecialType());
+    let effType = (boss || !special) ? (boss ? 1 : 0) : (typeId != null ? typeId : randSpecialType());
+    // Mortal enemy: non-Human races have a 5% (2.5% Intimidating) chance that
+    // a generated special is their personal nemesis.
+    if (special && !boss && cls && cls.race !== 'Human') {
+      const chanceP = cls.perk === 'Intimidating' ? 0.025 : 0.05;
+      if (random(5) < chanceP && MORTAL_BY_RACE[cls.race] != null) {
+        effType = MORTAL_BY_RACE[cls.race];
+      }
+    }
     let atk = a, def = d, hp = h;
     if (boss) {
       atk = Math.round(a * BOSS_STATS.atk);
@@ -1262,6 +1544,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
     // Спец/босс: броня не ниже 1 (ориг: defence = max(1, defence))
     if (boss || (special && effType !== 17)) def = Math.max(1, def);
+    // Invisible mortal enemy: while it is on the board, newly generated
+    // ordinary enemies get double defence.
+    if (!boss && !special && S && S.board && S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 5)) {
+      def *= 2;
+    }
     // Оригинал (Tile::GenerateStats): Sneaky (flaw=3) даёт +1 HP только обычным черепам
     const flawBonusHp = (!boss && !special && cls && cls.flaw === 'Sneaky') ? 1 : 0;
     // Оригинал: Noisy (flaw=9) → спец/босс +5% HP
@@ -1275,6 +1562,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       S.hero.armor = 0;
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
+    if (S.oneHealthSkulls > 0) hp = 1;
     return {
       boss: !!boss,
       special: !!special,
@@ -1287,6 +1575,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       def: def,
       hp: hp,
       maxHp: hp,
+      enteredTurn: (S && S.turn != null) ? S.turn : 0,
     };
   }
 
@@ -1375,16 +1664,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     let cells = null;
     for (let tries = 0; tries < 30; tries++) {
       cells = new Array(CELL_COUNT).fill(null).map(() => createTile());
-      const count = START_SKULLS[0];
-      // skulls enter from the top of random columns; then gravity compacts rows down
-      const cols = shuffle([...Array(COLS).keys()]).slice(0, count);
-      cols.forEach((c, i) => {
-        const skull = makeSkull(false);
-        skull.maxHp = skull.hp;
-        skull.enteredTurn = -1; // present from the start of the game
-        cells[c] = { type: 'skull', skull };
-      });
-      // compact each column to the bottom (skulls fall with the rest)
+      // Original new-game board contains no skulls: enemies enter later with
+      // refills and are promoted by the 50-turn counter.
+      // compact each column to the bottom
       for (let c = 0; c < COLS; c++) {
         const columnItems = [];
         for (let r = ROWS - 1; r >= 0; r--) {
@@ -1418,7 +1700,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   // «спец» череп: появляется каждые SPECIAL_EVERY_TURNS ходов (кроме бонусных ходов с боссом).
-  // Классика: трофей за ~15 убитых спец-черепов (см. TROPHY_KILLS_PER_TROPHY).
+  // Классика: трофей за 20..30 убитых спец-черепов (перебрасывается после каждого трофея).
   function specialSpawnCount() {
     const t = S.turn;
     if (t < 2) return 0;
@@ -1428,7 +1710,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function createNewTile() {
-    // new tiles appear at the top; only non-skull types
+    // Treasure Chamber: every new tile is a coin this turn.
+    if (S.forceCoins > 0) return { type: 'coin' };
+    // Original refill: 20% of new tiles are skulls. A skull created while the
+    // promotion counter is 0 becomes a special (types 1..32, 1 = boss).
+    if (randInt(0, 99, 1) < 20) {
+      let skull;
+      if ((S.promotionRemaining || 0) <= 0) {
+        const type = randInt(1, 32, 1);
+        skull = type === 1 ? makeSkull(true) : makeSkull(false, true, type);
+        S.promotionRemaining = 50;
+        S.specialsPromoted = (S.specialsPromoted || 0) + 1;
+      } else {
+        skull = makeSkull(false);
+      }
+      skull.enteredTurn = S.turn;
+      return { type: 'skull', skull };
+    }
     return createTile();
   }
 
@@ -1498,11 +1796,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function chainTypeForCell(cell) {
     if (!cell) return null;
     if (cell.type === 'skull' || cell.type === 'arrow') return 'sword';
+    // Chain tiles (Shock+Awe / Haste) are wildcards and never define a type.
+    if (cell.type === 'chain') return S.chainType || 'sword';
     return cell.type;
   }
   function chainAllows(cellType, chainType) {
-    if (chainType === 'sword') return cellType === 'sword' || cellType === 'arrow' || cellType === 'skull';
-    return cellType === chainType;
+    if (cellType === 'chain' || chainType === 'chain') return true;
+    if (chainType === 'sword') return cellType === 'sword' || cellType === 'arrow' || cellType === 'skull' || cellType === 'chain';
+    return cellType === chainType || cellType === 'chain';
   }
 
   function cellTypeAt(i) {
@@ -1625,6 +1926,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (cell.type === 'potion' && cell.acid) return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M9 12l2.5 2.5 2.5-3.5 2.5 2.5" stroke="#1c1428" stroke-width="1.5" fill="none"/><\/svg>';
     if (cell.type === 'potion' && cell.mana) return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M12 9.5 13 12 15.5 13 13 14 12 16.5 11 14 8.5 13 11 12Z" fill="#fff" opacity="0.85"/><\/svg>';
     if (cell.type === 'potion') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M12 2.5 12 6" stroke="#1c1428" stroke-width="1.6"/><circle cx="12" cy="14.6" r="2.4" fill="#fff" opacity="0.5"/><\/svg>';
+    if (cell.type === 'chain') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M9 7 7.5 8.5a4 4 0 0 0 0 5.6L9 15.6M15 7l1.5 1.5a4 4 0 0 1 0 5.6L15 15.6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M8 12h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><\/svg>';
     if (cell.type === 'skull') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 3C7 3 4 6.5 4 10.5c0 2 1 3.7 2.2 4.6L6.5 18c0 1.4 1.1 2.5 2.5 2.5h2l1 2.2 1 2.2h3l1-2.2 1-2.2h2c1.4 0 2.5-1.1 2.5-2.5l-.7-2.9c1.2-.9 2.2-2.6 2.2-4.6C20 6.5 17 3 12 3Z" fill="currentColor"/><circle cx="9" cy="11" r="2.2" fill="#1c1428"/><circle cx="15" cy="11" r="2.2" fill="#1c1428"/><path d="M11 15h2l-1 2" fill="#1c1428"/><\/svg>';
     return '';
   }
@@ -1769,10 +2071,20 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function baseDamage() {
     // Классика: урон = база (+Сила + 2×Урон + Ускорение) + оружие × (число мечей)
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    return BASE_DAMAGE + S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
+    const raw = BASE_DAMAGE + S.hero.stats.strength + 2 * S.hero.stats.damage + (cls && cls.perk === 'Strong' ? 1 : 0) + (S.baseDamageBonus || 0);
+    // Mortal enemy Frozen: пока он на доске, базовый урон героя усечён вдвое.
+    if (cls && cls.race === 'Dragonkin' && hasMortalEnemy(8)) return Math.floor(raw / 2);
+    return raw;
+  }
+
+  // Pактический враг расы присутствует на доске (mortal enemy).
+  function hasMortalEnemy(type) {
+    if (!S || !S.board) return false;
+    return S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === type && c.skull.hp > 0);
   }
   function swordDamage(swordCount) {
-    return Math.round(baseDamage() + S.hero.weaponDamage * swordCount);
+    const raw = baseDamage() + S.hero.weaponDamage * swordCount;
+    return Math.round(raw * (S.swordBoost > 0 ? 2 : 1));
   }
 
   function chainPreview() {
@@ -1783,7 +2095,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     chain.forEach(idx => {
       const cell = S.board[idx];
       if (!cell) return;
-      if (cell.type === 'sword' || cell.type === 'arrow') swordCount++;
+      if (cell.type === 'sword' || cell.type === 'arrow') swordCount += swordWeight(cell);
       else if (cell.type === 'shield') shieldCount++;
       else if (cell.type === 'coin') coinCount++;
       else if (cell.type === 'potion') potionCount++;
@@ -1834,6 +2146,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function renderChainTip() {
     const tip = el('chain-tip');
     if (!tip) return;
+    if (el('chain-count')) el('chain-count').textContent = '⛓ ' + (S.selected ? S.selected.length : 0);
     const p = chainPreview();
     if (!p || p.count < 3) {
       tip.classList.remove('show');
@@ -1941,9 +2254,21 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)} / ${GOLD_BOX_MAX}`;
     if (el('dmg-text')) el('dmg-text').textContent = `⚔ ${fmt(baseDamage())} + ${fmt(h.weaponDamage)}×меч`;
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
+    if (el('status-line')) {
+      const score = S.skullsKilled * 10 + Math.max(0, S.maxLevel - 1) * 100 + Math.floor(S.goldEarned / 10);
+      S.score = score;
+      el('status-line').textContent = `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
+    }
+    if (el('mode-badge')) {
+      const modeName = S.mode === 'sprint' ? 'Спринт' : S.mode === 'pretzel' ? 'Крендель' : 'Классика';
+      const diffName = ['Лёгкий', 'Обычный', 'Сложный', 'Очень сложный'][S.difficulty || 0];
+      el('mode-badge').textContent = modeName + ' · ' + diffName;
+    }
+    if (el('chain-count')) el('chain-count').textContent = '⛓ ' + (S.selected ? S.selected.length : 0);
     if (el('trophy-text')) {
       const capped = S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN;
-      el('trophy-text').textContent = capped ? '🏆 max' : `🏆 ${Math.min(S.specialsKilled, TROPHY_KILLS_PER_TROPHY)} / ${TROPHY_KILLS_PER_TROPHY}`;
+      const need = S.trophyRemaining || TROPHY_KILLS_PER_TROPHY;
+      el('trophy-text').textContent = capped ? '🏆 max' : `🏆 ${Math.min(S.specialsKilled, need)} / ${need}`;
     }
     // upgrade bar
     const u = el('upgrade-bar'); if (u) u.style.width = Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100) + '%';
@@ -1956,19 +2281,30 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const row = el('skills');
     if (!row) return;
     row.innerHTML = '';
-    const allSkills = SKILLS.concat(UNIQUE_SKILLS);
-    S.skills.forEach(skillId => {
-      const skill = allSkills.find(s => s.id === skillId);
-      if (!skill) return;
+    // Always show four slots, like the original interface.
+    for (let i = 0; i < 4; i++) {
+      const skillId = S.skills[i];
+      const skill = skillId ? SKILL_BY_ID[skillId] : null;
+      if (!skill) {
+        const empty = document.createElement('button');
+        empty.type = 'button';
+        empty.className = 'skill empty';
+        empty.disabled = true;
+        empty.innerHTML = '<span class="skill-icon">＋<\/span><span class="skill-name">пусто<\/span>';
+        empty.title = 'Слот навыка откроется на уровне 2';
+        row.appendChild(empty);
+        continue;
+      }
       const left = S.skillCooldowns[skillId] || 0;
+      const level = (S.skillLevels && S.skillLevels[skillId]) || 1;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
-      btn.innerHTML = `<span class="skill-icon">${skill.icon}<\/span><span class="skill-name">${skill.name}<\/span>${left > 0 ? `<span class="cd">${left}<\/span>` : ''}`;
-      btn.title = skill.desc + ' (кд: ' + skill.cooldown + ')';
+      btn.innerHTML = `<span class="skill-icon">${skill.icon}<\/span><span class="skill-name">${skill.name}<\/span>${left > 0 ? `<span class="cd">${left}<\/span>` : (level > 1 ? `<span class="cd">ур.${level}<\/span>` : '')}`;
+      btn.title = skill.desc + ' (кд: ' + Math.max(0, skill.cooldown - (level - 1)) + ')' + (level > 1 ? ', уровень ' + level : '');
       btn.addEventListener('click', () => activateSkill(skillId));
       row.appendChild(btn);
-    });
+    }
   }
 
   // --- log ------------------------------------------------------------------
@@ -1991,6 +2327,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     SKULL_IMAGES.clear();
 
     // --- class setup: perks/flaws/race (сохраняем класс между перезапусками) ---
+    // Mode / difficulty choose the original rule set independently.
+    const modeEl = qs('#mode-select');
+    const diffEl = qs('#difficulty-select');
+    S.mode = (modeEl && modeEl.value) || (() => { try { return localStorage.getItem('raid:mode') || 'classic'; } catch (e) { return 'classic'; } })();
+    S.difficulty = Number(( diffEl && diffEl.value) || (() => { try { return localStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+    if (!['classic', 'sprint', 'pretzel'].includes(S.mode)) S.mode = 'classic';
+    S.difficulty = Math.max(0, Math.min(3, S.difficulty || 0));
+    try { localStorage.setItem('raid:mode', S.mode); localStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
     S.classId = getSelectedClassId();
     let cls = CLASS_BY_ID[S.classId];
     if (!cls) {       // класс недоступен (заблокирован) — Adventurer как старт
@@ -1998,13 +2342,18 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       cls = CLASS_BY_ID.adventurer;
     }
 
+    // Pretzel: base HP 100 and HP growth is removed.
+    if (S.mode === 'pretzel') { S.hero.maxHp = 100; S.hero.hp = 100; }
     // Perps классов (fixed at start):
     if (cls.flaw === 'Slim') { S.hero.maxArmor = Math.max(1, S.hero.maxArmor - 1); S.hero.armor = Math.min(S.hero.armor, S.hero.maxArmor); }
     if (cls.perk === 'Tough') { S.hero.maxHp += 10; S.hero.hp += 10; }   // Warrior perk
     if (cls.flaw === 'Frail') { S.hero.maxHp = Math.max(1, S.hero.maxHp - 10); S.hero.hp = Math.min(S.hero.hp, S.hero.maxHp); }  // Mage flaw
 
-    // Priest flaw: -20% pierce
-    if (cls.flaw === 'Cautious') S.pierce = Math.max(0, S.pierce * 0.8);
+    // Priest flaw Cautious: pierce threshold 30% instead of the base 50%.
+    if (cls.flaw === 'Cautious') S.pierce = 0.30;
+    // Original promotion/trophy counters.
+    S.promotionRemaining = cls.flaw === 'Zealous' ? 49 : 50;
+    S.trophyRemaining = randInt(20, 30, 5);
 
     // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
     // на уровень (см. chooseLevelOptions) — не сразу при старте забега.
@@ -2018,10 +2367,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     renderBoard();
     renderHUD();
     renderChainTip();
-    log('✦ Новый забег: череп входит сверху (' + cls.name + ')');
+    log('✦ Новый забег: ' + cls.name + ' спускается в рейд');
   }
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
+  function clsRace() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.race : 'Human'; }
 
   function activateSkill(id) {
     if (S.over || S.resolving) return;
@@ -2031,7 +2381,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (!skill) return;
     // Quicken (Upgrade): −1 к кулдауну всех навыков
     const adjust = (S.cooldownAdjust && S.cooldownAdjust[id]) || 0;
-    S.skillCooldowns[id] = Math.max(id === 'wish' ? 0 : 2, skill.cooldown - S.quicken + adjust);
+    const level = (S.skillLevels && S.skillLevels[id]) || 1;
+    S.skillCooldowns[id] = Math.max(id === 'wish' ? 0 : 2, skill.cooldown - (level - 1) - S.quicken + adjust);
     // Fire Breath (Dragonkin/Paladin race): ежедневная вспышка — любого навык → случайный черепу вспышка
     fireBreathOnSkill();
     applySkill(id);
@@ -2052,107 +2403,394 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   function targetArtName(s) { return s && s.boss ? 'босс' : 'череп'; }
 
+  // --- helpers for native skills -------------------------------------------
+  function swordWeight(cell) {
+    if (!cell) return 0;
+    if (cell.type === 'sword') return cell.magicSword ? 5 : 1;
+    if (cell.type === 'arrow') return 1;
+    return 0;
+  }
+
+  function liveSkullIndices(includeSpecial) {
+    const out = [];
+    for (let i = 0; i < CELL_COUNT; i++) {
+      const c = S.board[i];
+      if (c && c.type === 'skull' && c.skull && c.skull.hp > 0) {
+        if (includeSpecial || (!c.skull.special && !c.skull.boss)) out.push(i);
+      }
+    }
+    return out;
+  }
+
+  function hitSkullAt(idx, amount, opts) {
+    opts = opts || {};
+    const cell = S.board[idx];
+    if (!cell || cell.type !== 'skull' || !cell.skull || cell.skull.hp <= 0) return false;
+    const s = cell.skull;
+    let dmg = Math.max(0, Math.round(amount));
+    if (dmg <= 0) return false;
+    if (!opts.ignoreDefence) {
+      if (randInt(0, 100, 5) >= S.pierce * 100) {
+        const absorbed = Math.min(dmg, Math.max(0, s.def));
+        s.def -= absorbed;
+        dmg -= absorbed;
+      }
+    }
+    s.hp -= dmg;
+    floatOn('💥 ' + dmg, 'hurt');
+    if (s.hp <= 0) {
+      S.board[idx] = { type: 'empty' };
+      S.skullsKilled++;
+      registerSkullEnd(s);
+      if (opts.reward !== false) awardKillXp(s);
+      audioKill();
+      return true;
+    }
+    return false;
+  }
+
+  // Collect a set of board cells the same way a chain does.  Used by all
+  // native skills that "grab" tiles (Freeze/Repair/Treasure/…).
+  function collectIndices(indices, opts) {
+    opts = opts || {};
+    const uniq = [...new Set(indices)].filter(i => i >= 0 && i < CELL_COUNT);
+    let swords = 0, shields = 0, coins = 0, potions = 0;
+    const skullIdxs = [], potionIdxs = [], broken = new Set();
+    uniq.forEach(i => {
+      const c = S.board[i];
+      if (!c || c.type === 'empty') return;
+      if (c.type === 'sword' || c.type === 'arrow') {
+        if (c.broken) broken.add(i); else swords += swordWeight(c);
+      } else if (c.type === 'shield') {
+        if (c.broken) broken.add(i); else shields++;
+      } else if (c.type === 'coin') coins++;
+      else if (c.type === 'potion') {
+        const allowed = (!c.acid || !opts.skipAcid) && (!c.mana || !opts.skipMana);
+        if (allowed) { potions++; potionIdxs.push(i); }
+      } else if (c.type === 'skull') {
+        if (!c.skull || !(c.skull.special || c.skull.boss) || opts.includeSpecial) skullIdxs.push(i);
+      }
+    });
+    S._chainOrder = uniq.slice();
+    S._runePathSet = new Set(uniq);
+    S._lastChainCells = opts.burn !== false ? uniq.slice() : [];
+    S._potionIdxs = potionIdxs;
+    const result = applyChainEffects(swords, shields, coins, potions,
+      opts.noSkulls ? [] : skullIdxs, uniq.length >= 10, broken, potionIdxs);
+    if (result.xpGained > 0) gainXp(result.xpGained);
+    const manaCount = uniq.filter(i => { const c = S.board[i]; return c && c.type === 'potion' && c.mana; }).length;
+    if (manaCount > 0) refillRandomSkill(manaCount);
+    if (S.leech > 0 && result.dmgShown > 0) heal(S.leech * result.dmgShown);
+    // cleared tiles + compact/refill, exactly like a resolved chain
+    uniq.forEach(i => {
+      const c = S.board[i];
+      if (!c) return;
+      if (c.type === 'skull') {
+        if (c.skull && c.skull.hp > 0 && opts.keepSurvivingSkulls) return;
+        if (!c.skull || c.skull.hp <= 0) S.board[i] = { type: 'empty' };
+        return;
+      }
+      S.board[i] = { type: 'empty' };
+    });
+    compactBoardAndRefill();
+    if (!hasLegalChain(S.board)) ensureChainable();
+    return result;
+  }
+
+  function fillAfterConversion() {
+    compactBoardAndRefill();
+    if (!hasLegalChain(S.board)) ensureChainable();
+  }
+
   function applySkill(id) {
-    if (id === 'teleport') {
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const cell = S.board[i];
-        if (cell.type !== 'skull') {
-          S.board[i] = { type: randomTileType() };
-        }
-      }
-      flash('✦ Все клетки (без черепов) → новые');
-    } else if (id === 'freeze') {
-      S.freezeNextTurn = 1;
-      flash('❄ Черепа не бьют в этом ходу');
-    } else if (id === 'heal') {
-      let total = 0, acid = 0, mana = 0;
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const c = S.board[i];
-        if (c.type !== 'potion') continue;
-        if (c.acid) acid++;
-        else if (c.mana) mana++;
-        else total += HEAL_PER_POTION + (S.hero.stats.luck || 0);
-        S.board[i] = { type: randomTileType() };
-      }
-      // Кислотные зелья ранят, а не лечат.
-      const acidDmg = acid * (HEAL_PER_POTION + (S.hero.stats.luck || 0));
-      if (acidDmg > 0) {
-        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
-        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
-        floatOn('💥 -' + acidDmg, 'hurt');
-        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
-          gameOver();
-          return;
-        }
-      }
-      heal(total);
-      if (mana > 0) reduceSkillCooldowns(mana);
-      flash('❤ Все зелья собраны (+' + total + ' HP)');
-    } else if (id === 'repair') {
-      let total = 0;
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const c = S.board[i];
-        if (c.type === 'shield') {
-          // Сломанный щит не даёт брони — его нельзя засчитывать как целый.
-          if (!c.broken) total += S.armorPerShield + (S.hero.stats.dexterity || 0) + S.hero.stats.defense * 2;
-          S.board[i] = { type: randomTileType() };
-        }
-      }
-      repair(total);
-      flash('⚒ Все щиты собраны (+' + total + ' брони)');
-    } else if (id === 'dazzle') {
-      for (let i = 0; i < CELL_COUNT; i++) {
-        if (S.board[i].type === 'coin') S.board[i] = { type: 'sword' };
-      }
-      flash('✦ Все монеты → мечи');
-    } else if (id === 'disarm') {
-      for (let i = 0; i < CELL_COUNT; i++) {
-        if (S.board[i].type === 'shield') S.board[i] = { type: 'sword' };
-      }
-      flash('⚔ Все щиты → мечи');
-    } else if (id === 'treasure') {
-      // Классика: Treasure — собрать все монеты (монеты → золото)
-      let collected = 0;
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const cell = S.board[i];
-        if (cell.type === 'coin') {
-          collected++;
-          S.board[i] = createNewTile();
-        }
-      }
-      const gold = Math.round(collected * S.goldPerCoin * (1 + 0.05 * (S.hero.stats.charisma || 0)));
-      if (gold > 0) gainGold(gold);
-      flash('💰 Собрано монет: ' + collected + ' (+' + gold + ' золота)');
-    } else if (id === 'enchant') {
-      S.hero.weaponDamage += 2;
-      S.hero.hp = Math.min(S.hero.maxHp, S.hero.hp + 4);
-      flash('⚒ Мгновенный улучшение: +2 оружия');
-    } else if (id === 'bribe') {
-      // Классика: Steal — атака черепов даёт золото в этом ходу
+    if (id === 'bribe') id = 'steal';
+    const rndTile = () => {
+      if (S.forceCoins > 0) return { type: 'coin' };
+      return createNewTile();
+    };
+
+    if (id === 'steal') {
       S.stealActive = 1;
-      log('🦊 Воровство: атака → золото (1 ход)');
-    } else if (id === 'elixir') {
-      let count = 0;
+      flash('🦊 Воровство: атака черепов в этом ходу даёт золото');
+    } else if (id === 'freeze') {
+      let frozen = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
-        if (S.board[i].type === 'potion') { count++; S.board[i] = { type: randomTileType() }; }
+        const c = S.board[i];
+        if (c && c.type === 'skull' && c.skull) {
+          c.skull.frozenTurn = S.turn;
+          c.frozen = true;
+          frozen++;
+        }
       }
-      gainXp(count * 2);
-      flash('⚗ Все зелья → XP (+' + (count * 2) + ')');
+      flash('❄ Заморожено черепов: ' + frozen);
+    } else if (id === 'heal') {
+      const idxs = [];
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'potion' && !c.acid && !c.mana) idxs.push(i);
+      }
+      const res = collectIndices(idxs, { noSkulls: true, skipAcid: true, skipMana: true });
+      flash('❤ Собрано зелий: ' + idxs.length + ' (+' + Math.round(res.healGained) + ' HP)');
+    } else if (id === 'repair') {
+      const idxs = [];
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'shield') idxs.push(i);
+      }
+      const res = collectIndices(idxs, { noSkulls: true });
+      flash('⚒ Собрано щитов: ' + idxs.length + ' (+' + Math.round(res.armorGained) + ' брони)');
+    } else if (id === 'counter') {
+      S.counterattack = 1;
+      flash('↩ Контратака: черепа бьют себя вместо героя');
+    } else if (id === 'shatter') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss) {
+          c.skull.def = 0;
+          c.skull.atk = Math.min(c.skull.atk, 1);
+          n++;
+        }
+      }
+      flash('💥 Раскол: ослаблено обычных черепов — ' + n);
+    } else if (id === 'goldtouch') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'sword') { S.board[i] = { type: 'coin' }; n++; }
+      }
+      flash('🪙 Золотое касание: мечей → монет ' + n);
+    } else if (id === 'teleport') {
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type !== 'skull') S.board[i] = rndTile();
+      }
+      fillAfterConversion();
+      flash('✦ Телепорт: клетки без черепов обновлены');
+    } else if (id === 'explosive') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'potion' && !c.acid && !c.mana) { c.explosive = true; n++; }
+      }
+      flash('🧨 Взрывных зелий: ' + n);
+    } else if (id === 'elixir') {
+      const idxs = [];
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'potion' && !c.acid) idxs.push(i);
+      }
+      idxs.forEach(i => { S.board[i] = { type: 'empty' }; });
+      fillAfterConversion();
+      const xp = idxs.length * 2;
+      gainXp(xp);
+      flash('⚗ Эликсир: зелий → XP ' + xp);
+    } else if (id === 'enchant') {
+      openModal('armor');
+      flash('🛠 Затачивание: выбери улучшение');
+    } else if (id === 'slash') {
+      S.slashCombo = 1;
+      let idxs;
+      if (S.hackCombo > 0) {
+        idxs = [];
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const c = S.board[i];
+          if (c && c.type !== 'skull') idxs.push(i);
+        }
+        flash('🗡 Рассечение + Взлом: собрана вся доска');
+      } else {
+        const r = randInt(0, ROWS - 1, 5);
+        idxs = [];
+        for (let c = 0; c < COLS; c++) {
+          const i = r * COLS + c;
+          const cell = S.board[i];
+          if (cell && cell.type !== 'skull') idxs.push(i);
+        }
+        flash('🗡 Рассечение: строка ' + (r + 1));
+      }
+      collectIndices(idxs, { skipAcid: true });
+    } else if (id === 'treasure') {
+      const idxs = [];
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'coin') idxs.push(i);
+      }
+      const res = collectIndices(idxs, { noSkulls: true });
+      flash('💎 Кладовая: собрано монет ' + idxs.length + ' (+' + Math.round(res.goldGained) + ' золота)');
+    } else if (id === 'scavenge') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'sword') { S.board[i] = { type: 'shield' }; n++; }
+      }
+      flash('🛡 Сбор: мечей → щитов ' + n);
+    } else if (id === 'disarm') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss) {
+          S.board[i] = { type: 'sword' };
+          n++;
+        }
+      }
+      flash('⚔ Обезоруживание: черепов → мечей ' + n);
+    } else if (id === 'dazzle') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'coin') { S.board[i] = { type: 'sword' }; n++; }
+      }
+      flash('✦ Слепота: монет → мечей ' + n);
+    } else if (id === 'boostdmg') {
+      S.swordBoost = 1;
+      flash('⚔ Усиление урона: оружие ×2 в этом ходу');
+    } else if (id === 'boostgold') {
+      S.coinBoost = 1;
+      flash('🪙 Усиление золота: золото ×2 в этом ходу');
+    } else if (id === 'boosthealth') {
+      S.potionBoost = 1;
+      flash('❤ Усиление лечения: зелья ×2 в этом ходу');
+    } else if (id === 'boostarmour') {
+      S.shieldBoost = 1;
+      flash('🛡 Усиление брони: щиты и UP ×2 в этом ходу');
+    } else if (id === 'exorcise') {
+      const idxs = liveSkullIndices(true).filter(i => S.board[i].skull.special || S.board[i].skull.boss);
+      if (idxs.length === 0) { flash('✝ Нет особых черепов'); return; }
+      const i = idxs[randInt(0, idxs.length - 1, 5)];
+      const s = S.board[i].skull;
+      s.special = false;
+      s.type = 0;
+      s.boss = false;
+      s.maxHp = Math.max(1, s.maxHp);
+      flash('✝ Изгнание: особый череп стал обычным');
+    } else if (id === 'banish') {
+      const idxs = liveSkullIndices(true).filter(i => S.board[i].skull.special || S.board[i].skull.boss);
+      if (idxs.length === 0) { flash('☄ Нет особых черепов'); return; }
+      const i = idxs[randInt(0, idxs.length - 1, 5)];
+      S.board[i] = { type: 'empty' };
+      flash('☄ Уничтожение: особый череп убран без награды');
+      compactBoardAndRefill();
+    } else if (id === 'trap') {
+      S.oneHealthSkulls = 1;
+      flash('🕸 Ловушка: новые черепа появятся с 1 HP');
+    } else if (id === 'biggame') {
+      const idxs = liveSkullIndices(false).filter(i => !S.board[i].skull.special && !S.board[i].skull.boss);
+      if (idxs.length === 0) { flash('👹 Нет обычных черепов'); return; }
+      const i = idxs[randInt(0, idxs.length - 1, 5)];
+      const cell = S.board[i];
+      const old = cell.skull;
+      const fresh = makeSkull(false, true);
+      fresh.hp = Math.min(fresh.hp, old ? old.hp : fresh.hp);
+      fresh.maxHp = fresh.hp;
+      fresh.enteredTurn = old && old.enteredTurn != null ? old.enteredTurn : S.turn;
+      S.board[i] = { type: 'skull', skull: fresh };
+      flash('👹 Крупная дичь: обычный череп стал особым');
+    } else if (id === 'chamber') {
+      S.forceCoins = 1;
+      flash('🪙 Сокровищница: новые клетки станут монетами');
+    } else if (id === 'magicsword') {
+      const idxs = [];
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'sword' && !c.magicSword) idxs.push(i);
+      }
+      if (idxs.length === 0) { flash('✨ Нет подходящих мечей'); return; }
+      const i = idxs[randInt(0, idxs.length - 1, 5)];
+      S.board[i].magicSword = true;
+      flash('✨ Магический меч: случайный меч бьёт как 5');
+    } else if (id === 'earthquake') {
+      for (let k = 0; k < 36; k++) {
+        const a = randInt(0, CELL_COUNT - 1, 5), b = randInt(0, CELL_COUNT - 1, 5);
+        if (a === b) continue;
+        const tmp = S.board[a]; S.board[a] = S.board[b]; S.board[b] = tmp;
+      }
+      fillAfterConversion();
+      flash('🌋 Землетрясение: поле перемешано');
+    } else if (id === 'explosivearmour') {
+      const amount = Math.max(0, S.hero.armor) * 2;
+      let hit = 0;
+      liveSkullIndices(true).forEach(i => { if (hitSkullAt(i, amount, { ignoreDefence: true })) hit++; });
+      flash('🛡 Взрывная броня: ' + amount + ' урона по всем черепам');
+    } else if (id === 'fireball') {
+      const r = randInt(1, Math.max(1, ROWS - 2), 5), c = randInt(1, Math.max(1, COLS - 2), 5);
+      const idxs = [];
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) {
+          const i = nr * COLS + nc;
+          if (S.board[i] && S.board[i].type !== 'skull') idxs.push(i);
+        }
+      }
+      collectIndices(idxs, { skipAcid: true });
+      flash('🔥 Огненный шар: область 3×3');
+    } else if (id === 'mana') {
+      let n = 0;
+      for (let i = 0; i < CELL_COUNT; i++) {
+        const c = S.board[i];
+        if (c && c.type === 'potion' && !c.acid) { c.mana = true; n++; }
+      }
+      flash('🔹 Зелья маны: ' + n);
+    } else if (id === 'hack') {
+      let idxs;
+      if (S.slashCombo > 0) {
+        idxs = [];
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const c = S.board[i];
+          if (c && c.type !== 'skull') idxs.push(i);
+        }
+        flash('🪓 Взлом + Рассечение: собрана вся доска');
+      } else {
+        S.hackCombo = 1;
+        const col = randInt(0, COLS - 1, 5);
+        idxs = [];
+        for (let r = 0; r < ROWS; r++) {
+          const i = r * COLS + col;
+          if (S.board[i] && S.board[i].type !== 'skull') idxs.push(i);
+        }
+        flash('🪓 Взлом: столбец ' + (col + 1) + ' → мечи');
+        idxs.forEach(i => { S.board[i] = { type: 'sword' }; });
+        return;
+      }
+      collectIndices(idxs, { skipAcid: true });
+    } else if (id === 'shock' || id === 'awe') {
+      const both = id === 'shock' ? S.aweCombo > 0 : S.shockCombo > 0;
+      if (id === 'shock') S.shockCombo = 1; else S.aweCombo = 1;
+      if (both) {
+        const idxs = [];
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const c = S.board[i];
+          if (c && c.type !== 'skull' && c.type !== 'empty') idxs.push(i);
+        }
+        if (idxs.length > 0) {
+          const pick = idxs[randInt(0, idxs.length - 1, 5)];
+          S.board[pick] = { type: 'chain' };
+          flash('⚡🌀 Шок + Благоговение: создана цепная клетка');
+        }
+        return;
+      }
+      const idxs = [];
+      const from = id === 'shock' ? 0 : Math.floor(ROWS / 2);
+      const to = id === 'shock' ? Math.floor(ROWS / 2) : ROWS;
+      for (let r = from; r < to; r++) for (let c = 0; c < COLS; c++) {
+        const i = r * COLS + c;
+        const cell = S.board[i];
+        if (!cell) continue;
+        if (id === 'shock' && (cell.type === 'shield' || cell.type === 'coin')) idxs.push(i);
+        if (id === 'awe' && (cell.type === 'shield' || cell.type === 'potion')) idxs.push(i);
+      }
+      collectIndices(idxs, { noSkulls: true, skipAcid: true });
+      flash((id === 'shock' ? '⚡ Шок' : '🌀 Благоговение') + ': собрано клеток ' + idxs.length);
     } else if (id === 'berserk') {
-      // Barbarian: Берсерк — убийства этого хода дают HP равный атаку
       S.berserkActive = 1;
-      flash('🪓 БЕРЕРСЕК: HP за убийства этого хода');
+      flash('🪓 БЕРСЕРК: HP за убийства этого хода');
     } else if (id === 'rune') {
-      // Mage: Руна — замкнутая цепочка собирает все клетки внутри (1 ход)
       S.runeActive = 1;
       S.runeUsedThisTurn = 0;
-      flash('🔮 РУНА: цепочка замкнётся — тогда соборится всё внутри');
+      flash('🔮 РУНА: замкнутая цепочка соберёт всё внутри');
     } else if (id === 'haste') {
-      // Assassin: Haste — цепочка смешивает 2 типа меток (этот ход)
       S.hasteActive = 1;
-      flash('🗡 Хействие: цепочка — 2 типа меток (этот ход)');
+      flash('🗡 СПЕШКА: цепочка из 2 типов меток в этом ходу');
     } else if (id === 'greed') {
-      // Rogue: Жадность — убить всех черепов рядом с монеткой (без вознаграждения)
       let killed = 0;
       const coinCells = [];
       for (let i = 0; i < CELL_COUNT; i++) {
@@ -2171,96 +2809,27 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
             S.skullsKilled++;
             registerSkullEnd(cell.skull);
             killed++;
-            S.lastKillCount = (S.lastKillCount || 0) + 1;
             audioKill();
           }
         }
       });
       flash('🗡 Жадность: убито ' + killed + ' черепов (без награды)');
     } else if (id === 'laststand') {
-      // Paladin: Last Stand — полное лечение при смерти в этот ход
       S.lastStand = 1;
-      flash('🛡 Last Stand готов (при смерти — полное HP)');
+      flash('🛡 Последний рубеж готов: смерть → полное HP');
     } else if (id === 'wish') {
-      // Priest: Желание — одноразовый навык; собрать все клетки доски
-      // (зелья/щиты/монетки → эффекты, черепа — атакуются current sword damage)
-      let shieldCount = 0, coinCount = 0, normalPotions = 0, acidPotions = 0, manaPotions = 0;
-      const skullIdxs = [];
+      const idxs = [];
       for (let i = 0; i < CELL_COUNT; i++) {
-        const cell = S.board[i];
-        if (!cell) continue;
-        if (cell.type === 'potion') {
-          if (cell.acid) acidPotions++;
-          else if (cell.mana) manaPotions++;
-          else normalPotions++;
-        } else if (cell.type === 'shield' && !cell.broken) shieldCount++;
-        else if (cell.type === 'coin') coinCount++;
-        else if (cell.type === 'skull') skullIdxs.push(i);
+        const c = S.board[i];
+        if (!c || c.type === 'skull') continue;
+        idxs.push(i);
       }
-      const charisma = S.hero.stats.charisma;
-      const healBase = HEAL_PER_POTION + S.hero.stats.luck;
-      // Кислота ранит, а не лечит (в т.ч. при сборе «Желанием»).
-      const acidDmg = Math.round(acidPotions * healBase * (1 + 0.05 * charisma));
-      if (acidDmg > 0) {
-        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
-        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
-        floatOn('💥 -' + acidDmg, 'hurt');
-        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
-          gameOver();
-          return;
-        }
-      }
-      // эффекты зелий/щитов/монет
-      const gainHeal = Math.round(normalPotions * healBase * (1 + 0.05 * charisma));
-      heal(gainHeal);
-      if (manaPotions > 0) {
-        const reduced = reduceSkillCooldowns(manaPotions);
-        flash('📖 Мана: кулдауны −' + reduced);
-      }
-      const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
-      const armorGain = shieldCount * perShield;
-      const headroom = S.hero.maxArmor - S.hero.armor;
-      const armorLocked = Math.min(headroom, armorGain);
-      S.hero.armor += armorLocked;
-      const overflow = Math.max(0, armorGain - headroom);
-      if (overflow > 0) addUpgradeBar(overflow * 2);
-      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma));
-      if (gold > 0) gainGold(gold);   // gainGold сам учитывает goldEarned
-      // черепата — атаковать (обычный current-damage)
-      const base = baseDamage();
-      const dmg = Math.round(base + S.hero.weaponDamage);
-      skullIdxs.forEach(idx => {
-        const s = S.board[idx].skull;
-        if (!s || s.hp <= 0) return;
-        if (randInt(0, 100, 5) < S.pierce * 100) { s.hp -= dmg; }
-        else {
-          const toDef = Math.min(dmg, s.def);
-          s.def -= toDef; s.hp -= (dmg - toDef);
-        }
-        if (s.hp <= 0) {
-          S.board[idx] = { type: 'empty' };
-          S.skullsKilled++;
-          registerSkullEnd(s);
-          awardKillXp(s);
-        }
-      });
-      // очистка собранных клеток (без черепов/пусто)
-      S.board = S.board.map(cell => {
-        if (!cell) return cell;
-        if (cell.type === 'skull') return cell;
-        return { type: 'empty' };
-      });
-      // Пустая доска — не «нет ходов», а недоделанный сбор: заполняем поле,
-      // иначе цепочку собрать нельзя и ход не передаётся (софтлок).
-      compactBoardAndRefill();
-      if (!hasLegalChain(S.board)) ensureChainable();
+      const res = collectIndices(idxs, { keepSurvivingSkulls: true });
       if (!S.usedSkillIds) S.usedSkillIds = {};
       S.usedSkillIds.wish = true;
-      flash('✨ ЖЕЛАНИЕ: собрано всё (+' + gainHeal + ' HP, +' + armorLocked + ' брони, +' + gold + ' золота)');
-      // одноразовый навык: удаляем из S.skills
       S.skills = S.skills.filter(sid => sid !== 'wish');
+      flash('✨ ЖЕЛАНИЕ: собрано всё (+' + Math.round(res.healGained) + ' HP, +' + Math.round(res.goldGained) + ' золота)');
     } else if (id === 'masochism') {
-      // Raider: Masochism — все монетки → черепа
       let skullCount = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         if (S.board[i] && S.board[i].type === 'coin') {
@@ -2271,93 +2840,25 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           skullCount++;
         }
       }
-      // re-render board once below (caller does renderBoard)
-      flash('🏴 Мазохизм: ' + skullCount + ' монетки → черепа');
+      flash('🏴 Мазохизм: ' + skullCount + ' монет → черепа');
     } else if (id === 'volley') {
-      // Ranger: Volley — все мечи → стрелы (стрелы стреляют на 1 клетку)
       let converted = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const cell = S.board[i];
-        if (cell && cell.type === 'sword') {
-          S.board[i] = { type: 'arrow' };
-          converted++;
-        }
+        if (cell && cell.type === 'sword') { S.board[i] = { type: 'arrow' }; converted++; }
       }
-      flash('🏹 Воллей: ' + converted + ' меч → стрелы');
+      flash('🏹 Воллей: ' + converted + ' мечей → стрелы');
     } else if (id === 'charge') {
-      // Warrior: Charge — собрать все клетки по краю поля
-      let swords = 0, shields = 0, coins = 0, normalPotions = 0, acidPotions = 0, manaPotions = 0;
+      const idxs = [];
       for (let i = 0; i < CELL_COUNT; i++) {
         const r = Math.floor(i / COLS), c = i % COLS;
         if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
           const cell = S.board[i];
-          if (!cell || cell.type === 'empty') continue;
-          if (cell.type === 'sword') swords++;
-          else if (cell.type === 'shield' && !cell.broken) shields++;
-          else if (cell.type === 'coin') coins++;
-          else if (cell.type === 'potion') {
-            if (cell.acid) acidPotions++;
-            else if (cell.mana) manaPotions++;
-            else normalPotions++;
-          }
+          if (cell && cell.type !== 'skull' && cell.type !== 'empty') idxs.push(i);
         }
       }
-      // sword-attack: skulls in ANY cell (not just border) take charge damage
-      const chargeDmg = Math.round(baseDamage() + S.hero.weaponDamage * Math.max(1, swords));
-      for (let i = 0; i < CELL_COUNT; i++) {
-        const cell = S.board[i];
-        if (!cell || cell.type !== 'skull') continue;
-        const s = cell.skull;
-        if (!s || s.hp <= 0) continue;
-        if (randInt(0, 100, 5) < S.pierce * 100) { s.hp -= chargeDmg; }
-        else {
-          const toDef = Math.min(chargeDmg, s.def);
-          s.def -= toDef; s.hp -= (chargeDmg - toDef);
-        }
-        if (s.hp <= 0) {
-          S.board[i] = { type: 'empty' };
-          S.skullsKilled++;
-          registerSkullEnd(s);
-          awardKillXp(s);
-        }
-      }
-      // resource effects (border only)
-      const charisma = S.hero.stats.charisma;
-      const healBase = HEAL_PER_POTION + S.hero.stats.luck;
-      const acidDmg = Math.round(acidPotions * healBase * (1 + 0.05 * charisma));
-      if (acidDmg > 0) {
-        S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
-        flash('☣️ Кислотное зелье: −' + acidDmg + ' HP');
-        floatOn('💥 -' + acidDmg, 'hurt');
-        if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) {
-          gameOver();
-          return;
-        }
-      }
-      const gold = Math.round(coins * S.goldPerCoin * (1 + 0.05 * charisma));
-      if (gold > 0) gainGold(gold);   // gainGold сам учитывает goldEarned
-      const healAmount = Math.round(normalPotions * healBase * (1 + 0.05 * charisma));
-      heal(healAmount);
-      if (manaPotions > 0) reduceSkillCooldowns(manaPotions);
-      const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
-      const armorGain = shields * perShield;
-      const headroom2 = S.hero.maxArmor - S.hero.armor;
-      const lockArmor = Math.min(headroom2, armorGain);
-      S.hero.armor += lockArmor;
-      const overflow = Math.max(0, armorGain - headroom2);
-      if (overflow > 0) addUpgradeBar(overflow * 2);
-      // clear border cells (non-skull)
-      S.board = S.board.map((cell, i) => {
-        const r = Math.floor(i / COLS), c = i % COLS;
-        if (r === 0 || r === ROWS - 1 || c === 0 || c === COLS - 1) {
-          if (!cell || cell.type === 'skull') return cell;
-          return { type: 'empty' };
-        }
-        return cell;
-      });
-      compactBoardAndRefill();
-      if (!hasLegalChain(S.board)) ensureChainable();
-      flash('⚔️ Рывок: собрано края (+' + healAmount + ' HP, +' + lockArmor + ' брони, +' + gold + ' золота)');
+      collectIndices(idxs, { skipAcid: true });
+      flash('⚔ Рывок: собран край поля');
     }
   }
 
@@ -2365,7 +2866,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     let n = 0;
     for (let i = 0; i < board.length; i++) {
       const c = board[i];
-      if (c && c.type === 'sword') n++;
+      if (c && c.type === 'sword') n += swordWeight(c);
     }
     return n;
   }
@@ -2376,9 +2877,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function gainXp(amount) {
-    S.hero.xp += amount;
-    S.hero.xpLevelCum += amount;
-    return amount;
+    const v = amount * (S.mode === 'sprint' ? 2 : 1);
+    S.hero.xp += v;
+    S.hero.xpLevelCum += v;
+    return v;
+  }
+
+  // Mana potion: refill one random equipped skill slot (original AddResource).
+  function refillRandomSkill(count) {
+    let n = 0;
+    for (let k = 0; k < count; k++) {
+      if (!S.skills || S.skills.length === 0) break;
+      const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
+      if ((S.skillCooldowns[pick] || 0) > 0) n++;
+      S.skillCooldowns[pick] = 0;
+    }
+    if (n > 0) flash('🔹 Мана: восстановлено навыков — ' + n);
+    return n;
   }
 
   // Mana potions: снять по 1 с самых длинных кулдаунов.
@@ -2411,12 +2926,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function gainGold(amount) {
-    S.hero.gold = Math.min(GOLD_BOX_MAX, S.hero.gold + amount);
-    S.goldEarned += amount;
+    const v = amount * (S.mode === 'sprint' ? 2 : 1);
+    S.hero.gold = Math.min(GOLD_BOX_MAX, S.hero.gold + v);
+    S.goldEarned += v;
   }
 
   function addUpgradeBar(amount) {
-    S.upgradeBar = Math.min(UPGRADE_BAR_MAX, S.upgradeBar + amount);
+    const v = amount * (S.mode === 'sprint' ? 2 : 1);
+    S.upgradeBar = Math.min(UPGRADE_BAR_MAX, S.upgradeBar + v);
   }
 
   function flash(msg) {
@@ -2589,16 +3106,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           S.skullsKilled++;
           registerSkullEnd(s);
           result.kills++;
-          if (isBoss) {
-            result.bossKills++;
-            if (cls && cls.race === 'Changeling') {
-              const cdIds = Object.keys(S.skillCooldowns).filter(id => S.skillCooldowns[id] > 0);
-              if (cdIds.length > 0) {
-                const longest = cdIds.reduce((a, b) => (S.skillCooldowns[a] > S.skillCooldowns[b] ? a : b));
-                S.skillCooldowns[longest] = 0;
-                flash('🔮 Меняться: кулдаун навыка «' + (SKILL_BY_ID[longest] ? SKILL_BY_ID[longest].name : longest) + '» обнулён');
-              }
-            }
+          if (isBoss) result.bossKills++;
+          // Changeling Shapeshift: collecting a special/boss immediately
+          // refills one random equipped skill (may pick a ready one).
+          if ((s.special || isBoss) && cls && cls.race === 'Changeling' && S.skills.length > 0) {
+            const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
+            S.skillCooldowns[pick] = 0;
+            flash('🔮 Меняться: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» готов');
           }
           const xp = isBoss ? XP_PER_BOSS : (S.xpPerSkull || XP_PER_SKULL);
           result.xpGained += xp;
@@ -2677,7 +3191,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
     // --- shields ---
     if (shieldCount > 0) {
-      const perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
+      let perShield = S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
+      if (S.shieldBoost > 0) perShield *= 2;
       const validShields = Math.max(0, shieldCount - result.brokenShields);
       const corrosivePresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 12);
       const armorGain = corrosivePresent ? 0 : validShields * perShield;
@@ -2688,8 +3203,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       // Corrosive: shields award upgrade points directly instead of repairing armor.
       const headroom = S.hero.maxArmor - before;
       const overflow = Math.max(0, armorGain - headroom);
-      const upgradePoints = validShields * S.upgradePerShield;
-      if (overflow > 0) addUpgradeBar(overflow * 2);
+      const upgradePoints = validShields * S.upgradePerShield * (S.shieldBoost > 0 ? 2 : 1);
+      if (overflow > 0) addUpgradeBar(overflow * 2 * (S.shieldBoost > 0 ? 2 : 1));
       if (upgradePoints > 0) addUpgradeBar(upgradePoints);
       for (let i = 0; i < validShields; i++) audioArmor();
 
@@ -2717,7 +3232,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     // --- coins ---
     if (coinCount > 0) {
       const charisma = S.hero.stats.charisma;
-      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma));
+      const gold = Math.round(coinCount * S.goldPerCoin * (1 + 0.05 * charisma) * (S.coinBoost > 0 ? 2 : 1));
       gainGold(gold);
       result.goldGained += gold;
       audioGold();
@@ -2730,7 +3245,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         chanceP = Math.min(1, chanceP);
         for (let k = 0; k < extra; k++) {
           if (chance(chanceP)) {
-            const bonus = Math.round(S.goldPerCoin * (1 + 0.05 * charisma));
+            const bonus = Math.round(S.goldPerCoin * (1 + 0.05 * charisma) * (S.coinBoost > 0 ? 2 : 1));
             gainGold(bonus);
             result.goldGained += bonus;
           }
@@ -2745,7 +3260,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const actualAcidCount = potionIdxs.filter(idx => { const c = S.board[idx]; return c && c.type === 'potion' && c.acid; }).length;
       const luck = S.hero.stats.luck;
       const charisma = S.hero.stats.charisma;
-      const healBase = HEAL_PER_POTION + luck;
+      const healBase = (HEAL_PER_POTION + luck) * (S.potionBoost > 0 ? 2 : 1);
       if (actualAcidCount > 0) {
         const acidDmg = Math.max(0, healBase * actualAcidCount);
         S.hero.hp = Math.max(0, S.hero.hp - acidDmg);
@@ -2756,9 +3271,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           return result;
         }
       }
-      // Обычное зелье лечит и снимает яд, кроме случая, когда Poisonous ещё на поле.
+      // Обычное зелье лечит и снимает яд. Исключение — смертный враг Эльфа
+      // (Poisonous): пока он на доске, яд не снимается.
       const poisonousPresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 9);
-      if (normalPotionIdxs.length > 0 && S.poison > 0 && !poisonousPresent) {
+      const poisonLocked = clsRace() === 'Elf' && poisonousPresent;
+      if (normalPotionIdxs.length > 0 && S.poison > 0 && !poisonLocked) {
         S.poison = 0;
         flash('💚 Яд снят зельем');
       }
@@ -2818,7 +3335,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     chain.forEach(idx => {
       const cell = S.board[idx];
       if (!cell || cell.type === 'empty') return;
-      if ((cell.type === 'sword' || cell.type === 'arrow') && !cell.broken) swordCount++;
+      if ((cell.type === 'sword' || cell.type === 'arrow') && !cell.broken) swordCount += swordWeight(cell);
       else if (cell.type === 'shield') shieldCount++;
       else if (cell.type === 'coin') coinCount++;
       else if (cell.type === 'potion') potionCount++;
@@ -2868,22 +3385,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       chain.forEach(idx => { const c = S.board[idx]; if (c && c.type === 'potion') S._potionIdxs.push(idx); });
       const result = applyChainEffects(swordCount, shieldCount, coinCount, potionCount, skullIdxs, chain.length >= 10, brokenChainSet, S._potionIdxs);
 
-      // mana potions (Mage Gifted): mana potions collected reduce longest cooldowns by 1
-      if (cls && cls.perk === 'Gifted' && potionCount > 0) {
-        let manaCount = 0;
-        chain.forEach(idx => {
+      // Mana potion: refill one random equipped skill per token.
+      if (potionCount > 0) {
+        const manaCount = chain.filter(idx => {
           const c = S.board[idx];
-          if (c && c.type === 'potion' && c.mana) manaCount++;
-        });
-        if (manaCount > 0) {
-          const cdIds = Object.keys(S.skillCooldowns).filter(id => S.skillCooldowns[id] > 0);
-          for (let i = 0; i < Math.min(manaCount, cdIds.length); i++) {
-            const longest = cdIds.reduce((a, b) => (S.skillCooldowns[a] > S.skillCooldowns[b] ? a : b));
-            S.skillCooldowns[longest] = Math.max(0, S.skillCooldowns[longest] - 1);
-            cdIds.splice(cdIds.indexOf(longest), 1);
-          }
-          flash('📖 Мана: кулдауны −' + manaCount);
-        }
+          return c && c.type === 'potion' && c.mana;
+        }).length;
+        if (manaCount > 0) refillRandomSkill(manaCount);
       }
 
       // --- интерьер Руны ---
@@ -2938,6 +3446,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       // xp + bonus XP (classic): каждый лишний череп сверх трёх убитых этим ходом даёт шанс бонуса
       const totalKills = result.kills + (typeof runeKills === 'number' ? runeKills : 0);
       S.killsThisTurn = totalKills;
+      // Halfling Guts: 15+ kills in one chain permanently +1 max armour.
+      if (cls && cls.race === 'Halfling' && totalKills >= 15) {
+        S.hero.maxArmor += 1;
+        S.hero.armor = Math.min(S.hero.maxArmor, S.hero.armor + 1);
+        flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
+      }
       if (result.xpGained > 0 || runeXp > 0) {
         gainXp(result.xpGained + runeXp);
         const extraKills = Math.max(0, totalKills - 3);
@@ -2957,14 +3471,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
       // refill: gravity + skulls enter from the top (new enemies cannot
       // attack until the next turn — enteredTurn tag)
-      const skullCount = skullSpawnCount();
-      const bossSpawn = S.turn > 0 && S.turn % BOSS_EVERY_TURNS === (cls && cls.flaw === 'Zealous' ? 9 : 0);
-      const specialCount = specialSpawnCount();
-      const spawned = placeNewTiles({ skullCount, boss: bossSpawn, specialCount });
-      if (spawned.placed > 0) {
-        log(`☠ Появились новые черепа (+${spawned.placed})`);
-        if (spawned.bossPlaced) flash('👹 КОНЕЧНЫЙ БОСС');
-      }
+      // Original: refill only. Skulls appear naturally (20% of new tiles) and
+      // the promotion counter turns one of them into a special/boss.
+      const spawned = placeNewTiles({});
 
       renderBoard();
       renderHUD();
@@ -3033,6 +3542,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       if (s.hp <= 0) return;   // already dead by burn
       if (s.frozenTurn === S.turn) { s.frozenTurn = 0; return; }  // Freezing: не атакует в ход заморозки
       if (s.stunned) { s.stunned = false; return; }  // Orc Stun: doesn't attack this turn
+      // Counterattack: each living skull hits itself instead of the hero.
+      if (S.counterattack > 0) {
+        const idx = S.board.indexOf(cell);
+        if (idx >= 0) hitSkullAt(idx, Math.max(1, s.atk - (S.blunt || 0)), { ignoreDefence: true });
+        return;
+      }
       const atk = Math.max(0, s.atk - S.blunt);
       if (s.type === 9) {
         const poisonHit = damageHero(atk, s.boss, true);
@@ -3060,7 +3575,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (hpDamageThisPhase > 0) {
       S.board.forEach(c => {
         if (!c || c.type !== 'skull' || !c.skull || c.skull.type !== 20 || c.skull.hp <= 0) return;
-        c.skull.hp = Math.min(c.skull.maxHp, c.skull.hp + enemyGetAttack(c.skull));
+        c.skull.hp += enemyGetAttack(c.skull);
+        if (c.skull.hp > c.skull.maxHp) c.skull.maxHp = c.skull.hp;
       });
     }
 
@@ -3098,6 +3614,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
 
     S.turn++;
+    // Sprint: survive 100 turns and win at the end of turn 100.
+    if (S.mode === 'sprint' && S.turn >= 100) {
+      S.won = true;
+      S.over = true;
+      openModal('gameover');
+      return;
+    }
 
     // Expire freezes created on the previous enemy phase before activating this turn's abilities.
     for (let j = 0; j < CELL_COUNT; j++) {
@@ -3106,6 +3629,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       if (fc && fc.type === 'skull' && fc.skull) fc.skull.frozenTurn = 0;
     }
 
+    // Promotion countdown (EndOfTurn, before abilities). It only reaches 0;
+    // the next generated skull is the one that gets promoted.
+    if (S.promotionRemaining > 0) S.promotionRemaining--;
     // Mage blocks natural skill recovery (EndOfTurn ordering).
     const magePresent = S.board.some(c => c && c.type === 'skull' && c.skull && c.skull.type === 15);
     if (!magePresent) {
@@ -3122,6 +3648,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (S.lastStand > 0) S.lastStand = 0;
     if (S.runeActive > 0) S.runeActive = 0;
     if (S.runeUsedThisTurn > 0) S.runeUsedThisTurn = 0;
+    // Skill flags live through this turn only (EndOfTurn rotates current/next).
+    S.swordBoost = S.shieldBoost = S.potionBoost = S.coinBoost = 0;
+    S.counterattack = 0;
+    S.oneHealthSkulls = S.forceCoins = 0;
+    S.slashCombo = S.hackCombo = S.shockCombo = S.aweCombo = 0;
 
     // убийство черепа в enemy phase оставило пустое место — уплотняем
     // доску и снова наполняем пустые клетки, чтобы пустое место не торчало
@@ -3223,6 +3754,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       title.textContent = '🛡 АПГРЕЙД!';
       body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 улучшений<\/p>';
       renderUpgradeChoices(body);
+    } else if (kind === 'stats') {
+      title.textContent = '📊 СВОЙСТВА';
+      body.innerHTML = '';
+      const summary = document.createElement('div');
+      summary.className = 'character-summary';
+      renderCharacterSummary(summary);
+      body.appendChild(summary);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = 'Закрыть';
+      btn.addEventListener('click', () => closeModal());
+      body.appendChild(btn);
     } else if (kind === 'trophy') {
       title.textContent = '🏆 ТРОФЕЙ!';
       const t = S.pendingTrophy;
@@ -3238,8 +3782,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       btn.addEventListener('click', () => claimTrophy());
       body.appendChild(btn);
     } else if (kind === 'gameover') {
-      title.textContent = '☠ ИГРА ОКОНЧЕНА';
-      body.innerHTML = `<p class="modal-hint">Герой погиб на ходу <strong>${S.turn}<\/strong><\/p>
+      title.textContent = S.won ? '🏆 ПОБЕДА!' : '☠ ИГРА ОКОНЧЕНА';
+      body.innerHTML = `<p class="modal-hint">${S.won ? 'Спринт пройден: 100 ходов!' : 'Герой погиб на ходу <strong>' + S.turn + '<\/strong>'}<\/p>
         <div class="stats-grid">
           <div><span>⚔<\/span><small>убито черепов<\/small><strong>${S.skullsKilled}<\/strong><\/div>
           <div><span>⬆<\/span><small>максимальный уровень<\/small><strong>${S.maxLevel}<\/strong><\/div>
@@ -3345,9 +3889,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
   function checkTrophy() {
     if (S.over || S.pendingModal) return;
+    if (S.difficulty === 0) return;   // Easy never drops trophies
     if (S.pendingTrophy) return;
-    if (S.specialsKilled < TROPHY_KILLS_PER_TROPHY) return;
+    const need = S.trophyRemaining || TROPHY_KILLS_PER_TROPHY;
+    if (S.specialsKilled < need) return;
     S.specialsKilled = 0;
+    S.trophyRemaining = randInt(20, 30, 5);
     let outcome = computeTrophyOutcome();
     // Лимит разблокировок за забег не должен полностью отключать трофеи:
     // после него падает только шанс нового класса, а уровень класса растёт.
@@ -3384,22 +3931,32 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const skillSlotsLeft = Math.max(0, 4 - S.skills.length);
     const statOptions = shuffle([...STATS]).slice(0, 2);
     // Одноразовые навыки после использования не возвращаются в пул.
-    const availableSkill = sk => !S.skills.includes(sk.id) && !(S.usedSkillIds && S.usedSkillIds[sk.id]);
-    const basalOptions = shuffle([...SKILLS].filter(availableSkill));
-    // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
+    const availableSkill = sk => !S.skills.includes(sk.id) && !(S.usedSkillIds && S.usedSkillIds[sk.id])
+      && !(S.mode === 'sprint' && sk.id === 'trap')
+      && !(S.mode === 'pretzel' && (sk.id === 'teleport' || sk.id === 'chamber'));
     const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+    const classPool = cls && cls.pool ? ALL_SKILLS.filter(sk => cls.pool.includes(sk.id)) : ALL_SKILLS;
+    const basalOptions = shuffle([...classPool].filter(sk => availableSkill(sk) && (!cls || sk.id !== cls.uniqueSkill)));
+    // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
     const uniqueOption = cls && cls.uniqueSkill
       ? UNIQUE_SKILLS.find(s => s.id === cls.uniqueSkill)
       : null;
     let skillOptions = [];
-    if (uniqueOption && availableSkill(uniqueOption)) {
-      skillOptions.push(uniqueOption);
+    if (skillSlotsLeft <= 0 && S.mode !== 'sprint') {
+      // All four slots taken: offer upgrades of existing skills (levels 1..9).
+      const up = S.skills.filter(id => id !== 'wish' && ((S.skillLevels && S.skillLevels[id]) || 1) < 10)
+        .map(id => ({ upgrade: true, id, skill: SKILL_BY_ID[id] }));
+      skillOptions = shuffle(up).slice(0, 2);
+    } else {
+      if (uniqueOption && availableSkill(uniqueOption)) {
+        skillOptions.push(uniqueOption);
+      }
+      while (skillOptions.length < 2 && skillOptions.length < skillSlotsLeft && basalOptions.length > 0) {
+        const b = basalOptions.shift();
+        skillOptions.push(b);
+      }
+      skillOptions = skillOptions.slice(0, Math.min(2, skillSlotsLeft));
     }
-    while (skillOptions.length < 2 && skillOptions.length < skillSlotsLeft && basalOptions.length > 0) {
-      const b = basalOptions.shift();
-      skillOptions.push(b);
-    }
-    skillOptions = skillOptions.slice(0, Math.min(2, skillSlotsLeft));
     // fill remaining slots with stats to reach 4 options
     while (statOptions.length + skillOptions.length < 4) {
       const extra = shuffle([...STATS].filter(s => !statOptions.includes(s)))[0];
@@ -3426,10 +3983,19 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
     options.forEach((opt, i) => {
       const isStat = STATS.includes(opt);
+      const isUpgrade = !!opt.upgrade;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'lv-card ' + (isStat ? 'lv-stat' : 'lv-skill');
-      if (isStat) {
+      if (isUpgrade) {
+        const sk = opt.skill || SKILL_BY_ID[opt.id] || {};
+        const lvl = (S.skillLevels && S.skillLevels[opt.id]) || 1;
+        btn.innerHTML = `<span class="lv-icon-box"><span class="lv-icon">${sk.icon || '✦'}<\/span><span class="lv-corner">${lvl}→${lvl + 1}<\/span><\/span>
+          <span class="lv-body">
+            <span class="lv-row"><span class="lv-name">${sk.name || opt.id} +<\/span><span class="lv-cool">Улучшение<\/span><\/span>
+            <span class="lv-desc">Уровень ${lvl} → ${Math.min(10, lvl + 1)}, кулдаун −1<\/span>
+          <\/span>`;
+      } else if (isStat) {
         const lines = (opt.effects ? opt.effects() : []).map(e => `<span class="lv-line">${e}<\/span>`).join('');
         btn.innerHTML = `<span class="lv-chip" style="color:${opt.color}">${opt.chip}<\/span>
           <span class="lv-body">
@@ -3459,10 +4025,24 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
             picked.forEach(idx => {
               const o = options[idx];
               if (STATS.includes(o)) o.apply();
+              else if (o.upgrade) {
+                const id = o.id;
+                S.skillLevels = S.skillLevels || {};
+                const lvl = Math.min(10, (S.skillLevels[id] || 1) + 1);
+                S.skillLevels[id] = lvl;
+                const base = SKILL_BY_ID[id] ? SKILL_BY_ID[id].cooldown : 10;
+                const adjust = (S.cooldownAdjust && S.cooldownAdjust[id]) || 0;
+                S.skillCooldowns[id] = Math.max(0, base - (lvl - 1) - S.quicken + adjust);
+                flash('⬆ Навык «' + (SKILL_BY_ID[id] ? SKILL_BY_ID[id].name : id) + '» → ур. ' + lvl);
+              }
               else if (SKILLS.includes(o) || UNIQUE_SKILLS.includes(o)) {
                 if (S.skills.length >= 4) return;
                 chosenSkills.push(o.id);
                 S.skills.push(o.id);
+                if (S.mode === 'sprint') {
+                  S.skillLevels[o.id] = 5;
+                  S.skillCooldowns[o.id] = Math.max(0, o.cooldown - 4);
+                }
               }
             });
             // Assassin perk (Cunning): −1 к кулдауну 4-го навыка, выбранного до этого момента
@@ -3475,7 +4055,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
               }
             }
             // Faun Rejuvenate (Priest race): HP ≥ 25% max
-            if (S.classId === 'priest') {
+            if (clsRace() === 'Faun') {
               const need = Math.ceil(S.hero.maxHp * 0.25);
               if (S.hero.hp < need) {
                 S.hero.hp = need;
@@ -3485,7 +4065,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
             S.hero.level++;
             S.maxLevel = Math.max(S.maxLevel, S.hero.level);
             S.hero.xp = 0;
-            S.hero.xpNext = 10 + S.hero.level * 6;
+            S.hero.xpNext = 100;
             closeModal();
             renderBoard();
             renderHUD();
@@ -3500,8 +4080,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function renderEquipChoices(body) {
-    // Магазин (классика): 3 предмета + 1 пустой слот.
-    const options = shuffle([...EQUIP]).slice(0, 3);
+    // Original shop: 3 of the 5 equipment slots, one generated item each,
+    // the fourth card is empty.
+    const options = shuffle([...ITEM_SLOTS]).slice(0, 3).map(sl => makeItem(sl.id));
     const summaryBtn = document.createElement('button');
     summaryBtn.type = 'button';
     summaryBtn.className = 'btn secondary shop-summary-toggle';
@@ -3519,13 +4100,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       summaryBtn.textContent = show ? '↩ К снаряжению' : '📊 Итог персонажа';
     });
     body.appendChild(summaryBtn);
-    options.forEach(opt => {
+    options.forEach(item => {
+      const equipped = S.equipment.find(e => e.slot === item.slot);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'shop-item';
-      btn.innerHTML = `<span class="shop-icon">${opt.icon}<\/span><span class="shop-body"><span class="shop-name">${opt.name}<\/span><span class="shop-eff">${opt.desc}<\/span><span class="shop-preview">${equipPreview(opt)}<\/span><\/span>`;
+      btn.innerHTML = `<span class="shop-icon">${item.icon}<\/span><span class="shop-body"><span class="shop-slot">${item.slotName}<\/span><span class="shop-name">${item.name}<\/span><span class="shop-eff">${itemModsText(item)}<\/span><span class="shop-preview">Заменяет: ${equipped ? equipped.name : '—'}<\/span><\/span>`;
       btn.addEventListener('click', () => {
-        opt.apply();
+        equipItem(item);
         S.hero.gold = 0;
         closeModal();
         renderBoard();
@@ -3534,31 +4116,64 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       });
       grid.appendChild(btn);
     });
-    // 4-й слот — пустой (как в оригинале)
-    const empty = document.createElement('div');
-    empty.className = 'shop-item shop-empty';
-    empty.setAttribute('aria-hidden', 'true');
-    grid.appendChild(empty);
+    // Fourth slot: upgrade scroll (25%; Sauren Search = 50%), otherwise empty.
+    const scrollChance = clsRace() === 'Sauren' ? 0.5 : 0.25;
+    if (random(5) < scrollChance) {
+      const slot = ITEM_SLOTS[randInt(0, ITEM_SLOTS.length - 1, 5)];
+      const key = slot.pool[randInt(0, slot.pool.length - 1, 5)];
+      const def = ITEM_STAT[key];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'shop-item';
+      btn.innerHTML = `<span class="shop-icon">📜<\/span><span class="shop-body"><span class="shop-slot">Свиток<\/span><span class="shop-name">Свиток ${slot.name.toLowerCase()}<\/span><span class="shop-eff">${itemModText(key, def.step)}<\/span><span class="shop-preview">Улучшает надетый предмет<\/span><\/span>`;
+      btn.addEventListener('click', () => {
+        const equipped = S.equipment.find(e => e.slot === slot.id);
+        if (equipped) {
+          equipped.mods = equipped.mods || {};
+          equipped.mods[key] = +(equipped.mods[key] || 0) + def.step;
+        }
+        applyItemMod(key, def.step, 1);
+        S.hero.gold = 0;
+        closeModal();
+        renderBoard();
+        renderHUD();
+        audioLevel();
+      });
+      grid.appendChild(btn);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'shop-item shop-empty';
+      empty.setAttribute('aria-hidden', 'true');
+      grid.appendChild(empty);
+    }
     body.appendChild(grid);
     body.appendChild(summary);
   }
 
   function renderUpgradeChoices(body) {
-    const options = shuffle([...UPGRADES]).slice(0, 4);
+    // Original upgrade menu: 4 of the 5 slots, each offers one random
+    // stat upgrade for the item equipped in that slot.
+    const options = shuffle([...ITEM_SLOTS]).slice(0, 4).map(sl => makeUpgradeOffer(sl.id));
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
     options.forEach(opt => {
+      const item = S.equipment.find(e => e.slot === opt.slot);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'lv-card lv-stat';
       btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}<\/span>
         <span class="lv-body">
-          <span class="lv-name">${opt.name}<\/span>
-          <span class="lv-desc">${opt.desc}<\/span>
-          <span class="lv-effs"><span class="lv-line">${upgradePreview(opt)}<\/span><\/span>
+          <span class="lv-name">${opt.slotName}<\/span>
+          <span class="lv-desc">${item ? item.name : '—'}<\/span>
+          <span class="lv-effs"><span class="lv-line">${opt.label}<\/span><\/span>
         <\/span>`;
       btn.addEventListener('click', () => {
-        opt.apply();
+        const equipped = S.equipment.find(e => e.slot === opt.slot);
+        if (equipped) {
+          equipped.mods = equipped.mods || {};
+          equipped.mods[opt.key] = +(equipped.mods[opt.key] || 0) + opt.value;
+        }
+        applyItemMod(opt.key, opt.value, 1);
         S.upgradeBar = 0;
         closeModal();
         renderBoard();
@@ -3649,7 +4264,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   function enemyGetAttack(skull) {
-    return Math.max(0, (skull && skull.atk || 0) - (S.blunt || 0));
+    let atk = Math.max(0, (skull && skull.atk || 0) - (S.blunt || 0));
+    // Elf Slow Poison: while poisoned, attacks above 1 are halved (floor).
+    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+    if (cls && cls.race === 'Elf' && (S.poison || 0) > 0 && atk > 1) atk = Math.floor(atk / 2);
+    return atk;
   }
 
   // Применение особых способностей спец-черепов (end-of-turn).
@@ -3769,17 +4388,20 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (coins.length > 0) {
           const stolen = Math.min(2, coins.length);
           shuffle(coins).slice(0, stolen).forEach(j => { S.board[j] = { type: 'empty' }; });
-          const hpLoss = stolen * enemyGetAttack(s);
-          S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
-          log('🏴‍☠️ Вор украл ' + stolen + ' монет: −' + hpLoss + ' HP');
+          // Кража монет сама по себе урона не наносит; урон — только для
+          // смертного врага (Sauren): 2× атака Вора.
+          let hpLoss = 0;
+          if (clsRace() === 'Sauren') hpLoss = stolen * enemyGetAttack(s) * 2;
+          if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+          log('🏴‍☠️ Вор украл ' + stolen + ' монет' + (hpLoss > 0 ? ': −' + hpLoss + ' HP' : ''));
         } else {
           const before = S.hero.gold;
           const stolen = Math.min(2, S.hero.gold);
           S.hero.gold -= stolen;
           if (stolen > 0) {
-            const hpLoss = stolen * enemyGetAttack(s);
-            S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
-            log('🏴‍☠️ Вор украл золото: −' + stolen + ', HP −' + hpLoss);
+            const hpLoss = clsRace() === 'Sauren' ? stolen * enemyGetAttack(s) * 2 : 0;
+            if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+            log('🏴‍☠️ Вор украл золото: −' + stolen + (hpLoss > 0 ? ', HP −' + hpLoss : ''));
           }
         }
       } else if (t === 14) { // Chaotic — перелет на соседнюю клетку (спец-черепов не трогаем)
@@ -4065,11 +4687,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}<\/span>`;
       const status = unlocked
         ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}<\/span>`
-        : `<span class="pick-locked">🔒 15 спец-черепов → трофей<\/span>`;
+        : `<span class="pick-locked">🔒 20–30 спец-черепов → трофей<\/span>`;
       btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}<\/span><span><span class="pick-name">${cls.name}<\/span><br><span class="pick-race">${cls.raceName || cls.race}<\/span><\/span><\/span>${desc.join('')}${uniqueInfo}${status}`;
       btn.addEventListener('click', () => {
         if (!unlocked) {
-          flash('⚠ «' + cls.name + '» заблокирован — убей ~15 спец-черепов, чтобы получить трофей');
+          flash('⚠ «' + cls.name + '» заблокирован — убей 20–30 спец-черепов, чтобы получить трофей');
           return;
         }
         setSelectedClassId(cls.id);
@@ -4097,6 +4719,22 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     initInput();
     const restartBtn = qs('#restart');
     if (restartBtn) restartBtn.addEventListener('click', () => newGame());
+    const menuBtn = qs('#menu-btn');
+    const menuModal = qs('#menu-modal');
+    if (menuBtn && menuModal) {
+      menuBtn.addEventListener('click', () => menuModal.classList.add('show'));
+      const hide = () => menuModal.classList.remove('show');
+      const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
+      const close = qs('#menu-close'); if (close) close.addEventListener('click', hide);
+      const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => { hide(); newGame(); });
+      const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
+        hide();
+        const wrap = qs('#help-modal');
+        if (wrap) wrap.classList.add('show');
+      });
+    }
+    const statsBtn = qs('#stats-btn');
+    if (statsBtn) statsBtn.addEventListener('click', () => openModal('stats'));
     const helpBtn = qs('#help');
     if (helpBtn) helpBtn.addEventListener('click', () => {
       const wrap = qs('#help-modal');

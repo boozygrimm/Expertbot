@@ -14,9 +14,26 @@
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
   <div class="picker-card">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за ~15 убитых спец-черепов.</p>
+    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за 20–30 убитых спец-черепов.</p>
+    <div class="picker-modes">
+      <label>Режим
+        <select id="mode-select">
+          <option value="classic">Классика</option>
+          <option value="sprint">Спринт (100 ходов)</option>
+          <option value="pretzel">Крендель (100 HP)</option>
+        </select>
+      </label>
+      <label>Сложность
+        <select id="difficulty-select">
+          <option value="0">Лёгкий</option>
+          <option value="1" selected>Обычный</option>
+          <option value="2">Сложный</option>
+          <option value="3">Очень сложный</option>
+        </select>
+      </label>
+    </div>
     <div class="picker-grid" id="picker-grid"></div>
-    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне.</p>
+    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне. В Спринте новые навыки сразу 5 уровня, но выжить нужно 100 ходов.</p>
   </div>
 </div>
 
@@ -40,12 +57,21 @@
     </div>
   </header>
 
-  <div class="notice">Пробник классики · <strong>свои графика и код</strong> · сложность: Нормал · босс каждые 10 ходов</div>
+  <div class="skills-head">
+    <div class="skills" id="skills" aria-label="Умения"></div>
+    <div class="run-actions">
+      <button class="icon-btn" id="menu-btn" type="button">Меню</button>
+      <button class="icon-btn" id="stats-btn" type="button">Свойства</button>
+    </div>
+  </div>
+
+  <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
 
   <!-- board -->
   <div class="board-wrap">
     <div id="chain-tip" class="chain-tip" role="status" aria-live="polite"></div>
     <div id="board" aria-label="Поле рейда 6 на 6"></div>
+    <div class="board-foot"><span id="chain-count">⛓ 0</span><span id="mode-badge">Классика · Обычный</span></div>
   </div>
 
   <!-- HUD -->
@@ -79,12 +105,20 @@
     <div class="bar xp" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
   </section>
 
-  <!-- skills -->
-  <div class="skills" id="skills" aria-label="Умения"></div>
-
   <div class="log-wrap" id="log" aria-live="polite"></div>
 
   <div class="flash" id="flash" role="status"></div>
+</div>
+
+<!-- run menu -->
+<div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
+  <div class="menu-card">
+    <h3>⚔ Меню рейда</h3>
+    <button class="btn" id="menu-resume" type="button">Продолжить</button>
+    <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
+    <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
+    <button class="btn secondary" id="menu-close" type="button">Закрыть</button>
+  </div>
 </div>
 
 <!-- generic modal (level / gold / armor / gameover) -->
@@ -108,10 +142,10 @@
       <li>Щиты → броня; монеты → золото; зелье → лечение.</li>
       <li>Черепа атакуют после твоего хода. HP=0 → конец забега.</li>
       <li>Ассасин / Вервольф — «Калечение»: в конце хода убивает максимум один старый обычный череп — выбирается самый слабый из тех, у кого HP ниже твоей брони. Свежие, особые и боссы не затрагиваются.</li>
-      <li>Уровень 2 из 4; 100 золота → снаряжение; 80 улучшений → апгрейд.</li>
+      <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения.</li>
       <li>Спецскилл (Руна): магическая замкнутая цепочка собирает всё внутри неё.</li>
-      <li>Спецчерепы спавнятся каждые 4 хода (кроме бонусных ходов босса) — ~15 убийств → трофей → новый класс.</li>
-      <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы.</li>
+      <li>20% новых клеток — черепа; счётчик 50 ходов превращает одного из них в особого (1 из 32, босс — тип 1). 20–30 особых убийств → трофей → класс.</li>
+      <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы. У каждого черепа может быть смертный враг твоей расы.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
   </div>
