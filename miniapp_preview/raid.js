@@ -2374,7 +2374,10 @@
           for (const i of unselected) {
             const cell = S.board[i];
             if (!cell || cell.type !== 'skull' || cell.skull.hp <= 0) continue;
-            cell.skull.hp -= totalDamage;
+            // Original AttackSkull: the skull's defence absorbs damage first.
+            const absorbed = Math.min(totalDamage, Math.max(0, cell.skull.def || 0));
+            cell.skull.def = Math.max(0, (cell.skull.def || 0) - absorbed);
+            cell.skull.hp -= (totalDamage - absorbed);
             if (cell.skull.hp <= 0) {
               S.board[i] = { type: 'empty' };
               S.skullsKilled++;
@@ -3642,8 +3645,8 @@
         }
         if (coins.length > 0) {
           const stolen = Math.min(2, coins.length);
-          // Original StealGold: the coins are matched, so they still pay out as
-          // gold tokens; only the mortal enemy (Sauren) loses HP on top.
+          // Original StealGold marks the coins as matched (no reward token), so
+          // they simply vanish; only the mortal enemy (Sauren) loses HP on top.
           shuffle(coins).slice(0, stolen).forEach(j => S.board[j] = { type: 'empty' });
           // Кража монет сама по себе урона не наносит; урон — только для
           // смертного врага (Sauren): 2× атака Вора.
@@ -3681,12 +3684,14 @@
           S.board[i] = { type: 'empty' };
           S.board[pick] = { type: 'skull', skull: s };
         }
-      } else if (t === 16) { // Assassin — bottom row: direct 2× hit; elsewhere remove the tile below
+      } else if (t === 16) { // Assassin — bottom row: direct 2× hit; mortal enemy (Faun): kill the tile below
         if (roundOrCol === ROWS - 1) {
           const bonusDmg = 2 * enemyGetAttack(s);
           damageHero(bonusDmg, false, true);
           log('🗡️ Ассасин: прямой урон −' + bonusDmg + ' HP');
-        } else {
+        } else if (clsRace() === 'Faun') {
+          // Original StabAttack: only as the Faun's mortal enemy does it match
+          // (destroy) the ordinary tile directly below, without a reward.
           const belowIdx = i + COLS;
           const below = S.board[belowIdx];
           if (below && below.type !== 'empty' && !(below.type === 'skull' && below.skull && (below.skull.special || below.skull.boss))) {
