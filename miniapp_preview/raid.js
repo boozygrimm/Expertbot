@@ -288,7 +288,9 @@
   }
   // concept-art sprites from the catalog (window.SKULL_ART injected by the build)
   const SKULL_ART = (typeof window !== 'undefined' && window.SKULL_ART) || {};
-  const SKULL_KEYS = ['e1_ghost', 'e2_cult', 'e3_beholder', 'e4_plasma', 'e5_shadow'];
+  // Рядовой череп — одна внешность; спец-черепы — другие (свои арты); босс — boss_lich
+  const REGULAR_SKULL_KEY = 'e1_ghost';
+  const SPECIAL_SKULL_KEYS = ['e2_cult', 'e3_beholder', 'e4_plasma', 'e5_shadow'];
   const BOSS_KEY = 'boss_lich';
 
   let SKULL_UID = 1;
@@ -432,7 +434,8 @@
       boss: !!boss,
       special: !!special,
       uid: SKULL_UID++,
-      art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
+      art: boss ? BOSS_KEY
+        : (special ? SPECIAL_SKULL_KEYS[Math.floor(Math.random() * SPECIAL_SKULL_KEYS.length)] : REGULAR_SKULL_KEY),
       atk: Math.max(1, atk),
       def: def,
       hp: hp,
@@ -783,8 +786,8 @@
         img.src = SKULL_ART[s.art] || '';
         SKULL_IMAGES.set(s.uid, img);
       }
-      img.className = 'skull-art' + (boss ? ' boss' : '');
-      img.alt = boss ? 'Босс-череп' : 'Череп';
+      img.className = 'skull-art' + (boss ? ' boss' : special ? ' special' : '');
+      img.alt = boss ? 'Босс-череп' : special ? 'Спец-череп' : 'Череп';
       const keyChanged = cellEl._renderKey !== key;
       if (keyChanged) {
         // cell is now showing a different skull (or a skull replacing a tile) —
@@ -2035,6 +2038,58 @@
     setTimeout(() => { checkLevelUp(); checkGoldBox(); checkUpgradeBar(); checkTrophy(); }, 80);
   }
 
+  // --- особые черепа: особенности по тапу на спец/босс ---
+  // Спец-череп — элитность ×2/×2/×4 (оригинал); босс — ×3/×3/×6.
+  // Убив спец-черепа, игрок получает трофей (~15 → трофей).
+  function showSkullModal(skull) {
+    const wrap = el('modal');
+    const title = el('modal-title');
+    const body = el('modal-body');
+    if (!wrap || !body) return;
+    S.pendingModal = 'skull';
+    const boss = !!skull.boss;
+    wrap.classList.remove('level', 'shop', 'armor', 'trophy', 'gameover', 'skull');
+    wrap.className = 'modal show skull';
+    title.className = 'modal-title skull';
+    title.textContent = boss ? '👑 БОСС-ЧЕРЕП' : '◆ СПЕЦ-ЧЕРЕП';
+    body.innerHTML = '';
+
+    const img = document.createElement('img');
+    img.className = 'skull-feat-art';
+    img.src = SKULL_ART[skull.art] || '';
+    img.alt = boss ? 'Босс-череп' : 'Спец-череп';
+    body.appendChild(img);
+
+    const stats = document.createElement('p');
+    stats.className = 'skull-feat-stats';
+    stats.innerHTML = `<b>⚔ ${skull.atk}</b> · <b>🛡 ${skull.def}</b> · <b>❤️ ${skull.hp}</b>`;
+    body.appendChild(stats);
+
+    const feats = document.createElement('div');
+    feats.className = 'skull-feat-list';
+    const items = boss
+      ? ['Усиленная элитность — как оригинальный Boss (×3 ⚔ / ×3 🛡 / ×6 ❤️).',
+         'Броня не ниже 1, HP ограничен бонусом Громкого (+5% HP).',
+         'Демонстрируется в обертке 👑; каждый босс — «трофейный» череп.']
+      : ['Усиленная элитность — ×2 ⚔ / ×2 🛡 / ×4 ❤️ (оригинал по умолчанию).',
+         'Броня не ниже 1.',
+         'Убивая спец-черепа, копим трофей: ~15 убийств → трофей → новое класс.'];
+    items.forEach(text => {
+      const li = document.createElement('div');
+      li.className = 'skull-feat-line';
+      li.textContent = text;
+      feats.appendChild(li);
+    });
+    body.appendChild(feats);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.textContent = 'Понятно';
+    btn.addEventListener('click', () => closeModal());
+    body.appendChild(btn);
+  }
+
   // --- трофей: ~15 спец-черепов → трофей ---
   // Классика: Adventurer — 100% шанс разблокировать любой класс;
   // другой класс — 50% шанс уровня класса / 50% шанс разблокировать новый класс.
@@ -2297,6 +2352,16 @@
     if (!activeDrag) return;
     activeDrag = false;
     window.removeEventListener('pointermove', onPointerMove);
+    // тап по элитному черепу (без драга) → особенности
+    const chain = S.selected.slice();
+    if (chain.length === 1) {
+      const cell = S.board[chain[0]];
+      if (cell && cell.type === 'skull' && cell.skull && (cell.skull.special || cell.skull.boss)) {
+        clearChain();
+        showSkullModal(cell.skull);
+        return;
+      }
+    }
     resolveChain();
   }
 
@@ -2404,6 +2469,7 @@
     classLevelOf,
     specialSpawnCount,
     makeSkull,
+    showSkullModal,
     placeNewTiles,
     checkLevelUp,
     checkGoldBox,
