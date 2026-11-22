@@ -44,14 +44,17 @@
   const UPGRADE_BAR_MAX = 80;     // синяя полоса (от щитов) → выбор 1-из-4
   const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
 
-  // Черепа (классика: стартовые значения рядового монстра — 1⚔️·0🛡·4❤️
-  // или 1⚔️·1🛡·4❤️; рост каждый ход)
-  const SKULL_BASE = { hp: 4, def: 0, atk: 1 };
-  const SKULL_GROWTH = { hp: 0.55, def: 0.3, atk: 0.4 };
-  const SKULL_START_FREE = 3;     // первые 3 хода — база без роста
-  // Босс: «черепу — гораздо сильнее обычного» (владелец: ×1.8/×1.5/×2.2,
-  // было ×2.0/×2.0/×3.0 — избыточно слабый клон; пересборка в 4710f0b затирала ×1.8)
-  const BOSS_STATS = { atk: 1.8, def: 1.5, hp: 2.2 };
+  // Черепа: формула оригинала (Classic, Normal) — docs/spec/01-board.md:
+  //   q = trunc(t · max(1, 1+(t−500)/700));  level = trunc(totalXP/100);
+  //   если level > 40: q = trunc(q · (1+(level−40)/60))
+  //   A = max(1, R(trunc(q/65), trunc(q/55)))   (⚔)
+  //   D = max(0, R(trunc(q/50), trunc(q/40)))   (🛡)
+  //   H = max(4, R(trunc(q/20), trunc(q/15)))   (❤️)
+  //   — без «первые 3 хода бесплатно» и без линейного роста.
+  // Босс: оригинал (specials.json multiplier «1»: ×3/×3/×6, spec 01-board.md)
+  const BOSS_STATS = { atk: 3, def: 3, hp: 6 };
+  // Спец-черепы (не босс): оригинал по умолчанию ×2/×2/×4 (specials.json defaultMultipliers)
+  const SPECIAL_STATS = { atk: 2, def: 2, hp: 4 };
 
   const SKILLS = [
     { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 20, desc: 'Все клетки без черепов → новые' },
@@ -214,7 +217,7 @@
       uniqueSkillDesc: 'Рывок (18): собирать все клетки по краю поля' },
     { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste',
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
-      perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у всех черепов',
+      perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
       clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (паралич)',
       uniqueSkillDesc: 'Хействие (16): цепочка может смешивать 2 разных типа меток' },
   ];
@@ -400,21 +403,39 @@
     return { type: t };
   }
 
-  function makeSkull(level, boss, special) {
+  function makeSkull(boss, special) {
     const cls = S && S.classId ? CLASS_BY_ID[S.classId] : null;
-    const flawBonusHp = cls && cls.flaw === 'Sneaky' ? 1 : 0;      // Assassin Flaw: +1 HP у всех черепов
-    const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;  // Warrior Flaw: спец-череп +5% HP
-    const growthTurns = Math.max(0, S.turn - SKULL_START_FREE);
-    // Классика: рядовой монстр на старте — 1⚔️·0🛡·4❤️ или 1⚔️·1🛡·4❤️ (def 0/1)
-    const startDef = boss ? 0 : (Math.random() < 0.5 ? 0 : 1);
+    // Оригинал (Tile::GenerateStats @0x63098, Classic + Normal):
+    //   level = trunc(totalXP/100);  q = trunc(t · max(1, 1+(t−500)/700));
+    //   level > 40 → q = trunc(q·(1+(level−40)/60))
+    // Обычные черепы — 1⚔️·0🛡·4❤️ у старта, рост ~q/65…/55 атк, q/50…/40 броня, q/20…/15 HP.
+    const turn = S.turn;
+    const level = Math.floor(((S.hero && S.hero.xpLevelCum) || 0) / 100);
+    let q = turn;
+    if (q > 500) q = Math.floor(q * (1 + (q - 500) / 700));
+    if (level > 40) q = Math.floor(q * (1 + (level - 40) / 60));
+    const a = Math.max(1, randInt(Math.floor(q / 65), Math.floor(q / 55)));
+    const d = Math.max(0, randInt(Math.floor(q / 50), Math.floor(q / 40)));
+    const h = Math.max(4, randInt(Math.floor(q / 20), Math.floor(q / 15)));
+    const mult = boss ? BOSS_STATS : (special ? SPECIAL_STATS : null);
+    let atk = mult ? Math.round(a * mult.atk) : a;
+    let def = mult ? Math.round(d * mult.def) : d;
+    let hp = mult ? Math.round(h * mult.hp) : h;
+    // Спец/босс: броня не ниже 1 (ориг: defence = max(1, defence))
+    if (boss || special) def = Math.max(1, def);
+    // Оригинал (Tile::GenerateStats): Sneaky (flaw=3) даёт +1 HP только обычным черепам
+    const flawBonusHp = (!boss && !special && cls && cls.flaw === 'Sneaky') ? 1 : 0;
+    // Оригинал: Noisy (flaw=9) → спец/босс +5% HP
+    const noisy = (boss || special) && cls && cls.flaw === 'Noisy' ? 1.05 : 1;
+    hp = Math.round(hp * noisy) + flawBonusHp;
     return {
       boss: !!boss,
       special: !!special,
       uid: SKULL_UID++,
       art: boss ? BOSS_KEY : SKULL_KEYS[Math.floor(Math.random() * SKULL_KEYS.length)],
-      atk: Math.round((SKULL_BASE.atk + SKULL_GROWTH.atk * growthTurns) * (boss ? BOSS_STATS.atk : 1)),
-      def: Math.round((startDef + SKULL_GROWTH.def * growthTurns) * (boss ? BOSS_STATS.def : 1)),
-      hp: Math.round((SKULL_BASE.hp + SKULL_GROWTH.hp * growthTurns) * (boss ? BOSS_STATS.hp : 1) * noisy) + flawBonusHp,
+      atk: Math.max(1, atk),
+      def: def,
+      hp: hp,
       maxHp: 0,
     };
   }
@@ -495,7 +516,7 @@
       // skulls enter from the top of random columns; then gravity compacts rows down
       const cols = shuffle([...Array(COLS).keys()]).slice(0, count);
       cols.forEach((c, i) => {
-        const skull = makeSkull(1 + Math.floor(i / 2), false);
+        const skull = makeSkull(false);
         skull.maxHp = skull.hp;
         skull.enteredTurn = -1; // present from the start of the game
         cells[c] = { type: 'skull', skull };
@@ -588,7 +609,7 @@
         const slot = slotsByCol.get(col)[0]; // topmost empty slot
         const isBoss = bossSpawn && i === 0;
         const isSpecial = !isBoss && specialCount > 0 && (bossSpawn ? i >= 1 : i >= skullCount);
-        const skull = makeSkull(1 + Math.floor(S.turn / 10), isBoss, isSpecial);
+        const skull = makeSkull(isBoss, isSpecial);
         if (isSpecial) skull.special = true;
         skull.maxHp = skull.hp;
         skull.enteredTurn = S.turn;
@@ -1310,7 +1331,7 @@
       let skullCount = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         if (S.board[i] && S.board[i].type === 'coin') {
-          const skull = makeSkull(1 + Math.floor(S.turn / 10), false);
+          const skull = makeSkull(false);
           skull.maxHp = skull.hp;
           skull.enteredTurn = S.turn;
           S.board[i] = { type: 'skull', skull };
