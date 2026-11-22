@@ -512,6 +512,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-sword.broken .ic, .cell.type-shield.broken .ic { color: #5a4a55; opacity: 0.45; filter: grayscale(0.6); }
 .cell.type-sword.broken, .cell.type-shield.broken { opacity: 0.6; }
 .cell.type-potion.acid .ic { color: #8ee05a; filter: drop-shadow(0 0 4px rgba(142, 224, 90, 0.6)); }
+.cell.type-potion.mana .ic { color: #7fb8ff; filter: drop-shadow(0 0 4px rgba(127, 184, 255, 0.55)); }
 .cell.burned { box-shadow: inset 0 0 0 2px #ff7a3a, 0 0 12px rgba(255, 122, 58, 0.5) !important; border-color: #ff7a3a !important; }
 .cell.frozen { box-shadow: inset 0 0 0 2px #7fd0e8, 0 0 10px rgba(127, 208, 232, 0.4) !important; border-color: #7fd0e8 !important; filter: saturate(0.6) brightness(1.15); }
 .skull-badge { white-space: nowrap; }
