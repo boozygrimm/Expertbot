@@ -87,13 +87,13 @@ function raidNode() {
     },
   };
 }
-function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false } = {}) {
+function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false, saved = {} } = {}) {
   const elements = new Map([
     ['mode-select', { value: mode }], ['difficulty-select', { value: String(difficulty) }],
     ['dmg-text', { textContent: '', title: '' }],
   ]);
   if (menus) for (const id of ['modal', 'modal-title', 'modal-body']) elements.set(id, raidNode());
-  const storage = new Map();
+  const storage = new Map(Object.entries(saved));
   let now = 0, nextTimer = 1;
   const timers = new Map();
   const context = vm.createContext({
@@ -122,7 +122,7 @@ function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1,
   raid.setSelectedClassId(classId);
   raid.newGame(seed);
   return {
-    raid, elements,
+    raid, elements, storage,
     advance(ms) {
       const end = now + ms;
       for (let n = 0; n < 10000; n++) {
@@ -319,7 +319,7 @@ for (const kills of [14, 15]) test(`raid Halfling ${kills} chain kills upgrade t
   const increment = kills === 15 ? 1 : 0;
   assert.equal(s.skullsKilled, kills);
   assert.equal(s.equipment[2].slot, 'armour');
-  assert.equal(s.equipment[2].mods.maxArmor || 0, increment);
+  assert.equal(s.equipment[2].mods.maxArmor, 2 + increment, 'starting armour already contains two points');
   assert.equal(s.hero.maxArmor, before + increment);
   assert.equal(s.hero.armor, 1 + increment, 'equipment update must retain armour deficit');
 });
@@ -936,8 +936,7 @@ test('raid durability uses R(0,100)<50, including the strict50 boundary and mini
     let seed;
     for (let candidate = 1; candidate <= 10000; candidate++) {
       const flushed = raidDraw(candidate, 0, 0).seed;
-      const trophy = raidDraw(flushed, 20, 30).seed;
-      if (raidDraw(trophy, 0, 100).value === roll) { seed = candidate; break; }
+      if (raidDraw(flushed, 0, 100).value === roll) { seed = candidate; break; }
     }
     assert.ok(seed);
     const { raid } = raidCombat({ seed });
@@ -1231,7 +1230,7 @@ test('raid sixteen Rune-collected skulls give XP but never Guts or direct kill c
   raidSelect(raid, runeOuter); raid.resolveChain(); advance(420);
   assert.equal(s.skullsKilled, 0);
   assert.equal(s.hero.maxArmor, before);
-  assert.equal(s.equipment[2].mods.maxArmor || 0, 0);
+  assert.equal(s.equipment[2].mods.maxArmor, 2, 'Rune does not upgrade the starting armour');
   assert.ok(s.hero.xpLevelCum >= 32);
 });
 
@@ -1493,7 +1492,7 @@ test('raid help/build includes actual shield, combined volley and Rune preview r
 test('raid item resource upgrades use quarter-point steps and display points rather than percentages', () => {
   const { raid } = raidBrowser({ seed: 71 });
   const found = new Set();
-  for (let n = 0; n < 200; n++) for (const slot of ['shield', 'accessory']) {
+  for (let n = 0; n < 200; n++) for (const slot of ['helmet', 'shield']) {
     const offer = raid.makeUpgradeOffer(slot);
     if (!['goldPerCoin', 'xpPerSkull', 'upgradePerShield'].includes(offer.key)) continue;
     found.add(offer.key);
@@ -1509,13 +1508,13 @@ test('raid capped resource bonuses are excluded from further item upgrade offers
   const s = raid.state, keys = ['goldPerCoin', 'xpPerSkull', 'upgradePerShield'];
   for (const key of keys) s[key] = 3.75;
   const eligible = new Set();
-  for (let n = 0; n < 100; n++) for (const slot of ['shield', 'accessory']) {
+  for (let n = 0; n < 100; n++) for (const slot of ['helmet', 'shield']) {
     const offer = raid.makeUpgradeOffer(slot);
     if (keys.includes(offer.key)) eligible.add(offer.key);
   }
   assert.equal(eligible.size, 3, 'the step from +1.75 to +2 remains eligible');
   for (const key of keys) s[key] = 4;
-  for (let n = 0; n < 100; n++) for (const slot of ['shield', 'accessory']) {
+  for (let n = 0; n < 100; n++) for (const slot of ['helmet', 'shield']) {
     assert.ok(!keys.includes(raid.makeUpgradeOffer(slot).key), 'a derived bonus of +2 is already capped');
   }
 });
@@ -1645,4 +1644,956 @@ test('raid Chaotic consuming an ordinary skull pays no XP and does not register 
   assert.equal(s.board[0].skull.uid, chaotic.uid);
   assert.ok(!s.board.some(cell => cell.skull?.uid === normal.uid));
   assert.deepEqual([s.skullsKilled, s.specialsKilled, s.hero.xpLevelCum, s.hero.gold], [0, 0, 0, 0]);
+});
+
+// Equipment / shop / scroll / trophy parity. Numeric fixtures and expected
+// draws are independent of the implementation; no reference code is imported.
+function raidGear(raid, slot, mods) {
+  const old = raid.state.equipment.find(item => item.slot === slot);
+  raid.equipItem({ ...old, mods: { ...old.mods, ...mods } });
+  return raid.state.equipment.find(item => item.slot === slot);
+}
+function raidUnits(seed, count = 12) {
+  let state = Math.imul(seed, 16807) >>> 0;
+  return Array.from({ length: count }, () => {
+    state = Math.imul(state, 16807) >>> 0;
+    return { seed: state, value: (state >>> 10) / 4194304 };
+  });
+}
+function raidSeedFor(predicate) {
+  for (let seed = 1; seed < 200000; seed++) {
+    const units = raidUnits(seed);
+    if (predicate(units.map(unit => unit.value))) return seed;
+  }
+  throw Error('No independent RNG fixture found');
+}
+const raidItemPools = {
+  weapon: ['weaponDamage', 'baseDamage', 'leech', 'weaponPoison', 'pierce', 'xpPerSkull', 'strength', 'luck'],
+  helmet: ['xpPerSkull', 'goldPerCoin', 'maxHp', 'maxArmor', 'spikes', 'upgradePerShield', 'regen'],
+  armour: ['maxHp', 'maxArmor', 'spikes', 'durability', 'blunt', 'regen', 'dexterity', 'vitality'],
+  shield: ['weaponDamage', 'baseDamage', 'maxArmor', 'spikes', 'upgradePerShield', 'blunt', 'armorPerShield'],
+  accessory: ['quicken', 'strength', 'luck', 'maxHp', 'regen', 'dexterity', 'vitality'],
+};
+function forecastStartingShop(seed, { sauren = false, pretzel = false } = {}) {
+  let state = Math.imul(seed, 16807) >>> 0;
+  const integer = (lo, hi) => { const next = raidDraw(state, lo, hi); state = next.seed; return next.value; };
+  const unit = () => { state = Math.imul(state, 16807) >>> 0; return (state >>> 10) / 4194304; };
+  const suffixes = [[20, 15], [40, 12], [50, 13], [60, 12], [80, 15], [160, 17], [240, 16], [320, 17], [340, 14], [360, 11], [370, 14], [380, 16], [400, 16]];
+  const ranges = { weapon: [0, 79], helmet: [80, 159], armour: [240, 319], shield: [160, 239], accessory: [320, 399] };
+  const pool = Object.keys(ranges), items = [];
+  for (let i = 0; i < 3; i++) {
+    const slot = pool.splice(integer(0, pool.length - 1), 1)[0];
+    const appearance = integer(...ranges[slot]);
+    const displayPrefix = integer(0, 9);
+    const suffixIndex = integer(0, suffixes.find(([end]) => appearance < end)[1] - 1);
+    let double = false;
+    if (slot === 'armour') double = unit() < Math.fround(.2);
+    if (slot === 'accessory' && !pretzel) unit(); // Its final random stat is on UPGRADE.
+    items.push({ slot, appearance, displayPrefix, suffixIndex, double });
+  }
+  const probability = unit(), hasScroll = probability < (sauren ? .5 : .25);
+  const index = hasScroll ? integer(0, 2) : null;
+  const exempt = hasScroll ? unit() < Math.fround(.1) : false;
+  return { items, probability, hasScroll, index, exempt, seed: state };
+}
+function raidShopSeed(predicate, options) {
+  for (let seed = 1; seed < 10000; seed++) if (predicate(forecastStartingShop(seed, options))) return seed;
+  throw Error('No shop RNG fixture found');
+}
+function raidOpenShop(raid) { raid.state.hero.gold = 100; raid.checkGoldBox(); }
+function raidAttachScroll(raid, id, index = 0) {
+  assert.equal(raid.state.pendingModal, 'gold');
+  raid.state.menuCandidates[index].scroll = { id };
+  return raid.state.menuCandidates[index];
+}
+
+for (const [classId, mode, hp, armour] of [
+  ['adventurer', 'classic', 50, 4], ['ranger', 'classic', 50, 3],
+  ['mage', 'classic', 40, 4], ['warrior', 'classic', 60, 4], ['adventurer', 'pretzel', 100, 4],
+]) test(`raid ${classId}/${mode}: real starting gear does not double-count base hero stats`, () => {
+  const { raid } = raidBrowser({ classId, mode });
+  const s = raid.state;
+  assert.deepEqual(Array.from(s.equipment, item => item.slot), Object.keys(raidItemPools));
+  assert.equal(s.equipment[0].mods.weaponDamage, 2);
+  assert.equal(s.equipment[1].mods.maxArmor, 1);
+  assert.equal(s.equipment[2].mods.maxArmor, classId === 'ranger' ? 1 : 2);
+  assert.equal(s.equipment[3].mods.maxArmor, 1);
+  assert.equal(s.equipment[4].mods.maxHp, mode === 'pretzel' ? 0 : 10);
+  const before = JSON.stringify(s.hero);
+  raid.updateEquipmentStats(); raid.updateEquipmentStats();
+  assert.equal(JSON.stringify(s.hero), before, 'recomputation must be idempotent');
+  assert.deepEqual([s.hero.hp, s.hero.maxHp, s.hero.armor, s.hero.maxArmor], [hp, hp, armour, armour]);
+  assert.equal(raid.baseDamage(), 3);
+  assert.ok(s.equipment.every(item => item.prefixAnchor === -1));
+});
+
+test('raid all20 equipment modifiers recompute HP, armour, attributes, combat and resource totals once', () => {
+  const { raid } = raidBrowser();
+  const s = raid.state;
+  s.hero.hp = 20; s.hero.armor = 1;
+  raidGear(raid, 'weapon', {
+    weaponDamage: 3, baseDamage: 2, leech: .05, weaponPoison: 2, pierce: .1, quicken: 1,
+    xpPerSkull: .25, goldPerCoin: .5, strength: 2, luck: 3, maxHp: 10, maxArmor: 2,
+    spikes: 2, upgradePerShield: .75, durability: .1, blunt: 2, armorPerShield: 3,
+    regen: 2, dexterity: 4, vitality: 2,
+  });
+  assert.deepEqual([s.hero.hp, s.hero.maxHp, s.hero.armor, s.hero.maxArmor], [40, 70, 3, 6]);
+  assert.deepEqual([s.hero.stats.strength, s.hero.stats.luck, s.hero.stats.dexterity, s.hero.stats.vitality], [3, 4, 5, 3]);
+  assert.deepEqual([raid.baseDamage(), s.hero.weaponDamage, s.armorPerShield], [7, 3, 4]);
+  assert.deepEqual([s.leech, s.weaponPoison, s.pierce, s.quicken, s.durability, s.blunt, s.regen, s.spikes], [.05, 2, .6, 1, .6, 2, 2, 2]);
+  assert.deepEqual([s.xpPerSkull, s.goldPerCoin, s.upgradePerShield], [2.25, 2.5, 2.75]);
+  assert.deepEqual(['xp', 'coin', 'shield', 'potion'].map(type => raid.bonusPct(type)), [35, 40, 45, 35]);
+  const snapshot = JSON.stringify([s.hero, s.equipmentApplied]);
+  raid.updateEquipmentStats();
+  assert.equal(JSON.stringify([s.hero, s.equipmentApplied]), snapshot);
+  raid.equipItem({ slot: 'weapon', mods: { weaponDamage: 2 } });
+  assert.deepEqual([s.hero.hp, s.hero.maxHp, s.hero.armor, s.hero.maxArmor], [40, 50, 1, 4], 'losing20 maxHP is not20 damage');
+  assert.deepEqual([raid.baseDamage(), s.hero.stats.strength, s.hero.stats.luck, s.regen, s.pierce], [3, 1, 1, 0, .5]);
+});
+
+for (const hp of [20, 45]) test(`raid removing accessory maxHP clamps current${hp}, never deals flat damage`, () => {
+  const { raid } = raidBrowser();
+  raid.state.hero.hp = hp;
+  raid.equipItem({ slot: 'accessory', mods: {} });
+  assert.deepEqual([raid.state.hero.hp, raid.state.hero.maxHp], [Math.min(hp, 40), 40]);
+});
+
+test('raid one replacement preserves armour deficit without intermediate clamp/refill', () => {
+  const { raid } = raidBrowser();
+  raidGear(raid, 'armour', { maxArmor: 6 });
+  raid.state.hero.armor = 2;
+  raidGear(raid, 'armour', { maxArmor: 8 });
+  assert.deepEqual([raid.state.hero.armor, raid.state.hero.maxArmor], [4, 10]);
+  raidGear(raid, 'armour', { maxArmor: 1 });
+  assert.deepEqual([raid.state.hero.armor, raid.state.hero.maxArmor], [0, 3]);
+});
+
+test('raid pierce/durability caps retain raw item overflow, with Cautious baseline30', () => {
+  const { raid } = raidBrowser({ classId: 'priest' });
+  raidGear(raid, 'weapon', { pierce: .7, durability: .7 });
+  raidGear(raid, 'helmet', { pierce: .1, durability: .1 });
+  assert.deepEqual([raid.state.pierce, raid.state.durability], [.95, .95]);
+  raid.equipItem({ slot: 'weapon', mods: { weaponDamage: 2 } });
+  assert.deepEqual([raid.state.pierce, raid.state.durability], [.4, .6]);
+});
+
+test('raid base bonus chance caps independently from equipment; removing gear cannot lose base overflow', () => {
+  const { raid } = raidBrowser();
+  raid.state.hero.stats.strength = 30;
+  assert.equal(raid.bonusPct('xp'), 100);
+  raidGear(raid, 'weapon', { strength: 2 });
+  assert.equal(raid.bonusPct('xp'), 110);
+  assert.equal(raid.bonusPct('xp', 5), 110);
+  raidGear(raid, 'weapon', { strength: 0 });
+  assert.equal(raid.bonusPct('xp'), 100);
+});
+
+for (const [mode, classId] of [['classic', 'adventurer'], ['sprint', 'adventurer'], ['pretzel', 'priest']]) {
+  test(`raid ${mode}: every slot uses its sorted native upgrade pool and eligibility`, () => {
+    const { raid } = raidBrowser({ mode, classId, seed: 913 });
+    for (const [slot, full] of Object.entries(raidItemPools)) {
+      const found = new Set();
+      for (let n = 0; n < 400; n++) found.add(raid.makeUpgradeOffer(slot).key);
+      const expected = full.filter(key => !(mode === 'sprint' && key === 'blunt') && !(mode === 'pretzel' && key === 'maxHp'));
+      assert.deepEqual([...found].sort(), expected.slice().sort(), slot);
+    }
+    raidGear(raid, 'accessory', { quicken: 1 });
+    for (let n = 0; n < 100; n++) assert.notEqual(raid.makeUpgradeOffer('accessory').key, 'quicken');
+  });
+}
+
+for (const sprint of [false, true]) test(`raid random upgrade consumes ${sprint ? 'one' : 'two'} UPGRADE draws, not ITEM/OTHER`, () => {
+  const { raid } = raidBrowser({ mode: sprint ? 'sprint' : 'classic', seed: 913 });
+  const before = [...raid.state.rngSeeds];
+  const weaken = sprint ? { seed: before[4] } : raidDraw(before[4], 0, 0);
+  const choice = raidDraw(weaken.seed, 0, 7);
+  const key = raid.randomItemUpgrade('weapon');
+  assert.equal(key, raidItemPools.weapon[choice.value]);
+  assert.equal(raid.state.rngSeeds[4], choice.seed);
+  for (const lane of [0, 1, 2, 3, 5]) assert.equal(raid.state.rngSeeds[lane], before[lane]);
+});
+
+test('raid weaken probability filters15 even though other slots consume that same preliminary draw', () => {
+  const { raid } = raidBrowser({ seed: 913 });
+  raidGear(raid, 'shield', { blunt: 5 });
+  let allowed = 0, filtered = 0;
+  for (let n = 0; n < 100; n++) {
+    const first = raidDraw(raid.state.rngSeeds[4], 0, 5);
+    const pool = raidItemPools.shield.filter(key => key !== 'blunt' || first.value === 0);
+    const second = raidDraw(first.seed, 0, pool.length - 1);
+    assert.equal(raid.randomItemUpgrade('shield'), pool[second.value]);
+    assert.equal(raid.state.rngSeeds[4], second.seed);
+    if (first.value) filtered++; else allowed++;
+  }
+  assert.ok(allowed && filtered);
+});
+
+for (const [metric, total, up, down] of [
+  ['leech', 14, 5, 5], ['leech', 15, 3, 5], ['leech', 17, 3, 5], ['leech', 18, 3, 3],
+  ['leech', 20, 3, 3], ['leech', 21, 2, 3], ['leech', 22, 2, 3], ['leech', 23, 2, 2], ['leech', 24, 2, 2],
+  ['durability', 69, 10, 10], ['durability', 70, 5, 10], ['durability', 74, 5, 10], ['durability', 75, 5, 5],
+  ['durability', 79, 5, 5], ['durability', 80, 3, 5], ['durability', 82, 3, 5], ['durability', 83, 3, 3],
+  ['durability', 85, 3, 3], ['durability', 86, 2, 3], ['durability', 87, 2, 3], ['durability', 88, 2, 2],
+]) test(`raid ${metric}${total}: independent up${up}/down${down} bands`, () => {
+  const { raid } = raidBrowser();
+  raid.state[metric] = total / 100;
+  assert.equal(raid.itemStep(metric), up / 100);
+  assert.equal(raid.itemStep(metric, true), down / 100);
+});
+
+test('raid upgrade thresholds test existing totals without clipping the last legal increment', () => {
+  const { raid } = raidBrowser();
+  raidGear(raid, 'weapon', { leech: .24, pierce: .4 });
+  assert.equal(raid.itemUpgradeAllowed('leech'), true);
+  raid.applyUpgradeOffer({ slot: 'weapon', key: 'leech', value: raid.itemStep('leech') });
+  assert.equal(raid.state.leech, .26);
+  assert.equal(raid.itemUpgradeAllowed('leech'), false);
+  raid.applyUpgradeOffer({ slot: 'weapon', key: 'pierce', value: raid.itemStep('pierce') });
+  assert.equal(raid.state.equipment[0].mods.pierce, .5);
+  assert.equal(raid.state.pierce, .95);
+  assert.equal(raid.itemUpgradeAllowed('pierce'), false);
+  raidGear(raid, 'armour', { durability: .39 });
+  assert.equal(raid.itemUpgradeAllowed('durability'), true);
+  raid.applyUpgradeOffer({ slot: 'armour', key: 'durability', value: raid.itemStep('durability') });
+  assert.equal(raid.state.durability, .91);
+  assert.equal(raid.itemUpgradeAllowed('durability'), false);
+});
+
+test('raid poison2, HP10, quarter-point, Faithful regen2 steps and Pretzel HP0 are effective, not labels', () => {
+  const { raid } = raidBrowser({ classId: 'priest' });
+  assert.equal(raid.itemStep('weaponPoison'), 2);
+  assert.equal(raid.itemStep('maxHp'), 10);
+  assert.equal(raid.itemStep('goldPerCoin'), .25);
+  assert.equal(raid.itemStep('regen'), 2);
+  raid.applyUpgradeOffer({ slot: 'helmet', key: 'regen', value: raid.itemStep('regen') });
+  raidBoard(raid, 'sword'); raid.state.hero.hp = 10;
+  raid.endEnemyTurn();
+  assert.equal(raid.state.hero.hp, 12, 'Faithful step is doubled once, not again each turn');
+  const item = raid.state.equipment[1];
+  assert.equal(raid.reduceItemModifier(item, 'regen'), 2);
+  assert.equal(raid.state.regen, 0);
+  const pretzel = raidBrowser({ mode: 'pretzel' }).raid;
+  assert.equal(pretzel.itemStep('maxHp'), 0);
+  assert.equal(pretzel.itemUpgradeAllowed('maxHp'), false);
+  raidGear(pretzel, 'accessory', { maxHp: 50, vitality: 3 });
+  assert.deepEqual([pretzel.state.hero.hp, pretzel.state.hero.maxHp, pretzel.bonusPct('potion')], [100, 100, 40]);
+});
+
+test('raid upgrade menu interleaves slot/weakening/stat draws and applies the displayed offer', () => {
+  const { raid, elements } = raidBrowser({ menus: true, seed: 913 });
+  const slots = Object.keys(raidItemPools), expected = [];
+  const before = [...raid.state.rngSeeds];
+  let state = before[4];
+  for (let n = 0; n < 4; n++) {
+    const slotDraw = raidDraw(state, 0, slots.length - 1);
+    const slot = slots.splice(slotDraw.value, 1)[0];
+    const weaken = raidDraw(slotDraw.seed, 0, 0);
+    const stat = raidDraw(weaken.seed, 0, raidItemPools[slot].length - 1);
+    expected.push([slot, raidItemPools[slot][stat.value]]); state = stat.seed;
+  }
+  raid.state.upgradeBar = 100; raid.checkUpgradeBar();
+  assert.equal(raid.state.rngSeeds[4], state);
+  assert.deepEqual(Array.from(raid.state.menuCandidates, offer => [offer.slot, offer.key]), expected);
+  assert.equal(raid.state.rngSeeds[5], before[5]);
+  const offer = raid.state.menuCandidates[0], equipped = raid.state.equipment.find(item => item.slot === offer.slot);
+  const old = equipped.mods[offer.key] || 0;
+  const cards = elements.get('modal-body').querySelectorAll('.lv-card');
+  assert.equal(cards.length, 4);
+  assert.ok(cards[0].innerHTML.includes(offer.desc));
+  assert.ok(cards[0].innerHTML.includes(offer.comparison));
+  cards[0].click();
+  assert.equal(equipped.mods[offer.key], Number((old + offer.value).toFixed(2)));
+  assert.equal(raid.state.upgradeBar, 0);
+});
+
+test('raid shop interleaves whole item generation between distinct ITEM slot draws', () => {
+  const seed = raidShopSeed(prediction => !prediction.hasScroll);
+  const { raid } = raidBrowser({ seed });
+  const expected = forecastStartingShop(seed), before = [...raid.state.rngSeeds];
+  const items = raid.makeShopOffers();
+  assert.equal(new Set(items.map(item => item.slot)).size, 3);
+  expected.items.forEach((old, n) => {
+    const actual = items[n];
+    for (const key of ['slot', 'appearance', 'displayPrefix', 'suffixIndex']) assert.equal(actual[key], old[key], key);
+    if (actual.slot === 'weapon') assert.equal(actual.mods.weaponDamage, 3);
+    if (actual.slot === 'armour') assert.equal(actual.mods.maxArmor, old.double ? 4 : 3);
+    if (actual.slot === 'helmet' || actual.slot === 'shield') assert.equal(actual.mods.maxArmor, 2);
+  });
+  assert.equal(raid.state.rngSeeds[2], expected.seed);
+  for (const lane of [0, 1, 3, 5]) assert.equal(raid.state.rngSeeds[lane], before[lane]);
+});
+
+test('raid item appearance/name draws are separate from quality, including the stable high prefix anchor', () => {
+  const { raid } = raidBrowser({ seed: 913 });
+  const old = raid.state.equipment[0]; old.prefixAnchor = 140;
+  const before = [...raid.state.rngSeeds];
+  const icon = raidDraw(before[2], 0, 79), prefix = raidDraw(icon.seed, 140, 147);
+  const pools = [[20, 15], [40, 12], [50, 13], [60, 12], [80, 15]];
+  const suffix = raidDraw(prefix.seed, 0, pools.find(([end]) => icon.value < end)[1] - 1);
+  const next = raid.makeItem('weapon');
+  assert.deepEqual([next.appearance, next.prefixAnchor, next.displayPrefix, next.suffixIndex], [icon.value, 140, prefix.value, suffix.value]);
+  assert.equal(next.mods.weaponDamage, 3, 'prefix does not add a quality-tier bonus');
+  assert.equal(raid.state.rngSeeds[2], suffix.seed);
+  assert.equal(raid.state.rngSeeds[4], before[4]);
+  assert.doesNotMatch(next.name, /Novice|Torpid|Awful/);
+});
+
+for (const slot of Object.keys(raidItemPools)) test(`raid ${slot} generator transfers old secondary stats in ascending ID order`, () => {
+  let predicate, mods, expected, itemDrawCount;
+  if (slot === 'weapon') {
+    predicate = u => u[3] < .15 && u[4] >= .15;
+    mods = { baseDamage: 2, leech: .15 }; expected = { weaponDamage: 4, baseDamage: 1, leech: .15 }; itemDrawCount = 5;
+  } else if (slot === 'helmet') {
+    predicate = u => u[3] < .2 && u[4] < .5 && u[5] < .2;
+    mods = { goldPerCoin: .25, spikes: 1 }; expected = { maxArmor: 3, goldPerCoin: .5 }; itemDrawCount = 6;
+  } else if (slot === 'armour') {
+    predicate = u => u[3] >= .2 && u[4] < .1 && u[5] >= .1;
+    mods = { strength: 1, regen: 2 }; expected = { maxArmor: 4, regen: 2 }; itemDrawCount = 6;
+  } else if (slot === 'shield') {
+    predicate = u => u[3] < .7 && u[4] < .2 && u[5] < .2 && u[6] >= .2;
+    mods = { weaponDamage: 2, baseDamage: 2, spikes: 1 }; expected = { maxArmor: 3, weaponDamage: 2, baseDamage: 1, spikes: 1 }; itemDrawCount = 7;
+  } else {
+    // First UPGRADE draw is weaken R(0,0); second chooses LUK (index1).
+    predicate = u => u[3] < .1 && u[4] >= .1 && u[5] >= .5 && Math.floor(6 * u[1]) === 1;
+    mods = { strength: 1, luck: 1 }; expected = { maxHp: 15, luck: 1 }; itemDrawCount = 6;
+  }
+  const seed = raidSeedFor(predicate), { raid } = raidBrowser({ seed });
+  raidGear(raid, slot, mods);
+  const before = [...raid.state.rngSeeds];
+  const item = raid.makeItem(slot);
+  assert.deepEqual({ ...item.mods }, expected);
+  assert.equal(raid.state.rngSeeds[2], raidUnits(seed)[itemDrawCount - 1].seed);
+  if (slot === 'accessory') assert.equal(raid.state.rngSeeds[4], raidUnits(seed)[1].seed);
+  else assert.equal(raid.state.rngSeeds[4], before[4]);
+});
+
+test('raid armour20% double-main branch copies secondaries without drawing more probabilities', () => {
+  const seed = raidSeedFor(u => u[3] < .2), { raid } = raidBrowser({ seed });
+  raidGear(raid, 'armour', { strength: 2, regen: 3 });
+  const item = raid.makeItem('armour');
+  assert.deepEqual({ ...item.mods }, { maxArmor: 4, strength: 2, regen: 3 });
+  assert.equal(raid.state.rngSeeds[2], raidUnits(seed)[3].seed);
+});
+
+test('raid Pretzel accessory has zero HP and always gets a random eligible non-HP stat', () => {
+  const { raid } = raidBrowser({ mode: 'pretzel', seed: 913 });
+  const before = [...raid.state.rngSeeds];
+  const item = raid.makeItem('accessory');
+  assert.equal(item.mods.maxHp || 0, 0);
+  assert.equal(Object.values(item.mods).reduce((sum, value) => sum + value, 0), 1);
+  assert.equal(raid.state.rngSeeds[2], raidUnits(913)[2].seed, 'no final50% ITEM draw in Pretzel');
+  const weaken = raidDraw(before[4], 0, 0), selected = raidDraw(weaken.seed, 0, 5);
+  assert.equal(raid.state.rngSeeds[4], selected.seed);
+});
+
+test('raid Devourer can reduce actual starting weapon, not an imaginary additive bonus', () => {
+  const { raid } = raidBrowser({ seed: 0 }); raidBoard(raid);
+  raidOld(raid, 0, { countdown: 1 }, 28);
+  raid.applySpecialAbilities();
+  assert.equal(raid.state.equipment[0].mods.weaponDamage, 1);
+  assert.equal(raid.state.hero.weaponDamage, 1);
+  assert.equal(raid.state.board[0].skull.countdown, 5);
+});
+
+test('raid Quicken is existential, idempotent, and removing the last copy preserves elapsed charge', () => {
+  const { raid } = raidBrowser();
+  raid.installSkillOption(raid.prepareSkillOption('heal'));
+  raidGear(raid, 'weapon', { quicken: 1 });
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [14, 0]);
+  raidGear(raid, 'accessory', { quicken: 2 }); raid.updateEquipmentStats();
+  raidGear(raid, 'weapon', { quicken: 0 });
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [14, 0]);
+  const accessory = raid.state.equipment[4];
+  raid.reduceItemModifier(accessory, 'quicken');
+  assert.equal(raid.skillDuration('heal'), 14, 'positive2→1 still has Quicken');
+  raid.reduceItemModifier(accessory, 'quicken');
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [15, 1]);
+});
+
+test('raid Quicken and skill upgrade each shorten remaining turns, never reset a partial charge', () => {
+  const { raid } = raidBrowser();
+  raid.installSkillOption(raid.prepareSkillOption('heal'));
+  raid.state.skillCooldowns.heal = 5; // CD15, elapsed10.
+  raidGear(raid, 'accessory', { quicken: 1 });
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [14, 4]);
+  const upgrade = raid.prepareSkillOption('heal');
+  assert.deepEqual([upgrade.duration, upgrade.charge, upgrade.level], [13, 10, 2]);
+  raid.installSkillOption(upgrade);
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [13, 3]);
+  raidGear(raid, 'accessory', { quicken: 0 });
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [14, 4]);
+});
+
+test('raid new Quicken/Cunning fourth skill starts ready and discounts are not reapplied on upgrade', () => {
+  const { raid } = raidBrowser({ classId: 'assassin' });
+  raidGear(raid, 'accessory', { quicken: 1 });
+  for (const id of ['steal', 'freeze', 'repair', 'heal']) raid.installSkillOption(raid.prepareSkillOption(id));
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal, raid.state.cooldownAdjust.heal], [13, 0, -1]);
+  raid.state.skillCooldowns.heal = 5;
+  raid.installSkillOption(raid.prepareSkillOption('heal'));
+  assert.deepEqual([raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [12, 4]);
+});
+
+test('raid level menu consumes SKILL draw before class-first override, then two distinct stat draws', () => {
+  const { raid } = raidBrowser({ classId: 'ranger', seed: 913 });
+  const s = raid.state; s.hero.level = 2;
+  const pool = ['heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana', 'volley'];
+  const before = [...s.rngSeeds], first = raidDraw(before[3], 0, 19), second = raidDraw(first.seed, 0, 18);
+  const stat1 = raidDraw(second.seed, 0, 7), stat2 = raidDraw(stat1.seed, 0, 6);
+  const stats = ['strength', 'dexterity', 'vitality', 'luck', 'damage', 'defense', 'health', 'charisma'];
+  const a = stats.splice(stat1.value, 1)[0], b = stats.splice(stat2.value, 1)[0];
+  const options = raid.chooseLevelOptions();
+  assert.deepEqual(Array.from(options, opt => opt.id), ['volley', pool.filter(id => id !== 'volley')[second.value], a, b]);
+  assert.equal(s.rngSeeds[3], stat2.seed);
+  for (const lane of [0, 1, 2, 4, 5]) assert.equal(s.rngSeeds[lane], before[lane]);
+  assert.equal(s.skills.length, 0);
+});
+
+test('raid class skill is forced only at level2, not repeatedly at later levels', () => {
+  const { raid } = raidBrowser({ classId: 'ranger', seed: 913 });
+  raid.state.hero.level = 3;
+  const first = raidDraw(raid.state.rngSeeds[3], 0, 19);
+  assert.notEqual(first.value, 19, 'independent fixture must not naturally draw Volley');
+  const option = raid.chooseLevelOptions()[0];
+  assert.notEqual(option.id, 'volley');
+});
+
+test('raid owned skill upgrades are offered before four slots and preserve charge through real level clicks', () => {
+  const { raid, elements } = raidBrowser({ seed: 0, menus: true });
+  const s = raid.state;
+  raid.installSkillOption(raid.prepareSkillOption('steal')); s.skillCooldowns.steal = 5;
+  s.hero.level = 2; s.hero.xp = 100; raid.checkLevelUp();
+  assert.deepEqual(Array.from(s.menuCandidates.slice(0, 2), option => [option.id, option.upgrade]), [['steal', true], ['freeze', false]]);
+  const cards = elements.get('modal-body').querySelectorAll('.lv-card');
+  cards[0].click(); cards[1].click();
+  assert.deepEqual(Array.from(s.skills), ['steal', 'freeze']);
+  assert.deepEqual([raid.skillDuration('steal'), s.skillCooldowns.steal, s.skillLevels.steal], [12, 4, 2]);
+  assert.equal(s.skillCooldowns.freeze, 0, 'new skill is fully ready');
+});
+
+test('raid third-slot ownership restricts a second candidate to upgrades after a new first candidate', () => {
+  const { raid } = raidBrowser({ seed: 0 });
+  for (const id of ['heal', 'repair', 'counter']) raid.installSkillOption(raid.prepareSkillOption(id));
+  const options = raid.chooseLevelOptions();
+  assert.deepEqual(Array.from(options.slice(0, 2), opt => [opt.id, opt.upgrade]), [['steal', false], ['heal', true]]);
+  for (const id of raid.state.skills) raid.state.skillLevels[id] = 10;
+  const next = raid.chooseLevelOptions();
+  assert.equal(next.filter(option => 'native' in option).length, 1);
+});
+
+test('raid full mastered slots fill all four options with distinct stats and no skill draws', () => {
+  const { raid } = raidBrowser({ seed: 913 });
+  for (const id of ['heal', 'repair', 'counter', 'freeze']) {
+    raid.installSkillOption(raid.prepareSkillOption(id)); raid.state.skillLevels[id] = 10;
+  }
+  let expected = raid.state.rngSeeds[3];
+  for (const last of [7, 6, 5, 4]) expected = raidDraw(expected, 0, last).seed;
+  const options = raid.chooseLevelOptions();
+  assert.ok(options.every(option => !('native' in option)));
+  assert.equal(new Set(options.map(option => option.id)).size, 4);
+  assert.equal(raid.state.rngSeeds[3], expected);
+});
+
+test('raid Sprint filters owned skills and Trap; new level5 skills are immediately ready at baseCD-4', () => {
+  const { raid } = raidBrowser({ mode: 'sprint', seed: 0 });
+  raid.installSkillOption(raid.prepareSkillOption('steal'));
+  for (let n = 0; n < 100; n++) {
+    const options = raid.chooseLevelOptions();
+    const skills = options.filter(option => 'native' in option);
+    assert.ok(skills.every(option => option.id !== 'steal' && option.id !== 'trap'));
+    assert.ok(skills.every(option => option.level === 5 && option.duration === option.cooldown - 4));
+  }
+  raid.installSkillOption(raid.prepareSkillOption('heal'));
+  assert.deepEqual([raid.state.skillLevels.heal, raid.skillDuration('heal'), raid.state.skillCooldowns.heal], [5, 11, 0]);
+  const priest = raidBrowser({ classId: 'priest', mode: 'sprint', seed: 0 }).raid;
+  priest.state.hero.level = 2;
+  assert.notEqual(priest.chooseLevelOptions()[0].id, 'wish', 'Sprint does not force the one-use Wish');
+});
+
+test('raid Pretzel level menu excludes Health/Teleport/Chamber but keeps vitality bonus-potion growth', () => {
+  const { raid } = raidBrowser({ mode: 'pretzel', seed: 913 });
+  let vitality = false;
+  for (let n = 0; n < 100; n++) {
+    const options = raid.chooseLevelOptions();
+    assert.ok(options.every(option => !['health', 'teleport', 'chamber'].includes(option.id)));
+    if (options.some(option => option.id === 'vitality')) vitality = true;
+  }
+  assert.equal(vitality, true);
+});
+
+test('raid Adventurer unlocks native31..39 only through their mastered class, never hidden40/41', () => {
+  const { raid } = raidBrowser();
+  assert.equal(raid.isSkillUnlocked('volley'), false);
+  raid.unlockClass('ranger');
+  for (let n = 0; n < 9; n++) raid.levelUpClass('ranger');
+  assert.equal(raid.isSkillUnlocked('volley'), true);
+  assert.equal(raid.isSkillUnlocked('berserk'), false);
+  for (const id of ['adventurer', 'barbarian', 'mage', 'ranger', 'rogue', 'paladin', 'priest', 'raider', 'warrior', 'assassin']) {
+    raid.unlockClass(id); for (let n = 0; n < 10; n++) raid.levelUpClass(id);
+  }
+  for (const id of ['shock', 'awe']) assert.equal(raid.isSkillUnlocked(id), false);
+  const found = new Set();
+  for (let n = 0; n < 300; n++) for (const option of raid.chooseLevelOptions()) if ('native' in option) found.add(option.native);
+  assert.deepEqual([...found].sort((a, b) => a - b), Array.from({ length: 40 }, (_, n) => n));
+});
+
+test('raid shop shows three equipment buttons, inert fourth card, attached skill and clear before/after', () => {
+  const { raid, elements } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  raidOpenShop(raid);
+  const body = elements.get('modal-body'), cards = body.querySelectorAll('.shop-item');
+  assert.equal(cards.length, 4);
+  assert.equal(cards.filter(card => typeof card.onclick === 'function').length, 3);
+  assert.equal(cards[3]['aria-hidden'], 'true');
+  assert.match(cards[0].innerHTML, /shop-scroll/);
+  assert.match(cards[0].innerHTML, /разово при покупке/);
+  assert.match(cards[0].innerHTML, /Урон оружия: 2 → 3/);
+  assert.match(cards[0].innerHTML, /item-change better/);
+  assert.ok(!cards[3].innerHTML, 'no fourth upgrade-scroll purchase');
+  const seeds = [...raid.state.rngSeeds];
+  body.querySelectorAll('.shop-summary-toggle')[0].click();
+  body.querySelectorAll('.shop-summary-toggle')[0].click();
+  assert.deepEqual(Array.from(raid.state.rngSeeds), seeds, 'viewing summary never rerolls offers');
+});
+
+test('raid confirmed scroll exemption may select an OWNED cooling-down skill and leaves its cooldown alone', () => {
+  const { raid, elements } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  raid.installSkillOption(raid.prepareSkillOption('goldtouch')); s.skillCooldowns.goldtouch = 7;
+  raidOpenShop(raid);
+  assert.equal(s.menuCandidates[0].scroll.id, 'goldtouch', 'lowest eligible native ID is6, even though owned');
+  const beforeSkills = JSON.stringify([s.skills, s.skillCooldowns, s.skillLevels]);
+  elements.get('modal-body').querySelectorAll('.shop-item')[0].click();
+  assert.ok(s.board.every(cell => cell.type === 'coin'));
+  assert.equal(JSON.stringify([s.skills, s.skillCooldowns, s.skillLevels]), beforeSkills);
+  assert.equal(s.equipment[0].mods.weaponDamage, 3);
+  assert.equal(s.equipment[0].scroll, undefined, 'the scroll is not a permanent item modifier');
+  assert.equal(s.turn, 0);
+  assert.equal(s.resolving, false);
+});
+
+test('raid unresolved non-exempt scroll is explicitly skipped, never replaced with an owned-skill heuristic', () => {
+  const seed = raidShopSeed(result => result.hasScroll && !result.exempt);
+  const { raid, elements } = raidBrowser({ seed, menus: true }); raidBoard(raid, 'sword');
+  const expected = forecastStartingShop(seed);
+  raidOpenShop(raid);
+  assert.equal(raid.state.menuCandidates.filter(item => item.scrollBlocked).length, 1);
+  assert.equal(raid.state.menuCandidates.filter(item => item.scroll).length, 0);
+  assert.equal(raid.state.rngSeeds[2], expected.seed, 'unknown candidate choice must not be fabricated');
+  assert.match(raid.state.compatibilityNotices.join('\n'), /I1/);
+  const card = elements.get('modal-body').querySelectorAll('.shop-item')[expected.index];
+  assert.match(card.innerHTML, /фильтр оригинала не расшифрован/);
+  card.click();
+  assert.equal(raid.state.pendingModal, null);
+  assert.equal(raid.state.skills.length, 0);
+});
+
+test('raid full raw-word scroll fixture filters numeric native IDs, not equipped skill membership', () => {
+  const seed = raidShopSeed(result => result.hasScroll && !result.exempt);
+  const { raid } = raidBrowser({ seed, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.scrollNativeWords = Object.fromEntries(Array.from({ length: 42 }, (_, id) => [id, id === 16 ? 0 : 1]));
+  raid.installSkillOption(raid.prepareSkillOption('boostdmg')); s.skillCooldowns.boostdmg = 8;
+  raidOpenShop(raid);
+  const withScroll = s.menuCandidates.filter(item => item.scroll);
+  assert.equal(withScroll.length, 1);
+  assert.equal(withScroll[0].scroll.id, 'boostdmg');
+  assert.equal(s.rngSeeds[2], raidDraw(forecastStartingShop(seed).seed, 0, 0).seed);
+  const index = s.menuCandidates.indexOf(withScroll[0]);
+  assert.equal(raid.purchaseShopItem(index), true);
+  assert.deepEqual([s.swordBoost, s.skillCooldowns.boostdmg, s.skills.length], [1, 8, 1]);
+});
+
+for (const fixture of ['partial', 'empty']) test(`raid ${fixture} native scroll fixture cannot crash or block the three equipment choices`, () => {
+  const seed = raidShopSeed(result => result.hasScroll && !result.exempt);
+  const { raid } = raidBrowser({ seed, menus: true });
+  raid.state.scrollNativeWords = fixture === 'partial' ? { 16: 0 } : Object.fromEntries(Array.from({ length: 42 }, (_, id) => [id, 1]));
+  raidOpenShop(raid);
+  assert.equal(raid.state.menuCandidates.length, 3);
+  assert.equal(raid.state.menuCandidates.filter(item => item.scrollBlocked).length, 1);
+  assert.equal(raid.purchaseShopItem(0), true);
+});
+
+test('raid Sauren50 versus ordinary25 uses the same ITEM float draw, not OTHER randomness', () => {
+  const seed = raidShopSeed(result => result.probability >= .25 && result.probability < .5);
+  const human = raidBrowser({ seed }).raid, sauren = raidBrowser({ seed, classId: 'rogue' }).raid;
+  raidBoard(human, 'sword'); raidBoard(sauren, 'sword');
+  const h = human.makeShopOffers(), r = sauren.makeShopOffers();
+  assert.ok(h.every(item => !item.scroll && !item.scrollBlocked));
+  assert.equal(r.filter(item => item.scroll || item.scrollBlocked).length, 1);
+  assert.equal(human.state.rngSeeds[5], sauren.state.rngSeeds[5]);
+});
+
+test('raid scroll CanActivate checks real targets and armour, but not equipped cooldowns', () => {
+  const { raid } = raidBrowser(); raidBoard(raid, 'sword');
+  for (const id of ['freeze', 'steal', 'berserk', 'heal', 'elixir', 'mana', 'repair', 'treasure', 'banish', 'disarm', 'greed', 'explosivearmour']) assert.equal(raid.canActivateSkill(id), false, id);
+  assert.equal(raid.canActivateSkill('goldtouch'), true);
+  assert.equal(raid.canActivateSkill('teleport'), true);
+  raidOld(raid, 0, {}, 2);
+  assert.equal(raid.canActivateSkill('banish'), true);
+  assert.equal(raid.canActivateSkill('biggame'), false);
+  raidOld(raid, 1); raid.state.board[2] = { type: 'coin' };
+  assert.equal(raid.canActivateSkill('biggame'), true);
+  assert.equal(raid.canActivateSkill('greed'), true);
+  assert.equal(raid.canActivateSkill('explosivearmour'), true);
+  raid.state.hero.armor = 0;
+  assert.equal(raid.canActivateSkill('explosivearmour'), false);
+  raid.state.board[3] = { type: 'potion', mana: true };
+  assert.equal(raid.canActivateSkill('heal'), false);
+  raid.state.board[3] = { type: 'potion', explosive: true };
+  assert.equal(raid.canActivateSkill('heal'), false);
+  raid.state.board[3] = { type: 'potion' };
+  assert.equal(raid.canActivateSkill('heal'), true);
+});
+
+test('raid scroll equips/recomputes first and never calls Dragonkin manual Fire Breath', () => {
+  const { raid } = raidBrowser({ classId: 'paladin', seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state, target = raidOld(raid, 35, { hp: 30, maxHp: 30, def: 0 });
+  raid.installSkillOption(raid.prepareSkillOption('explosivearmour')); s.skillCooldowns.explosivearmour = 9;
+  s.hero.armor = 1;
+  raidOpenShop(raid);
+  s.menuCandidates[0] = { slot: 'helmet', mods: { maxArmor: 3 }, scroll: { id: 'explosivearmour' } };
+  assert.equal(raid.purchaseShopItem(0), true);
+  assert.deepEqual([s.hero.maxArmor, s.hero.armor, target.hp], [6, 3, 24], 'explosion reads the purchased armour');
+  assert.equal(!!target.burn, false);
+  assert.deepEqual([s.skillCooldowns.explosivearmour, s.skills.length, s.turn], [9, 1, 0]);
+});
+
+test('raid Enchant scroll preserves queued arrivals and interrupted enemy continuation through the nested upgrade', () => {
+  const { raid, elements, advance } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.hero.gold = 99; s.upgradeBar = 37; s.forceCoins = 1;
+  for (const slot of [0, 1, 2]) s.board[slot] = { type: 'coin' };
+  raidSelect(raid, [0, 1, 2]); raid.resolveChain(); advance(420);
+  assert.equal(s.pendingModal, 'gold'); assert.equal(s.arrivals.length, 2);
+  raidAttachScroll(raid, 'enchant'); raid.purchaseShopItem(0);
+  assert.equal(s.pendingModal, 'armor'); assert.equal(s.arrivals.length, 2);
+  assert.equal(s.turn, 0); assert.equal(s.upgradeBar, 37);
+  elements.get('modal-body').querySelectorAll('.lv-card')[0].click();
+  advance(80);
+  assert.equal(s.pendingModal, null); assert.equal(s.arrivals.length, 0);
+  assert.deepEqual([s.hero.gold, s.goldEarned, s.upgradeBar, s.turn], [5, 6, 37, 0]);
+  advance(550);
+  assert.deepEqual([s.turn, s.resolving, s.actionCommitted], [1, false, false]);
+  advance(3000); assert.equal(s.turn, 1, 'enemy continuation resumes exactly once');
+});
+
+test('raid collecting scroll from input drains its own rewards, refills and unlocks input without an enemy turn', () => {
+  const { raid } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.board[0] = { type: 'coin' }; s.forceCoins = 1;
+  raidOpenShop(raid); raidAttachScroll(raid, 'treasure');
+  raid.purchaseShopItem(0);
+  assert.deepEqual([s.hero.gold, s.turn, s.resolving, s.pendingModal, s.arrivals.length], [2, 0, false, null, 0]);
+  assert.ok(s.board.every(cell => cell.type !== 'empty'));
+});
+
+test('raid committed-turn boost scroll lasts through the next input, not just the interrupted animation', () => {
+  const { raid, advance } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.hero.gold = 99; s.forceCoins = 1;
+  for (const slot of [0, 1, 2]) s.board[slot] = { type: 'coin' };
+  raidSelect(raid, [0, 1, 2]); raid.resolveChain(); advance(420);
+  raidAttachScroll(raid, 'boostdmg'); raid.purchaseShopItem(0); advance(700);
+  assert.deepEqual([s.turn, s.swordBoost, s.nextTurnFlags.swordBoost], [1, 1, 0]);
+  assert.equal(raid.swordDamage(2), 15, 'purchased weapon3 contributes doubled6 per sword');
+  raid.endEnemyTurn();
+  assert.equal(s.swordBoost, 0, 'expires after the following ordinary turn');
+});
+
+test('raid wrong-source, inert-slot and stale shop clicks cannot grant another free item', () => {
+  const { raid, elements } = raidBrowser({ seed: 0, menus: true });
+  assert.equal(raid.purchaseShopItem(0), false);
+  raidOpenShop(raid);
+  const old = elements.get('modal-body').querySelectorAll('.shop-item')[0];
+  assert.equal(raid.purchaseShopItem(3), false);
+  assert.equal(raid.purchaseShopItem(-1), false);
+  old.click();
+  raidOpenShop(raid);
+  const snapshot = JSON.stringify(raid.state.equipment);
+  old.click();
+  assert.equal(JSON.stringify(raid.state.equipment), snapshot);
+  assert.equal(raid.state.pendingModal, 'gold');
+});
+
+function raidRewardSpecial(raid, slot = 0, type = 2, hp = 1) {
+  const skull = raidSkull(raid, { hp, maxHp: hp, def: 0 }, type);
+  raid.state.board[slot] = { type: 'skull', skull };
+  raid.collectIndices([slot], { includeSpecial: true, noRefill: true });
+  return skull;
+}
+function raidMasterClass(raid, id) { raid.unlockClass(id); for (let n = 0; n < 10; n++) raid.levelUpClass(id); }
+function raidUnlockAll(raid) {
+  for (const id of ['adventurer', 'barbarian', 'mage', 'ranger', 'rogue', 'paladin', 'priest', 'raider', 'warrior', 'assassin']) raid.unlockClass(id);
+}
+
+test('raid first eligible special collection generates a board trophy with COSMETIC interval/appearance, not a modal', () => {
+  const { raid } = raidBrowser({ seed: 913, menus: true }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  assert.equal(s.trophyRemaining, 0);
+  const skull = raidSkull(raid, { hp: 1, def: 0 }, 2); s.board[7] = { type: 'skull', skull };
+  const before = [...s.rngSeeds], interval = raidDraw(before[0], 20, 30), appearance = raidDraw(interval.seed, 0, 7);
+  raid.collectIndices([7], { includeSpecial: true, noRefill: true });
+  assert.deepEqual([s.board[7].type, s.board[7].appearance], ['trophy', appearance.value]);
+  assert.deepEqual([s.trophyRemaining, s.trophiesGenerated, s.trophiesThisRun], [interval.value, 1, 0]);
+  assert.equal(s.rngSeeds[0], appearance.seed);
+  assert.equal(s.rngSeeds[5], before[5], 'no class outcome rolled before the tap');
+  assert.equal(s.pendingModal, null);
+  assert.equal(s.skills.length, 0);
+});
+
+test('raid ordinary kills and non-reward removals never advance trophy countdown', () => {
+  const { raid } = raidBrowser({ seed: 913 }); raidBoard(raid, 'sword');
+  const s = raid.state; s.trophyRemaining = 2;
+  raidOld(raid, 0, { hp: 1 }); raid.collectIndices([0], { noRefill: true });
+  raidOld(raid, 1, { hp: 1 }, 2); raid.collectIndices([1], { includeSpecial: true, noRefill: true, rewardType: 'sword' });
+  assert.deepEqual([s.trophyRemaining, s.trophiesGenerated, s.specialsKilled], [2, 0, 0]);
+});
+
+test('raid Easy special rewards do not decrement or create trophies, even with a due counter', () => {
+  for (const remaining of [0, 3]) {
+    const { raid } = raidBrowser({ difficulty: 0, seed: 913 }); raidBoard(raid, 'sword');
+    const s = raid.state; s.trophyRemaining = remaining;
+    const skull = raidSkull(raid, { hp: 1 }, 3); s.board[7] = { type: 'skull', skull };
+    const cosmetic = s.rngSeeds[0];
+    raid.collectIndices([7], { includeSpecial: true, noRefill: true });
+    assert.deepEqual([s.trophyRemaining, s.trophiesGenerated, s.rngSeeds[0]], [remaining, 0, cosmetic]);
+    assert.equal(s.board[7].type, 'empty');
+  }
+});
+
+for (const roll of [49, 50]) test(`raid Sprint trophy decrement uses strict R(0,100,COSMETIC)<50 at${roll}`, () => {
+  let seed;
+  for (let candidate = 1; candidate < 10000; candidate++) {
+    const flushed = Math.imul(candidate, 16807) >>> 0;
+    const art = raidDraw(flushed, 0, 3);
+    if (raidDraw(art.seed, 0, 100).value === roll) { seed = candidate; break; }
+  }
+  assert.ok(seed);
+  const { raid } = raidBrowser({ mode: 'sprint', seed }); raidBoard(raid, 'sword');
+  const s = raid.state; s.trophyRemaining = 1;
+  const skull = raidSkull(raid, { hp: 1 }, 3); s.board[7] = { type: 'skull', skull };
+  assert.equal(raidDraw(s.rngSeeds[0], 0, 100).value, roll);
+  raid.collectIndices([7], { includeSpecial: true, noRefill: true });
+  assert.equal(s.trophiesGenerated, roll === 49 ? 1 : 0);
+  assert.equal(s.board[7].type, roll === 49 ? 'trophy' : 'empty');
+  if (roll === 50) assert.equal(s.trophyRemaining, 1);
+});
+
+test('raid already-due Sprint trophy can appear even if the50/101 decrement fails', () => {
+  const { raid } = raidBrowser({ mode: 'sprint', seed: 913 }); raidBoard(raid, 'sword');
+  // The value is due before the probability test; either branch must award.
+  raid.state.trophyRemaining = 0;
+  raidRewardSpecial(raid, 7);
+  assert.equal(raid.state.board[7].type, 'trophy');
+  assert.equal(raid.state.trophiesGenerated, 1);
+});
+
+for (const policy of ['adventurer-unlocked', 'current-can-level', 'current-capped-locked', 'current-capped-unlocked']) {
+  test(`raid trophy eligibility: ${policy}`, () => {
+    const { raid } = raidBrowser({ classId: policy.startsWith('adventurer') ? 'adventurer' : 'barbarian' });
+    raidBoard(raid, 'sword');
+    if (!policy.endsWith('-locked')) raidUnlockAll(raid);
+    if (policy.startsWith('current-capped')) raidMasterClass(raid, 'barbarian');
+    raid.state.trophyRemaining = 0;
+    raidRewardSpecial(raid, 7);
+    const eligible = policy === 'current-can-level' || policy === 'current-capped-locked';
+    assert.equal(raid.state.board[7].type, eligible ? 'trophy' : 'empty');
+    assert.equal(raid.state.trophiesGenerated, eligible ? 1 : 0);
+  });
+}
+
+test('raid three-GENERATED-trophy cap includes lost/unclaimed trophies and does not count unlocked classes', () => {
+  const { raid } = raidBrowser({ seed: 0 }); raidBoard(raid, 'sword');
+  const s = raid.state;
+  for (const slot of [0, 1, 2, 3]) {
+    s.trophyRemaining = 1;
+    raidRewardSpecial(raid, slot);
+    assert.equal(s.board[slot].type, slot < 3 ? 'trophy' : 'empty');
+  }
+  assert.deepEqual([s.trophiesGenerated, s.trophiesThisRun, s.unlocksThisRun, s.trophyRemaining], [3, 0, 0, 0]);
+  raid.collectIndices([0, 1, 2], { noRefill: true });
+  s.trophyRemaining = 1; raidRewardSpecial(raid, 4);
+  assert.equal(s.board[4].type, 'empty', 'lost trophy does not reopen the limit');
+});
+
+test('raid remaining trophy interval carries over restart and local profile reload; per-run cap resets', () => {
+  const b = raidBrowser({ seed: 0 }); const { raid, storage } = b; raidBoard(raid, 'sword');
+  raidRewardSpecial(raid, 7);
+  const interval = raid.state.trophyRemaining;
+  assert.equal(interval, 20);
+  raidRewardSpecial(raid, 8);
+  assert.equal(raid.state.trophyRemaining, interval - 1);
+  assert.equal(storage.get('raid:trophyRemaining'), String(interval - 1));
+  raid.newGame(913);
+  assert.deepEqual([raid.state.trophyRemaining, raid.state.trophiesGenerated], [interval - 1, 0]);
+  const reloaded = raidBrowser({ seed: 913, saved: Object.fromEntries(storage) }).raid;
+  assert.equal(reloaded.state.trophyRemaining, interval - 1);
+  assert.equal(reloaded.state.rngSeeds[5], Math.imul(913, 16807) >>> 0, 'restart does not reroll a trophy target on OTHER');
+});
+
+test('raid tapping a single trophy unlocks a class, refills, clears selection and spends no enemy turn', () => {
+  const { raid, advance } = raidBrowser({ seed: 0 }); raidBoard(raid, 'sword');
+  const s = raid.state; s.forceCoins = 1;
+  raidOld(raid, 35, { atk: 30 }); s.board[0] = { type: 'trophy' };
+  raidSelect(raid, [0]); raid.resolveChain(); advance(3000);
+  assert.equal(raid.isClassUnlocked('ranger'), true, 'native class1 is Ranger, not picker-order Barbarian');
+  assert.deepEqual([s.trophiesThisRun, s.unlocksThisRun, s.turn, s.hero.hp, s.hero.armor, s.chainCount], [1, 1, 0, 50, 4, 0]);
+  assert.equal(s.selected.length, 0);
+  assert.ok(s.board.every(cell => cell.type !== 'empty'));
+  assert.equal(s.pendingModal, null);
+  assert.equal(s.resolving, false);
+});
+
+for (const branch of [0, 1]) test(`raid non-Adventurer trophy branch${branch}: random unlock versus current level`, () => {
+  const seed = raidSeedFor(u => Math.floor(2 * u[0]) === branch);
+  const { raid } = raidBrowser({ seed, classId: 'barbarian' }); raidBoard(raid, 'sword');
+  raid.state.board[0] = { type: 'trophy' };
+  const first = raidDraw(raid.state.rngSeeds[5], 0, 1);
+  const second = branch ? first : raidDraw(first.seed, 0, 7);
+  assert.equal(raid.claimTrophy(0), true);
+  assert.equal(raid.classLevelOf('barbarian'), branch ? 2 : 1);
+  assert.equal(raid.state.unlocksThisRun, branch ? 0 : 1);
+  assert.equal(raid.state.rngSeeds[5], second.seed);
+});
+
+test('raid capped current class with no locked classes never levels a different unlocked class', () => {
+  const { raid } = raidBrowser({ classId: 'barbarian', seed: 913 }); raidBoard(raid, 'sword');
+  raidUnlockAll(raid); raidMasterClass(raid, 'barbarian');
+  raid.state.board[0] = { type: 'trophy' };
+  const other = raid.state.rngSeeds[5];
+  assert.equal(raid.claimTrophy(0), true);
+  assert.equal(raid.classLevelOf('barbarian'), 10);
+  assert.equal(raid.classLevelOf('mage'), 1);
+  assert.equal(raid.state.rngSeeds[5], other, 'no branch draw when current capped and nothing locked');
+  assert.equal(raid.state.trophiesThisRun, 1);
+});
+
+test('raid frozen, matched, absent or suspended trophy taps are no-ops without class/RNG changes', () => {
+  const { raid } = raidBrowser({ seed: 913 }); raidBoard(raid, 'sword');
+  const s = raid.state, other = s.rngSeeds[5];
+  for (const cell of [{ type: 'trophy', frozen: true }, { type: 'trophy', matched: true }, { type: 'coin' }]) {
+    s.board[0] = cell; assert.equal(raid.claimTrophy(0), false);
+  }
+  s.board[0] = { type: 'trophy' };
+  s.pendingModal = 'level'; assert.equal(raid.claimTrophy(0), false); s.pendingModal = null;
+  s.resolving = true; assert.equal(raid.claimTrophy(0), false); s.resolving = false;
+  for (const slot of [undefined, -1, 36, .5, '0']) assert.equal(raid.claimTrophy(slot), false);
+  assert.deepEqual([s.rngSeeds[5], s.trophiesThisRun, raid.classLevelOf('barbarian')], [other, 0, 0]);
+});
+
+test('raid trophy cannot be appended after an arrow or normal resource; Chain priority remains native', () => {
+  const { raid } = raidBrowser(); raidBoard(raid, 'sword');
+  const s = raid.state;
+  s.board[0] = { type: 'arrow' }; s.board[1] = { type: 'trophy' }; s.board[2] = { type: 'chain' };
+  assert.equal(raid.canChainSelect(1, [0]), false);
+  assert.equal(raid.canChainSelect(0, [1]), false);
+  assert.equal(raid.canChainSelect(2, [1]), true, 'candidate Chain precedes previous Trophy check');
+  assert.equal(raid.canChainSelect(1, []), true);
+  s.board[1].frozen = true;
+  assert.equal(raid.canChainSelect(1, []), false);
+});
+
+test('raid Lich attack transformation does not advance trophies; collecting its phylactery does', () => {
+  const { raid } = raidBrowser({ seed: 0 }); raidBoard(raid, 'sword');
+  raidOld(raid, 7, { hp: 1, def: 0 }, 32);
+  raid.hitSkullAt(7, 10, { direct: true });
+  assert.equal(raid.state.board[7].skull.phylactery, true);
+  assert.equal(raid.state.trophiesGenerated, 0);
+  raid.collectIndices([7], { includeSpecial: true, noRefill: true });
+  assert.equal(raid.state.board[7].type, 'trophy');
+  assert.equal(raid.state.trophiesGenerated, 1);
+});
+
+test('raid class profile sanitises excessive levels to10 before trophy and skill eligibility checks', () => {
+  const { raid } = raidBrowser({ saved: { 'raid:classLevels': JSON.stringify({ adventurer: 999, barbarian: 12.5, mage: '10', rogue: '<script>', alien: 9 }) } });
+  assert.deepEqual(['adventurer', 'barbarian', 'mage', 'rogue', 'alien'].map(id => raid.classLevelOf(id)), [10, 10, 10, 0, 0]);
+  assert.equal(raid.isSkillUnlocked('berserk'), true);
+  assert.equal(raid.isSkillUnlocked('rune'), true);
+});
+
+test('raid Russian help/styles describe real equipment scrolls, conservative I1 policy and board trophies', () => {
+  const css = readFileSync(new URL('./raid.css', import.meta.url), 'utf8');
+  const template = readFileSync(new URL('./raid.html', import.meta.url), 'utf8');
+  assert.match(css, /\.item-change\.worse/);
+  assert.match(css, /\.cell\.type-trophy/);
+  assert.match(template, /3 появления за забег/);
+  assert.match(template, /счётчик уменьшается с шансом 50\/101/);
+  assert.match(template, /10%-е исключения/);
+  assert.match(template, /кроме Желания в Спринте/);
+  assert.match(template, /не занимает слот и не меняет заряд/);
+});
+
+test('raid trophy unlock vector follows native class IDs, never presentation order', () => {
+  const native = ['ranger', 'raider', 'priest', 'barbarian', 'mage', 'rogue', 'paladin', 'warrior', 'assassin'];
+  const { raid } = raidBrowser({ seed: 913 }); raidBoard(raid, 'sword');
+  for (let n = 0; n < native.length; n++) {
+    const locked = native.filter(id => !raid.isClassUnlocked(id));
+    const choice = raidDraw(raid.state.rngSeeds[5], 0, locked.length - 1);
+    raid.state.board[0] = { type: 'trophy' };
+    assert.equal(raid.claimTrophy(0), true);
+    assert.equal(raid.classLevelOf(locked[choice.value]), 1);
+    assert.equal(raid.state.rngSeeds[5], choice.seed);
+  }
+});
+
+test('raid generating offers never mutates equipped modifiers, health, cooldowns or prefix anchors', () => {
+  const { raid } = raidBrowser({ seed: 913 });
+  raidGear(raid, 'helmet', { goldPerCoin: .75, regen: 2 });
+  raid.installSkillOption(raid.prepareSkillOption('heal'));
+  raid.state.skillCooldowns.heal = 6;
+  const before = JSON.stringify([raid.state.equipment, raid.state.hero, raid.state.skillCooldowns, raid.state.equipmentApplied]);
+  for (const slot of Object.keys(raidItemPools)) { raid.makeItem(slot); raid.makeUpgradeOffer(slot); }
+  raid.makeShopOffers();
+  assert.equal(JSON.stringify([raid.state.equipment, raid.state.hero, raid.state.skillCooldowns, raid.state.equipmentApplied]), before);
+});
+
+test('raid item comparison exposes a secondary downgrade in red, not a blanket green quality claim', () => {
+  const { raid, elements } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  raidGear(raid, 'weapon', { baseDamage: 2 });
+  raidOpenShop(raid);
+  const card = elements.get('modal-body').querySelectorAll('.shop-item')[0];
+  assert.match(card.innerHTML, /item-change worse[^>]*>Базовый урон: 2 → 1/);
+  assert.match(card.innerHTML, /Урон оружия: 2 → 4/);
+});
+
+test('raid resting Enchant scroll pauses and resumes its own input continuation, without spending UP', () => {
+  const { raid, elements, advance } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'sword');
+  raid.state.upgradeBar = 89;
+  raidOpenShop(raid); raidAttachScroll(raid, 'enchant'); raid.purchaseShopItem(0);
+  assert.deepEqual([raid.state.pendingModal, raid.state.resolving, raid.state.turn], ['armor', true, 0]);
+  elements.get('modal-body').querySelectorAll('.lv-card')[0].click(); advance(1000);
+  assert.deepEqual([raid.state.pendingModal, raid.state.resolving, raid.state.turn, raid.state.upgradeBar], [null, false, 0, 89]);
+});
+
+test('raid restart during nested Enchant discards old shop/upgrade handlers and enemy continuation', () => {
+  const { raid, elements, advance } = raidBrowser({ seed: 0, menus: true }); raidBoard(raid, 'coin');
+  const old = raid.state; old.hero.gold = 99;
+  raidSelect(raid, [0, 1, 2]); raid.resolveChain(); advance(420);
+  raidAttachScroll(raid, 'enchant'); raid.purchaseShopItem(0);
+  const stale = elements.get('modal-body').querySelectorAll('.lv-card')[0];
+  raid.newGame(913);
+  raid.state.upgradeBar = 100; raid.checkUpgradeBar();
+  const before = JSON.stringify(raid.state.equipment);
+  stale.click(); advance(5000);
+  assert.equal(JSON.stringify(raid.state.equipment), before);
+  assert.deepEqual([raid.state.turn, raid.state.pendingModal], [0, 'armor']);
+});
+
+test('raid Quicken transitions also retain the native negative duration of the one-use Wish', () => {
+  const { raid } = raidBrowser({ classId: 'priest' });
+  raid.installSkillOption(raid.prepareSkillOption('wish'));
+  assert.equal(raid.skillDuration('wish'), -1);
+  raidGear(raid, 'accessory', { quicken: 1 });
+  assert.deepEqual([raid.skillDuration('wish'), raid.state.skillCooldowns.wish], [-2, 0]);
+  raidGear(raid, 'accessory', { quicken: 0 });
+  assert.deepEqual([raid.skillDuration('wish'), raid.state.skillCooldowns.wish], [-1, 1]);
+});
+
+test('raid trophy collection by an area effect is not a free class claim and cannot restore the generation budget', () => {
+  const { raid } = raidBrowser({ seed: 0 }); raidBoard(raid, 'sword');
+  raidRewardSpecial(raid, 7);
+  raid.collectIndices([7], { noRefill: true });
+  assert.equal(raid.state.board[7].type, 'empty');
+  assert.deepEqual([raid.state.trophiesGenerated, raid.state.trophiesThisRun, raid.state.unlocksThisRun], [1, 0, 0]);
+  assert.equal(raid.classLevelOf('ranger'), 0);
 });

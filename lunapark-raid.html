@@ -607,6 +607,18 @@ body { display: flex; align-items: stretch; justify-content: center; }
   .board-foot { font-size: 8px; }
 }
 
+/* Equipment comparisons and purchase-attached skill scrolls. */
+.shop-body { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.item-change { display: block; font-size: 11px; line-height: 1.4; }
+.item-change.better { color: #a8f5b1; }
+.item-change.worse { color: #ffacac; }
+.shop-scroll { display: block; color: #ffe19c; font-size: 12px; font-weight: 800; margin-top: 5px; }
+.shop-compatibility { display: block; color: #cab5d1; font-size: 10px; line-height: 1.4; margin-top: 5px; }
+.shop-item .shop-preview { display: block; white-space: normal; overflow-wrap: anywhere; }
+.cell.type-trophy { color: #ffe195; border-color: #dba85c; background: radial-gradient(ellipse, #604124, #24142d); }
+.cell.type-trophy .ic { filter: drop-shadow(0 0 5px #c68a39); }
+.cell.type-trophy.frozen { border-color: #8fccef; }
+
 </style>
 </head>
 <body>
@@ -614,7 +626,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Выбор класса">
   <div class="picker-card">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: трофей за 20–30 убитых спец-черепов.</p>
+    <p class="picker-hint">Классика: 10 классов · каждый — свой пассив/изъян/раса/навык. Классы открываются постепенно: подбирай трофеи на поле после побед над особыми черепами.</p>
     <div class="picker-modes">
       <label>Режим
         <select id="mode-select">
@@ -633,7 +645,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
       </label>
     </div>
     <div class="picker-grid" id="picker-grid"></div>
-    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). Уникальный навык класса берётся по желанию — при выборе 2-из-4 на уровне. В Спринте новые навыки сразу 5 уровня, но выжить нужно 100 ходов.</p>
+    <p class="picker-foot">Авантюрист открыт сразу · остальные классы — после трофеев (до 3 за забег). У других классов уникальный навык предложат на уровне 2 (кроме Желания в Спринте); брать его необязательно. В Спринте новые навыки сразу 5 уровня, но выжить нужно 100 ходов.</p>
   </div>
 </div>
 
@@ -699,7 +711,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
     <div class="hud-meta">
       <span class="turn" id="turn-text">ХОД 0</span>
       <span class="dmg" id="dmg-text">⚔ 2/меч · 💥 3</span>
-      <span class="dmg" id="trophy-text" style="color:#ffd97a">🏆 0 / 20–30</span>
+      <span class="dmg" id="trophy-text" style="color:#ffd97a">🏆 через 1</span>
       <span class="dmg" id="upgrade-text" style="color:#c9a8ff">⬆ 0 / 100</span>
     </div>
     <div class="bar xp" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
@@ -744,7 +756,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>Ассасин / Вервольф — «Калечение»: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты и даёт опыт. Твоя броня и возраст черепа не влияют; особые и боссы не затрагиваются.</li>
       <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения. Остаток шкалы сохраняется; выбор в меню приостанавливает следующие награды и ход врагов.</li>
       <li>Руна: активируй навык и проведи контур из 4+ узлов с соседними концами. Подсвеченный интерьер собирается до основной цепочки: обычные черепа — без проверки HP/защиты, с опытом, но без счётчика убийств. Особые и боссы остаются (пунктирная подсветка).</li>
-      <li>20% новых клеток — черепа; первый особый — после 50 ходов, затем интервал зависит от хода и сложности (1 из 32 типов, босс — тип 1). 20–30 особых убийств → трофей → класс.</li>
+      <li>20% новых клеток — черепа; первый особый — после 50 ходов, затем интервал зависит от хода и сложности (1 из 32 типов, босс — тип 1). Первый трофей нового профиля — после одной победы над особым; далее интервал 20–30 переносится между забегами.</li>
+      <li>Трофей остаётся клеткой 🏆 на месте особого. Тапни по нему: откроется случайный закрытый класс или вырастет текущий (потолок 10). Подбор не тратит ход; замороженный трофей сначала нужно разморозить. На лёгком трофеев нет, в Спринте счётчик уменьшается с шансом 50/101; максимум 3 появления за забег, даже если трофеи не забрать.</li>
+      <li>Магазин предлагает 3 новых предмета на основе надетых: основной параметр растёт, второстепенные могут уменьшиться. Зелёные и красные строки показывают разницу. Апгрейд усиливает надетый предмет; «Ускорение навыков» не складывается с другим таким же предметом.</li>
+      <li>📜 Свиток прилагается к одному из предметов и разово применяет указанный навык при покупке: не занимает слот и не меняет заряд такого же навыка. Точный фильтр свитков оригинала пока не расшифрован (I1): в пробнике работают подтверждённые 10%-е исключения; остальные свитки явно пропускаются, покупка предмета остаётся доступной.</li>
       <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы. У каждого черепа может быть смертный враг твоей расы.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
@@ -795,12 +810,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   const SPAWN_EVERY_TURNS = 3;
   const BOSS_EVERY_TURNS = 10;
-  // Классика: трофей за ~15 убитых спец-черепов; не более 3 классов unlock за забег
-  const TROPHY_KILLS_PER_TROPHY = 25;   // fallback when trophyRemaining is unset (20..30 roll)
-  const MAX_UNLOCKS_PER_RUN = 3;
+  // Trophy interval carries across runs; the cap counts generated board tiles.
+  const MAX_TROPHIES_PER_RUN = 3;
   const SPECIAL_EVERY_TURNS = 4;
   const UPGRADE_BAR_MAX = 100;    // полоса UP (от щитов) → выбор 1-из-4
-  const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-4 снаряжение
+  const GOLD_BOX_MAX = 100;       // золотой ящик → 1-из-3 предметов
 
   // Черепа: формула оригинала (Classic, Normal) — docs/spec/01-board.md:
   //   q = trunc(t · max(1, 1+(t−500)/700));  level = trunc(totalXP/100);
@@ -887,8 +901,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   };
 
   const SKILLS = [
-    // 42 native skills. 0..30 are ordinary level-up skills, 31..39 are class
-    // skills, 40/41 are native-only (Shock/Awe) and can appear only at class 10.
+    // 42 native skills. 0..30 are ordinary, 31..39 unlock globally at class
+    // level 10. Hidden 40/41 never unlock (debug/imported states only).
     { id: 'steal', name: 'Воровство', icon: '🦊', cooldown: 13, native: 0, desc: 'Атака черепов в этом ходу даёт золото' },
     { id: 'freeze', name: 'Мороз', icon: '❄', cooldown: 16, native: 1, desc: 'Все черепа заморожены и не бьют этот ход' },
     { id: 'heal', name: 'Благословение', icon: '❤', cooldown: 15, native: 2, desc: 'Собрать все обычные зелья' },
@@ -931,7 +945,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       desc: '+1 базового урона, +5% шанс бонуса опыта',
       effects: () => [
         `Базовый урон: ${fmt(baseDamage())} >> ${fmt(baseDamage() + 1)}`,
-        `Шанс бонуса опыта: ${bonusPct('xp')}% >> ${bonusPct('xp') + 5}%`,
+        `Шанс бонуса опыта: ${bonusPct('xp')}% >> ${bonusPct('xp', 5)}%`,
       ],
       apply: () => S.hero.stats.strength++
     },
@@ -940,16 +954,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       desc: '+1 броня за щит, +5% шанс бонуса щита',
       effects: () => [
         `Броня за щит: ${fmt(perShield())} >> ${fmt(perShield() + 1)}`,
-        `Шанс бонуса щита: ${bonusPct('shield')}% >> ${bonusPct('shield') + 5}%`,
+        `Шанс бонуса щита: ${bonusPct('shield')}% >> ${bonusPct('shield', 5)}%`,
       ],
       apply: () => S.hero.stats.dexterity++
     },
     {
       id: 'vitality', name: 'Живучесть', icon: '❤', chip: '+ЖИВ', color: '#ff9d9d',
-      desc: '+5 макс. HP, +5% шанс бонуса зелий',
+      get desc() { return S.mode === 'pretzel' ? '+5% шанс бонуса зелий (без роста HP)' : '+5 макс. HP, +5% шанс бонуса зелий'; },
       effects: () => [
-        `Макс. HP: ${fmt(S.hero.maxHp)} >> ${fmt(S.hero.maxHp + 5)}`,
-        `Шанс бонуса зелия: ${bonusPct('potion')}% >> ${bonusPct('potion') + 5}%`,
+        `Макс. HP: ${fmt(S.hero.maxHp)} >> ${fmt(S.hero.maxHp + (S.mode === 'pretzel' ? 0 : 5))}`,
+        `Шанс бонуса зелия: ${bonusPct('potion')}% >> ${bonusPct('potion', 5)}%`,
       ],
       apply: () => { S.hero.stats.vitality++; if (S.mode !== 'pretzel') { S.hero.hp += 5; S.hero.maxHp += 5; } }
     },
@@ -958,7 +972,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       desc: '+1 лечение за зелье, +5% шанс бонусных монет',
       effects: () => [
         `Лечение за зелье: ${fmt(HEAL_PER_POTION + S.hero.stats.luck)} >> ${fmt(HEAL_PER_POTION + S.hero.stats.luck + 1)}`,
-        `Шанс бонусной монеты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
+        `Шанс бонусной монеты: ${bonusPct('coin')}% >> ${bonusPct('coin', 5)}%`,
       ],
       apply: () => S.hero.stats.luck++
     },
@@ -967,7 +981,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       id: 'charisma', name: 'Все бонусы', icon: '💎', chip: '+БОН', color: '#8fd0ff',
       desc: '+5% ко всем бонусам',
       effects: () => [
-        `Монеты/зелья/опыт/щиты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
+        `Монеты/зелья/опыт/щиты: ${bonusPct('coin')}% >> ${bonusPct('coin', 5)}%`,
       ],
       apply: () => S.hero.stats.charisma++
     },
@@ -1030,32 +1044,40 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     panel.appendChild(list);
   }
 
-  // Магазин/апгрейды теперь целиком на слот-предметах (см. ITEM_SLOTS ниже).
-  // --- 5 equipment slots (original: weapon/helmet/armour/shield/accessory) --
-  const ITEM_SLOTS = [
-    { id: 'weapon', name: 'Оружие', icon: '⚔', pool: ['weaponDamage', 'pierce', 'leech', 'spikes', 'baseDamage', 'weaponPoison'] },
-    { id: 'helmet', name: 'Шлем', icon: '🪖', pool: ['maxArmor', 'durability', 'baseDamage', 'pierce'] },
-    { id: 'armour', name: 'Доспех', icon: '🥋', pool: ['maxArmor', 'durability', 'maxHp', 'blunt'] },
-    { id: 'shield', name: 'Щит', icon: '🛡', pool: ['armorPerShield', 'upgradePerShield', 'maxArmor', 'durability', 'spikes'] },
-    { id: 'accessory', name: 'Аксессуар', icon: '💎', pool: ['maxHp', 'regen', 'goldPerCoin', 'xpPerSkull', 'leech', 'pierce'] },
-  ];
+  // Item modifiers use display units; native IDs below define ordering, not
+  // foreign item names/art. A quarter point is a point, never a percent.
+  const ITEM_KEYS = ['weaponDamage', 'baseDamage', 'leech', 'weaponPoison', 'pierce', 'quicken',
+    'xpPerSkull', 'goldPerCoin', 'strength', 'luck', 'maxHp', 'maxArmor', 'spikes',
+    'upgradePerShield', 'durability', 'blunt', 'armorPerShield', 'regen', 'dexterity', 'vitality'];
   const ITEM_STAT = {
-    weaponDamage: { name: 'Урон оружия', icon: '⚔', step: 1, kind: 'hero' },
-    maxArmor: { name: 'Макс. броня', icon: '🛡', step: 2, kind: 'heroArmor' },
-    maxHp: { name: 'Макс. HP', icon: '❤', step: 8, kind: 'heroHp' },
-    pierce: { name: 'Пробитие брони', icon: '🎯', step: 0.05, kind: 'pierce' },
-    leech: { name: 'Сок (лечение)', icon: '🩸', step: 0.05, kind: 'leech' },
-    durability: { name: 'Стойкость брони', icon: '🪨', step: 0.05, kind: 'durability' },
-    spikes: { name: 'Шипы', icon: '🗡', step: 1, kind: 'spikes' },
-    baseDamage: { name: 'Базовый урон', icon: '💥', step: 1, kind: 'base' },
-    armorPerShield: { name: 'Броня за щит', icon: '🔰', step: 1, kind: 'armorPerShield' },
-    upgradePerShield: { name: 'Очки UP за щит', icon: '⬆', step: 0.25, kind: 'upgradePerShield' },
-    regen: { name: 'Регенерация', icon: '♻', step: 1, kind: 'regen' },
-    goldPerCoin: { name: 'Золото за монету', icon: '🪙', step: 0.25, kind: 'goldPerCoin' },
-    xpPerSkull: { name: 'Опыт за череп', icon: '⭐', step: 0.25, kind: 'xpPerSkull' },
-    blunt: { name: 'Ослабление при блоке', icon: '🚫', step: 1, kind: 'blunt' },
-    weaponPoison: { name: 'Яд оружия', icon: '☠', step: 1, kind: 'weaponPoison' },
+    weaponDamage: { name: 'Урон оружия', icon: '⚔', unit: 1, desc: 'Урон за каждый меч в цепочке' },
+    baseDamage: { name: 'Базовый урон', icon: '💥', unit: 1, desc: 'Прибавка к общему урону цепочки с черепом' },
+    leech: { name: 'Сок (лечение)', icon: '🩸', unit: .01, percent: true, desc: 'Лечит на долю общего урона цепочки, с усечением' },
+    weaponPoison: { name: 'Яд оружия', icon: '☠', unit: 1, desc: 'Прямой удар отравляет выжившего на 3 хода; Отравленный невосприимчив' },
+    pierce: { name: 'Пробитие брони', icon: '🎯', unit: .01, percent: true, desc: 'Шанс разрушить каждый поглощённый пункт брони черепа; порог не выше 95' },
+    quicken: { name: 'Ускорение навыков', icon: '⏱', unit: 1, desc: '−1 к кулдаунам; несколько предметов не складываются' },
+    xpPerSkull: { name: 'Опыт за череп', icon: '⭐', unit: .25, desc: 'Дополнительные очки за токен опыта; общий бонус не выше +2' },
+    goldPerCoin: { name: 'Золото за монету', icon: '🪙', unit: .25, desc: 'Дополнительные очки за токен монеты; общий бонус не выше +2' },
+    strength: { name: 'Сила', icon: '💪', unit: 1, desc: '+1 базовый урон и +5% шанс бонусного опыта за единицу' },
+    luck: { name: 'Удача', icon: '🍀', unit: 1, desc: '+1 лечение и +5% шанс бонусной монеты за единицу' },
+    maxHp: { name: 'Макс. HP', icon: '❤', unit: 1, desc: 'Повышает запас HP; в Кренделе не действует' },
+    maxArmor: { name: 'Макс. броня', icon: '🛡', unit: 1, desc: 'Повышает запас брони, сохраняя текущий дефицит' },
+    spikes: { name: 'Шипы', icon: '🗡', unit: 1, desc: 'При наличии брони бьёт старых черепов; их защита действует' },
+    upgradePerShield: { name: 'Очки UP за щит', icon: '⬆', unit: .25, desc: 'Бонус токена, дающего UP, не ремонта; общий бонус не выше +2' },
+    durability: { name: 'Стойкость брони', icon: '🪨', unit: .01, percent: true, desc: 'Снижает шанс износа за поглощённый пункт, не ниже порога 5' },
+    blunt: { name: 'Ослабление при блоке', icon: '🚫', unit: 1, desc: 'При наличии брони снижает атаку старых черепов до минимума 1; не меняет текущий залп' },
+    armorPerShield: { name: 'Броня за щит', icon: '🔰', unit: 1, desc: 'Дополнительный ремонт за щит, не максимальная броня' },
+    regen: { name: 'Регенерация', icon: '♻', unit: 1, desc: 'Лечение в конце хода до урона ядом' },
+    dexterity: { name: 'Точность', icon: '🎯', unit: 1, desc: '+1 ремонт и +5% шанс бонусного щита за единицу' },
+    vitality: { name: 'Живучесть', icon: '❤', unit: 1, get desc() { return S.mode === 'pretzel' ? '+5% шанс бонусного зелья за единицу (без роста HP)' : '+5 HP и +5% шанс бонусного зелья за единицу'; } },
   };
+  const ITEM_SLOTS = [
+    { id: 'weapon', name: 'Оружие', icon: '⚔', main: 'weaponDamage', appearance: [0, 79], pool: [0, 1, 2, 3, 4, 6, 8, 9] },
+    { id: 'helmet', name: 'Шлем', icon: '🪖', main: 'maxArmor', appearance: [80, 159], pool: [6, 7, 10, 11, 12, 13, 17] },
+    { id: 'armour', name: 'Доспех', icon: '🥋', main: 'maxArmor', appearance: [240, 319], pool: [10, 11, 12, 14, 15, 17, 18, 19] },
+    { id: 'shield', name: 'Щит', icon: '🛡', main: 'maxArmor', appearance: [160, 239], pool: [0, 1, 11, 12, 13, 15, 16] },
+    { id: 'accessory', name: 'Аксессуар', icon: '💎', main: 'maxHp', appearance: [320, 399], pool: [5, 8, 9, 10, 17, 18, 19] },
+  ].map(slot => ({ ...slot, pool: slot.pool.map(id => ITEM_KEYS[id]) }));
   const ITEM_NAMES = {
     weapon: ['Ржавый клинок', 'Кривая сабля', 'Тяжёлая булава', 'Колючий молот', 'Топор палача', 'Клинок стражи'],
     helmet: ['Мятый шлем', 'Кожаный капюшон', 'Рогатый венец', 'Шлем рыцаря', 'Каска рудокопа'],
@@ -1063,144 +1085,238 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     shield: ['Щепка', 'Круглый щит', 'Башенный щит', 'Щит-башня', 'Рунический барьер'],
     accessory: ['Медное кольцо', 'Амулет удачи', 'Кулон охотника', 'Печать жреца', 'Талисман героя'],
   };
-  const ITEM_PREFIXES = ['Старый', 'Крепкий', 'Блестящий', 'Проклятый', 'Гномий', 'Эльфийский', 'Кровавый', 'Лунный', 'Кованый'];
+  const ITEM_PREFIXES = ['Искра', 'Сумрак', 'Дозор', 'Грань', 'Эхо', 'Рассвет', 'Предел', 'Орбита', 'Зенит'];
+  // Only numeric appearance/name-pool sizes are used to preserve ITEM draws;
+  // the displayed names and graphics remain our own.
+  const ITEM_NAME_POOLS = [[20, 15], [40, 12], [50, 13], [60, 12], [80, 15], [160, 17],
+    [240, 16], [320, 17], [340, 14], [360, 11], [370, 14], [380, 16], [400, 16]];
 
-  function itemSlotById(id) { return ITEM_SLOTS.find(s => s.id === id); }
+  function itemSlotById(id) { return ITEM_SLOTS.find(slot => slot.id === id); }
+  function itemValue(item, key) { return item?.mods?.[key] || 0; }
+  function itemNumber(key, value) {
+    return ITEM_STAT[key].percent ? Math.round(value * 100) + '%' : String(Number(value.toFixed(2)));
+  }
   function itemModText(key, value) {
     const def = ITEM_STAT[key];
-    if (!def) return '';
-    const v = Math.abs(value);
-    const percent = ['pierce', 'leech', 'durability'].includes(def.kind);
-    const amount = percent ? Math.round(v * 100) + '%' : Number(v.toFixed(2));
-    return `${def.icon} ${def.name} +${amount}`;
-  }
-  // Keep the unbounded item sum in state so removing an over-cap item does
-  // not erase another item's bonus. Cap only the derived per-token yield.
-  function resourceYield(total) { return 2 + Math.max(0, Math.min(2, total - 2)); }
-  function resourceUpgradeAllowed(key) {
-    return !['goldPerCoin', 'xpPerSkull', 'upgradePerShield'].includes(key) || resourceYield(S[key]) < 4;
-  }
-  function applyItemMod(key, value, sign) {
-    const d = ITEM_STAT[key];
-    if (!d) return;
-    const v = value * sign;
-    switch (d.kind) {
-      case 'hero': S.hero.weaponDamage += v; break;
-      case 'heroArmor':
-        S.hero.maxArmor = Math.max(0, S.hero.maxArmor + v);
-        S.hero.armor = Math.max(0, Math.min(S.hero.maxArmor, S.hero.armor + v));
-        break;
-      case 'heroHp':
-        if (S.mode === 'pretzel') break;
-        S.hero.maxHp = Math.max(1, S.hero.maxHp + v);
-        S.hero.hp = Math.max(1, Math.min(S.hero.maxHp, S.hero.hp + v));
-        break;
-      case 'pierce': S.pierce = Math.max(0, Math.min(1, S.pierce + v)); break;
-      case 'leech': S.leech = Math.max(0, S.leech + v); break;
-      case 'durability': S.durability = Math.max(0, Math.min(MAX_DURABILITY, S.durability + v)); break;
-      case 'spikes': S.spikes = Math.max(0, S.spikes + v); break;
-      case 'base': S.baseDamageBonus = Math.max(0, (S.baseDamageBonus || 0) + v); break;
-      case 'armorPerShield': S.armorPerShield = Math.max(1, S.armorPerShield + v); break;
-      case 'upgradePerShield': S.upgradePerShield = Math.max(SHIELD_UPGRADE_POINTS, S.upgradePerShield + v); break;
-      case 'regen': S.regen = Math.max(0, S.regen + v); break;
-      case 'blunt': S.blunt = Math.max(0, S.blunt + v); break;
-      case 'weaponPoison': S.weaponPoison = Math.max(0, S.weaponPoison + v); break;
-      case 'goldPerCoin': S.goldPerCoin = Math.max(GOLD_PER_COIN, S.goldPerCoin + v); break;
-      case 'xpPerSkull': S.xpPerSkull = Math.max(XP_PER_SKULL, S.xpPerSkull + v); break;
-      default: break;
-    }
-  }
-  function applyItem(item, sign) {
-    if (!item || !item.mods) return;
-    Object.keys(item.mods).forEach(k => applyItemMod(k, item.mods[k], sign));
-  }
-  function makeItem(slotId) {
-    const slot = itemSlotById(slotId) || ITEM_SLOTS[0];
-    const keys = shuffle(slot.pool.filter(resourceUpgradeAllowed)).slice(0, randInt(2, 4, 5));
-    const mods = {};
-    keys.forEach(k => {
-      const def = ITEM_STAT[k];
-      const steps = randInt(1, 2, 5);
-      mods[k] = +(def.step * steps).toFixed(2);
-    });
-    const base = ITEM_NAMES[slot.id] || ITEM_NAMES.weapon;
-    const name = ITEM_PREFIXES[randInt(0, ITEM_PREFIXES.length - 1, 5)] + ' ' + base[randInt(0, base.length - 1, 5)].toLowerCase();
-    return { slot: slot.id, slotName: slot.name, icon: slot.icon, name, mods };
+    return def ? `${def.icon} ${def.name} +${itemNumber(key, Math.abs(value))}` : '';
   }
   function itemModsText(item) {
-    if (!item || !item.mods) return 'пусто';
-    const parts = Object.keys(item.mods).map(k => itemModText(k, item.mods[k]));
-    return parts.length ? parts.join(' · ') : 'без бонусов';
+    const keys = ITEM_KEYS.filter(key => itemValue(item, key) > 0);
+    return keys.length ? keys.map(key => itemModText(key, itemValue(item, key))).join(' · ') : 'без бонусов';
+  }
+  function itemChanges(old, next) {
+    return ITEM_KEYS.filter(key => itemValue(old, key) !== itemValue(next, key)).map(key => ({ key,
+      before: itemValue(old, key), after: itemValue(next, key),
+      text: `${ITEM_STAT[key].name}: ${itemNumber(key, itemValue(old, key))} → ${itemNumber(key, itemValue(next, key))}` }));
+  }
+  function resourceYield(total) { return 2 + Math.max(0, Math.min(2, total - 2)); }
+  function initialEquipment() {
+    return ITEM_SLOTS.map(slot => ({ slot: slot.id, slotName: slot.name, icon: slot.icon,
+      appearance: slot.appearance[0], prefixAnchor: -1, displayPrefix: -1, suffixIndex: 0,
+      name: 'Стартовое: ' + slot.name.toLowerCase(),
+      mods: slot.id === 'weapon' ? { weaponDamage: 2 } : slot.id === 'accessory'
+        ? { maxHp: S.mode === 'pretzel' ? 0 : 10 }
+        : { maxArmor: slot.id === 'armour' ? (clsFlaw() === 'Slim' ? 1 : 2) : 1 } }));
+  }
+  function equipmentTotals() {
+    const totals = {};
+    for (const key of ITEM_KEYS) {
+      const unit = ITEM_STAT[key].unit;
+      totals[key] = Number((S.equipment.reduce((sum, item) => sum + Math.round(itemValue(item, key) / unit), 0) * unit).toFixed(2));
+    }
+    totals.health = S.mode === 'pretzel' ? 0 : totals.maxHp + 5 * totals.vitality;
+    return totals;
+  }
+  // Recompute once per operation. Never subtract an old item and clamp before
+  // adding its replacement: that loses overflow, armour deficit and HP.
+  function updateEquipmentStats() {
+    const next = equipmentTotals(), old = S.equipmentApplied || next, h = S.hero;
+    const delta = key => Number((next[key] - old[key]).toFixed(2));
+    h.weaponDamage = Math.max(0, h.weaponDamage + delta('weaponDamage'));
+    h.maxArmor = Math.max(0, h.maxArmor + delta('maxArmor'));
+    h.armor = Math.max(0, h.armor + delta('maxArmor'));
+    const health = delta('health');
+    h.maxHp = Math.max(1, h.maxHp + health);
+    h.hp = health > 0 ? h.hp + health : Math.min(h.hp, h.maxHp);
+    for (const key of ['strength', 'luck', 'dexterity', 'vitality']) h.stats[key] += delta(key);
+    S.baseDamageBonus += delta('baseDamage');
+    S.armorPerShield += delta('armorPerShield');
+    for (const key of ['spikes', 'leech', 'weaponPoison', 'blunt', 'regen']) S[key] = Math.max(0, Number((S[key] + delta(key)).toFixed(2)));
+    for (const key of ['xpPerSkull', 'goldPerCoin', 'upgradePerShield']) S[key] = 2 + next[key];
+    S.pierce = Math.min(.95, Number(((clsFlaw() === 'Cautious' ? .30 : .50) + next.pierce).toFixed(2)));
+    S.durability = Math.min(MAX_DURABILITY, Number((BASE_DURABILITY + next.durability).toFixed(2)));
+    const quicken = next.quicken > 0 ? 1 : 0;
+    if (quicken !== S.quicken) {
+      const shift = S.quicken - quicken;
+      for (const id of S.skills) {
+        S.skillDurations[id] = skillDuration(id) + shift;
+        S.skillCooldowns[id] = Math.max(0, (S.skillCooldowns[id] || 0) + shift);
+      }
+      S.quicken = quicken;
+    }
+    S.equipmentApplied = next;
   }
   function equipItem(item) {
-    const index = S.equipment.findIndex(e => e.slot === item.slot);
-    if (index < 0) return;
-    const old = S.equipment[index];
-    applyItem(old, -1);
-    applyItem(item, 1);
-    S.equipment[index] = item;
+    const index = S.equipment.findIndex(old => old.slot === item.slot);
+    if (index < 0) return false;
+    const gear = { ...item, mods: { ...item.mods } };
+    delete gear.scroll; delete gear.scrollBlocked;
+    S.equipment[index] = { ...S.equipment[index], ...gear };
+    updateEquipmentStats();
+    return true;
+  }
+  function addItemModifier(item, key, amount) {
+    const value = Math.max(0, Number((itemValue(item, key) + amount).toFixed(2)));
+    if (value) item.mods[key] = value; else delete item.mods[key];
+  }
+  function itemStep(key, downgrade = false) {
+    if (key === 'leech') {
+      const total = Math.round(S.leech * 100);
+      return (total < (downgrade ? 18 : 15) ? 5 : total < (downgrade ? 23 : 21) ? 3 : 2) / 100;
+    }
+    if (key === 'durability') {
+      const total = Math.round(S.durability * 100);
+      return (total < (downgrade ? 75 : 70) ? 10 : total < (downgrade ? 83 : 80) ? 5 : total < (downgrade ? 88 : 86) ? 3 : 2) / 100;
+    }
+    if (key === 'maxHp') return S.mode === 'pretzel' ? 0 : 10;
+    if (key === 'weaponPoison') return 2;
+    if (key === 'pierce') return .10;
+    if (key === 'regen') return CLASS_BY_ID[S.classId]?.perk === 'Faithful' ? 2 : 1;
+    return ITEM_STAT[key]?.unit === .25 ? .25 : 1;
+  }
+  function itemUpgradeAllowed(key) {
+    if (key === 'leech') return Math.round(S.leech * 100) < 25;
+    if (key === 'pierce') return Math.round(S.pierce * 100) < 95;
+    if (key === 'durability') return Math.round(S.durability * 100) < 90;
+    if (key === 'maxHp') return S.mode !== 'pretzel';
+    return !['goldPerCoin', 'xpPerSkull', 'upgradePerShield'].includes(key) || resourceYield(S[key]) < 4;
+  }
+  function randomItemUpgrade(slotId, allowQuicken = true) {
+    let pool = itemSlotById(slotId).pool.filter(key => allowQuicken || key !== 'quicken');
+    // This draw exists outside Sprint even if the slot never offered weaken.
+    const weakenAllowed = S.mode !== 'sprint' && randInt(0, S.blunt, 4) === 0;
+    pool = pool.filter(key => (key !== 'blunt' || weakenAllowed) && itemUpgradeAllowed(key));
+    return pool[randInt(0, pool.length - 1, 4)];
   }
   function makeUpgradeOffer(slotId) {
-    const slot = itemSlotById(slotId);
-    const pool = slot.pool.filter(resourceUpgradeAllowed);
-    const key = pool[randInt(0, pool.length - 1, 5)];
-    const def = ITEM_STAT[key];
-    return { slot: slot.id, slotName: slot.name, icon: slot.icon, key, value: def.step, name: def.name, label: itemModText(key, def.step) };
+    const slot = itemSlotById(slotId), item = S.equipment.find(entry => entry.slot === slotId);
+    const key = randomItemUpgrade(slotId, !itemValue(item, 'quicken')), value = itemStep(key);
+    const before = itemValue(item, key);
+    return { slot: slot.id, slotName: slot.name, icon: slot.icon, key, value, name: ITEM_STAT[key].name,
+      label: itemModText(key, value), desc: ITEM_STAT[key].desc,
+      comparison: `${itemNumber(key, before)} → ${itemNumber(key, before + value)}` };
+  }
+  function applyUpgradeOffer(offer) {
+    const item = S.equipment.find(entry => entry.slot === offer.slot);
+    if (!item || !ITEM_STAT[offer.key]) return false;
+    addItemModifier(item, offer.key, offer.value);
+    updateEquipmentStats();
+    return true;
+  }
+  function reduceItemModifier(item, key) {
+    const amount = Math.min(itemValue(item, key), itemStep(key, true));
+    addItemModifier(item, key, -amount);
+    updateEquipmentStats();
+    return amount;
+  }
+  function makeItem(slotId) {
+    const slot = itemSlotById(slotId), old = S.equipment.find(item => item.slot === slotId);
+    const appearance = randInt(...slot.appearance, 2), previous = old.prefixAnchor ?? -1;
+    const displayPrefix = randInt(previous < 136 ? previous + 1 : previous, previous < 136 ? previous + 10 : 147, 2);
+    const suffixCount = ITEM_NAME_POOLS.find(([end]) => appearance < end)[1];
+    const suffixIndex = randInt(0, suffixCount - 1, 2);
+    const names = ITEM_NAMES[slotId];
+    const item = { slot: slotId, slotName: slot.name, icon: slot.icon, appearance,
+      prefixAnchor: previous < 136 ? displayPrefix : previous, displayPrefix, suffixIndex,
+      name: names[suffixIndex % names.length] + ' «' + ITEM_PREFIXES[Math.min(ITEM_PREFIXES.length - 1, Math.floor(displayPrefix / 18))] + '»', mods: {} };
+    const roll = probability => random(2) < Math.fround(probability);
+    const doubleArmour = slotId === 'armour' && roll(.2);
+    item.mods[slot.main] = itemValue(old, slot.main) + (slotId === 'accessory' ? itemStep('maxHp') / 2 : doubleArmour ? 2 : 1);
+    let helmetUpgraded = false;
+    for (const key of ITEM_KEYS.filter(key => key !== slot.main && itemValue(old, key) > 0)) {
+      const value = itemValue(old, key);
+      const transfer = () => { item.mods[key] = Math.max(0, Number((value - itemStep(key, true)).toFixed(2))); };
+      if (slotId === 'weapon' && roll(.15)) {
+        transfer(); addItemModifier(item, 'weaponDamage', 1);
+      } else if (slotId === 'helmet' && roll(.2)) {
+        if (itemUpgradeAllowed(key) && !helmetUpgraded && roll(.5)) {
+          item.mods[key] = Number((value + itemStep(key)).toFixed(2)); helmetUpgraded = true;
+        } else { transfer(); addItemModifier(item, 'maxArmor', 1); }
+      } else if (slotId === 'armour' && !doubleArmour && roll(.1)) {
+        transfer(); addItemModifier(item, 'maxArmor', 1);
+      } else if (slotId === 'shield' && roll(key === 'weaponDamage' ? .7 : .2)) {
+        transfer(); addItemModifier(item, key !== 'weaponDamage' && roll(.2) ? 'weaponDamage' : 'maxArmor', 1);
+      } else if (slotId === 'accessory' && roll(.1)) {
+        transfer(); const chosen = randomItemUpgrade(slotId, false); addItemModifier(item, chosen, itemStep(chosen));
+      } else item.mods[key] = value;
+    }
+    if (slotId === 'accessory' && (S.mode === 'pretzel' || roll(.5))) {
+      const chosen = randomItemUpgrade(slotId, !itemValue(item, 'quicken')); addItemModifier(item, chosen, itemStep(chosen));
+    }
+    for (const key of ITEM_KEYS) if (!itemValue(item, key)) delete item.mods[key];
+    return item;
+  }
+  function drawItemSlots(count, stream, create) {
+    const slots = ITEM_SLOTS.map(slot => slot.id), offers = [];
+    for (let n = 0; n < count; n++) {
+      const [slot] = slots.splice(randInt(0, slots.length - 1, stream), 1);
+      offers.push(create(slot));
+    }
+    return offers;
   }
 
   // ============================================================
   // КЛАССЫ И РАСЫ (классика: 10 классов, каждый — Perk/Flaw/Race/Уникальный навык)
-  // 0 = Аduventurer (стартовый). Остальные — выбираемы в пикeрe (владелец:
-  // «полная классика» — классы сразу доступны для выбора, как в классике
-  // после 100+ забегов; trophy-механика — нет, см. LUNAPARK.md §7).
+  // String IDs are our stable profile keys. Numeric native IDs order random
+  // trophy unlocks independently of the presentation order in this picker.
   // ============================================================
   const CLASSES = [
-    { id: 'adventurer', name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport', pool: ['steal', 'freeze', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour'],
+    { id: 'adventurer', native: 0, name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport', pool: ['steal', 'freeze', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour'],
       perk: '—', flaw: '—', raceName: 'Человек',
       perkDesc: 'нет пассивов', flawDesc: 'нет изъянов',
-      clsDesc: 'Стартовый класс: нет пассива или изъяна, свой навык — Телепорт',
-      uniqueSkillDesc: 'Телепорт (20): все клетки без черепов → новые' },
-    { id: 'barbarian', name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk', pool: ['berserk', 'repair', 'counter', 'shatter', 'teleport', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
+      clsDesc: 'Стартовый класс без пассива и изъяна; получает все открытые навыки',
+      uniqueSkillDesc: 'Нет фиксированного: случайный выбор из всех открытых навыков' },
+    { id: 'barbarian', native: 4, name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk', pool: ['berserk', 'repair', 'counter', 'shatter', 'teleport', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
       perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Орк',
       perkDesc: '+1 базового урона', flawDesc: '-10% шанс бонусных щитов',
       clsDesc: 'пассив: Сила · изъян: Безрассудство · раса: Орк (оглушение 10%)',
       uniqueSkillDesc: 'Берсерк (14): убийство черепа даёт HP равный его атаке' },
-    { id: 'mage', name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
+    { id: 'mage', native: 5, name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Изменник',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
       clsDesc: 'пассив: Одарённость · изъян: Хрупкость · раса: Изменник (менятся)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка из 4+ узлов собирает интерьер, кроме особых и боссов' },
-    { id: 'ranger', name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
+    { id: 'ranger', native: 1, name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
       perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Эльф',
       perkDesc: '5% мечей выпадают стрелками (стрелять на 1 клетку)', flawDesc: '-1 броня',
       clsDesc: 'пассив: Ловкость · изъян: Тощий · раса: Эльф (медленный яд)',
       uniqueSkillDesc: 'Воллей (15): все мечи → стрелы (стрелы стреляют на 1 клетку)' },
-    { id: 'rogue', name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed', pool: ['greed', 'steal', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostgold', 'boosthealth', 'trap', 'biggame', 'chamber', 'magicsword'],
+    { id: 'rogue', native: 6, name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed', pool: ['greed', 'steal', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostgold', 'boosthealth', 'trap', 'biggame', 'chamber', 'magicsword'],
       perk: 'Frugal', flaw: 'Clumsy', perkName: 'Бережливость', flawName: 'Неловкость', raceName: 'Саурен',
       perkDesc: '+10% шанс бонусных монет', flawDesc: '3% щитов выпадают сломанными (дают 0)',
-      clsDesc: 'пассив: Бережливость · изъян: Неловкость · раса: Саурен (поиск — нет магазина)',
+      clsDesc: 'пассив: Бережливость · изъян: Неловкость · раса: Саурен (50% шанс розыгрыша свитка)',
       uniqueSkillDesc: 'Жадность (25): убивает всех черепов рядом с монеткой' },
-    { id: 'paladin', name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand', pool: ['laststand', 'heal', 'repair', 'counter', 'shatter', 'explosive', 'elixir', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
+    { id: 'paladin', native: 7, name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand', pool: ['laststand', 'heal', 'repair', 'counter', 'shatter', 'explosive', 'elixir', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
       perk: 'Intimidating', flaw: 'Zealous', perkName: 'Устрашающий', flawName: 'Рьяный', raceName: 'Драконкин',
-      perkDesc: 'смертный враг появляется на 50% реже (нет смертных врагов в клоне)', flawDesc: 'черепа-монстры появляются на 1 ход раньше',
-      clsDesc: 'пассив: Устрашающий (не реализовано) · изъян: Рьяный · раса: Драконкин (огненное дыхание)',
+      perkDesc: 'вдвое реже срабатывает замена особого на смертного врага', flawDesc: 'черепа-монстры появляются на 1 ход раньше',
+      clsDesc: 'пассив: Устрашающий · изъян: Рьяный · раса: Драконкин (огненное дыхание)',
       uniqueSkillDesc: 'Последний рубеж (35): полное лечение HP, если герой погибнет в этот ход' },
-    { id: 'priest', name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish', pool: ['wish', 'freeze', 'heal', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'dazzle', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'magicsword', 'earthquake', 'fireball', 'mana'],
+    { id: 'priest', native: 3, name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish', pool: ['wish', 'freeze', 'heal', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'dazzle', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Faithful', flaw: 'Cautious', perkName: 'Праведный', flawName: 'Осторожный', raceName: 'Фавн',
-      perkDesc: 'двойной эффект регенерации', flawDesc: '-20% пробития брони',
+      perkDesc: 'улучшение регенерации даёт +2 вместо +1', flawDesc: '-20% пробития брони',
       clsDesc: 'пассив: Праведный · изъян: Осторожный · раса: Фавн (возрождение)',
       uniqueSkillDesc: 'Желание — одноразовый навык: собрать все клетки доски' },
-    { id: 'raider', name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism', pool: ['masochism', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'slash', 'treasure', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour', 'exorcise', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
+    { id: 'raider', native: 2, name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism', pool: ['masochism', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'slash', 'treasure', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour', 'exorcise', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
       perk: 'Daring', flaw: 'Cocky', perkName: 'Дерзкий', flawName: 'Наглый', raceName: 'Халфлинг',
       perkDesc: '100% бонус с десятой клетки каждого типа', flawDesc: '3 узла: ресурсы убираются без награды; убийства дают опыт',
       clsDesc: 'пассив: Дерзкий · изъян: Наглый · раса: Халфлинг (храбрость)',
       uniqueSkillDesc: 'Мазохизм (15): превращает все монетки в черепов' },
-    { id: 'warrior', name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge', pool: ['charge', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostarmour', 'banish', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
+    { id: 'warrior', native: 8, name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge', pool: ['charge', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostarmour', 'banish', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
       perk: 'Tough', flaw: 'Noisy', perkName: 'Прочный', flawName: 'Громкий', raceName: 'Дворф',
       perkDesc: '+10 макс. HP', flawDesc: 'черепа-монстры +5% HP',
       clsDesc: 'пассив: Прочный · изъян: Громкий · раса: Дворф (верховая атака)',
       uniqueSkillDesc: 'Рывок (18): собирать все клетки по краю поля' },
-    { id: 'assassin', name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste', pool: ['haste', 'steal', 'freeze', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'treasure', 'disarm', 'dazzle', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour', 'fireball'],
+    { id: 'assassin', native: 9, name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste', pool: ['haste', 'steal', 'freeze', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'treasure', 'disarm', 'dazzle', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour', 'fireball'],
       perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
       raceDesc: 'Калечение: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты; даёт опыт, не действует на особых и боссов.',
@@ -1216,17 +1332,17 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   // --- уникальные навыки классов (заполнение — после парраметров/классов) ---
   // Телепорт/Затачивание/Мороз/... — в SKILLS; ниже — уникальные навыки классов,
-  // которые получат доступ сразу при выборе класса (не из пула уровня).
+  // которые предлагаются в меню уровня; глобальный unlock — на ур.10 класса.
   const UNIQUE_SKILLS = [
-    { id: 'berserk', name: 'Берсерк', icon: '🪓', cooldown: 14, desc: 'Убийство черепа даёт HP равный его атаке' },
-    { id: 'rune', name: 'Руна', icon: '🔮', cooldown: 12, desc: 'Контур из 4+ узлов собирает ресурсы и обычных черепов внутри без урона. Особые и боссы остаются' },
-    { id: 'greed', name: 'Жадность', icon: '💀', cooldown: 25, desc: 'Убить всех черепов рядом с монеткой' },
-    { id: 'laststand', name: 'Последний рубеж', icon: '🛡', cooldown: 35, desc: 'Полное лечение HP, если герой погибнет в этот ход' },
-    { id: 'wish', name: 'Желание', icon: '✨', cooldown: 0, desc: 'Одноразовый навык: собрать все клетки доски' },
-    { id: 'masochism', name: 'Мазохизм', icon: '🏴', cooldown: 15, desc: 'Все монетки → черепа' },
-    { id: 'charge', name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
-    { id: 'haste', name: 'Спешка', icon: '🗡', cooldown: 16, desc: 'Ставит цепную клетку: подходит к любому типу меток' },
-    { id: 'volley', name: 'Воллей', icon: '🏹', cooldown: 15, desc: 'Все мечи → стрелы (стрелы стреляют на 1 клетку)' },
+    { id: 'berserk', native: 34, name: 'Берсерк', icon: '🪓', cooldown: 14, desc: 'Убийство черепа даёт HP равный его атаке' },
+    { id: 'rune', native: 35, name: 'Руна', icon: '🔮', cooldown: 12, desc: 'Контур из 4+ узлов собирает ресурсы и обычных черепов внутри без урона. Особые и боссы остаются' },
+    { id: 'greed', native: 36, name: 'Жадность', icon: '💀', cooldown: 25, desc: 'Убить всех черепов рядом с монеткой' },
+    { id: 'laststand', native: 37, name: 'Последний рубеж', icon: '🛡', cooldown: 35, desc: 'Полное лечение HP, если герой погибнет в этот ход' },
+    { id: 'wish', native: 33, name: 'Желание', icon: '✨', cooldown: 0, desc: 'Одноразовый навык: собрать все клетки доски' },
+    { id: 'masochism', native: 32, name: 'Мазохизм', icon: '🏴', cooldown: 15, desc: 'Все монетки → черепа' },
+    { id: 'charge', native: 38, name: 'Рывок', icon: '⚔️', cooldown: 18, desc: 'Сорвать все клетки по краю поля' },
+    { id: 'haste', native: 39, name: 'Спешка', icon: '🗡', cooldown: 16, desc: 'Ставит цепную клетку: подходит к любому типу меток' },
+    { id: 'volley', native: 31, name: 'Воллей', icon: '🏹', cooldown: 15, desc: 'Все мечи → стрелы (стрелы стреляют на 1 клетку)' },
     { id: 'shock', name: 'Шок', icon: '⚡', cooldown: 14, native: 40, nativeOnly: true, desc: 'Собрать щиты и монеты в верхней половине; с «Благоговением» — цепь' },
     { id: 'awe', name: 'Благоговение', icon: '🌀', cooldown: 14, native: 41, nativeOnly: true, desc: 'Собрать щиты и зелья в нижней половине; с «Шоком» — цепь' },
   ];
@@ -1254,7 +1370,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       for (const id of Object.keys(obj)) {
         if (!CLASS_BY_ID[id]) continue;
         const lvl = Number(obj[id]);
-        if (Number.isFinite(lvl) && lvl >= 1) clean[id] = Math.floor(lvl);
+        if (Number.isFinite(lvl) && lvl >= 1) clean[id] = Math.min(10, Math.floor(lvl));
       }
       clean.adventurer = Math.max(1, clean.adventurer || 1);
       return clean;
@@ -1365,10 +1481,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         goldBox: 0,
         stats: { strength: 1, vitality: 1, luck: 1, dexterity: 1, charisma: 0, damage: 0, defense: 0 },
       },
-      // Five original equipment slots.  Base hero values already include the
-      // starting gear; bought items only add their rolled mods.
-      equipment: ITEM_SLOTS.map(sl => ({ slot: sl.id, slotName: sl.name, icon: sl.icon,
-        name: 'Стартовое ' + sl.name.toLowerCase(), mods: {} })),
+      equipment: [], equipmentApplied: null,
+      skillDurations: {}, nextTurnFlags: {}, menuCandidates: [],
+      compatibilityNotices: [], scrollNativeWords: null,
       skills: [],                  // active skill ids (class-unique + chosen in level-ups)
       skillCooldowns: {},         // id -> turns remaining (cooldowns may be reduced by Quicken)
       pierce: BASE_PIERCING,        // вероятность пробития брони черепа
@@ -1390,11 +1505,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       lastStand: 0,                // полное лечение при смерти этого хода
       lastStandUsed: 0,            // Last Stand уже использован за забег
       brokenShields: 0,            // сколько щитов выпало сломанными (rogue flaw)
-      baseDamageBonus: 0,           // +1 к базовому урону за апгрейд «Ускорение»
-      specialsKilled: 0,            // сколько спец/боссов убито за забег (прогресс трофея)
-      unlocksThisRun: 0,          // сколько классов разблокировано за забег (cap)
+      baseDamageBonus: 0,           // equipment stat1: flat chain-damage bonus
+      specialsKilled: 0,            // total rewarded special collections this run
+      unlocksThisRun: 0,          // claimed unlocks, not the trophy-generation limit
       trophiesThisRun: 0,         // сколько трофеев забрано за забег
-      pendingTrophy: null,        // { kind, cls, text } — ожидает захвата
+      trophiesGenerated: 0,     // includes unclaimed/lost board trophies (limit 3)
       upgradeBar: 0,
       resourceCarry: { xp: 0, gold: 0, upgrade: 0 },
       collectionCounts: {},       // counts reset by MatchTiles/collection stages, not each token
@@ -1417,8 +1532,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       // Original promotion counter: a new skull becomes a special/boss when
       // this reaches 0.  Starts at 50 (Zealous 49).
       promotionRemaining: 50,
-      // Trophy counter: 20..30 special kills, reduced only on non-easy.
-      trophyRemaining: 25,      // re-rolled to 20..30 after each trophy
+      trophyRemaining: 0,      // persisted countdown, not a per-run kill target
       selected: [],
       chainType: null,
       pendingModal: null,         // null | 'level' | 'armor' | 'gold' | 'gameover'
@@ -1620,7 +1734,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       if (hasLegalChain(S.board)) return;
       for (let j = 0; j < CELL_COUNT; j++) {
         const cell = S.board[j];
-        if (!cell || cell.type === 'skull') continue;
+        if (!cell || cell.type === 'skull' || cell.type === 'trophy') continue;
         S.board[j] = { type: randomTileType() };
       }
     }
@@ -1818,8 +1932,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const cell = board[slot];
     if (!cell || cell.matched || cell.type === 'empty' || (cell.frozen && cell.type !== 'skull')) return false;
     if (!path.length || cell.type === 'chain') return true;
+    if (cell.type === 'trophy') return false;
     const last = board[path[path.length - 1]];
     if (last.type === 'arrow' || last.type === 'chain') return true;
+    if (last.type === 'trophy') return false;
     const before = board[path[path.length - 2]];
     if (before && before.type === 'arrow') return !isPhylacteryCell(cell) && ['sword', 'arrow', 'skull'].includes(cell.type);
     if (isPhylacteryCell(cell)) return last.type === 'coin' || isPhylacteryCell(last);
@@ -1880,6 +1996,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (cell.type === 'potion' && cell.acid) return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M9 12l2.5 2.5 2.5-3.5 2.5 2.5" stroke="#1c1428" stroke-width="1.5" fill="none"/><\/svg>';
     if (cell.type === 'potion' && cell.mana) return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M12 9.5 13 12 15.5 13 13 14 12 16.5 11 14 8.5 13 11 12Z" fill="#fff" opacity="0.85"/><\/svg>';
     if (cell.type === 'potion') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 2.5 10 6 8.5 9.5C7.6 11.6 6.8 13 6.8 14.8A5.2 5.2 0 0 0 12 20 5.2 5.2 0 0 0 17.2 14.8C17.2 13 16.4 11.6 15.5 9.5L14 6Z" fill="currentColor"/><path d="M12 2.5 12 6" stroke="#1c1428" stroke-width="1.6"/><circle cx="12" cy="14.6" r="2.4" fill="#fff" opacity="0.5"/><\/svg>';
+    if (cell.type === 'trophy') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M7 3h10v7a5 5 0 0 1-4 4.9V19h4v2H7v-2h4v-4.1A5 5 0 0 1 7 10Zm0 2H3v3a5 5 0 0 0 4 4m10-7h4v3a5 5 0 0 1-4 4" fill="currentColor" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><\/svg>';
     if (cell.type === 'chain') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M9 7 7.5 8.5a4 4 0 0 0 0 5.6L9 15.6M15 7l1.5 1.5a4 4 0 0 1 0 5.6L15 15.6" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M8 12h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><\/svg>';
     if (cell.type === 'skull') return '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path d="M12 3C7 3 4 6.5 4 10.5c0 2 1 3.7 2.2 4.6L6.5 18c0 1.4 1.1 2.5 2.5 2.5h2l1 2.2 1 2.2h3l1-2.2 1-2.2h2c1.4 0 2.5-1.1 2.5-2.5l-.7-2.9c1.2-.9 2.2-2.6 2.2-4.6C20 6.5 17 3 12 3Z" fill="currentColor"/><circle cx="9" cy="11" r="2.2" fill="#1c1428"/><circle cx="15" cy="11" r="2.2" fill="#1c1428"/><path d="M11 15h2l-1 2" fill="#1c1428"/><\/svg>';
     return '';
@@ -1957,6 +2074,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       + (cell.burn ? ' burned' : '')
       + (cell.frozen ? ' frozen' : '');
     cellEl.innerHTML = tileSymbol(cell);
+    cellEl.title = cell.type === 'trophy' ? (cell.frozen ? '🏆 Трофей заморожен — сначала разморозь' : '🏆 Нажми: рост или открытие класса, без хода врагов') : '';
   }
 
   function renderBoard() {
@@ -2197,7 +2315,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     return S.armorPerShield + S.hero.stats.dexterity + S.hero.stats.defense * 2;
   }
 
-  function bonusPct(kind) {
+  function bonusPct(kind, baseIncrease = 0) {
     // шанс бонуса (классика): 20% + 5% за соответствующий стат + 5% за хитрость
     const base = BONUS_BASE_CHANCE;
     const luck = S.hero.stats.luck, dex = S.hero.stats.dexterity, vit = S.hero.stats.vitality, str = S.hero.stats.strength, cha = S.hero.stats.charisma;
@@ -2205,7 +2323,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const cls = CLASS_BY_ID[S.classId];
     const offset = kind === 'coin' && cls && cls.perk === 'Frugal' ? 10
       : kind === 'shield' && cls && cls.flaw === 'Reckless' ? -10 : 0;
-    return Math.round((base + 0.05 * per + 0.05 * cha) * 100) + offset;
+    const key = { coin: 'luck', shield: 'dexterity', potion: 'vitality', xp: 'strength' }[kind];
+    const equipment = S.equipmentApplied?.[key] || 0;
+    return Math.min(100, Math.round((base + .05 * (per - equipment) + .05 * cha) * 100) + offset + baseIncrease) + 5 * equipment;
   }
 
   function renderHUD() {
@@ -2241,9 +2361,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
     if (el('chain-count')) el('chain-count').textContent = '⛓ ' + (S.selected ? S.selected.length : 0);
     if (el('trophy-text')) {
-      const capped = S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN;
-      const need = S.trophyRemaining || TROPHY_KILLS_PER_TROPHY;
-      el('trophy-text').textContent = capped ? '🏆 max' : `🏆 ${Math.min(S.specialsKilled, need)} / ${need}`;
+      const onBoard = S.board.filter(cell => cell.type === 'trophy').length;
+      const text = onBoard ? 'на поле: ' + onBoard : S.difficulty === 0 ? 'не на лёгком'
+        : S.trophiesGenerated >= MAX_TROPHIES_PER_RUN ? 'лимит 3/3'
+        : !trophyEligible() ? 'рост закрыт'
+        : 'через ' + (S.mode === 'sprint' && S.trophyRemaining > 0 ? '≥' : '') + Math.max(1, S.trophyRemaining);
+      el('trophy-text').textContent = '🏆 ' + text;
+      el('trophy-text').title = 'Тап по трофею на поле — рост класса без хода врагов. Не больше 3 появлений за забег; интервал 20–30 переносится между забегами. В Спринте счётчик уменьшается с шансом 50/101.';
     }
     // upgrade bar
     const u = el('upgrade-bar'); if (u) u.style.width = Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100) + '%';
@@ -2276,7 +2400,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
       btn.innerHTML = `<span class="skill-icon">${skill.icon}<\/span><span class="skill-name">${skill.name}<\/span>${left > 0 ? `<span class="cd">${left}<\/span>` : (level > 1 ? `<span class="cd">ур.${level}<\/span>` : '')}`;
-      btn.title = skill.desc + ' (кд: ' + Math.max(0, skill.cooldown - (level - 1)) + ')' + (level > 1 ? ', уровень ' + level : '');
+      const duration = skillDuration(skillId);
+      btn.title = skill.desc + (duration > 0 ? ' · готовность: ' + (duration - left) + '/' + duration : ' · одноразовый') + (level > 1 ? ', уровень ' + level : '');
       btn.addEventListener('click', () => activateSkill(skillId));
       row.appendChild(btn);
     }
@@ -2297,7 +2422,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     AFTER_ARRIVALS = null;
     RESOURCE_BATCH = null;
     seedRandom(runSeed);
+    const remaining = S ? S.trophyRemaining : readTrophyRemaining();
     S = newGameState();
+    S.trophyRemaining = remaining;
+    saveTrophyRemaining();
     const oldModal = el('modal');
     if (oldModal) oldModal.classList.remove('show');
     S.seed = runSeed;
@@ -2328,11 +2456,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (cls.perk === 'Tough') { S.hero.maxHp += 10; S.hero.hp += 10; }   // Warrior perk
     if (cls.flaw === 'Frail') { S.hero.maxHp = Math.max(1, S.hero.maxHp - 10); S.hero.hp = Math.min(S.hero.hp, S.hero.maxHp); }  // Mage flaw
 
+    S.equipment = initialEquipment();
+    S.equipmentApplied = equipmentTotals();
+
     // Priest flaw Cautious: pierce threshold 30% instead of the base 50%.
     if (cls.flaw === 'Cautious') S.pierce = 0.30;
-    // Original promotion/trophy counters (Sprint gets a 200-turn first budget).
+    // Original promotion counter (Sprint gets a 200 sentinel, not a delay).
     S.promotionRemaining = S.mode === 'sprint' ? 200 : (cls.flaw === 'Zealous' ? 49 : 50);
-    S.trophyRemaining = randInt(20, 30, 5);
 
     // Уникальный навык класса добавляется по желанию игрока при выборе 2-из-4
     // на уровень (см. chooseLevelOptions) — не сразу при старте забега.
@@ -2353,16 +2483,84 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function clsRace() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.race : 'Human'; }
   function clsFlaw() { const c = S.classId ? CLASS_BY_ID[S.classId] : null; return c ? c.flaw : '—'; }
 
+  // State stores turns LEFT, whereas the native skill stores elapsed charge.
+  // Retain the total separately so upgrades/Quicken can preserve elapsed charge.
+  function skillDuration(id) {
+    if (S.skillDurations[id] !== undefined) return S.skillDurations[id];
+    const skill = SKILL_BY_ID[id];
+    if (!skill) return 0;
+    const base = id === 'wish' ? -1 : skill.cooldown;
+    const levels = S.mode === 'sprint' ? 4 : (S.skillLevels[id] || 1) - 1;
+    return base - levels - S.quicken + (S.cooldownAdjust[id] || 0);
+  }
+  function prepareSkillOption(id) {
+    const skill = SKILL_BY_ID[id], upgrade = S.skills.includes(id);
+    const oldDuration = upgrade ? skillDuration(id) : (id === 'wish' ? -1 : skill.cooldown);
+    const oldLevel = upgrade ? S.skillLevels[id] || 1 : 0;
+    const duration = oldDuration - (upgrade && oldLevel < 10 ? 1 : 0) - (S.mode === 'sprint' ? 4 : 0);
+    const charge = upgrade ? Math.min(oldDuration - (S.skillCooldowns[id] || 0), duration) : duration;
+    return { ...skill, upgrade, skill, duration, charge,
+      level: S.mode === 'sprint' ? 5 : Math.min(10, oldLevel + 1) };
+  }
+  function installSkillOption(option) {
+    const id = option.id, existing = S.skills.includes(id);
+    if (!existing && S.skills.length >= 4) return false;
+    let duration = option.duration;
+    if (!existing) {
+      S.skills.push(id);
+      const cunning = S.skills.length === 4 && CLASS_BY_ID[S.classId]?.perk === 'Cunning';
+      S.cooldownAdjust[id] = cunning ? -1 : 0;
+      duration -= S.quicken + (cunning ? 1 : 0);
+    }
+    S.skillDurations[id] = duration;
+    S.skillCooldowns[id] = Math.max(0, duration - Math.min(option.charge, duration));
+    S.skillLevels[id] = option.level;
+    return true;
+  }
+  function isSkillUnlocked(id) {
+    const skill = SKILL_BY_ID[id];
+    if (!skill || skill.nativeOnly) return false;
+    return skill.native < 31 || CLASSES.some(cls => cls.id !== 'adventurer'
+      && cls.uniqueSkill === id && classLevelOf(cls.id) === 10);
+  }
+  function canActivateSkill(id) {
+    const cells = S.board.filter(cell => cell && cell.type !== 'empty' && !cell.matched);
+    const any = predicate => cells.some(predicate);
+    const enemy = cell => cell.type === 'skull';
+    const ordinary = cell => enemy(cell) && !cell.skull.special && !cell.skull.boss;
+    const potion = cell => cell.type === 'potion' && !cell.acid && !cell.mana && !cell.explosive;
+    const plainSword = cell => cell.type === 'sword' && !cell.magicSword && !cell.arrow;
+    if (['steal', 'freeze', 'counter', 'berserk'].includes(id)) return any(enemy);
+    if (['heal', 'explosive', 'elixir', 'mana'].includes(id)) return any(potion);
+    if (id === 'repair') return any(cell => cell.type === 'shield');
+    if (['shatter', 'disarm', 'biggame'].includes(id)) return any(ordinary);
+    if (['goldtouch', 'scavenge'].includes(id)) return any(cell => cell.type === 'sword' || cell.type === 'arrow');
+    if (['treasure', 'dazzle', 'masochism'].includes(id)) return any(cell => cell.type === 'coin');
+    if (['exorcise', 'banish'].includes(id)) return any(cell => enemy(cell) && !ordinary(cell));
+    if (['magicsword', 'volley'].includes(id)) return any(plainSword);
+    if (id === 'explosivearmour') return S.hero.armor > 0 && any(enemy);
+    if (id === 'greed') return any(ordinary) && any(cell => cell.type === 'coin');
+    return !!SKILL_BY_ID[id];
+  }
+  function activateTurnFlag(key) {
+    S[key] = 1;
+    S.nextTurnFlags[key] = S.actionCommitted ? 1 : 0;
+  }
+  function rotateTurnFlags(keys) {
+    for (const key of keys) {
+      S[key] = S.nextTurnFlags[key] || 0;
+      S.nextTurnFlags[key] = 0;
+    }
+  }
+
   function activateSkill(id) {
     if (S.over || S.resolving || S.pendingModal || S.selected.length) return;
     const left = S.skillCooldowns[id] || 0;
     if (left > 0) return;
     const skill = SKILL_BY_ID[id];
     if (!skill) return;
-    // Quicken (Upgrade): −1 к кулдауну всех навыков
-    const adjust = (S.cooldownAdjust && S.cooldownAdjust[id]) || 0;
-    const level = (S.skillLevels && S.skillLevels[id]) || 1;
-    S.skillCooldowns[id] = Math.max(id === 'wish' ? 0 : 2, skill.cooldown - (level - 1) - S.quicken + adjust);
+    S.skillDurations[id] = skillDuration(id);
+    S.skillCooldowns[id] = Math.max(0, S.skillDurations[id]);
     S.resolving = true;
     fireBreathOnSkill();
     withResourceBatch(() => {
@@ -2514,7 +2712,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     };
 
     if (id === 'steal') {
-      S.stealActive = 1;
+      activateTurnFlag('stealActive');
       flash('🦊 Воровство: атака черепов в этом ходу даёт золото');
     } else if (id === 'freeze') {
       let frozen = 0;
@@ -2588,7 +2786,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       collectIndices(idxs, { noSkulls: true, rewardType: 'xp' });
       flash('⚗ Эликсир: ' + idxs.length + ' обычных зелий → токены XP');
     } else if (id === 'enchant') {
-      openModal('armor');
+      requestRewardMenu('armor');
       flash('🛠 Затачивание: выбери улучшение');
     } else if (id === 'slash') {
       S.slashCombo = 1;
@@ -2644,16 +2842,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       }
       flash('✦ Слепота: монет → мечей ' + n);
     } else if (id === 'boostdmg') {
-      S.swordBoost = 1;
+      activateTurnFlag('swordBoost');
       flash('⚔ Усиление урона: оружие ×2 в этом ходу');
     } else if (id === 'boostgold') {
-      S.coinBoost = 1;
+      activateTurnFlag('coinBoost');
       flash('🪙 Усиление золота: золото ×2 в этом ходу');
     } else if (id === 'boosthealth') {
-      S.potionBoost = 1;
+      activateTurnFlag('potionBoost');
       flash('❤ Усиление лечения: зелья ×2 в этом ходу');
     } else if (id === 'boostarmour') {
-      S.shieldBoost = 1;
+      activateTurnFlag('shieldBoost');
       flash('🛡 Усиление брони: щиты и UP ×2 в этом ходу');
     } else if (id === 'exorcise') {
       const idxs = liveSkullIndices(true).filter(i => S.board[i].skull.special || S.board[i].skull.boss);
@@ -2673,7 +2871,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       flash('☄ Уничтожение: особый череп убран без награды');
       compactBoardAndRefill();
     } else if (id === 'trap') {
-      S.oneHealthSkulls = 1;
+      activateTurnFlag('oneHealthSkulls');
       flash('🕸 Ловушка: новые черепа появятся с 1 HP');
     } else if (id === 'biggame') {
       const idxs = liveSkullIndices(false).filter(i => !S.board[i].skull.special && !S.board[i].skull.boss);
@@ -2688,7 +2886,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       S.board[i] = { type: 'skull', skull: fresh };
       flash('👹 Крупная дичь: обычный череп стал особым');
     } else if (id === 'chamber') {
-      S.forceCoins = 1;
+      activateTurnFlag('forceCoins');
       flash('🪙 Сокровищница: новые клетки станут монетами');
     } else if (id === 'magicsword') {
       const idxs = [];
@@ -2786,10 +2984,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       collectIndices(idxs, { noSkulls: true, skipAcid: true });
       flash((id === 'shock' ? '⚡ Шок' : '🌀 Благоговение') + ': собрано клеток ' + idxs.length);
     } else if (id === 'berserk') {
-      S.berserkActive = 1;
+      activateTurnFlag('berserkActive');
       flash('🪓 БЕРСЕРК: HP за убийства этого хода');
     } else if (id === 'rune') {
-      S.runeActive = 1;
+      activateTurnFlag('runeActive');
       S.runeUsedThisTurn = 0;
       flash('🔮 РУНА: замкни 4+ узла — соберутся ресурсы и обычные черепа внутри');
     } else if (id === 'haste') {
@@ -2830,7 +3028,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       });
       flash('🗡 Жадность: убрано ' + killed + ' обычных черепов без награды');
     } else if (id === 'laststand') {
-      S.lastStand = 1;
+      activateTurnFlag('lastStand');
       flash('🛡 Последний рубеж готов: смерть → полное HP');
     } else if (id === 'wish') {
       const idxs = [];
@@ -2887,9 +3085,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   // спец-череп (босс или спец-череп): счётчик для трофея
-  function registerSkullEnd(s) {
+  function registerSkullEnd(s, slot) {
     if (!s || !(s.boss || s.special)) return;
     S.specialsKilled = (S.specialsKilled || 0) + 1;
+    advanceTrophyAt(slot);
     // Native charge=cooldown means ZERO turns remaining in our representation.
     // Shapeshift may hit a ready slot (unlike mana) and applies to every special
     // collection path, not just deaths inside a manually selected chain.
@@ -3019,7 +3218,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (opts.reward === false || cell.broken || type === 'sword' || type === 'arrow' || type === 'chain') return;
     if (cell.type === 'skull' && (cell.skull.special || cell.skull.boss)) {
       for (const reward of specialRewardTypes(cell.skull.type)) queueResource(reward, batch.source0);
-      registerSkullEnd(cell.skull);
+      registerSkullEnd(cell.skull, idx);
       return;
     }
     if (cell.type === 'potion' && cell.explosive) { collectBlastResources(idx); return; }
@@ -3246,6 +3445,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function resolveChain() {
     if (S.resolving || S.over || S.pendingModal) return;
     const chain = S.selected.slice(), effective = effectiveChain(chain);
+    if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
     const rune = S.runeActive ? interiorCells(chain) : [];
     const committed = effective.length >= 3;
     if (!committed && !rune.length) { clearChain(); return; }
@@ -3299,7 +3499,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (clsRace() === 'Halfling' && batch.result.kills >= 15) {
           const armour = S.equipment.find(item => item.slot === 'armour');
           armour.mods.maxArmor = (armour.mods.maxArmor || 0) + 1;
-          applyItemMod('maxArmor', 1, 1);
+          updateEquipmentStats();
           flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
         }
         if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
@@ -3413,9 +3613,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         for (const id of Object.keys(S.skillCooldowns)) S.skillCooldowns[id] = Math.max(0, S.skillCooldowns[id] - 1);
       }
       S.slashCombo = S.hackCombo = S.shockCombo = S.aweCombo = 0;
-      S.runeActive = S.runeUsedThisTurn = 0;
-      S.swordBoost = S.shieldBoost = S.potionBoost = S.coinBoost = 0;
-      S.berserkActive = S.stealActive = S.counterattack = 0;
+      S.runeUsedThisTurn = S.counterattack = 0;
+      rotateTurnFlags(['runeActive', 'swordBoost', 'shieldBoost', 'potionBoost', 'coinBoost', 'berserkActive', 'stealActive']);
       resetCollectionCounts();
       // Thaw OR burn, in column order. Burning does not pre-empt a normal
       // volley; frozen cells thaw without also taking their fire tick.
@@ -3436,7 +3635,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           }
         }
       }
-      if (S.regen > 0) heal(CLASS_BY_ID[S.classId]?.perk === 'Faithful' ? 2 * S.regen : S.regen);
+      if (S.regen > 0) heal(S.regen);
       if (S.poison > 0) {
         damageHero(S.poison, false, true);
         flash('☠ Яд: −' + S.poison + ' HP');
@@ -3467,10 +3666,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       }
       applySpecialAbilities();
       if (enemyPhaseDeathCheck()) return;
-      S.lastStand = 0;
+      rotateTurnFlags(['lastStand']);
       compactBoardAndRefill();
       markExistingSkullsOld();
-      S.oneHealthSkulls = S.forceCoins = S.freezeNextTurn = 0;
+      rotateTurnFlags(['oneHealthSkulls', 'forceCoins']);
+      S.freezeNextTurn = 0;
       if (S.promotionRemaining > 0) S.promotionRemaining--;
       S.actionCommitted = false;
       // Victory is at the tail, never before lethal turn-100 poison/abilities.
@@ -3505,7 +3705,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function lastStandTriggerIfNeeded() {
     if (S.lastStand > 0 && S.hero.hp <= 0) {
       S.hero.hp = S.hero.maxHp;
-      S.lastStand = 0;
+      S.lastStand = S.nextTurnFlags.lastStand = 0;
       flash('🛡 Последний рубеж: полное лечение!');
       return true;
     }
@@ -3534,7 +3734,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
       title.textContent = '💰 МАГАЗИН!';
-      body.innerHTML = '<p class="modal-hint">Выбери 1 из 4 снаряжения<\/p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 1 из 3 предметов. Свиток, если есть, сработает вместе с покупкой.<\/p>';
       renderEquipChoices(body);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
@@ -3552,20 +3752,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       btn.className = 'btn';
       btn.textContent = 'Закрыть';
       btn.addEventListener('click', () => closeModal());
-      body.appendChild(btn);
-    } else if (kind === 'trophy') {
-      title.textContent = '🏆 ТРОФЕЙ!';
-      const t = S.pendingTrophy;
-      body.innerHTML = '';
-      const hint = document.createElement('p');
-      hint.className = 'modal-hint';
-      hint.textContent = t ? t.text : 'Трофей за убитых спец-черепов.';
-      body.appendChild(hint);
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn';
-      btn.textContent = '🏆 Забрать трофей';
-      btn.addEventListener('click', () => claimTrophy());
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? '🏆 ПОБЕДА!' : '☠ ИГРА ОКОНЧЕНА';
@@ -3602,7 +3788,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   // --- особые черепа: особенности по тапу на спец/босс ---
   // Спец-череп — элитность ×2/×2/×4 (оригинал); босс — ×3/×3/×6.
-  // Убив спец-черепа, игрок получает трофей (~15 → трофей).
+  // Сбор особого продвигает трофейный счётчик; выпадение — клеткой на поле.
   // Особенности спец/босс черепа: тап по нему (без драга).
   function specialTypeName(skull) {
     const t = skull && skull.type;
@@ -3659,135 +3845,108 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     body.appendChild(btn);
   }
 
-  // --- трофей: 20..30 убитых спец-черепов → трофей ---
-  // Не более 3 классов разблокируется за забег (далее трофей — в уровень текущего класса).
-  // Original ClaimTrophy @0x437b0: 50% the current class levels up (unless it
-  // is the Adventurer or already level 10); otherwise a random locked class is
-  // unlocked, falling back to leveling the current class.
-  function computeTrophyOutcome() {
-    const currentId = S.classId;
-    const currentLvl = classLevelOf(currentId);
-    const maxLvl = 10;
-    if (currentId !== 'adventurer' && currentLvl < maxLvl && randInt(0, 1, 5) !== 0) {
-      return levelOutcome(currentId, currentLvl);
+  // Trophy generation belongs to SPECIAL COLLECTION, not a turn-end modal.
+  // First profile value is 0 (one eligible kill); later intervals are 20..30.
+  // Three GENERATED trophies per run, irrespective of whether they are claimed.
+  function trophyEligible() {
+    return S.classId !== 'adventurer' && classLevelOf(S.classId) < 10
+      || CLASSES.some(cls => cls.id !== 'adventurer' && !isClassUnlocked(cls.id));
+  }
+  function readTrophyRemaining() {
+    try {
+      const value = Number(localStorage.getItem('raid:trophyRemaining'));
+      return Number.isFinite(value) ? Math.max(0, Math.min(30, Math.trunc(value))) : 0;
+    } catch (e) { return 0; }
+  }
+  function saveTrophyRemaining() {
+    try { localStorage.setItem('raid:trophyRemaining', String(S.trophyRemaining)); } catch (e) {}
+  }
+  function advanceTrophyAt(slot) {
+    if (S.difficulty === 0) return;
+    if (S.mode !== 'sprint' || randInt(0, 100, 0) < 50) S.trophyRemaining--;
+    if (S.trophyRemaining < 1) {
+      if (S.trophiesGenerated < MAX_TROPHIES_PER_RUN && trophyEligible()) {
+        S.trophyRemaining = randInt(20, 30, 0);
+        S.trophiesGenerated++;
+        // Own SVG, but preserve SetType's numeric appearance draw.
+        S.board[slot] = { type: 'trophy', appearance: randInt(0, 7, 0) };
+      } else S.trophyRemaining = 0;
     }
-    const locked = CLASSES.filter(c => !isClassUnlocked(c.id));
-    if (locked.length > 0) {
+    saveTrophyRemaining();
+  }
+  function computeTrophyOutcome() {
+    const id = S.classId, level = classLevelOf(id);
+    if (id !== 'adventurer' && level < 10 && randInt(0, 1, 5) !== 0) return levelOutcome(id, level);
+    const locked = CLASSES.filter(cls => !isClassUnlocked(cls.id)).sort((a, b) => a.native - b.native);
+    if (locked.length) {
       const cls = locked[randInt(0, locked.length - 1, 5)];
       return { kind: 'unlock', clsId: cls.id, text: '✨ Класс «' + cls.name + '» разблокирован! (ур. 1)' };
     }
-    if (currentLvl < maxLvl) return levelOutcome(currentId, currentLvl);
-    const other = CLASSES.find(c => c.id !== currentId && classLevelOf(c.id) < maxLvl);
-    if (other) return levelOutcome(other.id, classLevelOf(other.id));
-    const clsName = CLASS_BY_ID[currentId] ? CLASS_BY_ID[currentId].name : currentId;
-    return { kind: 'levelup', clsId: currentId, text: '🏆 «' + clsName + '» уже на макс. уровне (10)' };
+    if (level < 10) return levelOutcome(id, level);
+    // Never level a different, already unlocked class as a fallback.
+    return { kind: 'none', clsId: null, text: '🏆 Трофей собран; текущий класс уже на уровне 10.' };
   }
-  function levelOutcome(id, lvl) {
-    const cls = CLASS_BY_ID[id];
-    const name = cls ? cls.name : id;
-    const next = Math.min(10, (lvl || 1) + 1);
-    return { kind: 'levelup', clsId: id, text: '⬆ Класс «' + name + '» поднялся на ур. ' + next + '!' };
+  function levelOutcome(id, level) {
+    return { kind: 'levelup', clsId: id,
+      text: '⬆ Класс «' + CLASS_BY_ID[id].name + '» поднялся на ур. ' + Math.min(10, level + 1) + '!' };
   }
   function checkTrophy() {
-    if (S.over || S.pendingModal) return;
-    if (S.difficulty === 0) return;   // Easy never drops trophies
-    if (S.pendingTrophy) return;
-    const need = S.trophyRemaining || TROPHY_KILLS_PER_TROPHY;
-    if (S.specialsKilled < need) return;
-    S.specialsKilled = 0;
-    S.trophyRemaining = randInt(20, 30, 5);
-    let outcome = computeTrophyOutcome();
-    // Лимит разблокировок за забег не должен полностью отключать трофеи:
-    // после него падает только шанс нового класса, а уровень класса растёт.
-    if (S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN && outcome.kind === 'unlock') {
-      const fallback = levelOutcome(S.classId, classLevelOf(S.classId));
-      fallback.text += ' (лимит разблокировок)';
-      outcome = fallback;
-    }
-    S.pendingTrophy = outcome;
-    openModal('trophy');
+    return S.board.flatMap((cell, slot) => cell.type === 'trophy' && !cell.frozen && !cell.matched ? [slot] : []);
   }
-  function claimTrophy() {
-    const t = S.pendingTrophy;
-    if (!t) return;
-    S.pendingTrophy = null;
-    S.trophiesThisRun = (S.trophiesThisRun || 0) + 1;
-    if (t.kind === 'unlock') {
-      unlockClass(t.clsId);
-      S.unlocksThisRun = (S.unlocksThisRun || 0) + 1;
-    } else {
-      levelUpClass(t.clsId);
-    }
-    flash(t.text);
-    log(t.text);
-    closeModal();
+  function claimTrophy(slot) {
+    if (S.over || S.resolving || S.pendingModal || !Number.isInteger(slot)) return false;
+    const cell = S.board[slot];
+    if (!cell || cell.type !== 'trophy' || cell.frozen || cell.matched) return false;
+    // Outcome draws happen on the tap, so class state may change between drops.
+    const outcome = computeTrophyOutcome();
+    if (outcome.kind === 'unlock') { unlockClass(outcome.clsId); S.unlocksThisRun++; }
+    else if (outcome.kind === 'levelup') levelUpClass(outcome.clsId);
+    S.trophiesThisRun++;
+    clearChain();
+    withResourceBatch(() => {
+      matchCell(slot, { reward: false });
+      compactBoardAndRefill();
+      markExistingSkullsOld();
+      if (!hasLegalChain(S.board)) ensureChainable();
+    });
+    flash(outcome.text); log(outcome.text);
+    renderBoard(); renderHUD(); audioLevel();
+    return true;
   }
 
   function chooseLevelOptions() {
-    // classic: 2 stats + 2 skills (2-of-4). If 4 skills are taken, no more skills
-    // can be chosen → 4 stats instead.
-    // Уникальный навык класса предлагается «по желанию» (не сразу — только при
-    // выборе 2-из-4 на уровень, как обычный базальный навык).
-    const skillSlotsLeft = Math.max(0, 4 - S.skills.length);
-    const statOptions = shuffle([...STATS]).slice(0, 2);
-    // Одноразовые навыки после использования не возвращаются в пул.
-    const availableSkill = sk => !S.skills.includes(sk.id) && !(S.usedSkillIds && S.usedSkillIds[sk.id])
-      && !(S.mode === 'sprint' && sk.id === 'trap')
-      && !(S.mode === 'pretzel' && (sk.id === 'teleport' || sk.id === 'chamber'));
-    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
-    // Adventurer (class 0 in the original) has no fixed 20-slot vector: its pool
-    // is *every unlocked* native skill, so the class skills (31..39) join it once
-    // their owning class reaches level 10. Skills 40/41 are native-only and never
-    // unlock (they have no wrapper enum in the original).
-    const adventurerPool = () => ALL_SKILLS.filter(sk => {
-      if (sk.nativeOnly) return false;
-      if (sk.native != null && sk.native >= 31) {
-        const owner = CLASSES.find(c => c.uniqueSkill === sk.id);
-        return !!owner && classLevelOf(owner.id) >= 10;
-      }
-      return true;
-    });
-    const classPool = !cls || cls.id === 'adventurer' ? adventurerPool()
-      : (cls.pool ? ALL_SKILLS.filter(sk => cls.pool.includes(sk.id)) : ALL_SKILLS);
-    const basalOptions = shuffle([...classPool].filter(sk => availableSkill(sk) && (!cls || sk.id !== cls.uniqueSkill)));
-    // уникальный навык текущего класса: не базовый (Teleport у Adventurer уже в BASAL)
-    const uniqueOption = cls && cls.uniqueSkill
-      ? UNIQUE_SKILLS.find(s => s.id === cls.uniqueSkill)
-      : null;
-    let skillOptions = [];
-    const upgradable = () => S.skills
-      .filter(id => id !== 'wish' && ((S.skillLevels && S.skillLevels[id]) || 1) < 10)
-      .map(id => ({ upgrade: true, id, skill: SKILL_BY_ID[id] }));
-    if (skillSlotsLeft <= 0 && S.mode !== 'sprint') {
-      // All four slots taken: offer upgrades of existing skills (levels 1..9).
-      skillOptions = shuffle(upgradable()).slice(0, 2);
-    } else if (S.skills.length === 3) {
-      // Original limit: with three skills the menu offers ONE new skill (plus an
-      // upgrade of an owned one when available, or nothing in Sprint).
-      if (uniqueOption && availableSkill(uniqueOption)) skillOptions.push(uniqueOption);
-      else if (basalOptions.length > 0) skillOptions.push(basalOptions.shift());
-      const up = S.mode === 'sprint' ? [] : upgradable();
-      if (up.length > 0) skillOptions.push(shuffle(up)[0]);
-    } else {
-      if (uniqueOption && availableSkill(uniqueOption)) {
-        skillOptions.push(uniqueOption);
-      }
-      while (skillOptions.length < 2 && skillOptions.length < skillSlotsLeft && basalOptions.length > 0) {
-        const b = basalOptions.shift();
-        skillOptions.push(b);
-      }
-      skillOptions = skillOptions.slice(0, Math.min(2, skillSlotsLeft));
+    const owned = S.skills, sprint = S.mode === 'sprint';
+    const upgradable = owned.filter(id => id !== 'wish' && (S.skillLevels[id] || 1) < 10);
+    const cls = CLASS_BY_ID[S.classId];
+    const ordered = ALL_SKILLS.slice().sort((a, b) => a.native - b.native);
+    let pool = ordered.filter(skill => owned.length === 4 ? owned.includes(skill.id)
+      : cls.id === 'adventurer' ? isSkillUnlocked(skill.id) : cls.pool.includes(skill.id)).map(skill => skill.id);
+    pool = pool.filter(id => !(owned.includes(id) && (sprint || id === 'wish' || (S.skillLevels[id] || 1) >= 10))
+      && !S.usedSkillIds[id] && !(sprint && id === 'trap')
+      && !(S.mode === 'pretzel' && ['teleport', 'chamber'].includes(id)));
+    const count = Math.min(owned.length === 3 && (sprint || !upgradable.length) ? 1 : 2, pool.length);
+    const options = [];
+    for (let n = 0; n < count && pool.length; n++) {
+      // The class-first override happens AFTER the SKILL draw. The drawn
+      // candidate is not removed when a different first skill replaces it.
+      let id = pool[randInt(0, pool.length - 1, 3)];
+      const first = cls.uniqueSkill;
+      if (!n && S.hero.level === 2 && cls.id !== 'adventurer' && !(sprint && first === 'wish')) id = first;
+      options.push(prepareSkillOption(id));
+      if (!n && owned.length === 3 && !owned.includes(id)) {
+        pool = sprint ? [] : ordered.filter(skill => upgradable.includes(skill.id)).map(skill => skill.id);
+      } else pool = pool.filter(value => value !== id);
     }
-    // fill remaining slots with stats to reach 4 options
-    while (statOptions.length + skillOptions.length < 4) {
-      const extra = shuffle([...STATS].filter(s => !statOptions.includes(s)))[0];
-      statOptions.push(extra);
-    }
-    return [...statOptions, ...skillOptions];
+    const statOrder = ['strength', 'dexterity', 'vitality', 'luck', 'damage', 'defense', 'health', 'charisma'];
+    const stats = statOrder.map(id => STATS.find(stat => stat.id === id)).filter(stat =>
+      !(S.mode === 'pretzel' && stat.id === 'health')
+      && !(stat.id === 'charisma' && ['xp', 'shield', 'potion', 'coin'].every(type => bonusPct(type) >= 100)));
+    while (options.length < 4) options.push(stats.splice(randInt(0, stats.length - 1, 3), 1)[0]);
+    return options;
   }
 
   function renderLevelChoices(options, body) {
-    const cls = S.classId ? CLASS_BY_ID[S.classId] : null;
+    S.menuCandidates = options;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
     const picked = new Set();
@@ -3826,14 +3985,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
             <span class="lv-effs">${lines}<\/span>
           <\/span>`;
       } else {
-        btn.innerHTML = `<span class="lv-icon-box"><span class="lv-icon">${opt.icon}<\/span><span class="lv-corner">1<\/span><\/span>
+        btn.innerHTML = `<span class="lv-icon-box"><span class="lv-icon">${opt.icon}<\/span><span class="lv-corner">${opt.level}<\/span><\/span>
           <span class="lv-body">
-            <span class="lv-row"><span class="lv-name">${opt.name}<\/span><span class="lv-cool">Кулдаун: ${opt.cooldown}<\/span><\/span>
+            <span class="lv-row"><span class="lv-name">${opt.name}<\/span><span class="lv-cool">${opt.duration > 0 ? 'Кулдаун: ' + (opt.duration - S.quicken - (S.skills.length === 3 && CLASS_BY_ID[S.classId]?.perk === 'Cunning' ? 1 : 0)) : 'Одноразовый'}<\/span><\/span>
             <span class="lv-desc">${opt.desc}<\/span>
           <\/span>`;
       }
       btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'level' || picked.size >= 2) return;
+        if (S.pendingModal !== 'level' || S.menuCandidates !== options || picked.size >= 2) return;
         if (picked.has(i)) {
           picked.delete(i);
           mark();
@@ -3843,40 +4002,12 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           audioPick();
           mark();
           if (picked.size === 2) {
-            // apply now
-            const chosenSkills = [];
+            // Preserve click order; a prepared skill is not initialised twice.
             picked.forEach(idx => {
-              const o = options[idx];
-              if (STATS.includes(o)) o.apply();
-              else if (o.upgrade) {
-                const id = o.id;
-                S.skillLevels = S.skillLevels || {};
-                const lvl = Math.min(10, (S.skillLevels[id] || 1) + 1);
-                S.skillLevels[id] = lvl;
-                const base = SKILL_BY_ID[id] ? SKILL_BY_ID[id].cooldown : 10;
-                const adjust = (S.cooldownAdjust && S.cooldownAdjust[id]) || 0;
-                S.skillCooldowns[id] = Math.max(0, base - (lvl - 1) - S.quicken + adjust);
-                flash('⬆ Навык «' + (SKILL_BY_ID[id] ? SKILL_BY_ID[id].name : id) + '» → ур. ' + lvl);
-              }
-              else if (SKILLS.includes(o) || UNIQUE_SKILLS.includes(o)) {
-                if (S.skills.length >= 4) return;
-                chosenSkills.push(o.id);
-                S.skills.push(o.id);
-                if (S.mode === 'sprint') {
-                  S.skillLevels[o.id] = 5;
-                  S.skillCooldowns[o.id] = Math.max(0, o.cooldown - 4);
-                }
-              }
+              const option = options[idx];
+              if (STATS.includes(option)) option.apply();
+              else installSkillOption(option);
             });
-            // Cunning perk (Assassin): the fourth skill costs one turn less — both
-            // now and on every later activation.
-            if (cls && cls.perk === 'Cunning' && chosenSkills.length > 0 && S.skills.length >= 4) {
-              const sk = chosenSkills[chosenSkills.length - 1];
-              S.cooldownAdjust = S.cooldownAdjust || {};
-              S.cooldownAdjust[sk] = (S.cooldownAdjust[sk] || 0) - 1;
-              S.skillCooldowns[sk] = Math.max(0, (S.skillCooldowns[sk] || 0) - 1);
-              flash('🗡 Хитрость: кд навыка «' + (SKILL_BY_ID[sk] ? SKILL_BY_ID[sk].name : sk) + '» −1');
-            }
             S.hero.xpNext = 100;
             closeModal();
             renderBoard();
@@ -3891,10 +4022,68 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     body.appendChild(grid);
   }
 
+  function noteCompatibility(message) {
+    if (!S.compatibilityNotices.includes(message)) S.compatibilityNotices.push(message);
+  }
+  function makeShopOffers() {
+    const options = drawItemSlots(3, 2, makeItem);
+    if (random(2) >= (clsRace() === 'Sauren' ? .5 : .25)) return options;
+    const item = options[randInt(0, 2, 2)];
+    const exempt = random(2) < Math.fround(.1);
+    const ordered = ALL_SKILLS.slice().sort((a, b) => a.native - b.native)
+      .filter(skill => skill.id !== 'wish' && !(S.mode === 'pretzel' && skill.id === 'chamber'));
+    // I1 is an unknown native MEMORY WORD, not "skill already owned".
+    // Safe playable policy: omit only that unproven scroll, never invent the
+    // word or block the equipment purchase. Known 10% exemptions work normally.
+    // A complete raw-word fixture can be supplied through the debug state.
+    if (!exempt && !ordered.every(skill => Number.isInteger(S.scrollNativeWords?.[skill.native]))) {
+      item.scrollBlocked = true;
+      noteCompatibility('I1: свиток без 10%-го исключения пропущен — неизвестен нативный фильтр.');
+      return options;
+    }
+    const eligible = ordered.filter(skill => (exempt || S.scrollNativeWords[skill.native] === 0)
+      && isSkillUnlocked(skill.id) && canActivateSkill(skill.id));
+    if (!eligible.length) {
+      item.scrollBlocked = true;
+      noteCompatibility('I1: предоставленный фильтр свитка не дал кандидатов; свиток пропущен.');
+      return options;
+    }
+    item.scroll = prepareSkillOption(eligible[randInt(0, eligible.length - 1, 2)].id);
+    // A scroll is a fresh skill template, even if that skill is already owned.
+    item.scroll.level = S.mode === 'sprint' ? 5 : 1;
+    item.scroll.duration = (item.scroll.id === 'wish' ? -1 : item.scroll.cooldown) - (S.mode === 'sprint' ? 4 : 0);
+    item.scroll.charge = item.scroll.duration;
+    item.scroll.upgrade = false;
+    return options;
+  }
+  function castPurchasedScroll(scroll) {
+    const continuedAction = S.resolving, continuation = AFTER_ARRIVALS;
+    S.resolving = true;
+    // Do not call activateSkill: no owned cooldown, slot or Dragonkin hook.
+    // Do not replace AFTER_ARRIVALS: it may be the suspended enemy volley.
+    withResourceBatch(() => {
+      applySkill(scroll.id);
+      if (S.board.some(cell => !cell || cell.type === 'empty')) compactBoardAndRefill();
+      if (!S.actionCommitted) markExistingSkullsOld();
+      if (!hasLegalChain(S.board)) ensureChainable();
+    });
+    if (!continuedAction && !continuation) continueAfterRewards(() => {
+      S.resolving = false; renderBoard(); renderHUD();
+    });
+  }
+  function purchaseShopItem(index) {
+    if (S.pendingModal !== 'gold' || !Number.isInteger(index)) return false;
+    const item = S.menuCandidates[index];
+    if (!item || !itemSlotById(item.slot)) return false;
+    equipItem(item); // Recompute BEFORE scroll activation.
+    closeModal();   // Remove the shop BEFORE Enchant can open another menu.
+    if (item.scroll) castPurchasedScroll(item.scroll);
+    renderBoard(); renderHUD(); audioLevel();
+    return true;
+  }
   function renderEquipChoices(body) {
-    // Original shop: 3 of the 5 equipment slots, one generated item each,
-    // the fourth card is empty.
-    const options = shuffle([...ITEM_SLOTS]).slice(0, 3).map(sl => makeItem(sl.id));
+    const options = makeShopOffers();
+    S.menuCandidates = options;
     const summaryBtn = document.createElement('button');
     summaryBtn.type = 'button';
     summaryBtn.className = 'btn secondary shop-summary-toggle';
@@ -3912,86 +4101,49 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       summaryBtn.textContent = show ? '↩ К снаряжению' : '📊 Итог персонажа';
     });
     body.appendChild(summaryBtn);
-    options.forEach(item => {
-      const equipped = S.equipment.find(e => e.slot === item.slot);
+    options.forEach((item, index) => {
+      const equipped = S.equipment.find(entry => entry.slot === item.slot);
+      const changes = itemChanges(equipped, item).map(change =>
+        `<span class="item-change ${change.after > change.before ? 'better' : 'worse'}">${change.text}<\/span>`).join('');
+      const scroll = item.scroll
+        ? `<span class="shop-scroll">📜 ${item.scroll.name} — разово при покупке<\/span><span class="shop-preview">${item.scroll.desc}<\/span>`
+        : item.scrollBlocked ? '<span class="shop-compatibility">Свиток пропущен: фильтр оригинала не расшифрован (I1).<\/span>' : '';
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'shop-item';
-      btn.innerHTML = `<span class="shop-icon">${item.icon}<\/span><span class="shop-body"><span class="shop-slot">${item.slotName}<\/span><span class="shop-name">${item.name}<\/span><span class="shop-eff">${itemModsText(item)}<\/span><span class="shop-preview">Заменяет: ${equipped ? equipped.name : '—'}<\/span><\/span>`;
-      btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'gold') return;
-        equipItem(item);
-        closeModal();
-        renderBoard();
-        renderHUD();
-        audioLevel();
-      });
+      btn.innerHTML = `<span class="shop-icon">${item.icon}<\/span><span class="shop-body"><span class="shop-slot">${item.slotName}<\/span><span class="shop-name">${item.name}<\/span><span class="shop-eff">${itemModsText(item)}<\/span><span class="shop-preview">Заменяет: ${equipped.name}<\/span>${changes}${scroll}<\/span>`;
+      btn.addEventListener('click', () => { if (S.menuCandidates === options) purchaseShopItem(index); });
       grid.appendChild(btn);
     });
-    // Fourth slot: upgrade scroll (25%; Sauren Search = 50%), otherwise empty.
-    const scrollChance = clsRace() === 'Sauren' ? 0.5 : 0.25;
-    if (random(5) < scrollChance) {
-      const slot = ITEM_SLOTS[randInt(0, ITEM_SLOTS.length - 1, 5)];
-      const pool = slot.pool.filter(resourceUpgradeAllowed);
-      const key = pool[randInt(0, pool.length - 1, 5)];
-      const def = ITEM_STAT[key];
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'shop-item';
-      btn.innerHTML = `<span class="shop-icon">📜<\/span><span class="shop-body"><span class="shop-slot">Свиток<\/span><span class="shop-name">Свиток ${slot.name.toLowerCase()}<\/span><span class="shop-eff">${itemModText(key, def.step)}<\/span><span class="shop-preview">Улучшает надетый предмет<\/span><\/span>`;
-      btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'gold') return;
-        const equipped = S.equipment.find(e => e.slot === slot.id);
-        if (equipped) {
-          equipped.mods = equipped.mods || {};
-          equipped.mods[key] = +(equipped.mods[key] || 0) + def.step;
-        }
-        applyItemMod(key, def.step, 1);
-        closeModal();
-        renderBoard();
-        renderHUD();
-        audioLevel();
-      });
-      grid.appendChild(btn);
-    } else {
-      const empty = document.createElement('div');
-      empty.className = 'shop-item shop-empty';
-      empty.setAttribute('aria-hidden', 'true');
-      grid.appendChild(empty);
-    }
+    // Three equipment choices; the fourth is always inert, never a stat scroll.
+    const empty = document.createElement('div');
+    empty.className = 'shop-item shop-empty';
+    empty.setAttribute('aria-hidden', 'true');
+    grid.appendChild(empty);
     body.appendChild(grid);
     body.appendChild(summary);
   }
 
   function renderUpgradeChoices(body) {
-    // Original upgrade menu: 4 of the 5 slots, each offers one random
-    // stat upgrade for the item equipped in that slot.
-    const options = shuffle([...ITEM_SLOTS]).slice(0, 4).map(sl => makeUpgradeOffer(sl.id));
+    const options = drawItemSlots(4, 4, makeUpgradeOffer);
+    S.menuCandidates = options;
     const grid = document.createElement('div');
     grid.className = 'lv-grid';
     options.forEach(opt => {
-      const item = S.equipment.find(e => e.slot === opt.slot);
+      const item = S.equipment.find(entry => entry.slot === opt.slot);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'lv-card lv-stat';
       btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}<\/span>
         <span class="lv-body">
-          <span class="lv-name">${opt.slotName}<\/span>
-          <span class="lv-desc">${item ? item.name : '—'}<\/span>
-          <span class="lv-effs"><span class="lv-line">${opt.label}<\/span><\/span>
+          <span class="lv-name">${opt.slotName} · ${opt.name}<\/span>
+          <span class="lv-desc">${item.name}<\/span>
+          <span class="lv-effs"><span class="lv-line">${opt.label}: ${opt.comparison}<\/span><span class="lv-line">${opt.desc}<\/span><\/span>
         <\/span>`;
       btn.addEventListener('click', () => {
-        if (S.pendingModal !== 'armor') return;
-        const equipped = S.equipment.find(e => e.slot === opt.slot);
-        if (equipped) {
-          equipped.mods = equipped.mods || {};
-          equipped.mods[opt.key] = +(equipped.mods[opt.key] || 0) + opt.value;
-        }
-        applyItemMod(opt.key, opt.value, 1);
-        closeModal();
-        renderBoard();
-        renderHUD();
-        audioLevel();
+        if (S.pendingModal !== 'armor' || S.menuCandidates !== options) return;
+        applyUpgradeOffer(opt);
+        closeModal(); renderBoard(); renderHUD(); audioLevel();
       });
       grid.appendChild(btn);
     });
@@ -4404,23 +4556,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (s.countdown <= 0) {
           // Original DestroyUpgrade: pick a random equipment slot, then one of
           // its upgrades, and reduce that upgrade by one step.
-          const owned = (S.equipment || []).filter(it => it && it.mods && Object.keys(it.mods).length > 0);
-          if (owned.length > 0) {
-            const item = owned[randInt(0, owned.length - 1, 5)];
-            const keys = Object.keys(item.mods);
+          const item = S.equipment[randInt(0, S.equipment.length - 1, 5)];
+          const keys = ITEM_KEYS.filter(key => itemValue(item, key) > 0);
+          if (keys.length) {
             const key = keys[randInt(0, keys.length - 1, 5)];
-            const step = (ITEM_STAT[key] && ITEM_STAT[key].step) || 1;
-            const dec = Math.min(step, item.mods[key]);
-            item.mods[key] = +(item.mods[key] - dec).toFixed(2);
-            if (item.mods[key] <= 0) delete item.mods[key];
-            applyItemMod(key, dec, -1);
-            const def = ITEM_STAT[key];
-            const label = def ? def.name : key;
-            flash('🦷 Съедобный: −' + (dec >= 1 ? dec : Math.round(dec * 100) + '%') + ' «' + label + '» (' + item.name + ')');
-            log('🦷 Съедобный уничтожил улучшение: ' + label);
-          } else {
-            flash('🦷 Съедобный: нет улучшений');
-          }
+            const amount = reduceItemModifier(item, key);
+            const message = '🦷 Съедобный: −' + itemNumber(key, amount) + ' «' + ITEM_STAT[key].name + '» (' + item.name + ')';
+            flash(message); log(message);
+          } else flash('🦷 Съедобный: выбранный предмет без улучшений');
           s.countdown = 5;
         }
       } else if (t === 29) { // Defiler — armor loss per block handled in damageHero
@@ -4523,11 +4666,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const uniqueInfo = `<span class="pick-unique">Уникальный навык: ${cls.uniqueSkillDesc}<\/span>`;
       const status = unlocked
         ? `<span class="pick-lvl">ур. ${lvl || 1}${selected ? ' · выбран' : ''}<\/span>`
-        : `<span class="pick-locked">🔒 20–30 спец-черепов → трофей<\/span>`;
+        : `<span class="pick-locked">🔒 Подбери трофей на поле<\/span>`;
       btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${cls.icon}<\/span><span><span class="pick-name">${cls.name}<\/span><br><span class="pick-race">${cls.raceName || cls.race}<\/span><\/span><\/span>${desc.join('')}${uniqueInfo}${status}`;
       btn.addEventListener('click', () => {
         if (!unlocked) {
-          flash('⚠ «' + cls.name + '» заблокирован — убей 20–30 спец-черепов, чтобы получить трофей');
+          flash('⚠ «' + cls.name + '» заблокирован — подбери трофей на поле после победы над особыми');
           return;
         }
         setSelectedClassId(cls.id);
@@ -4611,6 +4754,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     levelUpClass,
     renderCharacterSummary,
     makeUpgradeOffer,
+    makeItem,
+    makeShopOffers,
+    purchaseShopItem,
+    skillDuration,
+    bonusPct,
+    trophyEligible,
+    prepareSkillOption,
+    installSkillOption,
+    isSkillUnlocked,
+    canActivateSkill,
+    itemStep,
+    itemUpgradeAllowed,
+    randomItemUpgrade,
+    applyUpgradeOffer,
+    reduceItemModifier,
+    updateEquipmentStats,
+    equipmentTotals,
     equipItem,
     itemModsText,
     computeTrophyOutcome,
