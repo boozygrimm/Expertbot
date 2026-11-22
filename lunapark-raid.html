@@ -951,13 +951,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       apply: () => S.hero.stats.luck++
     },
     {
-      id: 'charisma', name: 'Хитрость', icon: '💎', chip: '+ХИТ', color: '#8fd0ff',
+      // Native stat 7: +5 to every bonus-token chance at once.
+      id: 'charisma', name: 'Все бонусы', icon: '💎', chip: '+БОН', color: '#8fd0ff',
       desc: '+5% ко всем бонусам',
       effects: () => [
-        `Шанс бонусной монеты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
-        `Шанс бонуса щита: ${bonusPct('shield')}% >> ${bonusPct('shield') + 5}%`,
+        `Монеты/зелья/опыт/щиты: ${bonusPct('coin')}% >> ${bonusPct('coin') + 5}%`,
       ],
       apply: () => S.hero.stats.charisma++
+    },
+    {
+      // Native stat 6: hp(2 * statIncrements.vitality) = +2×живучесть макс. HP.
+      id: 'health', name: 'Здоровье', icon: '🩹', chip: '+ЗДР', color: '#ffb0b0',
+      desc: '+10 макс. HP (2× живучесть)',
+      effects: () => [`Макс. HP: ${fmt(S.hero.maxHp)} >> ${fmt(S.hero.maxHp + 10)}`],
+      apply: () => {
+        if (S.mode === 'pretzel') return;   // Pretzel: рост HP отключён
+        S.hero.maxHp += 10; S.hero.hp += 10;
+      }
     },
     {
       id: 'damage', name: 'Урон', icon: '⚔', chip: '+УРН', color: '#ff8a7a',
@@ -968,7 +978,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       apply: () => S.hero.stats.damage++
     },
     {
-      id: 'defense', name: 'Защита', icon: '🛡', chip: '+ЗАЩ', color: '#a8c8ff',
+      // Native stat 5: base.repair += 2 × dexterity → +2 брони за щит.
+      id: 'defense', name: 'Ремонт', icon: '🛡', chip: '+ЗАЩ', color: '#a8c8ff',
       desc: '+2 брони за щит',
       effects: () => [
         `Броня за щит: ${fmt(perShield())} >> ${fmt(perShield() + 2)}`,
@@ -1023,14 +1034,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     }
   }
 
-  function equipPreview(opt) {
-    const h = S.hero;
-    if (opt.eff === 'hp') return `Макс. HP: ${fmt(h.maxHp)} → ${fmt(h.maxHp + opt.value)}; текущее HP: ${fmt(h.hp)} → ${fmt(h.hp + opt.value)}`;
-    if (opt.eff === 'dmg') return `Урон каждого меча: ${fmt(h.weaponDamage)} → ${fmt(h.weaponDamage + opt.value)}`;
-    if (opt.eff === 'def') return `Макс. броня: ${fmt(h.maxArmor)} → ${fmt(h.maxArmor + opt.value)}; текущая броня: ${fmt(h.armor)} → ${fmt(h.armor + opt.value)}`;
-    return opt.desc || '';
-  }
-
   function renderCharacterSummary(panel) {
     const h = S.hero, st = h.stats;
     const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
@@ -1062,14 +1065,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     panel.appendChild(list);
   }
 
-  // --- магазин предметов (классика: золото → 1 из 4 предметов) ---
-  // 3 предмета + 1 пустой слот (как в оригинале). Эффект: «name + effect»
-  const EQUIP = [
-    { id: 'necklace', name: 'Ужасное ожерелье', icon: '❤', eff: 'hp', value: 15, desc: '15 HP', apply: () => { S.hero.maxHp += 15; S.hero.hp += 15; } },
-    { id: 'battlemace', name: 'Тусклая булава', icon: '⚔', eff: 'dmg', value: 3, desc: '3 ур.', apply: () => { S.hero.weaponDamage += 3; } },
-    { id: 'spangenhelm', name: 'Сломанный шлем', icon: '🛡', eff: 'def', value: 2, desc: '2 броня', apply: () => { S.hero.maxArmor += 2; S.hero.armor += 2; } },
-    { id: 'amulet', name: 'Храбрый кулон', icon: '💎', eff: 'hp', value: 10, desc: '10 HP', apply: () => { S.hero.maxHp += 10; S.hero.hp += 10; } },
-  ];
+  // Магазин/апгрейды теперь целиком на слот-предметах (см. ITEM_SLOTS ниже).
   // --- 5 equipment slots (original: weapon/helmet/armour/shield/accessory) --
   const ITEM_SLOTS = [
     { id: 'weapon', name: 'Оружие', icon: '⚔', pool: ['weaponDamage', 'pierce', 'leech', 'spikes', 'baseDamage'] },
@@ -1301,7 +1297,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function levelUpClass(id) {
     if (!CLASS_BY_ID[id]) return;
     if (!isClassUnlocked(id)) classLevels[id] = 1;
-    else classLevels[id] = (classLevelOf(id) || 1) + 1;
+    else classLevels[id] = Math.min(10, (classLevelOf(id) || 1) + 1);   // original cap: level 10
     saveClassLevels();
   }
 
@@ -3571,12 +3567,15 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
     if (poisonDamageThisPhase > 0) S.poison = Math.max(S.poison || 0, poisonDamageThisPhase);
 
-    // Vampires heal in the HP-damage phase; their ordinary attacks are capped at max HP.
+    // ProcessVampires: ordinary Vampires only heal back up to their own max HP;
+    // the mortal enemy (Werewolf) may exceed it and raises its max.
     if (hpDamageThisPhase > 0) {
+      const mortalVampire = clsRace() === 'Werewolf';
       S.board.forEach(c => {
         if (!c || c.type !== 'skull' || !c.skull || c.skull.type !== 20 || c.skull.hp <= 0) return;
-        c.skull.hp += enemyGetAttack(c.skull);
-        if (c.skull.hp > c.skull.maxHp) c.skull.maxHp = c.skull.hp;
+        const healed = c.skull.hp + enemyGetAttack(c.skull);
+        if (mortalVampire) { c.skull.hp = healed; c.skull.maxHp = Math.max(healed, c.skull.maxHp || 0); }
+        else c.skull.hp = Math.min(c.skull.maxHp || healed, healed);
       });
     }
 
@@ -3869,23 +3868,34 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     body.appendChild(btn);
   }
 
-  // --- трофей: ~15 спец-черепов → трофей ---
-  // Классика: Adventurer — 100% шанс разблокировать любой класс;
-  // другой класс — 50% шанс уровня класса / 50% шанс разблокировать новый класс.
+  // --- трофей: 20..30 убитых спец-черепов → трофей ---
   // Не более 3 классов разблокируется за забег (далее трофей — в уровень текущего класса).
+  // Original ClaimTrophy @0x437b0: 50% the current class levels up (unless it
+  // is the Adventurer or already level 10); otherwise a random locked class is
+  // unlocked, falling back to leveling the current class.
   function computeTrophyOutcome() {
+    const currentId = S.classId;
+    const currentLvl = classLevelOf(currentId);
+    const maxLvl = 10;
+    if (currentId !== 'adventurer' && currentLvl < maxLvl && randInt(0, 1, 5) !== 0) {
+      return levelOutcome(currentId, currentLvl);
+    }
     const locked = CLASSES.filter(c => !isClassUnlocked(c.id));
     if (locked.length > 0) {
-      const roll = S.classId === 'adventurer' ? 1.0 : 0.5;
-      if (random(5) < roll) {
-        const cls = locked[randInt(0, locked.length - 1)];
-        return { kind: 'unlock', clsId: cls.id, text: '✨ Класс «' + cls.name + '» разблокирован! (ур. 1)' };
-      }
+      const cls = locked[randInt(0, locked.length - 1, 5)];
+      return { kind: 'unlock', clsId: cls.id, text: '✨ Класс «' + cls.name + '» разблокирован! (ур. 1)' };
     }
-    const currentId = S.classId;
+    if (currentLvl < maxLvl) return levelOutcome(currentId, currentLvl);
+    const other = CLASSES.find(c => c.id !== currentId && classLevelOf(c.id) < maxLvl);
+    if (other) return levelOutcome(other.id, classLevelOf(other.id));
     const clsName = CLASS_BY_ID[currentId] ? CLASS_BY_ID[currentId].name : currentId;
-    const nextLvl = (classLevelOf(currentId) || 1) + 1;
-    return { kind: 'levelup', clsId: currentId, text: '⬆ Класс «' + clsName + '» поднялся на ур. ' + nextLvl + '!' };
+    return { kind: 'levelup', clsId: currentId, text: '🏆 «' + clsName + '» уже на макс. уровне (10)' };
+  }
+  function levelOutcome(id, lvl) {
+    const cls = CLASS_BY_ID[id];
+    const name = cls ? cls.name : id;
+    const next = Math.min(10, (lvl || 1) + 1);
+    return { kind: 'levelup', clsId: id, text: '⬆ Класс «' + name + '» поднялся на ур. ' + next + '!' };
   }
   function checkTrophy() {
     if (S.over || S.pendingModal) return;
@@ -3899,10 +3909,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     // Лимит разблокировок за забег не должен полностью отключать трофеи:
     // после него падает только шанс нового класса, а уровень класса растёт.
     if (S.unlocksThisRun >= MAX_UNLOCKS_PER_RUN && outcome.kind === 'unlock') {
-      const cls = CLASS_BY_ID[S.classId];
-      const clsName = cls ? cls.name : S.classId;
-      const nextLvl = (classLevelOf(S.classId) || 1) + 1;
-      outcome = { kind: 'levelup', clsId: S.classId, text: '⬆ Класс «' + clsName + '» поднялся на ур. ' + nextLvl + '! (лимит разблокировок)' };
+      const fallback = levelOutcome(S.classId, classLevelOf(S.classId));
+      fallback.text += ' (лимит разблокировок)';
+      outcome = fallback;
     }
     S.pendingTrophy = outcome;
     openModal('trophy');
@@ -4387,7 +4396,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         }
         if (coins.length > 0) {
           const stolen = Math.min(2, coins.length);
-          shuffle(coins).slice(0, stolen).forEach(j => { S.board[j] = { type: 'empty' }; });
+          // Original StealGold: the coins are matched, so they still pay out as
+          // gold tokens; only the mortal enemy (Sauren) loses HP on top.
+          shuffle(coins).slice(0, stolen).forEach(j => S.board[j] = { type: 'empty' });
           // Кража монет сама по себе урона не наносит; урон — только для
           // смертного врага (Sauren): 2× атака Вора.
           let hpLoss = 0;
@@ -4569,20 +4580,22 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       } else if (t === 28) { // Devourer — таймер → уничтожать апгрейд
         s.countdown = (s.countdown || 0) - 1;
         if (s.countdown <= 0) {
-          const candidates = [
-            { key: 'strength', name: 'сила' },
-            { key: 'vitality', name: 'живучесть' },
-            { key: 'luck', name: 'удача' },
-            { key: 'dexterity', name: 'ловкость' },
-            { key: 'charisma', name: 'харизма' },
-            { key: 'defense', name: 'защита' },
-          ];
-          const nonZero = candidates.filter(c => (S.hero.stats[c.key] || 0) > 0);
-          if (nonZero.length > 0) {
-            const pick = nonZero[randInt(0, nonZero.length - 1, 5)];
-            S.hero.stats[pick.key] = Math.max(0, S.hero.stats[pick.key] - 1);
-            flash('🦷 Съедобный: −1 улучшение «' + pick.name + '»');
-            log('🦷 Съедобный уничтожил улучшение: ' + pick.name);
+          // Original DestroyUpgrade: pick a random equipment slot, then one of
+          // its upgrades, and reduce that upgrade by one step.
+          const owned = (S.equipment || []).filter(it => it && it.mods && Object.keys(it.mods).length > 0);
+          if (owned.length > 0) {
+            const item = owned[randInt(0, owned.length - 1, 5)];
+            const keys = Object.keys(item.mods);
+            const key = keys[randInt(0, keys.length - 1, 5)];
+            const step = (ITEM_STAT[key] && ITEM_STAT[key].step) || 1;
+            const dec = Math.min(step, item.mods[key]);
+            item.mods[key] = +(item.mods[key] - dec).toFixed(2);
+            if (item.mods[key] <= 0) delete item.mods[key];
+            applyItemMod(key, dec, -1);
+            const def = ITEM_STAT[key];
+            const label = def ? def.name : key;
+            flash('🦷 Съедобный: −' + (dec >= 1 ? dec : Math.round(dec * 100) + '%') + ' «' + label + '» (' + item.name + ')');
+            log('🦷 Съедобный уничтожил улучшение: ' + label);
           } else {
             flash('🦷 Съедобный: нет улучшений');
           }
@@ -4766,6 +4779,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     claimTrophy,
     isClassUnlocked,
     classLevelOf,
+    unlockClass,
+    levelUpClass,
+    renderCharacterSummary,
+    computeTrophyOutcome,
     specialSpawnCount,
     makeSkull,
     showSkullModal,
