@@ -728,7 +728,7 @@
         const col = cols[i];
         const slot = slotsByCol.get(col)[0]; // topmost empty slot
         const isBoss = bossSpawn && i === 0;
-        const isSpecial = !isBoss && specialCount > 0 && (bossSpawn ? i >= 1 : i >= skullCount);
+        const isSpecial = !isBoss && specialCount > 0 && (bossSpawn ? i >= skullCount + 1 : i >= skullCount);
         const skull = makeSkull(isBoss, isSpecial);
         if (isSpecial) skull.special = true;
         skull.maxHp = skull.hp;
