@@ -626,12 +626,14 @@
     if (!classDefinition(id)) return;
     classLevels[id] = Math.max(1, classLevelOf(id));
     saveClassLevels();
+    syncClassAchievements();
   }
   function levelUpClass(id) {
     if (!classDefinition(id)) return;
     if (!isClassUnlocked(id)) classLevels[id] = 1;
     else classLevels[id] = Math.min(10, (classLevelOf(id) || 1) + 1);   // original cap: level 10
     saveClassLevels();
+    syncClassAchievements();
   }
 
   let selectedClassId = loadStoredClassId();
@@ -823,7 +825,7 @@
       board: [],
       classId: 'adventurer',       // текущий класс забега (см. CLASSES)
       classConfig: null,           // immutable next-run configuration snapshot
-      historyId: '', pretzelStats: emptyPretzelStats(),
+      historyId: '', pretzelStats: emptyPretzelStats(), achievementRun: emptyAchievementRun(),
       seed: 0, rngSeeds: [],
       mode: 'classic',             // classic | sprint | pretzel
       difficulty: 1,               // 0 Easy, 1 Normal, 2 Hard, 3 Harder
@@ -1011,8 +1013,8 @@
     if (cell.type !== 'skull') { saveCheck(!Object.hasOwn(cell, 'skull')); return cell; }
     const skull = cell.skull;
     const required = ['boss', 'special', 'type', 'countdown', 'uid', 'art', 'atk', 'def', 'hp', 'maxHp', 'promotionInterval', 'enteredTurn', 'poison'];
-    saveObject(skull, [...required, 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'phylactery', 'lichDelay'], required);
-    for (const key of ['boss', 'special', 'fireSafe', 'stunned', 'phylactery', 'lichDelay']) if (Object.hasOwn(skull, key)) saveBool(skull[key]);
+    saveObject(skull, [...required, 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'phylactery', 'lichDelay', 'promotedByBigGame'], required);
+    for (const key of ['boss', 'special', 'fireSafe', 'stunned', 'phylactery', 'lichDelay', 'promotedByBigGame']) if (Object.hasOwn(skull, key)) saveBool(skull[key]);
     for (const key of ['atk', 'def', 'maxHp', 'fireDamage']) if (Object.hasOwn(skull, key)) saveNumber(skull[key]);
     saveNumber(skull.hp, 1); saveNumber(skull.uid, 1, 1e12, true); saveNumber(skull.type, 0, 32, true);
     for (const key of ['countdown', 'enteredTurn', 'frozenTurn']) if (Object.hasOwn(skull, key)) saveNumber(skull[key], -1, 1e12, true);
@@ -1048,6 +1050,8 @@
     // Compatible extension of released v1: keep the run and RNG; never invent
     // an average for a Pretzel run that already scored before statistics.
     if (!Object.hasOwn(data, 'historyId')) data.historyId = legacyId;
+    // Pre-achievement v1 checkpoints have no evidence of past events/combos.
+    if (!Object.hasOwn(data, 'achievementRun')) data.achievementRun = emptyAchievementRun();
     if (!Object.hasOwn(data, 'pretzelStats')) data.pretzelStats = data.mode === 'pretzel' && data.pretzelScore > 0 ? null : emptyPretzelStats();
     saveObject(data, keys);
     for (const key of keys) {
@@ -1061,6 +1065,7 @@
     saveNumber(state.turn, 0, 1e12, true); saveNumber(state.trophyRemaining, 0, 30, true);
     saveCheck(!state.over && !state.won && state.scrollPolicy === 'classic-memory-v1');
     saveConfig(state.classConfig, state.classId); readHistoryId(state.historyId); readPretzelStats(state.pretzelStats);
+    readAchievementRun(state.achievementRun, state.difficulty);
     const heroKeys = Object.keys(newGameState().hero);
     saveObject(state.hero, heroKeys);
     for (const key of heroKeys.filter(key => key !== 'stats')) saveNumber(state.hero[key]);
@@ -1119,7 +1124,7 @@
     });
     const resultAt = index => { saveNumber(index, 0, results.length - 1, true); return results[index]; };
     data.state.arrivals = saveArray(data.arrivals, 2048).map(event => {
-      saveObject(event, ['kind', 'result', 'token', 'amount', 'leech', 'lastStand'], ['kind', 'result']);
+      saveObject(event, ['kind', 'result', 'token', 'amount', 'leech', 'lastStand', 'cause'], ['kind', 'result']);
       const copy = { ...event, result: resultAt(event.result) };
       if (event.kind === 'resource') {
         saveObject(event, ['kind', 'result', 'token']);
@@ -1128,8 +1133,9 @@
         if (Object.hasOwn(event.token, 'skillSlot')) saveNumber(event.token.skillSlot, 0, 3, true);
       } else {
         saveCheck(['healing', 'damage'].includes(event.kind));
-        saveObject(event, ['kind', 'result', 'amount', ...(event.kind === 'healing' ? ['leech'] : ['lastStand'])], ['kind', 'result', 'amount']);
+        saveObject(event, ['kind', 'result', 'amount', ...(event.kind === 'healing' ? ['leech'] : ['lastStand', 'cause'])], ['kind', 'result', 'amount']);
         saveNumber(event.amount);
+        if (Object.hasOwn(event, 'cause')) saveCheck([34, 35].includes(event.cause));
         for (const key of ['leech', 'lastStand']) if (Object.hasOwn(event, key)) saveBool(event[key]);
       }
       return copy;
@@ -1201,7 +1207,16 @@
       const decoded = raw === null ? null : decodeRunSave(raw);
       SAVED_RUN = decoded?.status === 'active' ? decoded : null;
       if (decoded?.status === 'finished') recordFinishedRun(decoded.record);
-      if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
+      if (SAVED_RUN) {
+        SAVE_REVISION = SAVED_RUN.revision;
+        // Reconcile only already-earned events from a fully validated backup;
+        // this does not resume gameplay or infer events from its board/score.
+        const earned = SAVED_RUN.state.achievementRun.earned;
+        if (Object.keys(earned).length) {
+          ACHIEVEMENT_PENDING.set(SAVED_RUN.state.historyId, { ...earned });
+          flushAchievementProgress();
+        }
+      }
       saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${SAVED_RUN.state.turn}.` : 'Сохранённого забега пока нет.');
       return true;
     } catch (e) {
@@ -1232,6 +1247,7 @@
     if (!ownsRunSlot()) return false;
     let raw, decoded;
     try {
+      if (!S.over && S.equipment.some(item => ITEM_KEYS.filter(key => itemValue(item, key) !== 0).length >= 8)) queueAchievement(72);
       if (S.over && !FINISHED_RECORD) FINISHED_RECORD = makeHistoryRecord();
       raw = S.over ? JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
       decoded = decodeRunSave(raw);
@@ -1245,6 +1261,7 @@
       if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
       saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
       if (S.over) recordFinishedRun(FINISHED_RECORD);
+      else { rememberAchievementProgress(); flushAchievementProgress(); }
       return true;
     } catch (e) {
       // Small tombstones/removal usually still work when a large write hits the
@@ -1252,6 +1269,7 @@
       try { localStorage.removeItem(RUN_SAVE_KEY); RUN_SAVE_BASE = null; SAVED_RUN = null; } catch (ignored) {}
       saveStatus('unavailable', 'Не удалось сохранить забег. Разреши локальное хранилище и освободи место; до успешной записи не закрывай страницу.');
       if (S.over) recordFinishedRun(FINISHED_RECORD);
+      else { rememberAchievementProgress(); flushAchievementProgress(); }
       return false;
     }
   }
@@ -1280,6 +1298,7 @@
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeRunHistory();
     S = data.state;
+    syncClassAchievements();
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
     S.equipment = S.equipment.map(item => ({ ...item, slotName: itemSlotById(item.slot).name, icon: itemSlotById(item.slot).icon }));
@@ -1310,6 +1329,217 @@
   let HISTORY_FOCUS = null;
   let HISTORY_OPEN = false;
   let HISTORY_STATUS = { state: 'empty', message: 'Рекордов пока нет. Они появятся после завершённого забега.' };
+
+  // Local achievements: own catalogue/UI and event ledger. Conditions/numbers:
+  // coolking70/DungeonRaid a708df8, spec 06 (A1/45 intentionally unresolved).
+  // Native percentages, NOT points/rewards. Easy suppresses everything but 67.
+  const ACHIEVEMENT_PENDING = new Map();
+  let ACHIEVEMENT_TIMER = null;
+  let CHAIN_REFILL = null;
+  const ACHIEVEMENT_RACES = ['Elf', 'Dwarf', 'Sauren', 'Faun', 'Orc', 'Halfling', 'Werewolf', 'Dragonkin', 'Changeling'];
+  const ACHIEVEMENTS = [null];
+  for (let id = 1; id <= 9; id++) {
+    const cls = CLASSES.find(entry => entry.native === id);
+    ACHIEVEMENTS[id] = { title: `Класс «${cls.name}»`, description: `Открыть класс «${cls.name}» трофеем.` };
+    ACHIEVEMENTS[id + 9] = { title: RACE_INFO[ACHIEVEMENT_RACES[id - 1]].name,
+      description: `Поднять до уровня класса 5 носителя этой расы по умолчанию. Выбранная в редакторе раса не учитывается.` };
+    ACHIEVEMENTS[id + 18] = { title: `Мастер: ${cls.name}`, description: `Довести класс «${cls.name}» до уровня 10.` };
+  }
+  [
+    ['Все мастера', 'Довести все девять классов, кроме Авантюриста, до уровня класса 10.'],
+    ['Первые открытия', 'Достичь уровня героя 5.'],
+    ['Опытный герой', 'Достичь уровня героя 10.'],
+    ['Героический путь', 'Достичь уровня героя 25.'],
+    ['Легенда рейда', 'Достичь уровня героя 50.'],
+    ['На вершине', 'Достичь уровня героя 100.'],
+    ['Острый конец', 'Урон отражённых шипов должен опустить HP строго ниже нуля, до проверки Последнего рубежа.'],
+    ['Поджаренный', 'Урон горящих клеток цепочки должен опустить HP строго ниже нуля, до спасения.'],
+    ['Отравленный герой', 'Урон ядом героя должен опустить HP строго ниже нуля, до спасения.'],
+    ['Растворённый', 'Кислотное зелье должно опустить HP строго ниже нуля, до спасения.'],
+    ['Непредвиденный поворот', 'Нестабильный — смертный враг Перевёртыша — обновляет поле с запретом мечей.'],
+    ['Приятного аппетита', 'Пожиратель действительно уменьшает положительный параметр выбранной вещи.'],
+    ['Немезида', 'Дойти до HP ≤ 0, пока на поле есть смертный враг своей нечеловеческой расы. Последний рубеж может спасти.'],
+    ['Уже тесно', 'В момент появления нового особого черепа на поле должно быть не меньше трёх особых, включая боссов.'],
+    ['Не дотронешься', 'Дворфом собрать Хаотического — своего смертного врага — с наградой особого.'],
+    ['Ответный укол', 'Своими шипами при блокировании убить Острого черепа. Контратака не считается.'],
+    ['Джекпот', 'Собрать Золотого с наградой особого, не дать ему уйти по таймеру.'],
+    ['Я всё вижу', 'Триггер этого достижения в проверенной версии не найден. Пока недоступно; обнаружение Невидимого не считается.'],
+    ['Жажда битвы', 'Получить награду за 100 особых черепов. За каждого — 1%.'],
+    ['Всего лишь царапина', 'Эльфом добить ядом 50 врагов в конце хода. За каждого — 2%.'],
+    ['Удар снизу', 'Дворфом убить 50 врагов прямым апперкотом: через цель снизу вверх по вертикали. За каждого — 2%.'],
+    ['Останься и послушай', 'Сауреном купить и применить 50 прикреплённых к вещам свитков. За каждый — 2%.'],
+    ['Ещё жив', 'Фавном 20 раз реально поднять HP до четверти максимума при повышении уровня героя. За лечение — 5%.'],
+    ['Время молота', 'Орком 50 раз успешно оглушить выжившую цель прямой атаки. За успех — 2%.'],
+    ['Чем они больше', 'Полуросликом 10 раз убить прямой цепочкой не менее 15 врагов и усилить доспех. За цепь — 10%.'],
+    ['Ещё один пал', 'Вервольфом собрать Калечением 50 обычных черепов с HP ниже их защиты. За каждого — 2%.'],
+    ['Пламя дракона', 'Драконидом 50 раз добить врага в огненной стадии конца хода. Источник огня может быть любым. За каждого — 2%.'],
+    ['Слёзы под дождём', 'Перевёртышем 50 раз войти в награду особого и расовую смену облика. За каждый — 2%.'],
+    ['Снайпер', 'Убить особого на конце цепочки после пропуска стрелой: стрела за два узла до цели, разница по строке или столбцу больше 1.'],
+    ['Что не убивает', 'Полуросликом совершить атаку с 15+ прямыми убийствами в том же ходу после Мазохизма.'],
+    ['Мастер Руны', 'Руной собрать внутри больше клеток, чем эффективных узлов в её контуре. Особые внутри не считаются.'],
+    ['Ожерелье', 'Провести цепочку по всем 36 клеткам и собрать хотя бы одну цепную клетку.'],
+    ['Чистая строка', 'Одним Рассечением собрать строку из шести обычных черепов.'],
+    ['Вернулся с того света', 'Последний рубеж должен действительно спасти при HP ≤ 0.'],
+    ['Предчувствие', 'Под Ловушкой сгенерировать особого черепа с 1 HP.'],
+    ['Шок и трепет', 'В одном окне до конца хода применить Рассечение, Огненный шар, Рывок и сбор всей доски (Желание либо связка Рассечения со Взломом). Это не навыки Шок и Благоговение.'],
+    ['Загадай желание', 'Применить Желание, когда на поле не менее 20 обычных черепов.'],
+    ['Храбрый беглец', '100 раз применить Телепорт при наличии хотя бы одного особого врага. За применение — 1%, не за число врагов.'],
+    ['Сафари', 'Особый, созданный Крупной дичью, должен действительно превратиться в трофей. Просто убийство или подбор другого трофея не считаются.'],
+    ['Миссия завершена', 'Завершить забег смертью или победой в Спринте. Доступно и на Лёгком; рестарт не считается.'],
+    ['Вокруг света', 'Провести цепочку из всех 20 клеток по границе поля.'],
+    ['Золотоискатель', 'Одной цепочкой собрать поле из 36 монет без пропущенных стрелой узлов.'],
+    ['Трагический герой', 'На Очень сложном достичь уровня героя 10 с одним пассивом и четырьмя изъянами в замороженной конфигурации забега.'],
+    ['Проще простого', 'На Очень сложном достичь уровня героя 5, не имея ни одного надетого навыка в этот момент.'],
+    ['Вооружён и опасен', 'При записи активного забега иметь на одной надетой вещи не менее восьми ненулевых параметров. Предложения магазина не считаются.'],
+    ['Собиратель обломков', 'Собрать 100 сломанных клеток. За каждую — 1%; награда ресурсом не нужна.'],
+    ['Просто шучу', 'После подтверждённой цепи заполнить более девяти клеток, причём все новые клетки должны оказаться черепами.'],
+    ['Вот это крендель', 'Провести цепочку с шестью или более повторными диагональными пересечениями. В любом режиме.'],
+    ['Выживший', 'Действительно победить в Спринте на 100-м ходу; смертельный яд в конце хода отменяет победу.'],
+    ['Легенда Кренделя', 'В режиме Крендель провести цепь с очками и не менее чем 15 пересечениями.'],
+  ].forEach(([title, description], index) => { ACHIEVEMENTS[index + 28] = { title, description }; });
+
+  function emptyAchievementRun() { return { version: 1, earned: {}, combo: 0, masochism: false }; }
+  function emptyAchievementHistory() { return { version: 1, progress: {}, runs: [] }; }
+  function readAchievementMap(value, difficulty = 1) {
+    saveObject(value, Array.from({ length: 77 }, (_, i) => String(i + 1)), []);
+    for (const [key, amount] of Object.entries(value)) {
+      saveCheck(key !== '45' && (difficulty !== 0 || key === '67'));
+      saveNumber(amount, 1, 100, true);
+    }
+  }
+  function readAchievementRun(value, difficulty) {
+    saveObject(value, ['version', 'earned', 'combo', 'masochism']); saveCheck(value.version === 1);
+    readAchievementMap(value.earned, difficulty); saveNumber(value.combo, 0, 15, true); saveBool(value.masochism);
+  }
+  function readAchievementHistory(value) {
+    saveObject(value, ['version', 'progress', 'runs']); saveCheck(value.version === 1); readAchievementMap(value.progress);
+    const ids = [];
+    saveArray(value.runs, 64).forEach(run => {
+      saveObject(run, ['id', 'earned']); ids.push(readHistoryId(run.id)); readAchievementMap(run.earned);
+      saveCheck(Object.entries(run.earned).every(([id, amount]) => amount <= (value.progress[id] || 0)));
+    });
+    saveCheck(new Set(ids).size === ids.length);
+  }
+  function queueAchievement(id, amount = 100) {
+    if (!S?.classConfig || S.over || id === 45 || !ACHIEVEMENTS[id] || !Number.isInteger(amount) || amount <= 0 || S.difficulty === 0 && id !== 67) return;
+    const earned = S.achievementRun.earned;
+    earned[id] = Math.min(100, (earned[id] || 0) + amount);
+  }
+  function syncClassAchievements() {
+    if (!S?.classConfig || S.over) return;
+    for (const cls of CLASSES) {
+      if (!cls.native || !classLevelOf(cls.id)) continue;
+      queueAchievement(cls.native);
+      if (classLevelOf(cls.id) >= 5) queueAchievement(10 + ACHIEVEMENT_RACES.indexOf(cls.race));
+      if (classLevelOf(cls.id) === 10) queueAchievement(cls.native + 18);
+    }
+    if (CLASSES.filter(cls => cls.native).every(cls => classLevelOf(cls.id) >= 10)) queueAchievement(28);
+  }
+  function achievementCombo(bit) {
+    S.achievementRun.combo |= bit;
+    if (S.achievementRun.combo === 15) queueAchievement(63);
+  }
+  function checkPromotionAchievement(newSkull) {
+    // Refilling columns can temporarily contain the same moved object twice.
+    // Count distinct enemy identities, never those transient duplicate slots.
+    const ids = new Set(S.board.filter(cell => cell?.type === 'skull' && !cell.matched && cell.skull.type > 0).map(cell => cell.skull.uid));
+    if (newSkull?.type > 0) ids.add(newSkull.uid);
+    if (ids.size > 2) queueAchievement(41);
+  }
+  function noteChainRefill(cell) {
+    if (CHAIN_REFILL) { CHAIN_REFILL.total++; if (cell.type === 'skull') CHAIN_REFILL.skulls++; }
+    return cell;
+  }
+  function isEdgeSlot(idx) { return idx % COLS === 0 || idx % COLS === COLS - 1 || idx < COLS || idx >= CELL_COUNT - COLS; }
+  function hasPendingProgress() { return !!HISTORY_PENDING || ACHIEVEMENT_PENDING.size > 0; }
+  function rememberAchievementProgress() {
+    if (S && !S.over && Object.keys(S.achievementRun.earned).length) ACHIEVEMENT_PENDING.set(S.historyId, { ...S.achievementRun.earned });
+  }
+  function isCompletedHistory(data, id) { return data.completed.includes(id) || data.records.some(rows => rows.some(row => row.id === id)); }
+  function mergeAchievementProgress(data, id, earned) {
+    if (isCompletedHistory(data, id)) return false;
+    const history = data.achievements, before = JSON.stringify(history);
+    let receipt = history.runs.find(run => run.id === id);
+    if (!receipt) { receipt = { id, earned: {} }; history.runs.push(receipt); }
+    for (const [key, total] of Object.entries(earned)) {
+      const old = receipt.earned[key] || 0, progress = history.progress[key] || 0;
+      if (total > old) history.progress[key] = Math.min(100, progress + total - old);
+      receipt.earned[key] = Math.max(old, total);
+    }
+    // Saturated percentages need no per-run receipts. The bounded journal is
+    // replay protection for normal save/resume, not against manual rollback.
+    for (const run of history.runs) for (const key of Object.keys(run.earned)) if (history.progress[key] === 100) delete run.earned[key];
+    history.runs = history.runs.filter(run => Object.keys(run.earned).length).slice(-64);
+    return before !== JSON.stringify(history);
+  }
+  function flushAchievementProgress() {
+    if (!ACHIEVEMENT_PENDING.size) return true;
+    if (!ownsRunSlot()) { historyStatus('conflict', 'Достижения не записаны: сохранение изменилось в другой вкладке. Обнови страницу.'); return false; }
+    const stored = readRunHistory(); if (!stored) return false;
+    const data = stored.data, before = { ...data.achievements.progress };
+    let changed = false;
+    try {
+      for (const [id, earned] of ACHIEVEMENT_PENDING) { readAchievementMap(earned); changed = mergeAchievementProgress(data, id, earned) || changed; }
+      if (changed) {
+        data.revision++;
+        const raw = JSON.stringify(data); decodeRunHistory(raw);
+        if (localStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
+          historyStatus('conflict', 'История изменилась в другой вкладке. Нажми «Повторить запись»; прогресс пока остаётся в сохранении забега.'); return false;
+        }
+        localStorage.setItem(RUN_HISTORY_KEY, raw);
+      }
+      ACHIEVEMENT_PENDING.clear(); announceAchievements(before, data.achievements.progress);
+      if (!HISTORY_PENDING) historyStatus('saved', 'Достижения сохранены в этом браузере.');
+      return true;
+    } catch (e) { historyStatus('unavailable', 'Достижения пока не записаны в профиль. Разреши хранилище и нажми «Повторить запись». До этого не заменяй сохранённый забег.'); return false; }
+  }
+  function announceAchievements(before, after) {
+    const unlocked = Object.keys(after).filter(id => after[id] === 100 && before[id] !== 100);
+    const node = el('achievement-notice'); if (!unlocked.length || !node) return;
+    clearTimeout(ACHIEVEMENT_TIMER);
+    node.textContent = 'Достижение: ' + unlocked.slice(0, 2).map(id => ACHIEVEMENTS[id].title).join(' · ') + (unlocked.length > 2 ? ` · ещё ${unlocked.length - 2}` : '');
+    node.hidden = false;
+    ACHIEVEMENT_TIMER = setTimeout(() => { node.hidden = true; }, 5000);
+  }
+  function getLocalAchievements() {
+    const data = readRunHistory()?.data; if (!data) return null;
+    const catalog = ACHIEVEMENTS.slice(1).map((entry, index) => ({ id: index + 1, ...entry, available: index + 1 !== 45,
+      progress: data.achievements.progress[index + 1] || 0, unlocked: data.achievements.progress[index + 1] === 100 }));
+    return { catalog, unlocked: catalog.filter(entry => entry.unlocked).length, available: 76, total: 77 };
+  }
+  function renderAchievements(body, progress) {
+    appendHistoryHint(body, 'Правила и совместимость', '76 подтверждённых достижений и одно с неподтверждённым триггером. На Лёгком — только «Миссия завершена». Прогресс событий начинается с этой сборки; прошлые боевые события не восстанавливаются. Уже открытые классы и их родные расы распознаются при следующем старте или продолжении не на Лёгком. Проценты копятся между забегами до 100, не дают очков и не зависят от окончательной смерти: спасение Последним рубежом не отменяет уже сработавшее событие.');
+    const summary = document.createElement('p'); summary.className = 'achievement-summary';
+    summary.textContent = `Открыто ${Object.values(progress).filter(amount => amount === 100).length} из 76 доступных · 77 в каталоге`;
+    body.appendChild(summary);
+    const filter = el('achievement-filter')?.value || 'all';
+    let shown = 0;
+    ACHIEVEMENTS.forEach((entry, id) => {
+      if (!entry) return;
+      const amount = progress[id] || 0, available = id !== 45;
+      if (filter === 'unlocked' && amount !== 100 || filter === 'pending' && (!available || amount === 100) || filter === 'unavailable' && available) return;
+      const card = document.createElement('article'); card.className = 'history-record achievement-record' + (amount === 100 ? ' unlocked' : '') + (!available ? ' unavailable' : '');
+      card.dataset.achievementId = String(id);
+      const title = document.createElement('h4'); title.textContent = `${amount === 100 ? '✓' : available ? '◇' : '?'} ${entry.title}`; card.appendChild(title);
+      const description = document.createElement('p'); description.textContent = entry.description; card.appendChild(description);
+      const status = document.createElement('p'); status.className = 'achievement-progress'; status.textContent = !available ? 'Недоступно: условие не подтверждено' : amount === 100 ? 'Открыто · 100%' : `Прогресс: ${amount}%`; card.appendChild(status);
+      if (available) {
+        const bar = document.createElement('progress'); bar.max = 100; bar.value = amount;
+        bar.setAttribute('aria-label', entry.title + ': ' + amount + '%'); card.appendChild(bar);
+      }
+      body.appendChild(card); shown++;
+    });
+    if (!shown) { const empty = document.createElement('p'); empty.className = 'save-note'; empty.textContent = 'В этом фильтре пока нет достижений.'; body.appendChild(empty); }
+  }
+  function openHistorySection(value) {
+    if (S?.resolving || S?.pendingModal && S.pendingModal !== 'gameover') { flash('Сначала заверши ход и выбор наград'); return false; }
+    const section = el('history-section'); if (!section) return false;
+    section.value = value;
+    if (HISTORY_OPEN) { renderRunHistory(); return true; }
+    return openRunHistory();
+  }
+  function openAchievements() { return openHistorySection('achievements'); }
+  function openRunRecords() { return openHistorySection('records'); }
 
   function newHistoryId() {
     return 'run-' + (window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${++HISTORY_NONCE}-${Math.random().toString(36).slice(2)}`);
@@ -1343,10 +1573,13 @@
       xp: quarter(S.hero.xpLevelCum), gold: quarter(S.goldEarned), upgrade: quarter(S.upgradeEarned),
       score: runScore(), kills: S.skullsKilled, won: S.won, finishedAt: Date.now(),
       skills: S.skills.map(id => ({ id, level: S.skillLevels[id] || 1 })),
-      pretzel: S.mode === 'pretzel' && S.pretzelStats ? { ...S.pretzelStats } : null };
+      pretzel: S.mode === 'pretzel' && S.pretzelStats ? { ...S.pretzelStats } : null,
+      achievements: { ...S.achievementRun.earned } };
   }
   function readHistoryRecord(record) {
-    saveObject(record, ['id', 'type', 'classId', 'difficulty', 'turn', 'xp', 'gold', 'upgrade', 'score', 'kills', 'won', 'finishedAt', 'skills', 'pretzel']);
+    const keys = ['id', 'type', 'classId', 'difficulty', 'turn', 'xp', 'gold', 'upgrade', 'score', 'kills', 'won', 'finishedAt', 'skills', 'pretzel'];
+    saveObject(record, [...keys, 'achievements'], keys);
+    if (Object.hasOwn(record, 'achievements')) readAchievementMap(record.achievements, record.difficulty);
     readHistoryId(record.id); saveNumber(record.type, 0, 5, true); saveNumber(record.difficulty, 0, 3, true);
     saveCheck(!!classDefinition(record.classId) && (record.type > 3 || record.type === record.difficulty));
     for (const key of ['turn', 'xp', 'gold', 'upgrade', 'score', 'kills']) saveNumber(record[key], 0, Number.MAX_SAFE_INTEGER, true);
@@ -1361,12 +1594,16 @@
   }
   function emptyRunHistory() {
     return { format: 'lunapark-raid-history', version: 1, revision: 0, records: SCORE_TYPES.map(() => []),
-      classes: Object.fromEntries(CLASSES.map(cls => [cls.id, { games: 0, kills: 0, best: [0, 0, 0] }])), completed: [], last: null };
+      classes: Object.fromEntries(CLASSES.map(cls => [cls.id, { games: 0, kills: 0, best: [0, 0, 0] }])), completed: [], last: null, achievements: emptyAchievementHistory() };
   }
   function decodeRunHistory(raw) {
     saveCheck(typeof raw === 'string' && raw.length <= RUN_HISTORY_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
-    saveObject(data, ['format', 'version', 'revision', 'records', 'classes', 'completed', 'last']);
+    // Compatible history-v1 extension; a read only adds detached defaults.
+    // Rankings, class totals and terminal receipts are never rebuilt/reset.
+    if (!Object.hasOwn(data, 'achievements')) data.achievements = emptyAchievementHistory();
+    saveObject(data, ['format', 'version', 'revision', 'records', 'classes', 'completed', 'last', 'achievements']);
+    readAchievementHistory(data.achievements);
     saveCheck(data.format === 'lunapark-raid-history' && data.version === 1); saveNumber(data.revision, 0, Number.MAX_SAFE_INTEGER, true);
     const ids = [];
     saveArray(data.records, 6, 6).forEach((rows, type) => {
@@ -1390,12 +1627,15 @@
   }
   function historyStatus(state, message) {
     HISTORY_STATUS = { state, message };
-    for (const id of ['picker-history-status', 'history-status', 'run-history-status']) {
+    for (const id of ['picker-history-status', 'history-status', 'run-history-status', 'progress-status']) {
       const node = el(id); if (!node) continue;
-      node.textContent = id === 'history-status' && ['saved', 'empty'].includes(state) ? state === 'saved' ? 'История сохранена.' : 'Рекордов пока нет.' : message;
-      if (id === 'picker-history-status') node.hidden = !['invalid', 'unavailable', 'conflict'].includes(state);
+      const achievements = el('history-section')?.value === 'achievements';
+      const short = achievements ? { saved: 'Прогресс сохранён.', empty: 'Пока ничего не открыто.', unavailable: 'Прогресс пока не записан. Разреши хранилище и повтори запись.', conflict: 'История изменилась в другой вкладке. Повтори запись или обнови страницу.', invalid: 'История повреждена или несовместима. Она не перезаписана.' }[state]
+        : { saved: 'История сохранена.', empty: 'Рекордов пока нет.' }[state];
+      node.textContent = id === 'history-status' && short ? short : message;
+      if (['picker-history-status', 'progress-status'].includes(id)) node.hidden = !['invalid', 'unavailable', 'conflict'].includes(state);
     }
-    const retry = el('history-retry'); if (retry) retry.hidden = !HISTORY_PENDING;
+    const retry = el('history-retry'); if (retry) retry.hidden = !hasPendingProgress();
   }
   function readRunHistory() {
     let raw;
@@ -1403,7 +1643,7 @@
     catch (e) { historyStatus('unavailable', 'Рекорды и статистика недоступны: браузер запретил чтение хранилища.'); return null; }
     try {
       const data = raw === null ? emptyRunHistory() : decodeRunHistory(raw);
-      if (!HISTORY_PENDING) historyStatus(raw === null ? 'empty' : 'saved', raw === null ? 'Рекордов пока нет. Они появятся после завершённого забега.' : 'Рекорды и статистика хранятся только в этом браузере.');
+      if (!hasPendingProgress()) historyStatus(raw === null ? 'empty' : 'saved', raw === null ? 'Рекордов пока нет. Они появятся после завершённого забега.' : 'Рекорды и статистика хранятся только в этом браузере.');
       return { raw, data };
     } catch (e) { historyStatus('invalid', 'История повреждена или несовместима. Она не перезаписана; настройки классов и активный забег не затронуты.'); return null; }
   }
@@ -1413,10 +1653,14 @@
     const stored = readRunHistory(); if (!stored) return false;
     const data = stored.data;
     if (data.completed.includes(record.id) || data.records.some(rows => rows.some(row => row.id === record.id))) {
+      ACHIEVEMENT_PENDING.delete(record.id);
       HISTORY_PENDING = null; historyStatus('saved', 'Результат уже записан. Рекорды и статистика не дублируются.'); return true;
     }
     try {
       readHistoryRecord(record);
+      const before = { ...data.achievements.progress };
+      mergeAchievementProgress(data, record.id, record.achievements || {});
+      data.achievements.runs = data.achievements.runs.filter(run => run.id !== record.id);
       const rows = data.records[record.type];
       const lower = rows.findIndex(row => row.score < record.score);
       // Classic quirk: even a new lowest score replaces the tenth entry.
@@ -1431,12 +1675,15 @@
         historyStatus('conflict', 'История изменилась в другой вкладке. Нажми «Повторить запись», не запускай два забега одновременно.'); return false;
       }
       localStorage.setItem(RUN_HISTORY_KEY, raw);
+      ACHIEVEMENT_PENDING.delete(record.id);
+      announceAchievements(before, data.achievements.progress);
       HISTORY_PENDING = null; historyStatus('saved', 'Результат записан в локальные рекорды и статистику класса.'); return true;
     } catch (e) { historyStatus('unavailable', 'Результат пока не записан. Разреши хранилище, освободи место и нажми «Повторить запись» в рекордах.'); return false; }
   }
   function retryRunHistory() {
-    if (HISTORY_PENDING) return recordFinishedRun(HISTORY_PENDING);
-    return !!readRunHistory();
+    if (HISTORY_PENDING && !recordFinishedRun(HISTORY_PENDING)) return false;
+    rememberAchievementProgress();
+    return flushAchievementProgress() && !!readRunHistory();
   }
   function appendHistoryHint(body, title, text) {
     const hint = document.createElement('details'); hint.className = 'history-hint';
@@ -1449,9 +1696,13 @@
     if (!body || !typeSelect || !section) return;
     const stored = readRunHistory(); body.innerHTML = '';
     typeSelect.parentElement.hidden = section.value !== 'records';
+    const achievementFilter = el('achievement-filter');
+    if (achievementFilter) achievementFilter.parentElement.hidden = section.value !== 'achievements';
+    const title = el('history-title'); if (title) title.textContent = section.value === 'achievements' ? 'Достижения' : 'Рекорды и статистика';
     if (!stored) return;
     const data = stored.data;
-    if (section.value === 'classes') {
+    if (section.value === 'achievements') { renderAchievements(body, data.achievements.progress); }
+    else if (section.value === 'classes') {
       appendHistoryHint(body, 'Что считается игрой и убийством', 'Учитываются только завершённые забеги, включая Лёгкий, Спринт и Крендель. Убийства — счётчик атак (AttackSkull), не сбор Руной, ядом или Калечением. Три лучших счёта — только Классика без Лёгкого. Уровни и настройки классов не меняются.');
       for (const cls of CLASSES) {
         const stats = data.classes[cls.id], card = document.createElement('article'); card.className = 'history-record'; card.dataset.classId = cls.id;
@@ -1767,12 +2018,14 @@
       const specialType = promote ? randSpecialType() : 0;
       const skull = makeSkull(specialType === 1, specialType > 1, specialType);
       if (promote) {
+        checkPromotionAchievement(skull);
         S.promotionRemaining = S.mode === 'sprint' ? 200 : (skull.promotionInterval ?? 0);
         S.specialsPromoted = (S.specialsPromoted || 0) + 1;
       }
-      return { type: 'skull', skull };
+      if (S.oneHealthSkulls > 0 && skull.type > 0) queueAchievement(62);
+      return noteChainRefill({ type: 'skull', skull });
     }
-    return decorateTile(type);
+    return noteChainRefill(decorateTile(type));
   }
 
   // Gravity: each column compacts its non-empty cells to the bottom (skulls
@@ -1890,7 +2143,7 @@
   }
 
   function tryExtendChain(cellIdx) {
-    if (!S || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
+    if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
     const chain = S.selected;
     const repeated = chain.indexOf(cellIdx);
     if (repeated >= 0) {
@@ -2361,7 +2614,7 @@
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
-    if (HISTORY_PENDING) retryRunHistory();
+    if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -2405,6 +2658,7 @@
     S.classConfig = getClassConfig(S.classId);
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]);
     Object.freeze(S.classConfig);
+    syncClassAchievements();
     let cls = CLASS_BY_ID[S.classId];
     if (!cls) {       // класс недоступен (заблокирован) — Adventurer как старт
       S.classId = 'adventurer';
@@ -2516,7 +2770,7 @@
   }
 
   function activateSkill(id) {
-    if (!S || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
+    if (!S || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
     const left = S.skillCooldowns[id] || 0;
     if (left > 0) return;
     const skill = SKILL_BY_ID[id];
@@ -2594,6 +2848,7 @@
       skull.poison = (skull.poison || [0, 0, 0]).map(value => value + S.weaponPoison);
     }
     if (opts.direct && clsRace() === 'Orc' && randInt(1, 100, 5) <= 10) {
+      queueAchievement(51, 2);
       skull.stunned = true;
       skull.burn = false;
       skull.fireDamage = 0;
@@ -2724,6 +2979,7 @@
       }
       flash('🪙 Золотое касание: мечей → монет ' + n);
     } else if (id === 'teleport') {
+      if (S.board.some(cell => cell.type === 'skull' && (cell.skull.special || cell.skull.boss))) queueAchievement(65, 1);
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
         if (c && c.type !== 'skull') S.board[i] = rndTile();
@@ -2748,6 +3004,7 @@
       requestRewardMenu('armor');
       flash('🛠 Затачивание: выбери улучшение');
     } else if (id === 'slash') {
+      achievementCombo(1);
       S.slashCombo = 1;
       let idxs;
       if (S.hackCombo > 0) {
@@ -2756,6 +3013,7 @@
           const c = S.board[i];
           if (c && c.type !== 'skull') idxs.push(i);
         }
+        achievementCombo(8);
         flash('🗡 Рассечение + Взлом: собрана вся доска');
       } else {
         const r = randInt(0, ROWS - 1, 5);
@@ -2766,6 +3024,7 @@
         }
         flash('🗡 Рассечение: строка ' + (r + 1));
       }
+      if (!S.hackCombo && idxs.filter(i => S.board[i]?.type === 'skull' && !S.board[i].skull.special && !S.board[i].skull.boss).length === 6) queueAchievement(60);
       collectIndices(idxs, { skipAcid: true });
     } else if (id === 'treasure') {
       const idxs = [];
@@ -2839,10 +3098,12 @@
       const cell = S.board[i];
       const old = cell.skull;
       const fresh = makeSkull(false, true);
+      fresh.promotedByBigGame = true;
       fresh.hp = Math.min(fresh.hp, old ? old.hp : fresh.hp);
       fresh.maxHp = fresh.hp;
       fresh.enteredTurn = old && old.enteredTurn != null ? old.enteredTurn : S.turn;
       S.board[i] = { type: 'skull', skull: fresh };
+      checkPromotionAchievement();
       flash('👹 Крупная дичь: обычный череп стал особым');
     } else if (id === 'chamber') {
       activateTurnFlag('forceCoins');
@@ -2872,6 +3133,7 @@
       liveSkullIndices(true).forEach(i => { if (hitSkullAt(i, amount)) hit++; });
       flash('🛡 Взрывная броня: ' + amount + ' урона по всем черепам');
     } else if (id === 'fireball') {
+      achievementCombo(2);
       // Original Fireball draws both coordinates in 1..4 and collects the whole
       // 3×3 area, enemies included.
       const r = randInt(1, Math.max(1, ROWS - 2), 5), c = randInt(1, Math.max(1, COLS - 2), 5);
@@ -2900,6 +3162,7 @@
           const c = S.board[i];
           if (c && c.type !== 'skull') idxs.push(i);
         }
+        achievementCombo(8);
         flash('🪓 Взлом + Рассечение: собрана вся доска');
       } else {
         S.hackCombo = 1;
@@ -2990,6 +3253,8 @@
       activateTurnFlag('lastStand');
       flash('🛡 Последний рубеж готов: смерть → полное HP');
     } else if (id === 'wish') {
+      achievementCombo(8);
+      if (liveSkullIndices(false).length >= 20) queueAchievement(64);
       const idxs = [];
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
@@ -3002,6 +3267,7 @@
       S.skills = S.skills.filter(sid => sid !== 'wish');
       flash('✨ ЖЕЛАНИЕ: собрана доска, кроме особых и боссов');
     } else if (id === 'masochism') {
+      S.achievementRun.masochism = true;
       let skullCount = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         if (S.board[i] && S.board[i].type === 'coin') {
@@ -3021,6 +3287,7 @@
       }
       flash('🏹 Воллей: ' + converted + ' мечей → стрелы');
     } else if (id === 'charge') {
+      achievementCombo(4);
       const idxs = [];
       for (let i = 0; i < CELL_COUNT; i++) {
         const r = Math.floor(i / COLS), c = i % COLS;
@@ -3047,10 +3314,14 @@
   function registerSkullEnd(s, slot) {
     if (!s || !(s.boss || s.special)) return;
     S.specialsKilled = (S.specialsKilled || 0) + 1;
-    advanceTrophyAt(slot);
+    queueAchievement(46, 1);
+    if (s.type === 14 && clsRace() === 'Dwarf') queueAchievement(42);
+    if (s.type === 3) queueAchievement(44);
+    if (advanceTrophyAt(slot) && s.promotedByBigGame) queueAchievement(66);
     // Native charge=cooldown means ZERO turns remaining in our representation.
     // Shapeshift may hit a ready slot (unlike mana) and applies to every special
     // collection path, not just deaths inside a manually selected chain.
+    if (clsRace() === 'Changeling') queueAchievement(55, 2);
     if (clsRace() === 'Changeling' && S.skills.length > 0) {
       const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
       S.skillCooldowns[pick] = 0;
@@ -3101,7 +3372,7 @@
           heal(event.amount);
           if (event.leech) { S.scrollLeechLabel.inFlight = false; fadeScrollLeechLabel(); }
         } else if (event.kind === 'damage') {
-          damageHero(event.amount, false, true);
+          damageHero(event.amount, false, true, event.cause);
           const borrowed = event.lastStand && !S.lastStand;
           if (borrowed) S.lastStand = 1;
           if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
@@ -3162,9 +3433,16 @@
   function levelReached(state) {
     state.hero.level++;
     state.maxLevel = Math.max(state.maxLevel, state.hero.level);
+    if (state === S) {
+      const milestone = [5, 10, 25, 50, 100].indexOf(state.hero.level);
+      if (milestone >= 0) queueAchievement(29 + milestone);
+      if (state.difficulty === 3 && state.hero.level === 10 && state.classConfig.perks.filter(Boolean).length === 1 && state.classConfig.flaws.filter(Boolean).length === 4) queueAchievement(70);
+      if (state.difficulty === 3 && state.hero.level === 5 && !state.skills.length) queueAchievement(71);
+    }
     if (clsRace(state) !== 'Faun') return 0;
     const before = state.hero.hp;
     state.hero.hp = Math.max(before, Math.floor(state.hero.maxHp * .25));
+    if (state === S && state.hero.hp > before) queueAchievement(50, 5);
     return state.hero.hp - before;
   }
 
@@ -3206,6 +3484,7 @@
     S.board[idx] = { type: 'empty' };
     if (opts.reward !== false) batch.counts[type] = (batch.counts[type] || 0) + 1;
     if (cell.type === 'skull' && cell.skull.type === 10) collectBlastResources(idx);
+    if (cell.broken) queueAchievement(73, 1);
     if (opts.reward === false || cell.broken || type === 'sword' || type === 'arrow' || type === 'chain') return;
     if (cell.type === 'skull' && (cell.skull.special || cell.skull.boss)) {
       for (const reward of specialRewardTypes(cell.skull.type)) queueResource(reward, batch.source0);
@@ -3253,7 +3532,9 @@
       }
       const amount = HEAL_PER_POTION + hero.stats.luck;
       if (token.variant === 2) {
-        hero.hp = Math.max(0, hero.hp - amount);
+        const rawHp = hero.hp - amount;
+        if (state === S && rawHp < 0) queueAchievement(37);
+        hero.hp = Math.max(0, rawHp);
         if (state === S && hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
       } else {
         const before = hero.hp;
@@ -3362,15 +3643,19 @@
   function audioEnemy() { tone(110, 0.15, 'sawtooth', 0.05); }
   function audioBoss() { tone(70, 0.4, 'sawtooth', 0.09); tone(140, 0.5, 'triangle', 0.06); }
 
+  function isChainUppercut(idx, chain) {
+    const position = chain.indexOf(idx), previous = chain[position - 1], next = chain[position + 1];
+    return !damageBlockedEarly() && S.board[idx]?.skull?.type !== 27 && clsRace() === 'Dwarf' && previous != null && next != null
+      && previous % COLS === idx % COLS && next % COLS === idx % COLS
+      && Math.floor(previous / COLS) > Math.floor(idx / COLS) && Math.floor(next / COLS) < Math.floor(idx / COLS);
+  }
+
   function chainDamageFor(idx, chain, damage) {
     const skull = S.board[idx].skull;
     if (damageBlockedEarly()) return 0;
-    const position = chain.indexOf(idx);
-    const previous = chain[position - 1], next = chain[position + 1];
+    const next = chain[chain.indexOf(idx) + 1];
     if (skull.type === 27) return next != null && Math.floor(next / COLS) < Math.floor(idx / COLS) ? damage : 0;
-    const uppercut = clsRace() === 'Dwarf' && previous != null && next != null
-      && previous % COLS === idx % COLS && next % COLS === idx % COLS
-      && Math.floor(previous / COLS) > Math.floor(idx / COLS) && Math.floor(next / COLS) < Math.floor(idx / COLS);
+    const uppercut = isChainUppercut(idx, chain);
     if (uppercut) return damage + S.hero.weaponDamage;
     if (skull.type === 14 && clsRace() === 'Dwarf') return 0;
     return skull.type === 30 || !hasMortalEnemy(30) ? damage : 0;
@@ -3392,12 +3677,21 @@
         const target = cell.type === 'skull' ? cell.skull : cell;
         return sum + (!target.fireSafe && target.burn ? (target.fireDamage || (typeof target.burn === 'number' ? target.burn : 0)) : 0);
       }, 0);
+      const uppercuts = new Set(snapshot?.uppercuts || skullIdxs.filter(idx => isChainUppercut(idx, chain)));
+      const tail = chain[chain.length - 1], arrow = chain[chain.length - 3];
+      const sniper = chain.length >= 3 && !effective.includes(chain[chain.length - 2]) && S.board[arrow]?.type === 'arrow'
+        && (Math.abs(arrow % COLS - tail % COLS) > 1 || Math.abs(Math.floor(arrow / COLS) - Math.floor(tail / COLS)) > 1);
       const meatShields = columnSlots().filter(idx => S.board[idx] && S.board[idx].type === 'skull' && S.board[idx].skull.type === 30 && !chain.includes(idx));
       for (const idx of effective) {
         const cell = S.board[idx];
         if (!cell || cell.type === 'empty') continue;
         if (cell.type === 'skull' && !cell.skull.phylactery) {
-          hitSkullAt(idx, targetDamage.get(idx) ?? 0, { direct: true });
+          const special = cell.skull.type > 0;
+          if (hitSkullAt(idx, targetDamage.get(idx) ?? 0, { direct: true })) {
+            if (uppercuts.has(idx)) queueAchievement(48, 2);
+            // Native trophy conversion clears the killed tile's enemy identity.
+            if (sniper && idx === tail && special && S.board[idx]?.type !== 'trophy') queueAchievement(56);
+          }
         } else matchCell(idx, { reward: !(hasFlaw('Cocky') && chain.length <= 3) });
       }
       for (const idx of meatShields) hitSkullAt(idx, damage, { direct: false });
@@ -3410,8 +3704,8 @@
         showScrollLeechLabel(amount, true);
         queueArrival({ kind: 'healing', amount, leech: true });
       } else fadeScrollLeechLabel();
-      if (burning > 0) queueArrival({ kind: 'damage', amount: burning });
-      if (spiky && damage > 0) queueArrival({ kind: 'damage', amount: damage });
+      if (burning > 0) queueArrival({ kind: 'damage', amount: burning, cause: 35 });
+      if (spiky && damage > 0) queueArrival({ kind: 'damage', amount: damage, cause: 34 });
       return batch.result;
     });
   }
@@ -3447,6 +3741,7 @@
     return { chain, effective, rune, committed, skulls, swords, hasSkull: skulls.length > 0, damage,
       spiky: skulls.some(idx => S.board[idx].skull.type === 2),
       targetDamage: new Map(skulls.map(idx => [idx, chainDamageFor(idx, chain, damage)])),
+      uppercuts: skulls.filter(idx => isChainUppercut(idx, chain)),
       burning: effective.reduce((sum, idx) => {
         const cell = S.board[idx], target = cell.type === 'skull' ? cell.skull : cell;
         return sum + (target.burn && !target.fireSafe ? target.fireDamage ?? (typeof target.burn === 'number' ? target.burn : 0) : 0);
@@ -3454,7 +3749,7 @@
   }
 
   function resolveChain() {
-    if (!S || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
+    if (!S || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
     const snapshot = chainSnapshot(chain), { committed, rune, skulls, effective } = snapshot;
@@ -3484,10 +3779,12 @@
       // Rune deliberately precedes minimum-chain validation and the normal
       // MatchTiles counter reset. Interior ordinary skulls are COLLECTION,
       // ignoring HP/defence and not contributing to direct kills or Guts.
+      let runeCollected = 0;
       for (const idx of rune) {
         const cell = S.board[idx];
-        if (cell && !(cell.type === 'skull' && (cell.skull.special || cell.skull.boss))) matchCell(idx);
+        if (cell && cell.type !== 'empty' && !(cell.type === 'skull' && (cell.skull.special || cell.skull.boss))) { runeCollected++; matchCell(idx); }
       }
+      if (runeCollected > snapshot.effective.length) queueAchievement(58);
       if (!committed) {
         // Keep the playable board full after a Rune-only arrow cancellation;
         // no ordinary matching, no counter reset and no enemy turn.
@@ -3495,10 +3792,20 @@
         return batch.result;
       }
       resetCollectionCounts();
-      applyChainEffects(swords, 0, 0, 0, skulls, snapshot);
-      S.killsThisTurn = batch.result.kills;
-      markExistingSkullsOld();
-      placeNewTiles({});
+      const path = snapshot.chain, crosses = pretzelCrossings(path);
+      if (crosses > 5) queueAchievement(75);
+      if (S.mode === 'pretzel' && crosses >= 15 && pretzelPoints(crosses).points > 0) queueAchievement(77);
+      if (path.length === 20 && path.every(isEdgeSlot)) queueAchievement(68);
+      if (path.length === 36 && snapshot.effective.length === 36 && path.every(idx => S.board[idx]?.type === 'coin')) queueAchievement(69);
+      if (path.length === 36 && snapshot.effective.some(idx => S.board[idx]?.type === 'chain')) queueAchievement(59);
+      const generated = { total: 0, skulls: 0 }; CHAIN_REFILL = generated;
+      try {
+        applyChainEffects(swords, 0, 0, 0, skulls, snapshot);
+        S.killsThisTurn = batch.result.kills;
+        markExistingSkullsOld();
+        placeNewTiles({});
+      } finally { CHAIN_REFILL = null; }
+      if (generated.total > 9 && generated.total === generated.skulls) queueAchievement(74);
       // AddRevengeHealth and post-kill passives run after refill, so a newly
       // generated Vengeful also receives this chain's direct kill count.
       for (const cell of S.board) if (cell && cell.type === 'skull' && cell.skull.type === 21) cell.skull.atk += batch.result.kills;
@@ -3506,6 +3813,8 @@
         const armour = S.equipment.find(item => item.slot === 'armour');
         armour.mods.maxArmor = (armour.mods.maxArmor || 0) + 1;
         updateEquipmentStats();
+        queueAchievement(52, 10);
+        if (S.achievementRun.masochism) queueAchievement(57);
         flash('🍀 Храбрость: 15+ убийств за цепочку — +1 макс. брони!');
       }
       if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
@@ -3573,7 +3882,10 @@
           resetCollectionCounts();
           // Frozen old enemies also take spikes. Defence applies, and Lich
           // transforms instead of paying a premature special reward.
-          for (const idx of columnSlots()) if (oldSkull(S.board[idx])) hitSkullAt(idx, S.spikes, { direct: false });
+          for (const idx of columnSlots()) if (oldSkull(S.board[idx])) {
+            const type = S.board[idx].skull.type;
+            if (hitSkullAt(idx, S.spikes, { direct: false }) && type === 2) queueAchievement(43);
+          }
           compactBoardAndRefill();
           markExistingSkullsOld();
         }
@@ -3614,6 +3926,7 @@
         for (const id of Object.keys(S.skillCooldowns)) S.skillCooldowns[id] = Math.max(0, S.skillCooldowns[id] - 1);
       }
       S.slashCombo = S.hackCombo = S.shockCombo = S.aweCombo = 0;
+      S.achievementRun.combo = 0; S.achievementRun.masochism = false;
       S.runeUsedThisTurn = S.counterattack = 0;
       rotateTurnFlags(['runeActive', 'swordBoost', 'shieldBoost', 'potionBoost', 'coinBoost', 'berserkActive', 'stealActive']);
       resetCollectionCounts();
@@ -3631,14 +3944,17 @@
           const amount = target.fireDamage ?? (typeof target.burn === 'number' ? target.burn : baseDamage());
           target.burn = false; target.fireDamage = 0; target.fireSafe = false;
           if (cell.type === 'skull') {
-            if (target.hp <= amount) hitSkullAt(idx, amount, { direct: false, ignoreDefence: true });
+            if (target.hp <= amount) {
+              hitSkullAt(idx, amount, { direct: false, ignoreDefence: true });
+              if (clsRace() === 'Dragonkin') queueAchievement(54, 2);
+            }
             else target.hp -= amount;
           }
         }
       }
       if (S.regen > 0) heal(S.regen);
       if (S.poison > 0) {
-        damageHero(S.poison, false, true);
+        damageHero(S.poison, false, true, 36);
         flash('☠ Яд: −' + S.poison + ' HP');
       }
       if (enemyPhaseDeathCheck()) return;
@@ -3650,7 +3966,7 @@
         const skull = cell.skull, poison = skull.poison || [0, 0, 0];
         skull.poison = [poison[1], poison[2], 0];
         if (poison[0] > 0) {
-          if (skull.hp <= poison[0]) matchCell(idx);
+          if (skull.hp <= poison[0]) { matchCell(idx); if (clsRace() === 'Elf') queueAchievement(47, 2); }
           else skull.hp -= poison[0];
         }
       }
@@ -3658,7 +3974,7 @@
         let crippled = 0;
         for (let idx = 0; idx < CELL_COUNT; idx++) {
           const cell = S.board[idx];
-          if (cell && cell.type === 'skull' && isCrippleTarget(cell.skull)) { matchCell(idx); crippled++; }
+          if (cell && cell.type === 'skull' && isCrippleTarget(cell.skull)) { matchCell(idx); crippled++; queueAchievement(53, 2); }
         }
         if (crippled > 0) {
           const message = `🐺 Калечение Вервольфа: уничтожено черепов с HP ниже их защиты — ${crippled}`;
@@ -3677,6 +3993,7 @@
       S.actionCommitted = false;
       // Victory is at the tail, never before lethal turn-100 poison/abilities.
       if (S.mode === 'sprint' && S.turn >= 100) {
+        queueAchievement(67); queueAchievement(76);
         S.won = true; S.over = true; S.resolving = false; S.actionCommitted = false;
         S.arrivals = []; S.rewardMenus = []; AFTER_ARRIVALS = SCHEDULED_STEP = null;
         saveRun();
@@ -3687,11 +4004,13 @@
     continueAfterRewards({ phase: 'ready' });
   }
 
-  function damageHero(amount, isBoss, bypassArmor) {
+  function damageHero(amount, isBoss, bypassArmor, cause = 0) {
     if (amount <= 0) return 0;
     const damage = bypassArmor ? amount : blockVolley(amount).damage;
     if (damage > 0) {
-      S.hero.hp = Math.max(0, S.hero.hp - damage);
+      const rawHp = S.hero.hp - damage;
+      if (rawHp < 0 && [34, 35, 36].includes(cause)) queueAchievement(cause);
+      S.hero.hp = Math.max(0, rawHp);
       floatOn('-' + Math.round(damage), 'hurt');
     }
     audioEnemy();
@@ -3701,7 +4020,9 @@
   // Last Stand (Paladin, классный уникальный навык): если герой погиб — полное лечение.
   // Вызывается всегда после урона в бою, если Hero.hp <= 0.
   function lastStandTriggerIfNeeded() {
+    if (S.hero.hp <= 0 && clsRace() !== 'Human' && hasMortalEnemy(MORTAL_BY_RACE[clsRace()])) queueAchievement(40);
     if (S.lastStand > 0 && S.hero.hp <= 0) {
+      queueAchievement(61);
       S.hero.hp = S.hero.maxHp;
       S.lastStand = S.nextTurnFlags.lastStand = 0;
       flash('🛡 Последний рубеж: полное лечение!');
@@ -3768,15 +4089,17 @@
       restart.textContent = '↻ Ещё раз';
       restart.addEventListener('click', () => {
         if (runId !== RUN_ID || !S.over) return;
-        if (HISTORY_PENDING) requestNewGame();
+        if (hasPendingProgress()) requestNewGame();
         else { closeModal(); newGame(); }
       });
       const historyNote = document.createElement('p'); historyNote.id = 'run-history-status'; historyNote.className = 'save-note';
       historyNote.setAttribute('role', 'status'); historyNote.setAttribute('aria-live', 'polite'); historyNote.textContent = HISTORY_STATUS.message;
       body.appendChild(historyNote);
       const history = document.createElement('button'); history.type = 'button'; history.className = 'btn secondary'; history.textContent = 'Рекорды и статистика';
-      history.addEventListener('click', () => { if (runId === RUN_ID && S.over) openRunHistory(); });
-      body.appendChild(history); body.appendChild(restart);
+      history.addEventListener('click', () => { if (runId === RUN_ID && S.over) openRunRecords(); });
+      const achievements = document.createElement('button'); achievements.type = 'button'; achievements.className = 'btn secondary'; achievements.textContent = 'Достижения';
+      achievements.addEventListener('click', () => { if (runId === RUN_ID && S.over) openAchievements(); });
+      body.appendChild(history); body.appendChild(achievements); body.appendChild(restart);
     }
     queueRunSave();
   }
@@ -3875,17 +4198,20 @@
     try { localStorage.setItem('raid:trophyRemaining', String(S.trophyRemaining)); } catch (e) {}
   }
   function advanceTrophyAt(slot) {
+    let created = false;
     if (S.difficulty === 0) return;
     if (S.mode !== 'sprint' || randInt(0, 100, 0) < 50) S.trophyRemaining--;
     if (S.trophyRemaining < 1) {
       if (S.trophiesGenerated < MAX_TROPHIES_PER_RUN && trophyEligible()) {
         S.trophyRemaining = randInt(20, 30, 0);
         S.trophiesGenerated++;
+        created = true;
         // Own SVG, but preserve SetType's numeric appearance draw.
         S.board[slot] = { type: 'trophy', appearance: randInt(0, 7, 0) };
       } else S.trophyRemaining = 0;
     }
     saveTrophyRemaining();
+    return created;
   }
   function computeTrophyOutcome() {
     const id = S.classId, level = classLevelOf(id);
@@ -3907,7 +4233,7 @@
     return S.board.flatMap((cell, slot) => cell.type === 'trophy' && !cell.frozen && !cell.matched ? [slot] : []);
   }
   function claimTrophy(slot) {
-    if (!S || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
+    if (!S || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
     const cell = S.board[slot];
     if (!cell || cell.type !== 'trophy' || cell.frozen || cell.matched) return false;
     // Outcome draws happen on the tap, so class state may change between drops.
@@ -4191,6 +4517,7 @@
     return options;
   }
   function castPurchasedScroll(scroll) {
+    if (clsRace() === 'Sauren') queueAchievement(49, 2);
     const continuedAction = S.resolving, continuation = AFTER_ARRIVALS;
     S.resolving = true;
     // Do not call activateSkill: no owned cooldown, slot or Dragonkin hook.
@@ -4320,6 +4647,7 @@
 
   function gameOver() {
     if (S.over) return;
+    queueAchievement(67);
     S.over = true;
     S.resolving = false;
     S.actionCommitted = false;
@@ -4382,6 +4710,7 @@
     // Native filter: normally exclude skulls; only Changeling's mortal enemy
     // excludes swords instead. Treasure Chamber does not override this filter.
     const exclude = clsRace() === 'Changeling' ? 'sword' : 'skull';
+    if (exclude === 'sword') queueAchievement(38);
     // Native keeps both bytes until the end-of-turn refill boundary. They are
     // observable by I1 independently of Counterattack and the two Steal flags.
     S.refillFilter.enabled = true;
@@ -4716,6 +5045,7 @@
           if (keys.length) {
             const key = keys[randInt(0, keys.length - 1, 5)];
             const amount = reduceItemModifier(item, key);
+            queueAchievement(39);
             const message = '🦷 Съедобный: −' + itemNumber(key, amount) + ' «' + ITEM_STAT[key].name + '» (' + item.name + ')';
             flash(message); log(message);
           } else flash('🦷 Съедобный: выбранный предмет без улучшений');
@@ -4786,7 +5116,7 @@
     if (!board) return;
 
     board.addEventListener('pointerdown', e => {
-      if (!S || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
+      if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
       if (!cell) return;
@@ -4981,12 +5311,12 @@
 
   function requestNewGame(classId = getSelectedClassId()) {
     if (!isClassUnlocked(classId)) return false;
-    if ((!S || S.over) && !savedRunInfo() && !HISTORY_PENDING) { setSelectedClassId(classId); newGame(); return true; }
+    if ((!S || S.over) && !savedRunInfo() && !hasPendingProgress()) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
     if (!wrap) return false;
     NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement };
     const text = el('restart-confirm-text');
-    if (text) text.textContent = (HISTORY_PENDING ? 'Результат прошлого забега ещё не записан в историю. Новый может удалить его резервную запись. ' : '') + `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни классов сохранятся.`;
+    if (text) text.textContent = (hasPendingProgress() ? 'Результат или достижения ещё не записаны в историю. Новый может удалить их резервную запись. ' : '') + `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни классов сохранятся.`;
     wrap.classList.add('show'); el('restart-cancel')?.focus();
     return false;
   }
@@ -5009,10 +5339,11 @@
       if (S) ownsRunSlot();
       else { readRunSlot(); if (pickerOpen && !classEditor) showClassPicker(); }
     });
-    el('picker-history')?.addEventListener('click', openRunHistory);
-    el('menu-history')?.addEventListener('click', openRunHistory);
+    el('picker-history')?.addEventListener('click', openRunRecords);
+    el('menu-history')?.addEventListener('click', openRunRecords);
+    for (const id of ['picker-achievements', 'menu-achievements']) el(id)?.addEventListener('click', openAchievements);
     el('history-close')?.addEventListener('click', closeRunHistory);
-    for (const id of ['history-section', 'history-type']) el(id)?.addEventListener('change', renderRunHistory);
+    for (const id of ['history-section', 'history-type', 'achievement-filter']) el(id)?.addEventListener('change', renderRunHistory);
     el('history-retry')?.addEventListener('click', () => { retryRunHistory(); renderRunHistory(); });
     el('history-modal')?.addEventListener('keydown', event => {
       if (!HISTORY_OPEN) return;
@@ -5098,6 +5429,8 @@
     get saveStatus() { return { ...RUN_SAVE_STATUS }; },
     getLocalHistory() { return readRunHistory()?.data || null; },
     retryRunHistory,
+    getLocalAchievements,
+    openAchievements,
     openRunHistory,
     closeRunHistory,
     get historyStatus() { return { ...HISTORY_STATUS }; },

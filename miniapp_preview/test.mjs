@@ -3907,7 +3907,10 @@ test('raid history: AttackSkull counter excludes Rune/poison-style collections a
 test('raid history: Last Stand rescue does not record a game; its later actual death does', () => {
   const b = raidBrowser({ menus: true }), r = b.raid;
   raidBoard(r, 'sword'); r.state.hero.hp = 0; r.state.lastStand = 1;
-  r.endEnemyTurn(); assert.equal(r.state.over, false); assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+  r.endEnemyTurn(); assert.equal(r.state.over, false);
+  assert.equal(r.getLocalHistory().classes.adventurer.games, 0);
+  assert.equal(r.getLocalHistory().records.flat().length, 0);
+  assert.equal(r.getLocalHistory().achievements.progress[61], 100, 'rescue is an achievement, not a finished game');
   assert.equal(raidFinish(b).classes.adventurer.games, 1);
 });
 
@@ -4080,4 +4083,463 @@ test('raid history: returned data is a detached read-only snapshot, not a mutabl
   history.records[1][0].score = 999999; history.classes.adventurer.games = 999;
   const next = b.raid.getLocalHistory(); assert.equal(next.classes.adventurer.games, 1); assert.notEqual(next.records[1][0].score, 999999);
   assert.equal(b.storage.get(RAID_HISTORY_KEY), before);
+});
+
+// Local achievements: real event paths, conservative v1 migration and receipts.
+const achEarned = (raid, id) => raid.state.achievementRun.earned[id] || 0;
+const achProgress = (raid, id) => raid.getLocalAchievements().catalog[id - 1].progress;
+const achSnake = Array.from({ length: 36 }, (_, n) => Math.floor(n / 6) * 6 + (Math.floor(n / 6) % 2 ? 5 - n % 6 : n % 6));
+const achRim = [0, 1, 2, 3, 4, 5, 11, 17, 23, 29, 35, 34, 33, 32, 31, 30, 24, 18, 12, 6];
+
+function achCollectBroken(browser, count) {
+  const r = browser.raid;
+  raidBoard(r, 'sword'); r.state.forceCoins = 1;
+  for (let slot = 0; slot < count; slot++) r.state.board[slot] = { type: slot % 2 ? 'shield' : 'sword', broken: true };
+  r.collectIndices(Array.from({ length: count }, (_, slot) => slot));
+  assert.equal(r.saveRun(), true);
+}
+
+test('raid achievements: 77 Russian entries, 76 available, no sentinel or invented I See trigger; reads are detached and write-free', () => {
+  const b = raidBrowser({ start: false }), before = [...b.storage];
+  const result = b.raid.getLocalAchievements();
+  assert.equal(result.total, 77); assert.equal(result.available, 76); assert.equal(result.unlocked, 0);
+  assert.deepEqual(Array.from(result.catalog, a => a.id), Array.from({ length: 77 }, (_, i) => i + 1));
+  assert.ok(result.catalog.every(a => /[а-яё]/i.test(a.title) && a.description.length > 15 && a.progress === 0));
+  assert.equal(result.catalog[44].available, false); assert.match(result.catalog[44].description, /не найден/);
+  result.catalog[0].progress = 100; assert.equal(b.raid.getLocalAchievements().catalog[0].progress, 0);
+  assert.deepEqual([...b.storage], before); assert.equal(b.raid.state, null);
+});
+
+for (const [native, classId, raceId] of [
+  [1, 'ranger', 10], [2, 'raider', 15], [3, 'priest', 13], [4, 'barbarian', 14], [5, 'mage', 18],
+  [6, 'rogue', 12], [7, 'paladin', 17], [8, 'warrior', 11], [9, 'assassin', 16],
+]) test(`raid achievements: ${classId} class/race/master gates are 1/5/10, not run XP`, () => {
+  for (const level of [1, 4, 5, 9, 10]) {
+    const b = raidBrowser({ classId, saved: { 'raid:classLevels': JSON.stringify({ [classId]: level }) } }), r = b.raid;
+    assert.equal(achProgress(r, native), 100);
+    assert.equal(achProgress(r, raceId), level >= 5 ? 100 : 0);
+    assert.equal(achProgress(r, native + 18), level === 10 ? 100 : 0);
+    assert.equal(achProgress(r, 28), 0); assert.equal(achProgress(r, 29), 0);
+  }
+});
+
+test('raid achievements: Classy excludes Adventurer, and a customized Human does not replace the native Dwarf unlock', () => {
+  const b = raidBrowser({ classId: 'warrior', saved: { 'raid:classLevels': JSON.stringify({ warrior: 5 }) } }), r = b.raid;
+  const config = r.defaultClassConfig('warrior'); config.race = 'Human';
+  assert.equal(r.saveClassConfig('warrior', config), true); r.newGame(71);
+  assert.equal(r.clsRace(), 'Human'); assert.equal(achEarned(r, 11), 100);
+  for (const id of raidClassIds.slice(1)) { r.unlockClass(id); while (r.classLevelOf(id) < 10) r.levelUpClass(id); }
+  assert.equal(r.classLevelOf('adventurer'), 1); assert.equal(achEarned(r, 28), 100);
+  assert.equal(r.saveRun(), true); assert.equal(achProgress(r, 28), 100);
+});
+
+for (const [level, id] of [[5, 29], [10, 30], [25, 31], [50, 32], [100, 33]]) test(`raid achievements: actual XP arrival reaches hero ${level}, including exact milestone ${id}`, () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  r.state.hero.level = level - 1; r.state.hero.xp = 98;
+  r.addResource({ type: 'xp', variant: 0 });
+  assert.equal(r.state.hero.level, level); assert.equal(achEarned(r, id), 100);
+  assert.equal(r.saveRun(), true); assert.equal(achProgress(r, id), 100);
+});
+
+for (const [cause, id] of [['spikes', 34], ['fire', 35], ['poison', 36], ['acid', 37]]) test(`raid achievements: ${cause} is strict raw HP<0 before Last Stand, not HP=0 or final death`, () => {
+  for (const below of [false, true]) {
+    const b = raidBrowser({ menus: true }), r = b.raid, s = r.state;
+    raidBoard(r, 'sword'); s.lastStand = 1;
+    const damage = cause === 'spikes' ? 7 : 2; s.hero.hp = damage - (below ? 1 : 0);
+    if (cause === 'spikes') {
+      raidOld(r, 2, { hp: 999, maxHp: 999 }, 2); s._chainOrder = [0, 1, 2];
+      r.applyChainEffects(2, 0, 0, 0, [2]);
+    } else if (cause === 'fire') {
+      s.board[0].burn = 2; s._chainOrder = [0, 1, 2]; r.applyChainEffects(3, 0, 0, 0, []);
+    } else if (cause === 'poison') { s.poison = 2; r.endEnemyTurn(); }
+    else r.addResource({ type: 'potion', variant: 2 });
+    assert.equal(s.over, false); assert.equal(s.hero.hp, s.hero.maxHp);
+    assert.equal(achEarned(r, 61), 100); assert.equal(achEarned(r, id), below ? 100 : 0);
+    assert.equal(achEarned(r, 67), 0);
+  }
+});
+
+test('raid achievements: Nemesis is checked before rescue for the active race, not for Human or an absent mortal enemy', () => {
+  for (const [classId, present, expected] of [['ranger', true, 100], ['ranger', false, 0], ['adventurer', true, 0]]) {
+    const b = raidBrowser({ menus: true, classId }), r = b.raid;
+    raidBoard(r, 'sword'); if (present) raidOld(r, 35, { hp: 999, maxHp: 999 }, 9);
+    r.state.hero.hp = 0; r.state.lastStand = 1; r.endEnemyTurn();
+    assert.equal(r.state.over, false); assert.equal(achEarned(r, 40), expected); assert.equal(achEarned(r, 61), 100);
+    assert.equal(r.getLocalHistory().classes[classId].games, 0);
+  }
+});
+
+for (const [classId, expected] of [['mage', 100], ['adventurer', 0]]) test(`raid achievements: Unstable uses the actual ${classId} mortal-enemy refill branch`, () => {
+  const b = raidBrowser({ classId }), r = b.raid;
+  raidBoard(r, 'coin'); r.unstableTeleport(); assert.equal(achEarned(r, 38), expected);
+  assert.equal(r.state.refillFilter.excludeSwords, classId === 'mage');
+});
+
+test('raid achievements: Devourer requires a positive stat and a real reduction, not an empty selected item', () => {
+  for (const positive of [false, true]) {
+    const { raid: r } = raidCombat({ seed: 0 });
+    if (!positive) { r.state.equipment.forEach(item => { item.mods = {}; }); r.updateEquipmentStats(); }
+    raidOld(r, 35, { countdown: 1 }, 28); r.applySpecialAbilities();
+    assert.equal(achEarned(r, 39), positive ? 100 : 0);
+  }
+});
+
+test('raid achievements: promotion checks three distinct specials, and Trap applies to a generated special, not an ordinary skull', () => {
+  for (const duplicate of [false, true]) {
+    const { raid: r } = raidBrowser({ mode: 'sprint' }); raidBoard(r, 'sword');
+    const first = raidOld(r, 0, {}, 1); raidOld(r, 1, {}, 2);
+    if (duplicate) r.state.board[1].skull = first;
+    r.state.oneHealthSkulls = 1; r.state.promotionRemaining = 0;
+    const tile = r.createNewTile(); assert.equal(tile.type, 'skull'); assert.equal(tile.skull.hp, 1);
+    assert.equal(achEarned(r, 41), duplicate ? 0 : 100); assert.equal(achEarned(r, 62), 100);
+  }
+  const { raid: r } = raidBrowser({ seed: 0 }); r.state.oneHealthSkulls = 1;
+  for (let n = 0; n < 100; n++) r.createNewTile(); assert.equal(achEarned(r, 62), 0);
+});
+
+for (const [classId, type, id, amount] of [['warrior', 14, 42, 100], ['adventurer', 3, 44, 100], ['adventurer', 2, 46, 1], ['mage', 2, 55, 2]]) test(`raid achievements: special reward path ${id} counts collections, not a banish or an unfinished Lich`, () => {
+  const { raid: r } = raidBrowser({ classId, seed: 0 }); raidBoard(r, 'sword'); r.state.forceCoins = 1;
+  raidOld(r, 0, { hp: 1 }, type); r.collectIndices([0], { includeSpecial: true }); assert.equal(achEarned(r, id), amount);
+  raidOld(r, 0, { hp: 1, def: 0 }, 32); assert.equal(r.hitSkullAt(0, 100, { direct: true }), false);
+  assert.equal(achEarned(r, id), amount);
+  raidOld(r, 0, { hp: 1 }, type); r.state.skillCooldowns.banish = 0; r.activateSkill('banish'); assert.equal(achEarned(r, id), amount);
+});
+
+test('raid achievements: Touche only comes from armour-stage spikes, never Counterattack', () => {
+  for (const counter of [false, true]) {
+    const { raid: r } = raidCombat({ seed: 0 }); r.state.forceCoins = 1; r.state.spikes = 5; r.state.counterattack = counter ? 1 : 0;
+    raidOld(r, 0, { hp: 1, atk: 1, def: 0 }, 2); r.processEnemyAttack();
+    assert.equal(achEarned(r, 43), counter ? 0 : 100);
+  }
+});
+
+test('raid achievements: Elf poison advances only on lethal poison, while Werewolf and Dragonkin follow their own end-turn branches', () => {
+  for (const [classId, id] of [['ranger', 47], ['assassin', 53], ['paladin', 54]]) {
+    const { raid: r } = raidCombat({ classId, seed: 0 }); r.state.forceCoins = 1;
+    raidOld(r, 0, { hp: 1, def: id === 53 ? 2 : 0, poison: id === 47 ? [1, 0, 0] : [0, 0, 0], burn: id === 54, fireDamage: 1 });
+    raidOld(r, 1, { hp: 9, def: 0, poison: [1, 0, 0] });
+    r.endEnemyTurn(); assert.equal(achEarned(r, id), 2, classId);
+  }
+});
+
+test('raid achievements: Dwarf uppercut needs a successful upward kill, retains its priority over an outside Meat Shield', () => {
+  for (const upward of [false, true]) {
+    const b = raidBrowser({ classId: 'warrior' }), r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    raidOld(r, 6, { hp: 1, def: 0 }); raidOld(r, 35, { hp: 999, maxHp: 999, def: 999 }, 30);
+    raidSelect(r, upward ? [12, 6, 0] : [0, 6, 12]); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 48), upward ? 2 : 0);
+  }
+});
+
+test('raid achievements: Sauren scroll purchase adds 2%, preview and non-Sauren purchase do not', () => {
+  for (const classId of ['rogue', 'adventurer']) {
+    const b = raidBrowser({ menus: true, classId }), r = b.raid; raidBoard(r, 'sword');
+    r.state.hero.gold = 100; r.checkGoldBox();
+    const item = r.state.menuCandidates[0]; item.scroll = r.prepareSkillOption('boostdmg'); delete item.scrollBlocked;
+    assert.equal(achEarned(r, 49), 0); assert.equal(r.purchaseShopItem(0), true);
+    assert.equal(achEarned(r, 49), classId === 'rogue' ? 2 : 0);
+    r.purchaseShopItem(0); assert.equal(achEarned(r, 49), classId === 'rogue' ? 2 : 0);
+  }
+});
+
+test('raid achievements: Faun adds 5% only when the quarter-HP level healing actually raises HP', () => {
+  for (const low of [false, true]) {
+    const { raid: r } = raidBrowser({ classId: 'priest', menus: true });
+    r.state.hero.hp = low ? 1 : Math.floor(r.state.hero.maxHp / 4); r.state.hero.xp = 98;
+    r.addResource({ type: 'xp', variant: 0 }); assert.equal(achEarned(r, 50), low ? 5 : 0);
+  }
+});
+
+test('raid achievements: Orc stun successes add 2% on surviving direct hits, capped at 100, not on indirect hits or kills', () => {
+  const { raid: r } = raidBrowser({ classId: 'barbarian' }); raidBoard(r, 'sword');
+  const target = raidOld(r, 0, { hp: 999, maxHp: 999 }); let count = 0;
+  for (let n = 0; n < 800; n++) { target.stunned = false; r.damageSkull(target, 0, { direct: true }); if (target.stunned) count++; }
+  assert.ok(count >= 50); assert.equal(achEarned(r, 51), 100);
+  const { raid: other } = raidBrowser({ classId: 'barbarian' }); raidBoard(other, 'sword');
+  const victim = raidOld(other, 0, { hp: 999, maxHp: 999 });
+  for (let n = 0; n < 100; n++) other.damageSkull(victim, 0, { direct: false });
+  other.damageSkull(victim, 10000, { direct: true }); assert.equal(achEarned(other, 51), 0);
+});
+
+test('raid achievements: Halfling 15-kill Guts adds 10%; Masochism is a same-turn flag and survives an active checkpoint', () => {
+  for (const masochism of [false, true]) {
+    let b = raidBrowser({ classId: 'raider', menus: true }), r = b.raid;
+    raidBoard(r, masochism ? 'coin' : 'sword'); r.state.forceCoins = 1;
+    if (masochism) { r.activateSkill('masochism'); b = raidReload(b); r = b.raid; assert.equal(r.state.achievementRun.masochism, true); }
+    raidBoard(r, 'sword');
+    for (const slot of achSnake.slice(0, 15)) raidOld(r, slot, { hp: 1, def: 0 });
+    raidSelect(r, achSnake.slice(0, 15)); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 52), 10); assert.equal(achEarned(r, 57), masochism ? 100 : 0);
+  }
+});
+
+test('raid achievements: Sniper checks the ignored arrow gap, special tail kill and post-kill trophy conversion', () => {
+  for (const variant of ['hit', 'trophy', 'ordinary', 'lich', 'survivor']) {
+    const b = raidBrowser({ seed: 0 }), r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    r.state.trophyRemaining = variant === 'trophy' ? 0 : 30;
+    r.state.board[1] = { type: 'arrow' }; r.state.board[2] = { type: 'coin' };
+    raidOld(r, 3, { hp: variant === 'survivor' ? 999 : 1, maxHp: 999, def: 0 }, variant === 'ordinary' ? 0 : variant === 'lich' ? 32 : 1);
+    raidSelect(r, [0, 1, 2, 3]); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 56), variant === 'hit' ? 100 : 0, variant);
+  }
+});
+
+test('raid achievements: Rune compares actual collectable interior with effective, not physical, contour length', () => {
+  for (const arrows of [false, true]) {
+    const b = raidBrowser(), r = b.raid; raidBoard(r, 'sword'); r.activateSkill('rune'); r.state.forceCoins = 1;
+    if (arrows) achRim.forEach((slot, i) => { r.state.board[slot] = { type: i % 2 ? 'coin' : 'arrow' }; });
+    assert.equal(r.interiorCells(achRim).length, 16);
+    raidSelect(r, achRim); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 58), arrows ? 100 : 0);
+  }
+});
+
+for (const [kind, id] of [['necklace', 59], ['rim', 68], ['gold', 69]]) test(`raid achievements: legal ${kind} path triggers ${id} only after collection, not its preview`, () => {
+  const b = raidBrowser(), r = b.raid; raidBoard(r, kind === 'gold' ? 'coin' : 'sword'); r.state.forceCoins = 1;
+  if (kind === 'necklace') r.state.board[7] = { type: 'chain' };
+  raidSelect(r, kind === 'rim' ? achRim : achSnake); assert.equal(achEarned(r, id), 0);
+  r.resolveChain(); assert.equal(achEarned(r, id), 0); b.advance(420); assert.equal(achEarned(r, id), 100);
+  if (kind === 'necklace') assert.equal(achEarned(r, 69), 0);
+});
+
+test('raid achievements: Slasher needs six ordinary skulls in the collected row, not five plus a special', () => {
+  for (const special of [false, true]) {
+    const { raid: r } = raidBrowser({ seed: 0 }); raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    for (let slot = 0; slot < 36; slot++) raidOld(r, slot, { hp: 999, maxHp: 999 }, special && slot % 6 === 0 ? 2 : 0);
+    r.activateSkill('slash'); assert.equal(achEarned(r, 60), special ? 0 : 100);
+  }
+});
+
+test('raid achievements: Shock and Awe is the four collection flags, survives resume and resets on enemy turn; 40/41 are not substitutes', () => {
+  let b = raidBrowser({ menus: true }), r = b.raid;
+  for (const id of ['slash', 'fireball']) { raidBoard(r, 'sword'); r.activateSkill(id); }
+  b = raidReload(b); r = b.raid; assert.equal(r.state.achievementRun.combo, 3);
+  for (const id of ['charge', 'wish']) { raidBoard(r, 'sword'); r.activateSkill(id); }
+  assert.equal(achEarned(r, 63), 100);
+  const other = raidBrowser().raid; raidBoard(other, 'sword'); other.activateSkill('shock'); other.activateSkill('awe'); assert.equal(achEarned(other, 63), 0);
+  const reset = raidBrowser().raid; raidBoard(reset, 'sword'); reset.activateSkill('slash'); reset.activateSkill('fireball');
+  raidBoard(reset, 'sword'); reset.endEnemyTurn(); assert.equal(reset.state.achievementRun.combo, 0);
+  raidBoard(reset, 'sword'); reset.activateSkill('charge'); raidBoard(reset, 'sword'); reset.activateSkill('wish'); assert.equal(achEarned(reset, 63), 0);
+});
+
+test('raid achievements: Hack+Slash can supply the CollectBoard flag, independently from the two-skill cosmetic combo', () => {
+  const { raid: r } = raidBrowser();
+  for (const id of ['hack', 'slash', 'fireball', 'charge']) { raidBoard(r, 'sword'); r.activateSkill(id); }
+  assert.equal(achEarned(r, 63), 100);
+});
+
+test('raid achievements: Wish threshold is 20 ordinary skulls before collection, not 19 plus special enemies', () => {
+  for (const count of [19, 20]) {
+    const { raid: r } = raidBrowser(); raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    for (let slot = 0; slot < count; slot++) raidOld(r, slot, { hp: 999, maxHp: 999 });
+    raidOld(r, 35, { hp: 999, maxHp: 999 }, 1); r.activateSkill('wish'); assert.equal(achEarned(r, 64), count === 20 ? 100 : 0);
+  }
+});
+
+test('raid achievements: Teleport needs a special before activation; one percent per cast, not per special; repeated saves do not increment', () => {
+  const b = raidBrowser(), r = b.raid; raidBoard(r, 'sword'); r.activateSkill('teleport'); assert.equal(achEarned(r, 65), 0);
+  for (let slot = 32; slot < 36; slot++) raidOld(r, slot, { hp: 999, maxHp: 999 }, 2);
+  r.state.skillCooldowns.teleport = 0; r.activateSkill('teleport'); assert.equal(achEarned(r, 65), 1);
+  for (let n = 0; n < 3; n++) r.saveRun(); assert.equal(achProgress(r, 65), 1);
+});
+
+test('raid achievements: Big Game provenance survives reload; Safari requires an actual trophy, not just its kill', () => {
+  for (const eligible of [false, true]) {
+    let b = raidBrowser({ seed: 0, menus: true, saved: eligible ? {} : { 'raid:classLevels': JSON.stringify(Object.fromEntries(raidClassIds.map(id => [id, 10]))) } }), r = b.raid;
+    raidBoard(r, 'sword'); r.state.forceCoins = 1; r.state.trophyRemaining = 0; raidOld(r, 0, { hp: 1 });
+    r.activateSkill('biggame'); assert.equal(r.state.board[0].skull.promotedByBigGame, true);
+    b = raidReload(b); r = b.raid; assert.equal(r.state.board[0].skull.promotedByBigGame, true);
+    r.hitSkullAt(0, 1000, { direct: true }); assert.equal(achEarned(r, 66), eligible ? 100 : 0);
+    assert.equal(r.state.trophiesGenerated, eligible ? 1 : 0);
+  }
+});
+
+for (const difficulty of [0, 1, 2, 3]) test(`raid achievements: difficulty ${difficulty} gates all event types; only final67 bypasses Easy, including Sprint`, () => {
+  const b = raidBrowser({ menus: true, mode: 'sprint', difficulty, classId: 'mage' }), r = b.raid;
+  achCollectBroken(b, 2); r.state.hero.level = 4; r.state.hero.xp = 98; r.addResource({ type: 'xp', variant: 0 });
+  if (r.state.pendingModal === 'level') { raidPickLevel(b.elements); b.advance(80); }
+  raidBoard(r, 'sword'); r.state.turn = 99; r.state.hero.hp = r.state.hero.maxHp; r.state.poison = 0; r.endEnemyTurn();
+  assert.equal(r.state.won, true); assert.equal(achEarned(r, 67), 100); assert.equal(achProgress(r, 67), 100);
+  for (const id of [5, 29, 73, 76]) assert.equal(achProgress(r, id), difficulty === 0 ? 0 : id === 73 ? 2 : 100, String(id));
+  if (!difficulty) assert.deepEqual(raidJSON(r.state.achievementRun.earned), { 67: 100 });
+});
+
+test('raid achievements: Harder setup challenges use frozen perk/flaw counts and exact level; lower difficulty and an equipped skill fail', () => {
+  for (const difficulty of [1, 3]) for (const skill of [false, true]) {
+    const b = raidBrowser({ classId: 'barbarian', menus: true, difficulty, saved: { 'raid:classLevels': JSON.stringify(Object.fromEntries(raidClassIds.map(id => [id, 10]))) } }), r = b.raid;
+    const config = r.defaultClassConfig('barbarian'); config.flaws = ['Reckless', 'Frail', 'Sneaky', 'Clumsy'];
+    assert.equal(r.saveClassConfig('barbarian', config), true); r.newGame(71);
+    if (skill) { r.state.skills = ['heal']; r.state.skillLevels.heal = 1; }
+    r.state.hero.level = 4; r.state.hero.xp = 98; r.addResource({ type: 'xp', variant: 0 });
+    assert.equal(achEarned(r, 71), difficulty === 3 && !skill ? 100 : 0);
+    raidPickLevel(b.elements); b.advance(80);
+    const next = r.defaultClassConfig('barbarian'); assert.equal(r.saveClassConfig('barbarian', next), true);
+    r.state.hero.level = 9; r.state.hero.xp = 98; r.addResource({ type: 'xp', variant: 0 });
+    assert.equal(achEarned(r, 70), difficulty === 3 ? 100 : 0);
+  }
+});
+
+test('raid achievements: Armed uses eight distinct raw nonzero worn stats at active serialization, not seven or a shop preview', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  const keys = ['weaponDamage', 'baseDamage', 'pierce', 'leech', 'quicken', 'xpPerSkull', 'strength', 'luck'];
+  r.state.equipment[0].mods = Object.fromEntries(keys.slice(0, 7).map(key => [key, 1])); r.saveRun(); assert.equal(achEarned(r, 72), 0);
+  r.state.hero.gold = 100; r.checkGoldBox(); r.state.menuCandidates[0].mods = Object.fromEntries(keys.map(key => [key, 1]));
+  assert.equal(r.saveRun(), true); assert.equal(achEarned(r, 72), 0);
+  r.state.equipment[0].mods.luck = 1; assert.equal(r.saveRun(), true); assert.equal(achProgress(r, 72), 100);
+});
+
+for (const count of [9, 10]) test(`raid achievements: all-skull post-chain refill needs >9 generated cells (${count})`, () => {
+  let b = raidBrowser({ menus: true }), r = b.raid; raidBoard(r, 'sword'); r.state.turn = 10; r.saveRun();
+  const checkpoint = JSON.parse(b.storage.get(RAID_RUN_KEY)); checkpoint.rng[1] = 1857768; b.storage.set(RAID_RUN_KEY, JSON.stringify(checkpoint));
+  b = raidReload(b); r = b.raid;
+  raidSelect(r, achSnake.slice(0, count)); r.resolveChain(); b.advance(420);
+  assert.equal(r.state.board.filter(cell => cell.type === 'skull').length, count, 'seeded TILE fixture actually generated every skull');
+  assert.equal(achEarned(r, 74), count > 9 ? 100 : 0);
+});
+
+test('raid achievements: real legal high-crossing path works outside Pretzel too; 77 stays locked below fifteen', () => {
+  // Numerical path fixture, reflected from the audited 14-cross board example.
+  const path = [35, 28, 33, 26, 31, 24, 30, 25, 32, 27, 34, 29, 23, 16, 21, 14, 19, 12, 18, 13, 20, 15, 22, 17, 11, 5, 4, 9, 2, 7, 0, 6, 1, 8, 3, 10].map(slot => Math.floor(slot / 6) * 6 + 5 - slot % 6);
+  for (const mode of ['classic', 'pretzel']) {
+    const b = raidBrowser({ mode }), r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    assert.equal(r.pretzelCrossings(path), 14); raidSelect(r, path); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 75), 100); assert.equal(achEarned(r, 77), 0); assert.equal(r.state.pretzelScore, mode === 'pretzel' ? 42 : 0);
+  }
+});
+
+test('raid achievements: 77 scoring primitive uses >=15 only in Pretzel (synthetic repeated nodes, NOT a legal user gesture)', () => {
+  for (const mode of ['classic', 'pretzel']) for (const crosses of [14, 15]) {
+    const b = raidBrowser({ mode }), r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
+    // Deliberately bypass selection to isolate the numeric branch. Save validation
+    // rejects this intermediate duplicate-node fixture; no natural-run claim.
+    r.state.selected = Array.from({ length: crosses + 2 }, (_, i) => i % 2 ? 7 : 0);
+    assert.equal(r.pretzelCrossings(r.state.selected), crosses); r.resolveChain(); b.advance(420);
+    assert.equal(achEarned(r, 77), mode === 'pretzel' && crosses >= 15 ? 100 : 0);
+  }
+});
+
+test('raid achievements: capped percentages combine distinct runs, survive repeated save/reload, and do not add games on restart', () => {
+  let b = raidBrowser({ menus: true }); achCollectBroken(b, 3);
+  assert.equal(achProgress(b.raid, 73), 3);
+  for (let n = 0; n < 5; n++) { b.raid.saveRun(); b = raidReload(b); assert.equal(achProgress(b.raid, 73), 3); }
+  b.raid.newGame(72); achCollectBroken(b, 2); assert.equal(achProgress(b.raid, 73), 5);
+  assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 0);
+  for (let n = 0; n < 4; n++) achCollectBroken(b, 30);
+  assert.equal(achEarned(b.raid, 73), 100); assert.equal(achProgress(b.raid, 73), 100);
+  assert.ok(b.raid.getLocalHistory().achievements.runs.every(run => !Object.hasOwn(run.earned, '73')));
+});
+
+test('raid achievements: profile quota failure keeps earned progress in the active checkpoint; reload/retry merges once', () => {
+  const fault = { write: key => key === RAID_HISTORY_KEY }, b = raidBrowser({ menus: true, fault });
+  achCollectBroken(b, 3); assert.equal(b.raid.historyStatus.state, 'unavailable'); assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+  const saved = JSON.parse(b.storage.get(RAID_RUN_KEY)); assert.equal(saved.state.achievementRun.earned[73], 3);
+  const next = raidReload(b); assert.equal(achProgress(next.raid, 73), 3); const raw = next.storage.get(RAID_HISTORY_KEY);
+  next.raid.retryRunHistory(); next.raid.saveRun(); assert.equal(next.storage.get(RAID_HISTORY_KEY), raw);
+});
+
+test('raid achievements: active-slot quota failure still persists event receipts in the independent writable profile', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault }); fault.write = key => key === RAID_RUN_KEY;
+  const r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1; r.state.board[0].broken = true; r.collectIndices([0]);
+  assert.equal(r.saveRun(), false); assert.equal(achProgress(r, 73), 1); assert.equal(r.saveStatus.state, 'unavailable');
+  r.saveRun(); assert.equal(achProgress(r, 73), 1);
+});
+
+test('raid achievements: terminal backup combines final events, incremental high-water receipts, rankings and class totals exactly once', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault }); achCollectBroken(b, 3);
+  fault.write = key => key === RAID_HISTORY_KEY; raidFinish(b);
+  const terminal = JSON.parse(b.storage.get(RAID_RUN_KEY)); assert.equal(terminal.record.achievements[73], 3); assert.equal(terminal.record.achievements[67], 100);
+  const next = raidBrowser({ menus: true, start: false, saved: b.storage }); assert.equal(next.raid.savedRunInfo(), null);
+  assert.equal(achProgress(next.raid, 73), 3); assert.equal(achProgress(next.raid, 67), 100); assert.equal(next.raid.getLocalHistory().classes.adventurer.games, 1);
+  const raw = next.storage.get(RAID_HISTORY_KEY); next.raid.retryRunHistory(); next.raid.savedRunInfo(); assert.equal(next.storage.get(RAID_HISTORY_KEY), raw);
+});
+
+test('raid achievements: history-v1 defaults are read-only and preserve all records, receipts, bests and independent counters on first write', () => {
+  const b = raidBrowser({ menus: true }); raidFinish(b); const profile = JSON.parse(b.storage.get(RAID_HISTORY_KEY));
+  delete profile.achievements; for (const rows of profile.records) for (const row of rows) delete row.achievements;
+  const raw = JSON.stringify(profile); const saved = new Map([[RAID_HISTORY_KEY, raw]]), next = raidBrowser({ start: false, saved });
+  assert.equal(achProgress(next.raid, 67), 0, 'old death events are not fabricated'); assert.equal(saved.get(RAID_HISTORY_KEY), raw);
+  const before = raidJSON(next.raid.getLocalHistory()); next.raid.newGame(71); achCollectBroken(next, 2);
+  const after = next.raid.getLocalHistory();
+  for (const key of ['records', 'classes', 'completed', 'last']) assert.deepEqual(raidJSON(after[key]), before[key]);
+  assert.equal(after.achievements.progress[73], 2); assert.equal(after.version, 1);
+});
+
+test('raid achievements: released active-v1 migration keeps RNG, rolled offers, partial level draft, I1 history and frozen configuration; no unknown past combo', () => {
+  const b = raidBrowser({ menus: true, classId: 'mage' }), r = b.raid;
+  r.state.hero.xp = 100; r.checkLevelUp(); b.elements.get('modal-body').querySelectorAll('.lv-card')[0].click(); r.saveRun();
+  const raw = JSON.parse(b.storage.get(RAID_RUN_KEY)); delete raw.state.achievementRun; const old = raidJSON(raw);
+  b.storage.set(RAID_RUN_KEY, JSON.stringify(raw)); const next = raidReload(b), restored = next.raid.state;
+  assert.deepEqual(raidJSON(restored.achievementRun), { version: 1, earned: { 5: 100 }, combo: 0, masochism: false });
+  assert.deepEqual(raidJSON(restored.rngSeeds), old.rng); assert.deepEqual(raidJSON(restored.classConfig), old.state.classConfig);
+  assert.deepEqual(raidJSON(restored.scrollLeechLabel), old.state.scrollLeechLabel); assert.deepEqual(Array.from(restored.levelDraft), old.menu.picked);
+  assert.deepEqual(raidJSON(next.raid.state.menuCandidates), raidJSON(r.state.menuCandidates));
+});
+
+for (const corruption of ['unknown', 'negative', 'fraction', 'sentinel', 'unconfirmed', 'receipt', 'duplicate']) test(`raid achievements: malformed ${corruption} profile remains untouched instead of resetting records`, () => {
+  const b = raidBrowser({ menus: true }); achCollectBroken(b, 3); const data = JSON.parse(b.storage.get(RAID_HISTORY_KEY));
+  if (corruption === 'unknown') data.achievements.version = 2;
+  if (corruption === 'negative') data.achievements.progress[73] = -1;
+  if (corruption === 'fraction') data.achievements.progress[73] = 1.5;
+  if (corruption === 'sentinel') data.achievements.progress[0] = 100;
+  if (corruption === 'unconfirmed') data.achievements.progress[45] = 100;
+  if (corruption === 'receipt') data.achievements.runs[0].earned[73] = 101;
+  if (corruption === 'duplicate') data.achievements.runs.push(data.achievements.runs[0]);
+  const raw = JSON.stringify(data); b.storage.set(RAID_HISTORY_KEY, raw);
+  assert.equal(b.raid.getLocalAchievements(), null); b.raid.retryRunHistory(); b.raid.saveRun();
+  assert.equal(b.storage.get(RAID_HISTORY_KEY), raw); assert.equal(b.raid.historyStatus.state, 'invalid');
+});
+
+test('raid achievements: stale run cannot write events; concurrent profile changes are re-read and merged by explicit retry', () => {
+  const a = raidBrowser({ menus: true }), peer = raidReload(a); const terminalBefore = a.storage.get(RAID_HISTORY_KEY);
+  raidBoard(a.raid, 'sword'); a.raid.state.forceCoins = 1; a.raid.state.board[0].broken = true; a.raid.collectIndices([0]);
+  assert.equal(a.raid.saveRun(), false); assert.equal(a.storage.get(RAID_HISTORY_KEY), terminalBefore);
+  achCollectBroken(peer, 2); assert.equal(achProgress(peer.raid, 73), 2);
+  const data = JSON.parse(peer.storage.get(RAID_HISTORY_KEY)); data.achievements.progress[73] = 5; data.revision++;
+  peer.storage.set(RAID_HISTORY_KEY, JSON.stringify(data));
+  achCollectBroken(peer, 1); assert.equal(achProgress(peer.raid, 73), 6);
+});
+
+test('raid achievements: missing queued damage cause in a released checkpoint is not guessed retroactively', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid; raidBoard(r, 'sword');
+  r.state.hero.xp = 98; r.state.hero.hp = 1; r.state.lastStand = 1;
+  raidOld(r, 2, { hp: 1, def: 0 }, 2); r.state.forceCoins = 1;
+  raidSelect(r, [0, 1, 2]); r.resolveChain(); b.advance(420);
+  assert.equal(r.state.pendingModal, 'level'); assert.ok(r.state.arrivals.some(event => event.cause === 34));
+  assert.equal(r.saveRun(), true); const data = JSON.parse(b.storage.get(RAID_RUN_KEY)); for (const event of data.arrivals) delete event.cause;
+  delete data.state.achievementRun; b.storage.set(RAID_RUN_KEY, JSON.stringify(data));
+  const next = raidReload(b); raidPickLevel(next.elements); next.advance(2000);
+  assert.equal(achEarned(next.raid, 34), 0); assert.equal(achEarned(next.raid, 61), 100);
+});
+
+for (const kind of ['version', 'amount', 'combo', 'raceFlag', 'easy', 'source']) test(`raid achievements: invalid active extension ${kind} cannot replace a live run or corrupt its prior checkpoint`, () => {
+  const b = raidBrowser({ menus: true }), r = b.raid, original = b.storage.get(RAID_RUN_KEY), data = JSON.parse(original);
+  if (kind === 'version') data.state.achievementRun.version = 2;
+  if (kind === 'amount') data.state.achievementRun.earned[73] = 101;
+  if (kind === 'combo') data.state.achievementRun.combo = 16;
+  if (kind === 'raceFlag') data.state.achievementRun.masochism = 'yes';
+  if (kind === 'easy') { data.state.difficulty = 0; data.state.achievementRun.earned[73] = 1; }
+  if (kind === 'source') { data.arrivals = [{ kind: 'damage', amount: 1, result: 0, cause: 999 }]; data.results = [{ xpGained: 0, goldGained: 0, upGained: 0, armorGained: 0, healGained: 0, dmgShown: 0, kills: 0, bossKills: 0, manaCollected: 0 }]; }
+  const state = r.state, rng = raidJSON(state.rngSeeds), invalid = JSON.stringify(data); b.storage.set(RAID_RUN_KEY, invalid);
+  assert.equal(r.resumeSavedRun(), false); assert.equal(r.state, state); assert.deepEqual(raidJSON(state.rngSeeds), rng);
+  assert.equal(b.storage.get(RAID_RUN_KEY), invalid);
+});
+
+test('raid achievements: active profile conflict preserves the other writer and retries the unapplied delta against its new baseline', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault }); achCollectBroken(b, 2);
+  const baseline = b.storage.get(RAID_HISTORY_KEY), rival = JSON.parse(baseline); rival.achievements.progress[73] = 5; rival.revision++;
+  const raw = JSON.stringify(rival); let reads = 0;
+  fault.read = key => { if (key === RAID_HISTORY_KEY && ++reads === 2) b.storage.set(RAID_HISTORY_KEY, raw); return false; };
+  achCollectBroken(b, 1); assert.equal(b.raid.historyStatus.state, 'conflict'); assert.equal(b.storage.get(RAID_HISTORY_KEY), raw);
+  fault.read = false; assert.equal(b.raid.retryRunHistory(), true); assert.equal(achProgress(b.raid, 73), 6);
+});
+
+test('raid achievements: 64 bounded partial-run receipts coexist with the released 512 terminal receipts', () => {
+  const b = raidBrowser({ menus: true }), data = b.raid.getLocalHistory();
+  data.completed = Array.from({ length: 512 }, (_, i) => 'terminal-' + String(i).padStart(5, '0'));
+  data.achievements.progress[73] = 64;
+  data.achievements.runs = Array.from({ length: 64 }, (_, i) => ({ id: 'partial-' + String(i).padStart(5, '0'), earned: { 73: 1 } }));
+  b.storage.set(RAID_HISTORY_KEY, JSON.stringify(data)); achCollectBroken(b, 1);
+  const after = b.raid.getLocalHistory(); assert.equal(after.achievements.progress[73], 65); assert.equal(after.achievements.runs.length, 64);
+  assert.equal(after.achievements.runs.at(-1).id, b.raid.state.historyId); assert.deepEqual(raidJSON(after.completed), data.completed);
+  assert.ok(b.storage.get(RAID_HISTORY_KEY).length < 262144);
 });

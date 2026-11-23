@@ -21,6 +21,7 @@
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
+    <button class="btn secondary" id="picker-achievements" type="button">◇ Достижения</button>
     <p class="save-note" id="picker-history-status" role="status" aria-live="polite" hidden></p>
     <div class="picker-modes">
       <label>Режим
@@ -86,6 +87,7 @@
 
   <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
   <p class="save-warning" id="save-status" role="status" aria-live="polite" hidden></p>
+  <p class="save-warning" id="progress-status" role="status" aria-live="polite" hidden></p>
 
   <!-- board -->
   <div class="board-wrap">
@@ -128,6 +130,7 @@
   <div class="log-wrap" id="log" aria-live="polite"></div>
 
   <div class="flash" id="flash" role="status"></div>
+  <p class="achievement-notice" id="achievement-notice" role="status" aria-live="polite" hidden></p>
 </div>
 
 <!-- run menu -->
@@ -140,6 +143,7 @@
     <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
     <button class="btn secondary" id="menu-classes" type="button">Классы и настройки</button>
     <button class="btn secondary" id="menu-history" type="button">Рекорды и статистика</button>
+    <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
     <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
     <button class="btn secondary" id="menu-close" type="button">Закрыть</button>
   </div>
@@ -151,8 +155,9 @@
     <h3 id="history-title" tabindex="-1">Рекорды и статистика</h3>
     <p class="save-note" id="history-description">Локальная история — только в этом браузере.</p>
     <div class="history-controls">
-      <label>Раздел<select id="history-section"><option value="records">Рекорды</option><option value="classes">Статистика классов</option></select></label>
+      <label>Раздел<select id="history-section"><option value="records">Рекорды</option><option value="classes">Статистика классов</option><option value="achievements">Достижения</option></select></label>
       <label>Категория<select id="history-type"><option value="0">Классика · Лёгкий</option><option value="1" selected>Классика · Обычный</option><option value="2">Классика · Сложный</option><option value="3">Классика · Очень сложный</option><option value="4">Спринт</option><option value="5">Крендель</option></select></label>
+      <label hidden>Показать<select id="achievement-filter"><option value="all">Все достижения</option><option value="unlocked">Открытые</option><option value="pending">Не завершённые</option><option value="unavailable">Недоступные</option></select></label>
     </div>
     <p class="save-note" id="history-status" role="status" aria-live="polite"></p>
     <button class="btn secondary" id="history-retry" type="button" hidden>Повторить запись</button>
@@ -206,6 +211,8 @@
       <li>Одновременно хранится один активный забег; новый заменит его после подтверждения. Смерть и победа убирают возможность продолжить. Очистка данных браузера удалит сохранение, приватный режим или запрет хранилища может помешать записи — смотри предупреждение. Это локальный пробник, без аккаунта, синхронизации и наград парка. Не играй одновременно в нескольких вкладках: устаревшая приостанавливается при изменении сохранения.</li>
       <li>«Рекорды и статистика» доступны до старта и из меню. По 10 результатов в шести категориях; равный счёт идёт после прежних, а новый самый низкий при заполненной таблице заменяет десятое место — классическое правило. В Спринте XP/GP/UP делятся на 4 отдельно, победа удваивает только очки. В Кренделе показаны средние пересечения (усечение после каждой цепи), максимум и число цепей с очками. Для старого сохранения уже набранную статистику пересечений восстановить нельзя — будет прочерк, но его очки сохранятся.</li>
       <li>Статистика класса увеличивается только в конце забега: все режимы, включая Лёгкий; лучшие три счёта — только Классика на Обычном/Сложном/Очень сложном. Счётчик убийств учитывает успешные атаки, но не сбор Руной, ядом или Калечением. Незаконченный или заменённый забег не добавляет игру; просмотр ничего не тратит. Если история не записалась, не начинай новый забег: открой рекорды и повтори запись. После reload завершённая резервная запись тоже повторяется без дублирования.</li>
+      <li>«Достижения» доступны на первом экране, из меню и после конца игры: 77 записей, из них 76 с подтверждёнными условиями. Проценты событий копятся между забегами до 100; на Лёгком доступна только «Миссия завершена». Получение не даёт очков, усилений и наград парка. Старые боевые события не восстанавливаются; уже открытые классы и их родные расы распознаются при старте или продолжении не на Лёгком. Настройка расы в редакторе не подменяет родную расу класса.</li>
+      <li>Условия показаны в карточках достижений: урон шипов, огня, яда и кислоты требует HP строго ниже нуля и проверяется до спасения Последним рубежом; ровно 0 завершает игру, но не даёт эти четыре достижения. Одно условие («Я всё вижу») в проверенной версии не установлено, поэтому карточка честно недоступна. Если запись профиля не удалась, достижения остаются в сохранённом забеге для повтора записи; не заменяй его до устранения ошибки. Если браузер запретил обе записи, закрытие страницы потеряет несохранённый прогресс.</li>
       <li>Тап по спец/босс-черепу — покажет особенности (элитный ×2/×2/×4, босс — ×3/×3/×6) и текущие статы. У каждого черепа может быть смертный враг твоей расы.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
