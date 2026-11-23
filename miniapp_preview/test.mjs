@@ -88,7 +88,7 @@ function raidNode() {
     },
   };
 }
-function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false, saved = {}, start = true, fault = {} } = {}) {
+function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1, seed = 71, menus = false, saved = {}, start = true, fault = {}, variant = 'classic' } = {}) {
   const elements = new Map([
     ['mode-select', { value: mode }], ['difficulty-select', { value: String(difficulty) }],
     ['dmg-text', { textContent: '', title: '' }],
@@ -118,7 +118,7 @@ function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1,
     },
     clearTimeout: id => timers.delete(id),
   });
-  vm.runInContext(readFileSync(new URL('./raid.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(readFileSync(new URL(variant === 'magitech' ? './raid_magitech.js' : './raid.js', import.meta.url), 'utf8'), context);
   const raid = context.window.RAID;
   if (start) {
     raid.unlockClass(classId);
@@ -4542,4 +4542,97 @@ test('raid achievements: 64 bounded partial-run receipts coexist with the releas
   const after = b.raid.getLocalHistory(); assert.equal(after.achievements.progress[73], 65); assert.equal(after.achievements.runs.length, 64);
   assert.equal(after.achievements.runs.at(-1).id, b.raid.state.historyId); assert.deepEqual(raidJSON(after.completed), data.completed);
   assert.ok(b.storage.get(RAID_HISTORY_KEY).length < 262144);
+});
+
+// The standalone redesign must not sneak balance into a visual increment.
+// Controlled fixtures, not native replay or naturally played runs.
+const magitechSnapshot = raid => {
+  const state = raidJSON(raid.state);
+  delete state.historyId; // Independent, non-gameplay UUID.
+  delete state.log; // Terminology is presentation (class -> mech).
+  return state;
+};
+function settleMagitechFixture(browser) {
+  for (let guard = 0; guard < 30; guard++) {
+    browser.advance(2000);
+    const modal = browser.raid.state.pendingModal;
+    if (modal === 'level') raidPickLevel(browser.elements);
+    else if (modal === 'gold') raidPickShop(browser.elements);
+    else if (modal === 'armor') browser.elements.get('modal-body').querySelectorAll('.lv-card')[0].click();
+    else if (!browser.raid.state.resolving || browser.raid.state.over) return;
+  }
+  throw new Error('Controlled redesign fixture did not settle');
+}
+
+test('magitech source: primary combat/resource/generator functions are byte-identical to the classic control', () => {
+  const original = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
+  const fork = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const names = ['random', 'randInt', 'createTile', 'createNewTile', 'makeSkull', 'setupBoard',
+    'damageSkull', 'damageHero', 'baseDamage', 'swordDamage', 'chainDamageFor', 'applyChainEffects',
+    'processEnemyAttack', 'endEnemyTurn', 'enemyGetAttack', 'applySpecialAbilities',
+    'perShield', 'bonusPct', 'addResource', 'makeItem', 'makeUpgradeOffer',
+    'applyUpgradeOffer', 'equipItem', 'updateEquipmentStats', 'classicScrollWord',
+    'classRules', 'runClassConfig', 'chooseLevelOptions', 'specialSpawnCount'];
+  for (const name of names) {
+    const expression = new RegExp(`^  function ${name}\\([^]*?^  }`, 'm');
+    const a = original.match(expression)?.[0], b = fork.match(expression)?.[0];
+    assert.ok(a && b, name);
+    assert.equal(b, a, `Visual prototype must not rebalance ${name}`);
+  }
+});
+
+test('magitech source: 42 skill fixtures keep classical state and all six RNG streams', () => {
+  const source = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
+  const skillSection = source.slice(source.indexOf('  const SKILLS = ['), source.indexOf('  // 7 уровней'));
+  const uniqueSection = source.slice(source.indexOf('  const UNIQUE_SKILLS = ['), source.indexOf('  const ALL_SKILLS'));
+  const ids = [...(skillSection + uniqueSection).matchAll(/\{ id: '(\w+)'/g)].map(match => match[1]);
+  assert.equal(ids.length, 42);
+  for (const [index, id] of ids.entries()) {
+    const options = { classId: raidClassIds[index % 10], difficulty: index % 3, menus: true, seed: 8801 };
+    const a = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    for (const browser of [a, b]) {
+      const r = browser.raid, s = r.state;
+      s.turn = 80; s.hero.hp = 900; s.hero.maxHp = 1000; s.hero.armor = 20; s.hero.maxArmor = 30;
+      s.hero.xp = 99; s.hero.gold = 99; s.upgradeBar = 99; s.trophyRemaining = 30;
+      s.skills = [id]; s.skillLevels = { [id]: 1 }; s.skillCooldowns = { [id]: 0 };
+      s.board = Array.from({ length: 36 }, (_, slot) => ({ type: ['sword', 'shield', 'coin', 'potion'][slot % 4] }));
+      raidOld(r, 4, { atk: 2, hp: 3, maxHp: 20, def: 2 });
+      raidOld(r, 15, { atk: 3, hp: 30, maxHp: 30, def: 3 }, 2 + index % 31);
+      raidOld(r, 30, { atk: 5, hp: 35, maxHp: 35, def: 4 }, 1);
+      r.activateSkill(id); settleMagitechFixture(browser);
+    }
+    assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), id);
+  }
+});
+
+test('magitech source: 300 paired controlled turns and 60 explicit checkpoint restores retain classical gameplay', () => {
+  let turns = 0, restores = 0;
+  for (const classId of raidClassIds) for (const difficulty of [0, 1, 2]) {
+    const options = { classId, difficulty, menus: true, seed: 2718 };
+    let a = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${difficulty}/start`);
+    for (let step = 0; step < 10; step++) {
+      for (const browser of [a, b]) {
+        const r = browser.raid, s = r.state;
+        s.turn = 100 + step; s.hero.hp = 5000; s.hero.maxHp = 5000;
+        s.hero.armor = 30; s.hero.maxArmor = 30; s.regen = 1; s.spikes = 2; s.weaponPoison = 1;
+        s.hero.xp = 99; s.hero.gold = 99; s.upgradeBar = 99; s.trophyRemaining = 30;
+        raidBoard(r, step % 2 ? 'coin' : 'shield');
+        raidOld(r, 0, { atk: 1, hp: 3, maxHp: 3, def: 1 });
+        s.board[1] = { type: 'sword' }; s.board[2] = { type: 'sword' };
+        raidOld(r, 8, { atk: 2, hp: 30, maxHp: 30, def: 2 }, 2 + (step + difficulty) % 31);
+        raidOld(r, 30, { atk: 3, hp: 35, maxHp: 35, def: 3 }, step === 9 ? 1 : 0);
+        raidSelect(r, [0,1,2]); r.resolveChain(); settleMagitechFixture(browser);
+      }
+      turns++;
+      assert.equal(b.raid.state.over, false);
+      assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${difficulty}/${step}`);
+      if (step === 4 || step === 9) {
+        assert.equal(a.raid.saveRun(), true); assert.equal(b.raid.saveRun(), true);
+        a = raidReload(a); b = raidReload(b, { variant: 'magitech' }); restores++;
+        assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${difficulty}/${step}/resume`);
+      }
+    }
+  }
+  assert.equal(turns, 300); assert.equal(restores, 60);
 });
