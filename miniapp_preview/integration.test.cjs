@@ -1814,10 +1814,31 @@ test('magitech fork: classic artifact stays pinned and the new standalone contai
   const landscape = css.slice(css.indexOf('@media (max-height: 610px) and (min-width: 721px)'));
   assert.match(landscape, /\.raid-intro-copy\s*\{\s*display:\s*none;/, 'short landscape prioritizes the location controls over the headline');
   const sprites = JSON.parse(fs.readFileSync(path.join(root, 'miniapp_preview/raid_monsters.json'), 'utf8'));
-  assert.equal(Object.keys(sprites.portraits).length, 16);
+  const catalog = sprites.special_catalog, ready = catalog.ready_types;
+  assert.deepEqual(catalog.expected_types, Array.from({ length: 31 }, (_, i) => i + 2));
+  assert.deepEqual(ready, [...new Set(ready)].sort((a, b) => a - b));
+  assert.equal(catalog.complete, catalog.expected_types.every(type => ready.includes(type)), 'staging cannot masquerade as all 31 special skins');
+  assert.equal(Object.keys(sprites.portraits).length, 16 + 4 * ready.length);
+  const original = crypto.createHash('sha256'); let originalCount = 0;
   for (const [id, image] of Object.entries(sprites.portraits)) {
     assert.match(image, /^data:image\/webp;base64,/);
-    assert.ok(sprites.sources[id].file.endsWith('.jpg'));
+    const bytes = Buffer.from(image.split(',')[1], 'base64');
+    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF'); assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+    const source = sprites.sources[id];
+    if (!source.generated) {
+      assert.ok(source.file.endsWith('.jpg')); originalCount++;
+      original.update(id + '\0' + image + '\0');
+    } else {
+      assert.equal(id, `${source.element}_special_${String(source.enemy_type).padStart(2, '0')}`);
+      assert.ok(ready.includes(source.enemy_type)); assert.equal(source.mechanics_changed, false);
+      assert.deepEqual(source.size, [96, 96]); assert.ok(sprites.special_templates[source.template].image);
+    }
+  }
+  assert.equal(originalCount, 16);
+  assert.equal(original.digest('hex'), 'cbcc769edcee82eb1627effa2ba085f675cbdb342fb11e377dad2a82cd918cc1', 'all 16 approved temporary crops stay byte-identical');
+  for (const element of ['fire', 'air', 'earth', 'water']) {
+    const images = ready.map(type => sprites.portraits[`${element}_special_${String(type).padStart(2, '0')}`]);
+    assert.equal(new Set(images).size, ready.length, 'every READY type has a distinct portrait, not a renamed duplicate');
   }
 });
 
@@ -2206,6 +2227,7 @@ function orbAnimationHarness(window, { reduced = false, webAnimations = true } =
 }
 async function orbFixture(options = {}) {
   const b = await openMagitech({ start: false, setup(w) { orbAnimationHarness(w, options); } });
+  if (options.region) b.dom.window.document.querySelector(`button[data-raid-region="${options.region}"]`).click();
   b.dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
   b.raid.newGame(2718);
   return b;
@@ -2892,6 +2914,83 @@ test('magitech clear weapons: four cosmetic metal colours and pixel relief prese
       assert.equal(b.dom.window.getComputedStyle(orb.querySelector('.orb-fog')).opacity, '0');
     });
     assert.equal(JSON.stringify(r.state.rngSeeds), purchaseRng); assert.equal(JSON.stringify(r.state.board), board);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster readability: ${region} uses one ordinary skin regardless of UID; all roles stay in the pinned location through preview and Continue`, async () => {
+  let b = await orbFixture({ region });
+  const names = { fire: 'fire_spark', air: 'air_spirit', earth: 'earth_golem', water: 'water_elemental' };
+  try {
+    let r = b.raid, doc = b.dom.window.document;
+    showOrbFixture(b, idx => {
+      const type = idx < 4 ? 0 : idx === 4 ? 1 : idx - 3;
+      return { type: 'skull', skull: Object.assign(r.makeSkull(type === 1, type > 1, type), { atk: 0, hp: 50, maxHp: 50 }) };
+    });
+    const before = JSON.stringify(r.state), beforeRng = JSON.stringify(r.state.rngSeeds);
+    const images = [...doc.querySelectorAll('.skull-art')], portraits = images.map(n => n.dataset.portrait), sources = images.map(n => n.src);
+    assert.equal(images.length, 36);
+    assert.equal(new Set(r.state.board.slice(0, 4).map(c => (c.skull.uid - 1) % 4)).size, 4, 'exercise all old UID-based elemental families');
+    assert.deepEqual(portraits.slice(0, 4), Array(4).fill(names[region]));
+    assert.equal(new Set(sources.slice(0, 4)).size, 1, 'ordinary means ONE identical skin, not four related ones');
+    for (const orb of doc.querySelectorAll('.cell > .raid-orb')) assert.equal(orb.dataset.element, region);
+    assert.ok(portraits.every(key => key.startsWith(region + '_')));
+    for (const idx of Array.from({ length: 32 }, (_, i) => i + 4)) assert.notEqual(sources[idx], sources[0], 'boss/special is visibly different from ordinary');
+    const catalog = b.dom.window.RAID_MONSTER_CATALOG;
+    const readyPortraits = [];
+    for (const type of catalog.ready_types) {
+      const idx = type + 3, expected = `${region}_special_${String(type).padStart(2, '0')}`;
+      assert.equal(portraits[idx], expected); readyPortraits.push(sources[idx]);
+      assert.notEqual(sources[idx], sources[4], 'boss is not reused as a ready special skin');
+    }
+    assert.equal(new Set(readyPortraits).size, catalog.ready_types.length);
+    assert.equal(catalog.complete, catalog.expected_types.every(type => catalog.ready_types.includes(type)));
+    assert.equal(JSON.stringify(r.state), before); assert.equal(JSON.stringify(r.state.rngSeeds), beforeRng);
+    assert.ok(r.state.board.every(c => !Object.hasOwn(c.skull, 'element')), 'appearance does not assign an unapproved combat element');
+    // All 31 inherited special types are on this board, including those still
+    // waiting for unique art. This fixture does NOT pretend those are complete.
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
+    const other = region === 'water' ? 'fire' : 'water';
+    doc.querySelector(`button[data-raid-region="${other}"]`).click();
+    assert.equal(doc.documentElement.dataset.raidRegion, region);
+    assert.deepEqual([...doc.querySelectorAll('.skull-art')], images);
+    assert.deepEqual(images.map(n => n.dataset.portrait), portraits);
+    assert.equal(JSON.stringify(r.state), before);
+    doc.querySelector('#picker-resume').click();
+    const key = magitechKey('raid:activeRun'), saved = JSON.parse(b.dom.window.localStorage.getItem(key));
+    saved.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4); // Old UID-derived cosmetic data, NOT combat state.
+    b.dom.window.localStorage.setItem(key, JSON.stringify(saved));
+    b = await reopenMagitech(b, { setup: orbAnimationHarness }); r = b.raid; doc = b.dom.window.document;
+    doc.querySelector('#picker-resume').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, region);
+    assert.deepEqual([...doc.querySelectorAll('.skull-art')].map(n => n.dataset.portrait), portraits);
+    assert.deepEqual([...doc.querySelectorAll('.skull-art')].map(n => n.src), sources);
+    for (const orb of doc.querySelectorAll('.cell > .raid-orb')) assert.equal(orb.dataset.element, region);
+    assert.equal(JSON.stringify(r.state.rngSeeds), beforeRng);
+    for (const c of r.state.board) { assert.equal(c.skull.element, undefined); assert.equal(c.skull.hp, 50); }
+    assert.equal(r.baseDamage(), 3); assert.equal(r.swordDamage(3), 9);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech monster readability: falling survivors retain the same UID orb/image and region skin, without animation rewards or a cosmetic RNG draw', async () => {
+  const b = await orbFixture({ region: 'water' });
+  try {
+    const r = b.raid;
+    const skull = Object.assign(r.makeSkull(false, false, 0), { atk: 0, def: 99, hp: 50, maxHp: 50, enteredTurn: -1 });
+    showOrbFixture(b, idx => idx === 0 ? { type: 'skull', skull } : { type: [24, 30, 31].includes(idx) ? 'coin' : 'sword' });
+    const survivor = orbAt(b, 0), image = survivor.querySelector('img'), portrait = image.dataset.portrait, source = image.src;
+    assert.equal(portrait, 'water_elemental');
+    [24,30,31].forEach(idx => r.tryExtendChain(idx)); r.resolveChain();
+    await until(() => r.state.hero.gold === 6);
+    const idx = r.state.board.findIndex(c => c.type === 'skull' && c.skull.uid === skull.uid);
+    assert.equal(orbAt(b, idx), survivor); assert.equal(survivor.querySelector('img'), image);
+    assert.equal(survivor.dataset.element, 'water'); assert.equal(image.dataset.portrait, portrait); assert.equal(image.src, source);
+    const before = orbGameplay(b); b.dom.window.__orbTest.finish(); assert.equal(orbGameplay(b), before);
+    await until(() => r.state.turn === 1 && !r.state.resolving);
+    assert.equal(survivor.querySelector('img'), image); assert.equal(image.src, source);
+    assert.equal(r.state.hero.gold, 6); assert.equal(r.state.chainCount, 1);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

@@ -122,3 +122,86 @@ async def list_raid_testers(settings, status: str, page: int) -> tuple[list, boo
         query['status'] = status
     rows = await settings.find(query).sort([('requested_at', -1), ('_id', 1)]).skip(page * 8).limit(9).to_list(length=9)
     return rows[:8], len(rows) > 8
+
+
+# Notification preferences are independent of admission and never contain saves.
+RAID_ANNOUNCEMENT_SETTING = 'raid_update_announcement_v1'
+
+
+def raid_tester_updates_enabled(doc: dict) -> bool:
+    # Existing testers are subscribed until they opt out. Invalid values fail
+    # closed; changing admission must never reset an explicit refusal.
+    return doc.get('update_notifications', True) is True
+
+
+async def set_raid_tester_updates(settings, user_id: int, enabled: bool) -> bool:
+    if type(enabled) is not bool:
+        raise ValueError('Неверная настройка уведомлений')
+    doc = await get_raid_tester(settings, user_id)
+    if doc is None:
+        return False
+    result = await settings.update_one(
+        {'_id': raid_tester_key(user_id), 'setting': RAID_TESTER_SETTING,
+         'owner_id': ADMIN_ID, 'user_id': user_id, 'chat_id': user_id},
+        {'$set': {'update_notifications': enabled}})
+    # Idempotent explicit on/off buttons, not a stale-message toggle. Do not
+    # increment the admission revision or create records for unknown senders.
+    return result.matched_count == 1
+
+
+async def raid_update_recipients(settings) -> list[int]:
+    query = {'setting': RAID_TESTER_SETTING, 'owner_id': ADMIN_ID, 'status': 'allowed',
+             '$or': [{'update_notifications': True}, {'update_notifications': {'$exists': False}}]}
+    recipients = []
+    async for doc in settings.find(query).sort('user_id', 1):
+        uid = doc.get('user_id')
+        if (type(uid) is int and 0 < uid < 2 ** 52 and uid != ADMIN_ID
+                and doc.get('_id') == raid_tester_key(uid) and doc.get('chat_id') == uid
+                and type(doc.get('revision')) is int and 0 <= doc['revision'] < 10 ** 9
+                and raid_tester_updates_enabled(doc)):
+            recipients.append(uid)
+    return recipients
+
+
+async def get_raid_announcement(settings) -> dict | None:
+    return await settings.find_one({'_id': f'{RAID_ANNOUNCEMENT_SETTING}:{ADMIN_ID}',
+                                    'setting': RAID_ANNOUNCEMENT_SETTING, 'chat_id': ADMIN_ID,
+                                    'owner_id': ADMIN_ID})
+
+
+async def claim_raid_announcement(settings, token: str, build: str, total: int) -> bool:
+    """Persist an at-most-once send claim BEFORE the first Telegram request.
+
+    Only the latest claim/report is retained. Drafts live in the owner's FSM;
+    callbacks also have to match that current draft, so an old button cannot
+    become valid again after a restart or a newer announcement.
+    """
+    from datetime import datetime, timezone
+    from pymongo.errors import DuplicateKeyError
+    import re
+    if (not re.fullmatch(r'[a-f0-9]{16}', token) or not re.fullmatch(r'[a-f0-9]{12}', build)
+            or type(total) is not int or total < 1):
+        raise ValueError('Неверный черновик объявления')
+    key = f'{RAID_ANNOUNCEMENT_SETTING}:{ADMIN_ID}'
+    try:
+        result = await settings.update_one({'_id': key, 'setting': RAID_ANNOUNCEMENT_SETTING,
+                                             'chat_id': ADMIN_ID, 'owner_id': ADMIN_ID, 'token': {'$ne': token}},
+            {'$setOnInsert': {'setting': RAID_ANNOUNCEMENT_SETTING, 'chat_id': ADMIN_ID, 'owner_id': ADMIN_ID},
+             '$set': {'token': token, 'build': build, 'status': 'sending', 'total': total,
+                      'sent': 0, 'unconfirmed': 0, 'skipped': 0, 'remaining': total,
+                      'started_at': datetime.now(timezone.utc)},
+             '$unset': {'finished_at': ''}}, upsert=True)
+        return result.modified_count == 1 or result.upserted_id is not None
+    except DuplicateKeyError:
+        return False  # This exact draft was already claimed, including pre-crash.
+
+
+async def finish_raid_announcement(settings, token: str, *, sent: int, unconfirmed: int,
+                                   skipped: int, remaining: int) -> None:
+    from datetime import datetime, timezone
+    await settings.update_one(
+        {'_id': f'{RAID_ANNOUNCEMENT_SETTING}:{ADMIN_ID}', 'setting': RAID_ANNOUNCEMENT_SETTING,
+         'owner_id': ADMIN_ID, 'chat_id': ADMIN_ID, 'token': token},
+        {'$set': {'status': 'complete' if remaining == 0 else 'interrupted',
+                  'sent': sent, 'unconfirmed': unconfirmed, 'skipped': skipped, 'remaining': remaining,
+                  'finished_at': datetime.now(timezone.utc)}})

@@ -832,12 +832,12 @@
     air: { title: 'Небесный разлом', element: 'Воздух', index: '02' },
     water: { title: 'Затопленный храм', element: 'Вода', index: '04' },
   };
-  const RAID_PORTRAITS = [
-    ['fire_spark', 'fire_crab', 'fire_demon', 'fire_dragon'],
-    ['air_spirit', 'air_storm', 'air_griffin', 'air_dragon'],
-    ['earth_golem', 'earth_ent', 'earth_worm', 'earth_crystal'],
-    ['water_elemental', 'water_octopus', 'water_angler', 'water_dragon'],
-  ];
+  const RAID_PORTRAITS = {
+    fire: ['fire_spark', 'fire_crab', 'fire_demon', 'fire_dragon'],
+    air: ['air_spirit', 'air_storm', 'air_griffin', 'air_dragon'],
+    earth: ['earth_golem', 'earth_ent', 'earth_worm', 'earth_crystal'],
+    water: ['water_elemental', 'water_octopus', 'water_angler', 'water_dragon'],
+  };
 
   // Hand-drawn interface glyphs. These replace presentation only: the original
   // skill/item objects (including saved icon strings), IDs and effects stay intact.
@@ -931,11 +931,17 @@
   let RAID_REGION = 'earth'; // Preference / preview for the NEXT run.
   let RUN_REGION = null; // Cosmetic snapshot, never part of combat state/RNG.
   function raidPortraitKey(skull) {
-    // Deterministic visual assignment only. No element is added to the enemy
-    // in combat; no distribution, damage, status, loot or RNG draw changes.
-    const family = Math.abs((skull.uid || 1) - 1) % 4;
-    const role = skull.boss ? 3 : skull.special ? 1 + Math.abs(skull.type || 0) % 2 : 0;
-    return RAID_PORTRAITS[family][role];
+    // Every ordinary enemy uses ONE common skin of the pinned run location,
+    // never a UID-selected element. This is appearance, not combat assignment.
+    const region = RUN_REGION || RAID_REGION, family = RAID_PORTRAITS[region];
+    if (skull.boss) return family[3];
+    if (!skull.special) return family[0];
+    const key = `${region}_special_${String(skull.type).padStart(2, '0')}`;
+    if (RAID_MONSTER_ART[key]) return key;
+    // WORK IN PROGRESS: some special types still need unique silhouettes.
+    // Keep unfinished types in this element, but do NOT call the 31-type set
+    // done. Exact coverage is in RAID_MONSTER_CATALOG and raid_monsters.json.
+    return family[1 + Math.abs(skull.type || 0) % 2];
   }
   function raidPortrait(skull) { return RAID_MONSTER_ART[raidPortraitKey(skull)] || SKULL_ART[skull.art] || ''; }
   function applyRaidRegion(region) {
@@ -2454,7 +2460,7 @@
   const ORB_ANIMATIONS = new Map();
 
   function orbElementIndex(cell, idx) {
-    if (cell?.type === 'skull') return Math.abs((cell.skull.uid || 1) - 1) % 4;
+    if (cell?.type === 'skull') return ORB_ELEMENT_ORDER.indexOf(RUN_REGION || RAID_REGION);
     if (!cell || !['sword', 'arrow'].includes(cell.type)) return 0;
     if (!ORB_ELEMENTS.has(cell)) {
       // Stable cosmetic hash, not any of the six gameplay streams. Cache by
@@ -2614,7 +2620,8 @@
       const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
-        + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '');
+        + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '')
+        + ' · ' + RAID_REGIONS[element].element + ' (внешность локации; бой классический)';
     } else {
       label = { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
       if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + ' (оформление; урон классический)';

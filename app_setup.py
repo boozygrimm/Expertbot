@@ -64,8 +64,12 @@ def configure_dispatcher() -> Dispatcher:
         await message.answer("👨‍💻 **Связь с владельцем:**\nПо всем вопросам пишите: @boozygrimm", parse_mode="Markdown")
 
     # Raid admission/launcher must precede broad FSM input handlers.
-    from handlers.owner_control_panel import open_raid_test
+    from handlers.owner_control_panel import open_raid_test, receive_raid_announcement, RaidAnnouncementInput
     dp.message.register(open_raid_test, Command('raid_test'))
+    # This owner's dedicated form must not reach a generic text/media handler.
+    # Commands still navigate normally (/raid_test above always escapes input).
+    dp.message.register(receive_raid_announcement, RaidAnnouncementInput.description,
+                        lambda message: not (message.text or '').startswith('/'))
 
     # Сначала ставим наш игровой штаб, чтобы он первым проверял команду /start alcbase
     dp.include_router(alc_base.router)

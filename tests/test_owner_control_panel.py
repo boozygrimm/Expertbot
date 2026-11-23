@@ -338,7 +338,8 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Локация закреплена', text)
         self.assertIn('Без рабочей игровой базы', text)
         self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
-        self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close', 'raid_access:list:pending:0'})
+        self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close',
+                                             'raid_access:list:pending:0', 'raid_announce:compose'})
 
     async def test_command_sends_web_app_and_clears_only_owner_private_input_without_db(self):
         class NoDatabase:
@@ -847,3 +848,464 @@ class RaidTesterAccessTests(unittest.IsolatedAsyncioTestCase):
         self.launcher(msg.answer.await_args.kwargs['reply_markup'])
         self.assertIsNone(msg.answer.await_args.kwargs['parse_mode'])
         self.assertEqual(await self.settings.count_documents({}), 1)
+
+
+class RaidUpdateAnnouncementTests(unittest.IsolatedAsyncioTestCase):
+    """The real FSM + durable notification metadata; Telegram itself is mocked."""
+
+    message = RaidTesterAccessTests.message
+    callback = RaidTesterAccessTests.callback
+    record = RaidTesterAccessTests.record
+
+    async def asyncSetUp(self):
+        from aiogram.fsm.context import FSMContext
+        from aiogram.fsm.storage.base import StorageKey
+        from aiogram.fsm.storage.memory import MemoryStorage
+        await RaidTesterAccessTests.asyncSetUp(self)
+        self.storage = MemoryStorage()
+        self.addAsyncCleanup(self.storage.close)
+        self.state = FSMContext(self.storage, StorageKey(bot_id=123456, chat_id=panel.ADMIN_ID, user_id=panel.ADMIN_ID))
+
+    async def allow(self, uid=None):
+        uid = self.uid if uid is None else uid
+        await owner_preferences.request_raid_tester(self.settings, uid, 'Тестер')
+        await owner_preferences.change_raid_tester(self.settings, uid, 0, 'allowed')
+        return uid
+
+    async def action(self, command, token=None, **context):
+        cb = self.callback('raid_announce:' + command + (':' + token if token else ''), **context)
+        await panel.raid_announcement_action(cb, self.state)
+        return cb
+
+    async def compose(self, description='Монстры одной стихии, исправлена читаемость.'):
+        await self.action('compose')
+        msg = self.message(panel.ADMIN_ID)
+        msg.text = description
+        await panel.receive_raid_announcement(msg, self.state)
+        self.preview = msg.answer.await_args
+        return (await self.state.get_data())['raid_announcement']
+
+    async def test_menu_role_split_and_preview_never_sends_a_real_announcement(self):
+        await self.allow()
+        owner_text, owner_markup = panel.raid_preview_content()
+        tester_text, tester_markup = panel.raid_preview_content(owner=False)
+        self.assertIn('raid_announce:compose', callbacks(owner_markup))
+        self.assertNotIn('raid_announce:compose', callbacks(tester_markup))
+        self.assertIn('raid_updates:preferences', callbacks(tester_markup))
+        draft = await self.compose('<b>не разметка</b>\nВторой пункт\x00\u202e')
+        self.assertEqual(draft['description'], '<b>не разметка</b>\nВторой пункт')
+        self.assertEqual(await self.state.get_state(), panel.RaidAnnouncementInput.preview.state)
+        self.assertIn('ещё не отправлено', self.preview.args[0])
+        self.assertIn(panel.raid_update_message(draft['description'], draft['build']), self.preview.args[0])
+        self.assertIsNone(self.preview.kwargs['parse_mode'])
+        self.assertIs(self.preview.kwargs['protect_content'], False)
+        self.assertLess(len(self.preview.args[0].encode('utf-16-le')) // 2, 4096)
+        for data in callbacks(self.preview.kwargs['reply_markup']):
+            self.assertLessEqual(len(data.encode()), 64)
+        self.bot.send_message.assert_not_awaited()
+        self.assertIsNone(await owner_preferences.get_raid_announcement(self.settings))
+
+    async def test_subscription_is_explicit_durable_self_only_and_independent_of_admission_revision(self):
+        await self.allow()
+        for _ in range(2):
+            cb = self.callback('raid_updates:off', self.uid)
+            await panel.raid_update_subscription(cb)
+            self.assertIn('выключены', cb.message.edit_text.await_args.args[0])
+        doc = await self.record()
+        self.assertFalse(owner_preferences.raid_tester_updates_enabled(doc))
+        self.assertEqual(doc['status'], 'allowed'); self.assertEqual(doc['revision'], 1)
+        await owner_preferences.change_raid_tester(self.settings, self.uid, 1, 'revoked')
+        cb = self.callback('raid_updates:preferences', self.uid)
+        await panel.raid_update_subscription(cb)
+        self.assertNotIn('raid_access:open', callbacks(cb.message.edit_text.await_args.kwargs['reply_markup']))
+        await owner_preferences.change_raid_tester(self.settings, self.uid, 2, 'allowed')
+        msg = self.message(); await panel.open_raid_test(msg, self.state)
+        markup = msg.answer.await_args.kwargs['reply_markup']
+        self.assertTrue(any('выключены' in b.text for row in markup.inline_keyboard for b in row))
+        self.assertFalse((await self.record())['update_notifications'], 're-admission never opts back in')
+        cb = self.callback('raid_updates:on', self.uid)
+        await panel.raid_update_subscription(cb)
+        self.assertTrue((await self.record())['update_notifications'])
+        self.assertEqual((await self.record())['revision'], 3)
+        self.assertEqual(await self.settings.count_documents({}), 1)
+
+    async def test_unknown_or_forged_subscription_buttons_never_create_records_or_reach_game_data(self):
+        for data in ('raid_updates:off:123', 'raid_updates:toggle', 'raid_updates:'):
+            cb = self.callback(data, self.uid)
+            with patch.object(panel, 'db', None):
+                await panel.raid_update_subscription(cb)
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        for uid, chat, kind in ((panel.ADMIN_ID, panel.ADMIN_ID, 'private'),
+                                (self.uid, panel.ADMIN_ID, 'private'), (self.uid, -1001, 'supergroup')):
+            cb = self.callback('raid_updates:off', uid, chat, kind)
+            with patch.object(panel, 'db', None):
+                await panel.raid_update_subscription(cb)
+            cb.message.edit_text.assert_not_awaited()
+        cb = self.callback('raid_updates:off', self.uid)
+        await panel.raid_update_subscription(cb)
+        self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.assertEqual(await self.settings.count_documents({}), 0)
+        self.bot.send_message.assert_not_awaited()
+        for shape in ('missing', 'bot', 'inline'):
+            cb = self.callback('raid_updates:off', self.uid)
+            if shape == 'missing': cb.from_user = None
+            elif shape == 'bot': cb.from_user.is_bot = True
+            else: cb.message = None
+            with patch.object(panel, 'db', None):
+                await panel.raid_update_subscription(cb)
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+
+    async def test_roster_excludes_pending_denied_revoked_opt_out_and_malformed_metadata(self):
+        await self.allow()
+        for n, status in enumerate(('pending', 'denied', 'revoked', 'allowed'), 1):
+            uid = self.uid + n
+            await owner_preferences.request_raid_tester(self.settings, uid, status)
+            await self.settings.update_one({'user_id': uid}, {'$set': {'status': status}})
+            if status == 'allowed': await owner_preferences.set_raid_tester_updates(self.settings, uid, False)
+        for n, value in enumerate((1, 'true', None, {}, []), 10):
+            uid = await self.allow(self.uid + n)
+            await self.settings.update_one({'user_id': uid}, {'$set': {'update_notifications': value}})
+        uid = await self.allow(self.uid + 30)
+        await self.settings.update_one({'user_id': uid}, {'$set': {'chat_id': -123}})
+        uid = await self.allow(self.uid + 31)
+        await self.settings.update_one({'user_id': uid}, {'$set': {'revision': True}})
+        self.assertEqual(await owner_preferences.raid_update_recipients(self.settings), [self.uid])
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_only_owner_own_private_human_can_compose_preview_cancel_edit_or_send(self):
+        class NoState:
+            def __getattr__(self, key): raise AssertionError('unauthorized state access: ' + key)
+        for action in ('compose', 'preview:'+'a'*16, 'edit:'+'a'*16, 'cancel:'+'a'*16, 'send:'+'a'*16):
+            for uid, chat, kind in ((self.uid, self.uid, 'private'), (panel.ADMIN_ID, self.uid, 'private'),
+                                    (panel.ADMIN_ID, -1001, 'supergroup')):
+                cb = self.callback('raid_announce:' + action, uid, chat, kind)
+                with patch.object(panel, 'db', None):
+                    await panel.raid_announcement_action(cb, NoState())
+                self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+                cb.message.edit_text.assert_not_awaited()
+        for shape in ('missing', 'bot', 'inline'):
+            cb = self.callback('raid_announce:compose')
+            if shape == 'missing': cb.from_user = None
+            elif shape == 'bot': cb.from_user.is_bot = True
+            else: cb.message = None
+            with patch.object(panel, 'db', None):
+                await panel.raid_announcement_action(cb, NoState())
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_short_text_validation_media_and_utf16_limits_preserve_the_input(self):
+        await self.action('compose')
+        for value in (None, '', '  \x00\u202e  ', 'я'*701, '😀'*351):
+            msg = self.message(panel.ADMIN_ID); msg.text = value
+            await panel.receive_raid_announcement(msg, self.state)
+            self.assertEqual(await self.state.get_state(), panel.RaidAnnouncementInput.description.state)
+            self.assertIn('Нужен текст', msg.answer.await_args.args[0])
+        msg = self.message(panel.ADMIN_ID); msg.text = '😀'*350
+        await panel.receive_raid_announcement(msg, self.state)
+        self.assertEqual(await self.state.get_state(), panel.RaidAnnouncementInput.preview.state)
+        self.assertLess(len(msg.answer.await_args.args[0].encode('utf-16-le'))//2, 4096)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_empty_roster_has_no_send_button_and_forged_send_cannot_claim_then_refresh_can_show_new_tester(self):
+        draft = await self.compose()
+        self.assertNotIn('raid_announce:send:'+draft['token'], callbacks(self.preview.kwargs['reply_markup']))
+        cb = await self.action('send', draft['token'])
+        self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.assertIsNone(await owner_preferences.get_raid_announcement(self.settings))
+        await self.allow()
+        cb = await self.action('preview', draft['token'])
+        self.assertIn('raid_announce:send:'+draft['token'], callbacks(cb.message.edit_text.await_args.kwargs['reply_markup']))
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_send_rechecks_roster_uses_fixed_build_web_app_and_has_no_owner_controls(self):
+        from urllib.parse import parse_qs, urlsplit
+        await self.allow(); second = await self.allow(self.uid + 1)
+        draft = await self.compose()
+        # Change AFTER preview, but before explicit send.
+        await owner_preferences.set_raid_tester_updates(self.settings, second, False)
+        cb = await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        call = self.bot.send_message.await_args
+        self.assertEqual(call.args[:2], (self.uid, panel.raid_update_message(draft['description'], draft['build'])))
+        self.assertIsNone(call.kwargs['parse_mode']); self.assertIs(call.kwargs['protect_content'], False)
+        markup = call.kwargs['reply_markup']
+        self.assertEqual(callbacks(markup), {'raid_updates:off'})
+        url = urlsplit(markup.inline_keyboard[0][0].web_app.url)
+        self.assertEqual((url.scheme,url.netloc,url.path), ('https','boozygrimm.github.io','/Expertbot/lunapark-raid-magitech.html'))
+        self.assertEqual(parse_qs(url.query), {'telegram':['1'],'build':[draft['build']]})
+        self.assertIsNone(await self.state.get_state()); self.assertEqual(await self.state.get_data(), {})
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual((report['sent'],report['unconfirmed'],report['skipped'],report['remaining']), (1,0,0,0))
+        self.assertIn('Доставлено: 1', cb.message.edit_text.await_args.args[0])
+        self.assertEqual(await self.settings.count_documents({'setting':owner_preferences.RAID_ANNOUNCEMENT_SETTING}), 1)
+
+    async def test_simultaneous_double_click_and_stale_callbacks_send_at_most_once(self):
+        import asyncio
+        await self.allow(); draft = await self.compose()
+        await asyncio.gather(self.action('send', draft['token']), self.action('send', draft['token']))
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual(report['token'], draft['token']); self.assertEqual(report['sent'], 1)
+        self.assertFalse(panel._raid_broadcast_lock.locked())
+
+    async def test_edit_replaces_nonce_and_stale_send_or_cancel_cannot_consume_a_new_form(self):
+        await self.allow(); old = await self.compose()
+        await self.action('edit', old['token'])
+        new = (await self.state.get_data())['raid_announcement']
+        self.assertNotEqual(old['token'], new['token'])
+        for cmd in ('send','cancel','preview','edit'):
+            await self.action(cmd, old['token'])
+            self.assertEqual((await self.state.get_data())['raid_announcement'], new)
+            self.assertEqual(await self.state.get_state(), panel.RaidAnnouncementInput.description.state)
+        await self.action('cancel', new['token'])
+        self.assertIsNone(await self.state.get_state())
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_test_menu_and_root_command_cancel_draft_without_sending(self):
+        await self.allow(); draft = await self.compose()
+        cb = self.callback('owner_panel:raid_test')
+        await panel.control_action(cb, self.state)
+        await self.action('send', draft['token'])
+        draft = await self.compose()
+        await panel.open_raid_test(self.message(panel.ADMIN_ID), self.state)
+        await self.action('send', draft['token'])
+        self.assertIsNone(await self.state.get_state()); self.bot.send_message.assert_not_awaited()
+
+    async def test_missing_changed_build_or_malformed_callback_never_claims_or_sends(self):
+        await self.allow(); draft = await self.compose()
+        for build in ('', '0'*12):
+            with patch.object(panel, 'raid_build_id', return_value=build):
+                cb = await self.action('send', draft['token'])
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        for action in ('send', 'send:xyz', 'send:'+'a'*17, 'send:'+draft['token']+':extra', 'unknown'):
+            cb = self.callback('raid_announce:'+action)
+            with patch.object(panel, 'db', None): await panel.raid_announcement_action(cb, self.state)
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        with patch.object(panel, 'raid_build_id', return_value=''):
+            cb = await self.action('compose')
+        self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.assertEqual((await self.state.get_data())['raid_announcement'], draft)
+        self.assertIsNone(await owner_preferences.get_raid_announcement(self.settings))
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_each_recipient_is_rechecked_after_previous_send_and_new_grants_do_not_join_running_batch(self):
+        first = await self.allow(); second = await self.allow(self.uid+1); third = await self.allow(self.uid+2)
+        draft = await self.compose()
+        async def sent(uid, *args, **kwargs):
+            self.assertEqual(uid, first)
+            await owner_preferences.set_raid_tester_updates(self.settings, second, False)
+            await owner_preferences.change_raid_tester(self.settings, third, 1, 'revoked')
+            await self.allow(self.uid+3)
+        self.bot.send_message.side_effect = sent
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual((report['sent'],report['skipped'],report['remaining']), (1,2,0))
+        self.assertEqual((await self.record(second))['status'], 'allowed')
+
+    async def test_delivery_errors_are_counted_without_retries_or_resetting_subscriptions(self):
+        await self.allow(); await self.allow(self.uid+1)
+        draft = await self.compose()
+        self.bot.send_message.side_effect = [TimeoutError('unknown result'), True]
+        cb = await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 2)
+        self.assertEqual([c.args[0] for c in self.bot.send_message.await_args_list], [self.uid,self.uid+1])
+        self.assertIn('Доставка не подтверждена: 1', cb.message.edit_text.await_args.args[0])
+        self.assertTrue(owner_preferences.raid_tester_updates_enabled(await self.record()))
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual((report['sent'],report['unconfirmed'],report['remaining']), (1,1,0))
+
+    async def test_roster_storage_error_fails_closed_before_any_claim_or_delivery(self):
+        await self.allow(); draft = await self.compose()
+        with patch.object(owner_preferences, 'raid_update_recipients', AsyncMock(side_effect=RuntimeError('DB offline'))):
+            await self.action('send', draft['token'])
+        self.assertIsNone(await owner_preferences.get_raid_announcement(self.settings))
+        self.bot.send_message.assert_not_awaited()
+        self.assertEqual(await self.state.get_state(), panel.RaidAnnouncementInput.preview.state)
+
+    async def test_mid_batch_access_storage_error_stops_remaining_recipients_without_automatic_resume(self):
+        await self.allow(); await self.allow(self.uid+1); draft = await self.compose()
+        original = owner_preferences.get_raid_tester
+        async def access(settings, uid):
+            if uid == self.uid+1: raise RuntimeError('DB offline')
+            return await original(settings, uid)
+        with patch.object(owner_preferences, 'get_raid_tester', side_effect=access):
+            await self.action('send', draft['token'])
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual((report['status'],report['sent'],report['remaining']), ('interrupted',1,1))
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        cb = await self.action('compose')
+        self.assertIn('часть сообщений могла дойти', cb.message.edit_text.await_args.args[0])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+
+    async def test_durable_claim_has_single_winner_and_does_not_collide_with_settings_index(self):
+        import asyncio
+        build = panel.raid_build_id(); token = 'a'*16
+        claims = await asyncio.gather(*(owner_preferences.claim_raid_announcement(self.settings,token,build,3) for _ in range(9)))
+        self.assertEqual(sum(claims), 1)
+        await self.allow(); await owner_preferences.migrate(self.settings)
+        self.assertTrue(await owner_preferences.claim_raid_announcement(self.settings, 'b'*16, build, 2))
+        self.assertFalse(await owner_preferences.claim_raid_announcement(self.settings, 'b'*16, build, 2))
+        self.assertEqual(await self.settings.count_documents({'setting':owner_preferences.RAID_ANNOUNCEMENT_SETTING}), 1)
+        self.assertEqual(await self.settings.count_documents({}), 3)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_precrash_claim_blocks_a_rehydrated_confirmation_even_if_state_consumption_failed(self):
+        await self.allow(); draft = await self.compose()
+        self.assertTrue(await owner_preferences.claim_raid_announcement(self.settings,draft['token'],draft['build'],1))
+        await self.action('send', draft['token'])
+        self.bot.send_message.assert_not_awaited()
+        self.assertEqual((await owner_preferences.get_raid_announcement(self.settings))['status'], 'sending')
+
+    async def test_state_consumption_failure_after_claim_can_never_send_on_repeat(self):
+        await self.allow(); draft = await self.compose()
+        with patch.object(self.state, 'clear', AsyncMock(side_effect=RuntimeError('FSM offline'))):
+            await self.action('send', draft['token'])
+        self.assertFalse(panel._raid_broadcast_lock.locked())
+        await self.action('send', draft['token'])
+        self.bot.send_message.assert_not_awaited()
+        self.assertEqual((await owner_preferences.get_raid_announcement(self.settings))['token'],draft['token'])
+
+    async def test_cancellation_preserves_unknown_result_and_releases_send_lock(self):
+        import asyncio
+        await self.allow(); draft = await self.compose(); started = asyncio.Event()
+        async def never_returns(*args, **kwargs):
+            started.set(); await asyncio.Event().wait()
+        self.bot.send_message.side_effect = never_returns
+        task = asyncio.create_task(self.action('send', draft['token']))
+        await asyncio.wait_for(started.wait(), 2)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError): await task
+        self.assertFalse(panel._raid_broadcast_lock.locked())
+        report = await owner_preferences.get_raid_announcement(self.settings)
+        self.assertEqual((report['status'],report['sent'],report['remaining']), ('interrupted',0,1))
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+
+    async def test_acknowledgement_and_final_report_failures_cannot_repeat_the_delivery(self):
+        await self.allow(); draft = await self.compose()
+        cb = self.callback('raid_announce:send:'+draft['token'])
+        cb.answer.side_effect = RuntimeError('Telegram UI unavailable')
+        cb.message.edit_text.side_effect = RuntimeError('Telegram UI unavailable')
+        await panel.raid_announcement_action(cb, self.state)
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        self.assertEqual((await owner_preferences.get_raid_announcement(self.settings))['sent'],1)
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+
+    async def test_restart_loses_draft_but_preserves_refusal_and_send_report(self):
+        from aiogram.fsm.context import FSMContext
+        from aiogram.fsm.storage.memory import MemoryStorage
+        await self.allow(); other = await self.allow(self.uid+1)
+        await owner_preferences.set_raid_tester_updates(self.settings, other, False)
+        draft = await self.compose(); await self.action('send', draft['token'])
+        new_storage = MemoryStorage(); self.addAsyncCleanup(new_storage.close)
+        self.state = FSMContext(new_storage, self.state.key)
+        await self.action('send', draft['token'])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        self.assertFalse(owner_preferences.raid_tester_updates_enabled(await self.record(other)))
+        cb = await self.action('compose')
+        self.assertIn('Последний итог: доставлено 1', cb.message.edit_text.await_args.args[0])
+        self.assertEqual(self.bot.send_message.await_count, 1)
+
+    async def test_unrelated_form_or_foreign_text_never_becomes_an_announcement(self):
+        await self.state.set_state('OtherForm:waiting'); await self.state.set_data({'sentinel': 42})
+        msg = self.message(panel.ADMIN_ID); msg.text = 'Обычный разговор'
+        await panel.receive_raid_announcement(msg, self.state)
+        self.assertEqual(await self.state.get_data(), {'sentinel':42}); msg.answer.assert_not_awaited()
+        await self.action('compose')
+        before = await self.state.get_data()
+        msg = self.message(); msg.text = 'Чужой текст'
+        await panel.receive_raid_announcement(msg, self.state)
+        self.assertEqual(await self.state.get_data(), before); msg.answer.assert_not_awaited()
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_real_root_dispatcher_composer_media_rejection_send_and_self_opt_out(self):
+        import subprocess
+        import sys
+        script = r'''
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from aiogram import Bot
+from aiogram.methods import SendMessage, EditMessageText, GetMe
+from aiogram.types import Update, User
+from mongomock_motor import AsyncMongoMockClient
+from app_setup import configure_dispatcher
+from config import ADMIN_ID
+from handlers import owner_control_panel as panel, owner_tools_panel as tools, alc_intro, auth, logger
+
+class NoDatabase:
+    def __getattr__(self, name): raise AssertionError('Unexpected database access: '+name)
+
+async def run():
+    settings = AsyncMongoMockClient().raid.settings
+    await settings.create_index([('setting',1),('chat_id',1)],unique=True)
+    uid = ADMIN_ID+101
+    await panel.owner_preferences.request_raid_tester(settings,uid,'Tester')
+    await panel.owner_preferences.change_raid_tester(settings,uid,0,'allowed')
+    bot = Bot('123456:TESTTOKEN'); dp = configure_dispatcher(); sent = []; seq = 0
+    owner = {'id':ADMIN_ID,'is_bot':False,'first_name':'Owner'}
+    tester = dict(owner,id=uid,first_name='Tester')
+    async def request(bot_arg, method, **kwargs):
+        if isinstance(method,GetMe): return User(id=bot.id,is_bot=True,first_name='Bot',username='test_bot')
+        sent.append(method); return True
+    async def update(user, *, text=None, data=None, photo=False):
+        nonlocal seq
+        seq += 1
+        message = {'message_id':seq,'date':1760000000,'chat':{'id':user['id'],'type':'private'},'from':user}
+        if data:
+            message['from'] = {'id':bot.id,'is_bot':True,'first_name':'Bot'}; message['text']='Panel'
+            body = {'callback_query':{'id':str(seq),'chat_instance':'test','from':user,'data':data,'message':message}}
+        else:
+            if photo: message['photo']=[{'file_id':'p','file_unique_id':'u','width':128,'height':128}]
+            else: message['text']=text
+            body = {'message':message}
+        await asyncio.wait_for(dp.feed_update(bot,Update.model_validate({'update_id':seq,**body})),4)
+    try:
+        with patch.object(panel,'db',SimpleNamespace(settings=settings)), patch.object(tools,'db',NoDatabase()), \
+             patch.object(logger,'db',NoDatabase()), \
+             patch.object(auth,'db',SimpleNamespace(auth_chats=SimpleNamespace(find_one=AsyncMock(return_value={'status':'approved'})))), \
+             patch.object(alc_intro,'get_intro_session',AsyncMock(side_effect=AssertionError('composer reached broad intro'))), \
+             patch.object(bot.session,'make_request',AsyncMock(side_effect=request)):
+            context = dp.fsm.get_context(bot=bot,chat_id=ADMIN_ID,user_id=ADMIN_ID)
+            await context.set_state(tools.OwnerInput.waiting)
+            await update(owner,data='raid_announce:compose')
+            assert await context.get_state() == panel.RaidAnnouncementInput.description.state
+            await update(owner,photo=True)
+            assert await context.get_state() == panel.RaidAnnouncementInput.description.state
+            assert any(isinstance(m,SendMessage) and 'Нужен текст' in m.text for m in sent)
+            # Root /raid_test must still escape the new form.
+            await update(owner,text='/raid_test')
+            assert await context.get_state() is None
+            await update(owner,data='raid_announce:compose')
+            await update(owner,text='<b>Обновили тест</b>')
+            assert await context.get_state() == panel.RaidAnnouncementInput.preview.state
+            draft = (await context.get_data())['raid_announcement']
+            assert not any(isinstance(m,SendMessage) and m.chat_id == uid for m in sent)
+            await update(owner,data='raid_announce:send:'+draft['token'])
+            deliveries = [m for m in sent if isinstance(m,SendMessage) and m.chat_id == uid]
+            assert len(deliveries) == 1 and deliveries[0].parse_mode is None
+            assert deliveries[0].reply_markup.inline_keyboard[0][0].web_app
+            assert deliveries[0].reply_markup.inline_keyboard[1][0].callback_data == 'raid_updates:off'
+            await update(owner,data='raid_announce:send:'+draft['token'])
+            assert len([m for m in sent if isinstance(m,SendMessage) and m.chat_id == uid]) == 1
+            tester_context = dp.fsm.get_context(bot=bot,chat_id=uid,user_id=uid)
+            await tester_context.set_state(tools.OwnerInput.waiting)
+            await update(tester,data='raid_updates:off')
+            doc = await panel.owner_preferences.get_raid_tester(settings,uid)
+            assert doc['status'] == 'allowed' and doc['update_notifications'] is False
+            assert await tester_context.get_state() == tools.OwnerInput.waiting.state
+            await update(tester,data='raid_announce:compose')
+            assert await tester_context.get_state() == tools.OwnerInput.waiting.state
+            await update(tester,text='/raid_test')
+            launch = [m for m in sent if isinstance(m,SendMessage) and m.chat_id == uid][-1]
+            assert any('выключены' in b.text for row in launch.reply_markup.inline_keyboard for b in row)
+    finally:
+        await dp.storage.close(); await bot.session.close()
+asyncio.run(run())
+'''
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=40)
+        self.assertEqual(result.returncode, 0, result.stderr)
