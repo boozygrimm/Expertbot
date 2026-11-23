@@ -2058,7 +2058,7 @@ test('magitech fork: redesigned reward glyphs, details and character view do not
     b.raid.state.hero.gold = 100; b.raid.checkGoldBox();
     const art = [...doc.querySelectorAll('button.shop-item .shop-icon .equipment-glyph')];
     assert.equal(art.length, 3);
-    for (const node of art) assert.ok(node.tagName.toLowerCase() === 'svg' || (node.tagName === 'IMG' && node.dataset.weaponArt === 'techno-blade-v1'));
+    for (const node of art) assert.ok(node.tagName.toLowerCase() === 'svg' || (node.tagName === 'IMG' && /^techno-(rusted-blade|sabre|mace|hammer|axe|guard-blade)-v2$/.test(node.dataset.weaponArt) && node.dataset.weaponKey));
     const before = JSON.stringify(b.raid.state), details = doc.querySelector('.reward-details-toggle');
     assert.equal(details.getAttribute('aria-expanded'), 'false');
     details.click(); doc.querySelector('.shop-summary-toggle').click();
@@ -2235,7 +2235,8 @@ test('magitech orbs: every category is a circular animated glass orb; enemies sh
     }
     assert.equal(orbAt(b, 0).querySelector('.skull-badge').textContent, `0·${skull.def}·24`);
     assert.equal(orbAt(b, 0).querySelector('.orb-countdown').textContent, '5');
-    assert.ok(doc.querySelector('.type-sword .orb-sigil path')); assert.ok(doc.querySelector('.type-arrow .orb-sigil path'));
+    assert.ok(doc.querySelector('.type-sword .orb-fog-wisp')); assert.ok(doc.querySelector('.type-arrow .orb-fog-wisp'));
+    assert.equal(doc.querySelector('.orb-sigil'), null, 'elemental haze replaces the old corner badges');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -2406,67 +2407,157 @@ test('magitech orbs: shuffle and an interrupted second move preserve every orb; 
   } finally { b.dom.window.close(); }
 });
 
-// The field and shop must never drift into separate weapon illustrations.
-test('magitech quiet art: board and shop use the same transparent techno-fantasy weapon texture, including after purchase and Continue', async () => {
+// A shop offer and the currently worn item are different things. They share
+// one item-aware renderer, not one universal image for the whole catalogue.
+const weaponView = image => ({
+  src: image.getAttribute('src'), art: image.dataset.weaponArt, key: image.dataset.weaponKey,
+  finish: image.style.getPropertyValue('--weapon-finish'),
+});
+function assertWeaponAlpha(texture) {
+  assert.match(texture, /^data:image\/webp;base64,/);
+  const bytes = Buffer.from(texture.split(',')[1], 'base64');
+  assert.equal(bytes.toString('ascii', 0, 4), 'RIFF'); assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+  assert.equal(bytes.toString('ascii', 12, 16), 'VP8X'); assert.ok(bytes[20] & 0x10, 'real alpha, not a painted background');
+}
+function showWeaponOffers(b, weapon) {
+  const r = b.raid;
+  r.state.pendingModal = 'gold'; r.state.menuCandidates = [weapon, r.makeItem('helmet'), r.makeItem('shield')];
+  assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+}
+
+test('magitech quiet art: an offer does not repaint worn swords; buying it updates the same images and Continue restores the bought weapon', async () => {
   let b = await orbFixture();
   try {
     let r = b.raid;
     showOrbFixture(b, idx => ({ type: 'sword', ...(idx === 1 ? { magicSword: true } : {}) }));
-    const offers = ['weapon', 'helmet', 'shield'].map(slot => r.makeItem(slot));
-    r.state.pendingModal = 'gold'; r.state.menuCandidates = offers;
-    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    const mace = Object.assign(r.makeItem('weapon'), { suffixIndex: 2, appearance: 37, name: 'Тяжёлая булава «Искра»' });
+    showWeaponOffers(b, mace);
     let doc = b.dom.window.document;
+    const worn = weaponView(orbAt(b, 0).querySelector('.weapon-texture'));
+    const offered = weaponView(doc.querySelector('.shop-item[data-slot="weapon"] .weapon-texture'));
+    assert.equal(worn.art, 'techno-rusted-blade-v2'); assert.equal(offered.art, 'techno-mace-v2');
+    assert.notEqual(worn.src, offered.src); assertWeaponAlpha(worn.src); assertWeaponAlpha(offered.src);
     const before = JSON.stringify(r.state), rng = JSON.stringify(r.state.rngSeeds);
-    const orb = orbAt(b, 0), image = orb.querySelector('.weapon-texture');
-    const texture = image.getAttribute('src');
-    assert.match(texture, /^data:image\/webp;base64,/);
-    const bytes = Buffer.from(texture.split(',')[1], 'base64');
-    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF'); assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
-    assert.equal(bytes.toString('ascii', 12, 16), 'VP8X'); assert.ok(bytes[20] & 0x10, 'real alpha, not a painted checkerboard background');
-    assert.deepEqual([...new Set([...doc.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element))].sort(), ['air','earth','fire','water']);
-    for (const blade of doc.querySelectorAll('.type-sword .weapon-texture,.shop-item[data-slot="weapon"] .weapon-texture')) {
-      assert.equal(blade.getAttribute('src'), texture); assert.equal(blade.dataset.weaponArt, 'techno-blade-v1');
-      assert.equal(blade.draggable, false); assert.equal(blade.alt, '');
-    }
-    assert.equal(doc.querySelectorAll('.type-sword .weapon-texture').length, 36);
-    assert.equal(doc.querySelectorAll('.shop-item[data-slot="weapon"] .weapon-texture').length, 1);
-    assert.equal(doc.querySelector('.type-sword svg.ic'), null, 'the rejected short SVG sword is gone');
-    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
-    assert.equal(JSON.stringify(r.state), before, 'reading art and opening details cannot assign weapon stats or elements');
-    const damage = r.state.hero.weaponDamage;
-    doc.querySelector('.shop-item[data-slot="weapon"]').click();
-    await until(() => !r.state.pendingModal && !r.state.resolving);
-    assert.ok(r.state.hero.weaponDamage > damage); assert.equal(JSON.stringify(r.state.rngSeeds), rng, 'art must not add a draw to the real purchase');
-    assert.equal(orbAt(b, 0), orb); assert.equal(orbAt(b, 0).querySelector('.weapon-texture'), image);
-    assert.equal(image.getAttribute('src'), texture);
-    const board = JSON.stringify(r.state.board), gear = JSON.stringify(r.state.equipment), palettes = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).orbElements;
+    doc.querySelector('.reward-details-toggle').click(); doc.querySelector('.shop-summary-toggle').click();
+    doc.querySelector('.shop-summary-toggle').click(); doc.querySelector('.reward-details-toggle').click();
+    assert.equal(JSON.stringify(r.state), before, 'preview/details cannot equip an offered item');
+    assert.deepEqual(weaponView(orbAt(b, 0).querySelector('.weapon-texture')), worn);
+    const pending = JSON.stringify(r.state.menuCandidates), oldEquipment = JSON.stringify(r.state.equipment);
+    // Continue BEFORE buying must keep the old worn image and the distinct offer.
     b = await reopenMagitech(b); r = b.raid; doc = b.dom.window.document;
     doc.querySelector('#picker-resume').click();
-    assert.equal(JSON.stringify(r.state.board), board); assert.equal(JSON.stringify(r.state.equipment), gear);
-    assert.equal(orbAt(b, 0).querySelector('.weapon-texture').getAttribute('src'), texture);
+    assert.equal(JSON.stringify(r.state.menuCandidates), pending); assert.equal(JSON.stringify(r.state.equipment), oldEquipment);
     assert.equal(JSON.stringify(r.state.rngSeeds), rng);
+    assert.deepEqual(weaponView(orbAt(b, 0).querySelector('.weapon-texture')), worn);
+    assert.deepEqual(weaponView(doc.querySelector('.shop-item[data-slot="weapon"] .weapon-texture')), offered);
+    const nodes = Array.from({ length: 36 }, (_, i) => ({ orb: orbAt(b, i), image: orbAt(b, i).querySelector('.weapon-texture'), fog: orbAt(b, i).querySelector('.orb-fog') }));
+    const elements = nodes.map(n => n.orb.dataset.element), damage = r.state.hero.weaponDamage;
+    assert.deepEqual([...new Set(elements)].sort(), ['air','earth','fire','water']);
+    doc.querySelector('.shop-item[data-slot="weapon"]').click();
+    await until(() => !r.state.pendingModal && !r.state.resolving);
+    assert.ok(r.state.hero.weaponDamage > damage); assert.equal(JSON.stringify(r.state.rngSeeds), rng, 'item art cannot add a purchase RNG draw');
+    nodes.forEach(({ orb, image, fog }, idx) => {
+      assert.equal(orbAt(b, idx), orb); assert.equal(orb.querySelector('.weapon-texture'), image); assert.equal(orb.querySelector('.orb-fog'), fog);
+      assert.equal(orb.dataset.element, elements[idx]); assert.deepEqual(weaponView(image), offered);
+      assert.equal(image.draggable, false); assert.equal(image.alt, ''); assert.equal(image.getAttribute('aria-hidden'), 'true');
+    });
+    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
+    assert.equal(doc.querySelectorAll('.orb-burst,[data-motion],.primed').length, 0, 'buying gear is not a new orb or fall');
+    const board = JSON.stringify(r.state.board), gear = JSON.stringify(r.state.equipment), palettes = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).orbElements;
+    b = await reopenMagitech(b); r = b.raid; doc = b.dom.window.document; doc.querySelector('#picker-resume').click();
+    assert.equal(JSON.stringify(r.state.board), board); assert.equal(JSON.stringify(r.state.equipment), gear); assert.equal(JSON.stringify(r.state.rngSeeds), rng);
     assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).orbElements, palettes);
+    for (const image of doc.querySelectorAll('.type-sword .weapon-texture')) assert.deepEqual(weaponView(image), offered);
+    assert.equal(doc.querySelectorAll('.cell > .raid-orb').length, 36); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech quiet art: worn weapon upgrades and other-slot purchases preserve its model, finish, broken/frozen/magic overlays and RNG', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid;
+    const axe = Object.assign(r.makeItem('weapon'), { suffixIndex: 4, appearance: 73, name: 'Топор палача «Дозор»' });
+    r.equipItem(axe);
+    showOrbFixture(b, idx => ({ type: 'sword', ...(idx === 0 ? { broken: true, frozen: true } : idx === 1 ? { magicSword: true } : {}) }));
+    r.state.pendingModal = 'armor'; r.state.menuCandidates = ['weapon','helmet','armour','shield'].map(slot => r.makeUpgradeOffer(slot));
+    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    const doc = b.dom.window.document, image = orbAt(b, 0).querySelector('.weapon-texture'), art = weaponView(image);
+    assert.equal(art.art, 'techno-axe-v2'); assertWeaponAlpha(art.src);
+    assert.deepEqual(weaponView(doc.querySelector('.lv-card[data-slot="weapon"] .weapon-texture')), art);
+    assert.deepEqual(weaponView(orbAt(b, 1).querySelector('.weapon-texture')), art);
+    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
+    assert.equal(b.dom.window.getComputedStyle(image).opacity, '0.45');
+    for (const wisp of orbAt(b, 0).querySelectorAll('.orb-fog-wisp')) assert.equal(b.dom.window.getComputedStyle(wisp).animationPlayState, 'paused');
+    assert.equal(r.canChainSelect(0), false);
+    const before = JSON.stringify(r.state), rng = JSON.stringify(r.state.rngSeeds), original = orbAt(b, 0), fog = original.querySelector('.orb-fog');
+    doc.querySelector('.reward-details-toggle').click(); doc.querySelector('.shop-summary-toggle').click();
+    assert.equal(JSON.stringify(r.state), before); doc.querySelector('.shop-summary-toggle').click();
+    const offer = r.state.menuCandidates.find(o => o.slot === 'weapon'), oldValue = r.state.equipment[0].mods[offer.key] || 0;
+    doc.querySelector('.lv-card[data-slot="weapon"]').click(); await until(() => !r.state.pendingModal);
+    assert.equal(r.state.equipment[0].mods[offer.key], oldValue + offer.value); assert.equal(r.state.equipment[0].appearance, 73);
+    assert.equal(JSON.stringify(r.state.rngSeeds), rng); assert.equal(orbAt(b, 0), original); assert.equal(original.querySelector('.weapon-texture'), image); assert.equal(original.querySelector('.orb-fog'), fog);
+    assert.deepEqual(weaponView(image), art); assert.ok(original.classList.contains('broken') && original.classList.contains('frozen'));
+    // A real non-weapon purchase must not repaint the worn axe either.
+    r.state.pendingModal = 'gold'; r.state.menuCandidates = ['helmet','shield','accessory'].map(slot => r.makeItem(slot));
+    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    const current = orbAt(b, 1), currentImage = current.querySelector('.weapon-texture'), nextRng = JSON.stringify(r.state.rngSeeds);
+    doc.querySelector('.shop-item[data-slot="helmet"]').click(); await until(() => !r.state.pendingModal);
+    assert.equal(orbAt(b, 1), current); assert.equal(current.querySelector('.weapon-texture'), currentImage);
+    assert.deepEqual(weaponView(currentImage), art); assert.equal(JSON.stringify(r.state.rngSeeds), nextRng);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
-test('magitech quiet art: the worn weapon upgrade reuses board art; broken, frozen and magic overlays retain the same texture', async () => {
+test('magitech weapon catalogue: all six existing weapon names have distinct art; seven actual purchases update every sword in place, including a same-model finish change', async () => {
   const b = await orbFixture();
   try {
-    const r = b.raid;
-    showOrbFixture(b, idx => ({ type: 'sword', ...(idx === 0 ? { broken: true, frozen: true } : idx === 1 ? { magicSword: true } : {}) }));
-    r.state.pendingModal = 'armor'; r.state.menuCandidates = ['weapon','helmet','armour','shield'].map(slot => r.makeUpgradeOffer(slot));
-    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
-    const doc = b.dom.window.document, texture = orbAt(b, 0).querySelector('.weapon-texture').getAttribute('src');
-    assert.equal(doc.querySelector('.lv-card[data-slot="weapon"] .weapon-texture').getAttribute('src'), texture);
-    assert.equal(orbAt(b, 1).querySelector('.weapon-texture').getAttribute('src'), texture);
-    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
-    assert.equal(b.dom.window.getComputedStyle(orbAt(b, 0).querySelector('.weapon-texture')).opacity, '0.45');
-    assert.equal(b.dom.window.getComputedStyle(orbAt(b, 0).querySelector('.orb-material')).animationPlayState, 'paused');
-    assert.equal(r.canChainSelect(0), false);
-    const before = orbGameplay(b);
-    doc.querySelector('.reward-details-toggle').click(); doc.querySelector('.shop-summary-toggle').click();
-    assert.equal(orbGameplay(b), before, 'presentation only, no hidden upgrade or damage changes');
+    const r = b.raid, doc = b.dom.window.document;
+    showOrbFixture(b, () => ({ type: 'sword' }));
+    const kinds = ['rusted-blade','sabre','mace','hammer','axe','guard-blade'];
+    const names = ['Ржавый клинок','Кривая сабля','Тяжёлая булава','Колючий молот','Топор палача','Клинок стражи'];
+    const sources = new Set(); let last;
+    for (let n = 0; n < 7; n++) {
+      const kind = Math.min(n, 5), appearance = n === 6 ? 63 : 7 + n * 11;
+      const item = Object.assign(r.makeItem('weapon'), { suffixIndex: kind, appearance, name: names[kind] + ' «Искра»' });
+      showWeaponOffers(b, item);
+      const offered = weaponView(doc.querySelector('.shop-item[data-slot="weapon"] .weapon-texture'));
+      assert.equal(offered.art, 'techno-' + kinds[kind] + '-v2'); assertWeaponAlpha(offered.src);
+      const nodes = [...doc.querySelectorAll('.type-sword .weapon-texture')], old = weaponView(nodes[0]);
+      assert.equal(nodes.length, 36); assert.notEqual(offered.key, old.key);
+      if (n === 6) { assert.equal(offered.src, last.src); assert.notEqual(offered.finish, last.finish); }
+      const rng = JSON.stringify(r.state.rngSeeds), elements = [...doc.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element);
+      doc.querySelector('.shop-item[data-slot="weapon"]').click(); await until(() => !r.state.pendingModal && !r.state.resolving);
+      assert.equal(JSON.stringify(r.state.rngSeeds), rng);
+      nodes.forEach((image, idx) => { assert.equal(orbAt(b, idx).querySelector('.weapon-texture'), image); assert.deepEqual(weaponView(image), offered); assert.equal(orbAt(b, idx).dataset.element, elements[idx]); });
+      assert.ok(orbAt(b, 0).parentElement.getAttribute('aria-label').includes(names[kind]));
+      sources.add(offered.src); last = offered;
+    }
+    assert.equal(sources.size, 6, 'a mace/hammer/axe cannot all be the same blade texture');
+    assert.equal(r.state.turn, 0); assert.equal(r.state.chainCount, 0); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech weapon fog: four elements occupy the lower two thirds of neutral glass as gas, not full-shell colours or sigil badges', async () => {
+  const b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: idx === 35 ? 'arrow' : 'sword', ...(idx === 0 ? { frozen: true } : {}) }));
+    const doc = b.dom.window.document, orbs = [...doc.querySelectorAll('.cell > .raid-orb')], before = JSON.stringify(b.raid.state);
+    assert.deepEqual([...new Set(orbs.map(n => n.dataset.element))].sort(), ['air','earth','fire','water']);
+    assert.equal(new Set(orbs.map(n => n.style.getPropertyValue('--orb-rgb'))).size, 4);
+    for (const property of ['--orb-light','--orb-mid','--orb-dark']) assert.equal(new Set(orbs.map(n => n.style.getPropertyValue(property))).size, 1, 'neutral glass stays the same around four haze colours');
+    for (const orb of orbs) {
+      assert.equal(orb.dataset.state, 'gas'); assert.equal(orb.querySelector('.orb-sigil'), null);
+      const fog = orb.querySelector('.orb-material.orb-fog'); assert.ok(fog);
+      assert.equal(b.dom.window.getComputedStyle(fog).height, '66.6667%');
+      assert.equal(fog.querySelectorAll('.orb-fog-wisp').length, 2); assert.equal(fog.getAttribute('aria-hidden'), 'true');
+      for (const wisp of fog.children) {
+        assert.match(b.dom.window.getComputedStyle(wisp).animation, /orb-fog-(?:drift|return) (?:24|30)s ease-in-out infinite/);
+        if (orb.classList.contains('frozen')) assert.equal(b.dom.window.getComputedStyle(wisp).animationPlayState, 'paused');
+      }
+      assert.doesNotMatch(orb.textContent, /[a-zа-яё]/iu);
+    }
+    assert.equal(JSON.stringify(b.raid.state), before, 'haze rendering adds no element, RNG or saved item fields');
+    b.raid.tryExtendChain(0); assert.equal(b.raid.state.selected.length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
