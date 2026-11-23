@@ -185,7 +185,7 @@ test('server-provided names are treated as text, not executable markup', async (
 
 // Use the GENERATED deliverable, including real CSS. Source-only DOM doubles
 // cannot detect display:grid overriding the browser's built-in [hidden] rule.
-async function openRaid({ saved = {}, start = true, setup, url = 'https://raid.test/', variant = 'classic' } = {}) {
+async function openRaid({ saved = {}, start = true, setup, url = 'https://raid.test/', variant = 'classic', dismissUpdates = true } = {}) {
   const errors = [], console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
   const artifact = variant === 'magitech' ? 'lunapark-raid-magitech.html' : 'lunapark-raid.html';
@@ -198,6 +198,9 @@ async function openRaid({ saved = {}, start = true, setup, url = 'https://raid.t
     },
   });
   await until(() => dom.window.document.querySelector('.picker-card-btn:not(.locked)'));
+  // Existing gameplay scenarios explicitly acknowledge the read-only notice;
+  // update-notice regressions opt out and exercise the real first-entry flow.
+  if (dismissUpdates && dom.window.document.querySelector('#updates-modal.show')) dom.window.document.querySelector('#updates-close').click();
   const raid = dom.window.RAID;
   if (start) {
     dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
@@ -1847,6 +1850,18 @@ test('magitech fork: classic artifact stays pinned and the new standalone contai
       assert.deepEqual(source.size, [96, 96]); assert.ok(sprites.special_templates[source.template].image);
     }
   }
+  const previousVariants = Object.fromEntries(Object.entries(sprites.portraits).filter(([key]) => sprites.sources[key].generated && sprites.sources[key].enemy_type <= 21));
+  const previousTemplates = Object.fromEntries(Object.entries(sprites.special_templates).filter(([key]) => Number(key) <= 21));
+  for (const [entries, expected, count] of [
+    [previousVariants, '512b9409775e4b0a99aa55fed6a13afd6775fed88d7047b4951ebfce204af454', 80],
+    [previousTemplates, '26dfa1f1134f5233a9a16362935e1b8ed019369dbe133ebe51ab051cc60b18bc', 20],
+  ]) {
+    assert.equal(Object.keys(entries).length, count);
+    const digest = crypto.createHash('sha256');
+    for (const [key, value] of Object.entries(entries)) digest.update(key + '\0' + JSON.stringify(value) + '\0');
+    assert.equal(digest.digest('hex'), expected, 'previously accepted templates/palettes/variants stay byte-identical');
+  }
+  assert.equal(ready.length >= 30, true, 'do not lose the ten new silhouettes');
   assert.equal(originalCount, 16);
   assert.equal(original.digest('hex'), 'cbcc769edcee82eb1627effa2ba085f675cbdb342fb11e377dad2a82cd918cc1', 'all 16 approved temporary crops stay byte-identical');
   for (const element of ['fire', 'air', 'earth', 'water']) {
@@ -3146,6 +3161,327 @@ test('magitech elemental built: rounded target lethality is truthful in the sele
     assert.match(doc.querySelector('#chain-tip').textContent, /Урон 9 \(нейтр\.\).*Убито 1\/1/);
     r.resolveChain(); await until(() => r.state.skullsKilled === 1);
     assert.equal(r.state.swordsHits, 9); assert.equal(r.state.board.some(c => c.skull?.uid === skull.uid), false);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// First-entry release notes are UI metadata, never a run/save migration.
+const updatesKey = magitechKey('raid:updatesSeenBuild');
+const updateBuild = b => b.dom.window.document.querySelector('meta[name="raid-build"]').content;
+const updateLayer = b => b.dom.window.document.querySelector('#updates-modal');
+const acknowledgeUpdate = b => b.dom.window.document.querySelector('#updates-close').click();
+
+test('magitech update notice: first entry explains this release/history, never starts a run, and acknowledgement suppresses only this build', async () => {
+  let b = await openMagitech({ start: false, dismissUpdates: false });
+  try {
+    const doc = b.dom.window.document, build = updateBuild(b);
+    assert.ok(updateLayer(b)?.classList.contains('show'));
+    assert.equal(updateLayer(b).hidden, false); assert.equal(updateLayer(b).getAttribute('aria-modal'), 'true');
+    assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
+    assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
+    assert.match(doc.querySelector('#updates-current').textContent, /10.*(?:образ|силуэт)/);
+    assert.match(doc.querySelector('#updates-current').textContent, /30\s*(?:из|\/)\s*31/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Лич/);
+    assert.ok(doc.querySelectorAll('#updates-history li').length >= 3);
+    assert.match(doc.querySelector('#updates-history').textContent, /Стихи|стихи/);
+    assert.match(doc.querySelector('#updates-boundary').textContent, /интеграция.*не начиналась/i);
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(b.raid.state, null, 'a synthetic background click cannot start a hidden run');
+    assert.equal(b.raid.newGame(10), false); assert.equal(b.raid.resumeSavedRun(), false);
+    acknowledgeUpdate(b);
+    assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
+    assert.equal(b.dom.window.localStorage.getItem(updatesKey), build);
+    const saved = raidStorage(b.dom.window); b.dom.window.close();
+    b = await openMagitech({ saved, start: false, dismissUpdates: false });
+    assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
+    b.dom.window.document.querySelector('#picker-updates').click();
+    assert.equal(updateLayer(b).hidden, false, 'the history remains available after acknowledgement');
+    acknowledgeUpdate(b);
+    assert.equal(b.dom.window.localStorage.getItem(updatesKey), build);
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const value of ['000000000000', '{not a json save', '<img src=x onerror=window.BAD_UPDATE=1>']) test(`magitech update notice: obsolete/malformed marker ${value.slice(0, 12)} is not a game save or executable HTML`, async () => {
+  const saved = { [updatesKey]: value, 'raid:activeRun': 'classic sentinel', 'raid:tg:701:history': 'classic account' };
+  const b = await openMagitech({ saved, start: false, dismissUpdates: false, url: 'https://raid.test/?build=000000000000' });
+  try {
+    assert.equal(updateLayer(b).hidden, false); assert.equal(b.raid.state, null);
+    assert.equal(b.dom.window.BAD_UPDATE, undefined);
+    assert.notEqual(updateBuild(b), '000000000000', 'query hints cannot select the content build');
+    acknowledgeUpdate(b);
+    assert.equal(b.dom.window.localStorage.getItem(updatesKey), updateBuild(b));
+    for (const [key, raw] of Object.entries(saved)) if (key !== updatesKey) assert.equal(b.dom.window.localStorage.getItem(key), raw);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: keyboard focus stays inside, Escape acknowledges, and prior inert/ARIA attributes are restored', async () => {
+  const b = await openMagitech({ start: false, dismissUpdates: false, setup(w) {
+    w.document.addEventListener('DOMContentLoaded', () => { w.document.querySelector('#help-modal').setAttribute('inert', ''); });
+  } });
+  try {
+    const doc = b.dom.window.document, title = doc.querySelector('#updates-title');
+    const body = doc.querySelector('#updates-body'), close = doc.querySelector('#updates-close');
+    assert.equal(doc.activeElement, title);
+    assert.equal(doc.querySelector('#class-picker').getAttribute('aria-hidden'), 'true');
+    assert.equal(doc.querySelector('#class-picker').hasAttribute('inert'), true);
+    title.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, close);
+    close.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, body);
+    body.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+    assert.equal(doc.activeElement, close);
+    close.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(updateLayer(b).hidden, true);
+    assert.equal(doc.querySelector('#class-picker').hasAttribute('inert'), false);
+    assert.equal(doc.querySelector('#class-picker').getAttribute('aria-hidden'), null);
+    assert.equal(doc.querySelector('#raid-effects').getAttribute('aria-hidden'), 'true');
+    assert.equal(doc.querySelector('#help-modal').hasAttribute('inert'), true);
+    assert.equal(doc.activeElement, doc.querySelector('#picker-updates'));
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const operation of ['getItem', 'setItem']) test(`magitech update notice: denied ${operation} is visible and non-blocking, does not touch progress or pretend persistence`, async () => {
+  const b = await openMagitech({ start: false, dismissUpdates: false, setup(w) {
+    const original = w.Storage.prototype[operation];
+    w.Storage.prototype[operation] = function(key, ...args) {
+      if (key === updatesKey) throw new Error('test blocked release marker');
+      return original.call(this, key, ...args);
+    };
+    if (operation === 'getItem') {
+      const write = w.Storage.prototype.setItem;
+      w.Storage.prototype.setItem = function(key, ...args) {
+        if (key === updatesKey) throw new Error('test fully blocked release marker');
+        return write.call(this, key, ...args);
+      };
+    }
+  } });
+  try {
+    assert.equal(updateLayer(b).hidden, false); assert.equal(b.raid.state, null);
+    if (operation === 'getItem') assert.equal(b.dom.window.document.querySelector('#updates-storage-note').hidden, false);
+    acknowledgeUpdate(b);
+    assert.equal(updateLayer(b).hidden, true);
+    const note = b.dom.window.document.querySelector('#picker-updates-status');
+    assert.equal(note.hidden, false); assert.match(note.textContent, /не удалось|не сохран/i);
+    assert.equal(b.dom.window.localStorage.length, 0);
+    b.dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.ok(b.raid.state, 'the informational popup cannot lock gameplay on quota failure');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: classic, magitech browser and each Telegram profile have independent build acknowledgements', async () => {
+  let b = await openMagitech({ start: false, dismissUpdates: false });
+  try {
+    const build = updateBuild(b); b.dom.window.close();
+    const sentinel = { [updatesKey]: build, 'raid:updatesSeenBuild': 'classic', 'raid:tg:701:updatesSeenBuild': 'classic account' };
+    b = await openMagitech({ saved: sentinel, start: false, dismissUpdates: false, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: localAccountSDK(701) }; } });
+    assert.equal(updateLayer(b).hidden, false, 'browser acknowledgement is not a Telegram acknowledgement');
+    acknowledgeUpdate(b);
+    const first = raidStorage(b.dom.window);
+    assert.equal(first[magitechAccountKey(701, 'raid:updatesSeenBuild')], build);
+    for (const [key, value] of Object.entries(sentinel)) assert.equal(first[key], value);
+    b.dom.window.close();
+    b = await openMagitech({ saved: first, start: false, dismissUpdates: false, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: localAccountSDK(702) }; } });
+    assert.equal(updateLayer(b).hidden, false); acknowledgeUpdate(b);
+    const both = raidStorage(b.dom.window);
+    for (const [key, value] of Object.entries(first)) assert.equal(both[key], value);
+    assert.equal(both[magitechAccountKey(702, 'raid:updatesSeenBuild')], build);
+    b.dom.window.close();
+    b = await openMagitech({ saved: both, start: false, dismissUpdates: false, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: localAccountSDK(701) }; } });
+    assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: late Telegram SDK defers the automatic popup until its own ID is available, never uses the browser marker', async () => {
+  const b = await openMagitech({ start: false, dismissUpdates: false, url: testerRaidUrl });
+  try {
+    const doc = b.dom.window.document;
+    assert.equal(updateLayer(b).hidden, true);
+    assert.deepEqual(raidStorage(b.dom.window), {});
+    b.dom.window.Telegram = { WebApp: localAccountSDK(703) };
+    doc.querySelector('script[src="https://telegram.org/js/telegram-web-app.js"]').onload();
+    assert.equal(updateLayer(b).hidden, false); assert.equal(b.raid.state, null);
+    acknowledgeUpdate(b);
+    assert.deepEqual(raidStorage(b.dom.window), { [magitechAccountKey(703, 'raid:updatesSeenBuild')]: updateBuild(b) });
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: changing account while open cannot acknowledge either account or write a shared marker', async () => {
+  const sdk = localAccountSDK(704);
+  const b = await openMagitech({ start: false, dismissUpdates: false, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: sdk }; } });
+  try {
+    assert.equal(updateLayer(b).hidden, false);
+    sdk.initDataUnsafe.user.id = 705;
+    acknowledgeUpdate(b);
+    assert.equal(updateLayer(b).hidden, true); assert.deepEqual(raidStorage(b.dom.window), {});
+    assert.match(b.dom.window.document.querySelector('#picker-profile-status').textContent, /смен|заново/);
+    assert.equal(b.dom.window.document.querySelector('#picker-updates-status').hidden, false);
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: manual history preserves live board/image identity, worn gear, all RNG and raw checkpoints', async () => {
+  const b = await openMagitech();
+  try {
+    const doc = b.dom.window.document;
+    b.raid.newGame(0); doc.querySelector('#menu-btn').click();
+    const state = JSON.stringify(b.raid.state), saved = raidStorage(b.dom.window);
+    const imgs = [...doc.querySelectorAll('#board img')];
+    doc.querySelector('#menu-updates').click();
+    assert.equal(updateLayer(b).hidden, false);
+    b.raid.tryExtendChain(0); b.raid.tryExtendChain(1); b.raid.tryExtendChain(2);
+    b.raid.resolveChain(); b.raid.activateSkill('teleport');
+    assert.equal(JSON.stringify(b.raid.state), state);
+    acknowledgeUpdate(b);
+    assert.deepEqual(raidStorage(b.dom.window), saved);
+    assert.equal(JSON.stringify(b.raid.state), state);
+    assert.deepEqual([...doc.querySelectorAll('#board img')], imgs);
+    assert.equal(doc.activeElement, doc.querySelector('#menu-updates'));
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), true);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const legacy of [false, true]) for (const kind of ['level', 'gold', 'armor']) test(`magitech update notice: ${legacy ? 'released v1' : 'v2'} ${kind} checkpoint stays untouched until Continue and keeps mandatory offers/draft/RNG`, async () => {
+  let b = await openMagitech();
+  try {
+    if (kind === 'level') { b.raid.state.hero.xp = 100; b.raid.checkLevelUp(); b.dom.window.document.querySelectorAll('.lv-card')[1].click(); }
+    else if (kind === 'gold') { b.raid.state.hero.gold = 100; b.raid.checkGoldBox(); }
+    else { b.raid.state.upgradeBar = 100; b.raid.checkUpgradeBar(); }
+    assert.equal(b.raid.saveRun(), true);
+    const key = magitechKey('raid:activeRun'), saved = raidStorage(b.dom.window);
+    if (legacy) saved[key] = JSON.stringify(releasedMagitechCheckpoint(JSON.parse(saved[key])));
+    saved[updatesKey] = 'previous build';
+    const raw = saved[key], expected = JSON.parse(raw); b.dom.window.close();
+    b = await openMagitech({ saved, start: false, dismissUpdates: false });
+    const doc = b.dom.window.document;
+    assert.equal(updateLayer(b).hidden, false); assert.equal(b.raid.state, null);
+    doc.querySelector('#picker-resume').click(); assert.equal(b.raid.state, null);
+    assert.equal(b.dom.window.localStorage.getItem(key), raw);
+    acknowledgeUpdate(b);
+    assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(key), raw);
+    doc.querySelector('#picker-resume').click();
+    assert.equal(b.raid.state.pendingModal, kind);
+    const actual = JSON.parse(b.dom.window.localStorage.getItem(key));
+    for (const name of ['version','region','combat','rng','menu','next','arrivals']) assert.deepEqual(actual[name], expected[name], name);
+    if (kind === 'level') assert.deepEqual([...b.raid.state.levelDraft], [1]);
+    const state = JSON.stringify(b.raid.state), checkpoint = b.dom.window.localStorage.getItem(key);
+    doc.querySelector('#menu-updates').click();
+    assert.equal(updateLayer(b).hidden, true, 'manual history cannot cover a mandatory choice');
+    assert.equal(JSON.stringify(b.raid.state), state);
+    assert.equal(b.dom.window.localStorage.getItem(key), checkpoint);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: opening/closing at startup does not resume an in-flight saved chain or consume its 420/550ms steps', async () => {
+  let b = await openMagitech();
+  try {
+    b.raid.state.board = Array.from({ length: 36 }, () => ({ type: 'coin' }));
+    for (const idx of [0,1,2]) b.raid.tryExtendChain(idx);
+    b.raid.resolveChain(); b.raid.saveRun();
+    const saved = raidStorage(b.dom.window), key = magitechKey('raid:activeRun');
+    assert.equal(JSON.parse(saved[key]).next.phase, 'match-chain');
+    saved[updatesKey] = 'previous build'; b.dom.window.close();
+    b = await openMagitech({ saved, start: false, dismissUpdates: false });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(key), saved[key]);
+    acknowledgeUpdate(b);
+    assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(key), saved[key]);
+    b.dom.window.document.querySelector('#picker-resume').click();
+    await until(() => b.raid.state.turn === 1 && !b.raid.state.resolving);
+    assert.equal(b.raid.state.chainCount, 1); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: Telegram Back dismisses this layer first, never closes the app or starts/restores a run', async () => {
+  const stub = raidTelegramStub();
+  const b = await openMagitech({ start: false, dismissUpdates: false, url: telegramRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    assert.equal(updateLayer(b).hidden, false);
+    assert.equal(stub.calls.filter(call => call === 'back:show').length, 1);
+    stub.back();
+    assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
+    assert.equal(b.dom.window.localStorage.getItem(magitechAccountKey(701, 'raid:updatesSeenBuild')), updateBuild(b));
+    assert.equal(stub.calls.includes('close'), false);
+    assert.equal(stub.calls.at(-1), 'back:hide');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: manual Telegram Back is read-only and returns to its opener instead of cancelling the underlying game view', async () => {
+  const stub = raidTelegramStub();
+  const b = await openMagitech({ url: telegramRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document;
+    doc.querySelector('#menu-btn').click();
+    const state = JSON.stringify(b.raid.state), saved = raidStorage(b.dom.window);
+    doc.querySelector('#menu-updates').click(); assert.equal(updateLayer(b).hidden, false);
+    stub.back();
+    assert.equal(updateLayer(b).hidden, true); assert.equal(JSON.stringify(b.raid.state), state);
+    assert.deepEqual(raidStorage(b.dom.window), saved);
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), true);
+    assert.equal(doc.activeElement, doc.querySelector('#menu-updates'));
+    assert.equal(stub.calls.includes('close'), false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: next-run location survives a manual picker history visit without starting or saving a run', async () => {
+  const b = await openMagitech({ start: false });
+  try {
+    const doc = b.dom.window.document;
+    doc.querySelector('button[data-raid-region="water"]').click();
+    const saved = raidStorage(b.dom.window);
+    doc.querySelector('#picker-updates').click(); assert.equal(updateLayer(b).hidden, false);
+    doc.querySelector('button[data-raid-region="fire"]').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, 'water');
+    assert.equal(b.raid.state, null);
+    acknowledgeUpdate(b);
+    assert.equal(doc.documentElement.dataset.raidRegion, 'water');
+    assert.deepEqual(raidStorage(b.dom.window), saved);
+    assert.equal(doc.activeElement, doc.querySelector('#picker-updates'));
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: a compatibility click from the opening gesture cannot acknowledge the popup; its own pointer/keyboard actions still work', async () => {
+  const b = await openMagitech({ start: false, dismissUpdates: false });
+  try {
+    const doc = b.dom.window.document, close = doc.querySelector('#updates-close');
+    const compatibilityClick = () => close.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    compatibilityClick(); assert.equal(updateLayer(b).hidden, false);
+    assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
+    raidPointer(b.dom.window, close, 'pointerdown'); raidPointer(b.dom.window, close, 'pointercancel');
+    compatibilityClick(); assert.equal(updateLayer(b).hidden, false);
+    raidPointer(b.dom.window, close, 'pointerdown');
+    close.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(updateLayer(b).hidden, true);
+    doc.querySelector('#picker-updates').click();
+    compatibilityClick(); assert.equal(updateLayer(b).hidden, false, 'a previous opening cannot arm the next one');
+    raidPointer(b.dom.window, close, 'pointerdown'); compatibilityClick();
+    assert.equal(updateLayer(b).hidden, true);
+    assert.equal(b.dom.window.localStorage.getItem(updatesKey), updateBuild(b));
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech special details: touch compatibility click cannot immediately dismiss a newly opened portrait; an explicit close is still free', async () => {
+  const b = await openMagitech();
+  try {
+    const doc = b.dom.window.document;
+    b.raid.showSkullModal(b.raid.makeSkull(false, true, 22));
+    const close = doc.querySelector('#modal-body .btn'), state = JSON.stringify(b.raid.state);
+    close.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    assert.equal(b.raid.state.pendingModal, 'skull'); assert.equal(JSON.stringify(b.raid.state), state);
+    raidPointer(b.dom.window, close, 'pointerdown');
+    close.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    assert.equal(b.raid.state.pendingModal, null); assert.equal(b.raid.state.turn, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

@@ -1311,5 +1311,36 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   .raid-orb, .raid-orb *, .raid-orb::before, .raid-orb::after, .orb-material::before, .orb-material::after, .orb-burst * { animation: none !important; transition: none !important; }
 }
 
+/* Read-only release notes: independent of the mandatory reward modal.
+   The content scrolls, while acknowledgement remains reachable on short screens. */
+#picker-updates { grid-column: 1 / -1; }
+.updates-modal { z-index: 160; }
+.updates-modal .updates-card {
+  width: min(100%, 580px); min-width: 0; overflow: hidden;
+  max-height: min(720px, calc(100dvh - 32px)); gap: 12px;
+}
+.telegram-preview .updates-modal .updates-card {
+  max-height: min(720px, calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px));
+}
+.updates-heading, .updates-actions { flex: none; min-width: 0; }
+.updates-heading .raid-eyebrow { text-align: center; margin: 0 0 7px; }
+.updates-heading h3 { margin: 0 0 6px; }
+.updates-heading .build-label { margin: 0; }
+.updates-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 5px 4px 0; color: #c8d4c4; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.updates-body p { margin: 0 0 12px; }
+.updates-body h4 { margin: 16px 0 8px; color: #f2d7a4; font-size: 14px; }
+.updates-body ul, .updates-body ol { padding-left: 21px; margin: 0 0 14px; }
+.updates-body li { margin-bottom: 10px; }
+.updates-body b { color: #e6dfc0; }
+.updates-important, .updates-boundary { padding: 10px; border-left: 2px solid #ba9d60; background: #122a28; }
+.updates-actions { border-top: 1px solid #627c6d66; padding-top: 9px; }
+.updates-actions p { margin: 0 0 8px; color: #b3c1b1; font-size: 11px; line-height: 1.4; }
+.updates-actions .btn { width: 100%; margin: 0; min-height: 44px; }
+.updates-card :focus-visible, #picker-updates:focus-visible, #menu-updates:focus-visible { outline: 2px solid #eed18f; outline-offset: -2px; }
+@media (max-height: 400px) {
+  .updates-modal .updates-card { padding: 12px; gap: 7px; }
+  .updates-heading .raid-eyebrow, .updates-actions p { display: none; }
+}
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
