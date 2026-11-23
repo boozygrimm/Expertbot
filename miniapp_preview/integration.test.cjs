@@ -675,3 +675,153 @@ test('built raid saves: restoring invalidates detached choices and the earlier c
     assert.equal(raid.saveStatus.state, 'saved'); assert.deepEqual(b.errors, []);
   } finally { dom.window.close(); }
 });
+
+function raidStorageSnapshot(dom) {
+  const storage = dom.window.localStorage;
+  return Object.fromEntries(Array.from({ length: storage.length }, (_, i) => { const key = storage.key(i); return [key, storage.getItem(key)]; }));
+}
+function endBuiltRaid(raid) {
+  raid.state.board = Array.from({ length: 36 }, () => ({ type: 'sword' }));
+  raid.state.hero.hp = 1; raid.state.poison = 2; raid.state.regen = 0; raid.state.lastStand = 0; raid.state.nextTurnFlags = {};
+  raid.endEnemyTurn();
+  assert.equal(raid.state.over, true);
+}
+
+test('built raid history: startup reader, six categories and keyboard return do not create or change a run', async () => {
+  const b = await openRaid({ start: false }), doc = b.dom.window.document;
+  try {
+    const before = raidStorageSnapshot(b.dom), opener = doc.querySelector('#picker-history');
+    assert.equal(doc.querySelector('#history-modal').hidden, true);
+    opener.focus(); opener.click();
+    assert.equal(b.raid.state, null); assert.equal(doc.querySelector('#history-modal').hidden, false);
+    assert.equal(doc.activeElement, doc.querySelector('#history-title'));
+    assert.equal(doc.querySelectorAll('#history-type option').length, 6);
+    assert.match(doc.querySelector('#history-body').textContent, /пока нет завершённых/);
+    doc.querySelector('#history-section').value = 'classes'; doc.querySelector('#history-section').dispatchEvent(new b.dom.window.Event('change'));
+    assert.equal(doc.querySelectorAll('#history-body [data-class-id]').length, 10);
+    assert.equal(b.dom.window.getComputedStyle(doc.querySelector('#history-type').parentElement).display, 'none');
+    assert.match(doc.querySelector('#history-body').textContent, /Лёгкий.*Убийства.*Классика/);
+    doc.querySelector('#history-title').dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(doc.querySelector('#history-modal').hidden, true); assert.equal(doc.activeElement, opener);
+    assert.deepEqual(raidStorageSnapshot(b.dom), before); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid history: real terminal path records, highlights and persists one result with independent class statistics', async () => {
+  let b = await openRaid();
+  try {
+    let { raid, dom } = b, doc = dom.window.document;
+    raid.state.hero.xpLevelCum = 103; raid.state.goldEarned = 57; raid.state.upgradeEarned = 29;
+    raid.state.skills = ['freeze']; raid.state.skillLevels.freeze = 2; raid.state.skullsKilled = 7;
+    const levels = dom.window.localStorage.getItem('raid:classLevels'); endBuiltRaid(raid);
+    await until(() => raid.state.pendingModal === 'gameover');
+    assert.match(doc.querySelector('#run-history-status').textContent, /записан/);
+    const open = [...doc.querySelectorAll('#modal-body button')].find(button => button.textContent === 'Рекорды и статистика');
+    open.focus(); open.click();
+    assert.equal(doc.querySelectorAll('.history-record.latest').length, 1);
+    assert.match(doc.querySelector('.history-record.latest').textContent, /390 очк.*Ход 1.*XP 103.*GP 57.*UP 29.*Мороз ур.2.*Последний/s);
+    doc.querySelector('#history-section').value = 'classes'; doc.querySelector('#history-section').dispatchEvent(new dom.window.Event('change'));
+    assert.match(doc.querySelector('[data-class-id="adventurer"].history-record').textContent, /Завершено: 1.*Убийств атаками: 7.*Обычный390/s);
+    assert.equal(dom.window.localStorage.getItem('raid:classLevels'), levels);
+    doc.querySelector('#history-close').click(); assert.equal(doc.activeElement, open);
+    const original = dom.window.localStorage.getItem('raid:history');
+    b = await reloadRaid(b); ({ raid, dom } = b); doc = dom.window.document;
+    assert.equal(raid.state, null); assert.equal(doc.querySelector('#picker-resume').hidden, true);
+    assert.equal(dom.window.localStorage.getItem('raid:history'), original);
+    doc.querySelector('#picker-history').click(); assert.equal(doc.querySelectorAll('.history-record.latest').length, 1);
+    assert.equal(raid.getLocalHistory().classes.adventurer.games, 1); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid history: menu view is read-only and cannot bypass a pending reversible level reward', async () => {
+  const b = await openRaid(), { raid, dom } = b, doc = dom.window.document;
+  try {
+    const before = JSON.stringify(raid.state);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-history').click();
+    assert.equal(doc.querySelector('#history-modal').hidden, false); assert.equal(JSON.stringify(raid.state), before);
+    doc.querySelector('#history-close').click(); doc.querySelector('#menu-resume').click();
+    raid.state.hero.xp = 100; raid.checkLevelUp(); doc.querySelector('.lv-card').click();
+    const reward = JSON.stringify([raid.state.hero, raid.state.levelDraft, raid.state.menuCandidates, raid.state.rngSeeds]);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-history').click();
+    assert.equal(doc.querySelector('#history-modal').hidden, true); assert.equal(raid.state.pendingModal, 'level');
+    assert.equal(JSON.stringify([raid.state.hero, raid.state.levelDraft, raid.state.menuCandidates, raid.state.rngSeeds]), reward);
+    assert.equal(dom.window.localStorage.getItem('raid:history'), null); assert.deepEqual(b.errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid history: a released v1 Pretzel save resumes with original score and explicit missing old crossing statistics', async () => {
+  let b = await openRaid();
+  try {
+    let { raid, dom } = b;
+    dom.window.document.querySelector('#mode-select').value = 'pretzel'; raid.newGame(913);
+    raid.state.pretzelScore = 19; raid.saveRun();
+    const saved = raidStorageSnapshot(dom), data = JSON.parse(saved['raid:activeRun']);
+    delete data.state.historyId; delete data.state.pretzelStats; saved['raid:activeRun'] = JSON.stringify(data);
+    const expected = JSON.stringify([data.state.board, data.rng, data.state.classConfig]);
+    dom.window.close(); b = await openRaid({ saved, start: false }); ({ raid, dom } = b);
+    const doc = dom.window.document; doc.querySelector('#picker-resume').click();
+    assert.equal(raid.runScore(), 19); assert.equal(raid.state.pretzelStats, null);
+    assert.match(raid.state.historyId, /^v1-/); assert.equal(JSON.stringify([raid.state.board, raid.state.rngSeeds, raid.state.classConfig]), expected);
+    endBuiltRaid(raid); await until(() => raid.state.pendingModal === 'gameover');
+    [...doc.querySelectorAll('#modal-body button')].find(button => button.textContent === 'Рекорды и статистика').click();
+    doc.querySelector('#history-type').value = '5'; doc.querySelector('#history-type').dispatchEvent(new dom.window.Event('change'));
+    assert.match(doc.querySelector('.history-record').textContent, /19 очк.*Статистика пересечений недоступна.*до её добавления/s);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid history: quota is visible, leaves a terminal receipt, and retry/reload commits the profile once', async () => {
+  let b = await openRaid({ setup(window) {
+    window.blockHistory = true;
+    const original = window.Storage.prototype.setItem;
+    window.Storage.prototype.setItem = function(key, value) { if (key === 'raid:history' && window.blockHistory) throw new window.DOMException('quota', 'QuotaExceededError'); return original.call(this, key, value); };
+  } });
+  try {
+    let { dom, raid } = b, doc = dom.window.document;
+    endBuiltRaid(raid); await until(() => raid.state.pendingModal === 'gameover');
+    assert.equal(raid.savedRunInfo(), null); assert.equal(dom.window.localStorage.getItem('raid:history'), null);
+    assert.equal(JSON.parse(dom.window.localStorage.getItem('raid:activeRun')).status, 'finished');
+    assert.match(doc.querySelector('#run-history-status').textContent, /пока не записан/);
+    [...doc.querySelectorAll('#modal-body button')].find(button => button.textContent === 'Рекорды и статистика').click();
+    assert.equal(doc.querySelector('#history-retry').hidden, false); doc.querySelector('#history-retry').click();
+    assert.match(doc.querySelector('#history-status').textContent, /пока не записан/);
+    doc.querySelector('#history-close').click();
+    doc.querySelector('#modal-body button:last-child').click();
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), true); assert.match(doc.querySelector('#restart-confirm-text').textContent, /резервную запись/);
+    doc.querySelector('#restart-cancel').click();
+    b = await reloadRaid(b); ({ dom, raid } = b); doc = dom.window.document;
+    assert.equal(raid.state, null); assert.equal(raid.getLocalHistory().classes.adventurer.games, 1);
+    assert.equal(doc.querySelector('#history-retry').hidden, true);
+    const raw = dom.window.localStorage.getItem('raid:history');
+    doc.querySelector('#picker-history').click(); doc.querySelector('#history-retry').click();
+    assert.equal(dom.window.localStorage.getItem('raid:history'), raw); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid history: corrupt external data is not executed, shown as a valid empty profile or overwritten', async () => {
+  const raw = '{"format":"lunapark-raid-history","version":2,"records":"<img src=x onerror=alert(1)>"}';
+  const b = await openRaid({ start: false, saved: { 'raid:history': raw } }), doc = b.dom.window.document;
+  try {
+    assert.equal(doc.querySelector('#picker-history-status').hidden, false); assert.match(doc.querySelector('#picker-history-status').textContent, /повреждена|несовместима/);
+    doc.querySelector('#picker-history').click();
+    assert.match(doc.querySelector('#history-status').textContent, /не перезаписана/); assert.equal(doc.querySelector('#history-body').textContent, '');
+    assert.equal(doc.querySelector('#history-modal img'), null); assert.equal(b.dom.window.localStorage.getItem('raid:history'), raw);
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid history: a finished tab keeps stale ownership guards when a new active slot arrives before its delayed modal', async () => {
+  const b = await openRaid(), { dom, raid } = b, doc = dom.window.document;
+  try {
+    const peer = JSON.parse(dom.window.localStorage.getItem('raid:activeRun')); peer.state.historyId = 'run-peer-session'; peer.revision++;
+    const active = JSON.stringify(peer); endBuiltRaid(raid);
+    const terminal = dom.window.localStorage.getItem('raid:activeRun'), history = dom.window.localStorage.getItem('raid:history');
+    dom.window.localStorage.setItem('raid:activeRun', active);
+    dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'raid:activeRun', oldValue: terminal, newValue: active, storageArea: dom.window.localStorage }));
+    assert.equal(raid.saveStatus.state, 'conflict'); assert.equal(raid.saveRun(), false);
+    await until(() => raid.state.pendingModal === 'gameover'); await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(dom.window.localStorage.getItem('raid:activeRun'), active);
+    assert.equal(dom.window.localStorage.getItem('raid:history'), history); assert.equal(doc.querySelector('#picker-resume').hidden, true);
+    assert.deepEqual(b.errors, []);
+  } finally { dom.window.close(); }
+});

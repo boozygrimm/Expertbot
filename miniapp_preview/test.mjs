@@ -107,9 +107,9 @@ function raidBrowser({ classId = 'adventurer', mode = 'classic', difficulty = 1,
       createElement: () => raidNode(),
     },
     localStorage: {
-      getItem: key => { if (fault.read) throw new Error('Storage blocked'); return storage.get(key) ?? null; },
-      setItem: (key, value) => { if (fault.write) throw new Error('Quota exceeded'); storage.set(key, String(value)); },
-      removeItem: key => { if (fault.remove) throw new Error('Storage blocked'); storage.delete(key); },
+      getItem: key => { if (typeof fault.read === 'function' ? fault.read(key) : fault.read) throw new Error('Storage blocked'); return storage.get(key) ?? null; },
+      setItem: (key, value) => { if (typeof fault.write === 'function' ? fault.write(key) : fault.write) throw new Error('Quota exceeded'); storage.set(key, String(value)); },
+      removeItem: key => { if (typeof fault.remove === 'function' ? fault.remove(key) : fault.remove) throw new Error('Storage blocked'); storage.delete(key); },
     },
     setTimeout(fn, delay = 0) {
       const id = nextTimer++;
@@ -3795,4 +3795,289 @@ test('raid save: resource cells retain valid thaw metadata, not only skull statu
   const next = raidReload(b);
   assert.deepEqual(raidJSON(next.raid.state.board), raidJSON(r.state.board));
   assert.equal(next.raid.saveStatus.state, 'saved');
+});
+
+// Local history: six classic categories and the independent class totals.
+const RAID_HISTORY_KEY = 'raid:history';
+function raidFinish(browser, { xp = 103, gold = 57, upgrade = 29, turn = 11, kills = 3, win = false } = {}) {
+  const r = browser.raid, s = r.state;
+  raidBoard(r, 'sword'); s.hero.xpLevelCum = xp; s.goldEarned = gold; s.upgradeEarned = upgrade;
+  s.turn = win ? 99 : turn; s.skullsKilled = kills; s.hero.hp = win ? s.hero.maxHp : 1;
+  s.poison = win ? 0 : 2; s.regen = 0; s.lastStand = 0; s.nextTurnFlags = {};
+  r.endEnemyTurn(); assert.equal(s.over, true); assert.equal(s.won, win);
+  return r.getLocalHistory();
+}
+function raidPretzelChain(browser, crosses) {
+  const paths = [[0, 1, 2], [0, 7, 1, 6], [0, 7, 1, 6, 12, 19, 13, 18], [0, 7, 1, 6, 12, 19, 13, 18, 24, 31, 25, 30]];
+  raidBoard(browser.raid, 'sword'); browser.raid.state.forceCoins = 1;
+  assert.equal(browser.raid.pretzelCrossings(paths[crosses]), crosses);
+  raidSelect(browser.raid, paths[crosses]); browser.raid.resolveChain();
+}
+
+test('raid history: reading an empty profile neither starts a run nor writes fabricated records', () => {
+  const b = raidBrowser({ start: false }), before = [...b.storage];
+  const profile = b.raid.getLocalHistory();
+  assert.equal(profile.records.length, 6); assert.ok(profile.records.every(rows => !rows.length));
+  assert.equal(Object.keys(profile.classes).length, 10);
+  assert.ok(Object.values(profile.classes).every(stats => stats.games === 0 && stats.kills === 0 && stats.best.every(n => n === 0)));
+  assert.deepEqual([...b.storage], before); assert.equal(b.raid.state, null);
+});
+
+test('raid history: 120 class/mode/difficulty endings use the right category and independent class best', () => {
+  for (const classId of raidClassIds) for (const mode of ['classic', 'sprint', 'pretzel']) for (let difficulty = 0; difficulty < 4; difficulty++) {
+    const b = raidBrowser({ menus: true, classId, mode, difficulty });
+    b.raid.state.skills = ['freeze', 'heal']; b.raid.state.skillLevels = { freeze: 2, heal: 3 };
+    if (mode === 'pretzel') { b.raid.state.pretzelScore = 19; b.raid.state.pretzelStats = { scoringChains: 2, avgTimes10: 40, maxCross: 6 }; }
+    const levels = b.storage.get('raid:classLevels'), config = JSON.stringify(b.raid.state.classConfig);
+    const history = raidFinish(b), type = mode === 'classic' ? difficulty : mode === 'sprint' ? 4 : 5;
+    const rows = history.records[type]; assert.equal(rows.length, 1, `${classId}/${mode}/${difficulty}`);
+    const row = rows[0], score = mode === 'classic' ? 103 + 57 + 29 + 12 + 500 : mode === 'sprint' ? 25 + 14 + 7 : 19;
+    assert.equal(row.score, score); assert.equal(row.turn, 12); assert.equal(row.classId, classId); assert.equal(row.difficulty, difficulty);
+    assert.deepEqual(raidJSON(row.skills), [{ id: 'freeze', level: 2 }, { id: 'heal', level: 3 }]);
+    assert.deepEqual([row.xp, row.gold, row.upgrade], mode === 'sprint' ? [25, 14, 7] : [103, 57, 29]);
+    assert.deepEqual(raidJSON(history.classes[classId]), { games: 1, kills: 3, best: [1, 2, 3].map(d => mode === 'classic' && difficulty === d ? score : 0) });
+    assert.ok(Object.entries(history.classes).filter(([id]) => id !== classId).every(([, stats]) => stats.games === 0));
+    assert.equal(history.records.flat().length, 1); assert.equal(b.raid.savedRunInfo(), null);
+    assert.equal(b.storage.get('raid:classLevels'), levels); assert.equal(JSON.stringify(b.raid.state.classConfig), config);
+  }
+});
+
+test('raid history: Sprint quarters each resource separately; only victory doubles the score, not listed resources', () => {
+  for (const win of [false, true]) for (const resource of [3, 7]) {
+    const b = raidBrowser({ mode: 'sprint', menus: true });
+    const row = raidFinish(b, { xp: resource, gold: resource, upgrade: resource, win }).records[4][0];
+    assert.equal(row.score, 3 * Math.trunc(resource / 4) * (win ? 2 : 1));
+    assert.deepEqual([row.xp, row.gold, row.upgrade], Array(3).fill(Math.trunc(resource / 4)));
+    assert.equal(row.won, win); assert.equal(row.turn, win ? 100 : 12);
+  }
+});
+
+test('raid history: classic counts only equipped skill levels; removed Wish adds nothing', () => {
+  const b = raidBrowser({ classId: 'priest', menus: true });
+  b.raid.state.skills = ['freeze']; b.raid.state.skillLevels = { wish: 10, freeze: 2 };
+  const row = raidFinish(b, { xp: 1, gold: 2, upgrade: 3, turn: 4 }).records[1][0];
+  assert.equal(row.score, 1 + 2 + 3 + 5 + 200); assert.deepEqual(raidJSON(row.skills), [{ id: 'freeze', level: 2 }]);
+});
+
+test('raid history: descending insertion is stable for ties and a full list still replaces the tenth with a new lowest', () => {
+  const b = raidBrowser({ menus: true });
+  const ids = [];
+  for (let i = 0; i < 11; i++) {
+    if (i) b.raid.newGame(71);
+    ids.push(b.raid.state.historyId);
+    raidFinish(b, { xp: i < 10 ? 100 - Math.floor(i / 2) * 10 : 1, gold: 0, upgrade: 0, turn: 0, kills: 0 });
+  }
+  const history = b.raid.getLocalHistory(), rows = history.records[1];
+  assert.deepEqual(Array.from(rows, row => row.score), [101, 101, 91, 91, 81, 81, 71, 71, 61, 2]);
+  assert.deepEqual(Array.from(rows, row => row.id), [...ids.slice(0, 9), ids[10]]);
+  assert.deepEqual(raidJSON(history.last), { type: 1, index: 9, id: ids[10] });
+  assert.equal(history.classes.adventurer.games, 11); assert.equal(history.classes.adventurer.best[0], 101);
+});
+
+test('raid history: a higher result inserts first; class best never falls when its record is replaced', () => {
+  const b = raidBrowser({ menus: true });
+  for (const xp of [100, 90, 200]) { b.raid.newGame(71); raidFinish(b, { xp, gold: 0, upgrade: 0, kills: 2 }); }
+  const history = b.raid.getLocalHistory();
+  assert.deepEqual(Array.from(history.records[1], row => row.score), [212, 112, 102]);
+  assert.equal(history.last.index, 0); assert.equal(history.classes.adventurer.best[0], 212);
+  assert.equal(history.classes.adventurer.games, 3); assert.equal(history.classes.adventurer.kills, 6);
+});
+
+test('raid history: restarting an unfinished run counts neither a game nor its kills', () => {
+  const b = raidBrowser({ menus: true });
+  b.raid.state.skullsKilled = 50; b.raid.state.hero.xpLevelCum = 1000; b.raid.newGame(71);
+  assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+  const history = raidFinish(b, { kills: 2 }); assert.equal(history.classes.adventurer.games, 1); assert.equal(history.classes.adventurer.kills, 2);
+});
+
+test('raid history: AttackSkull counter excludes Rune/poison-style collections and uncompleted Lich', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  raidBoard(r, 'sword');
+  r.state.board[0] = { type: 'skull', skull: raidSkull(r, { hp: 1, def: 0 }) };
+  r.hitSkullAt(0, 10, { direct: true });
+  r.state.board[1] = { type: 'skull', skull: raidSkull(r, { hp: 1, def: 0 }) };
+  r.collectIndices([1]);
+  r.state.board[2] = { type: 'skull', skull: raidSkull(r, { hp: 1, def: 0 }, 32) };
+  r.hitSkullAt(2, 10, { direct: true });
+  assert.equal(r.state.board[2].skull.phylactery, true); assert.equal(r.state.skullsKilled, 1);
+  const history = raidFinish(b, { kills: r.state.skullsKilled });
+  assert.equal(history.classes.adventurer.kills, 1);
+});
+
+test('raid history: Last Stand rescue does not record a game; its later actual death does', () => {
+  const b = raidBrowser({ menus: true }), r = b.raid;
+  raidBoard(r, 'sword'); r.state.hero.hp = 0; r.state.lastStand = 1;
+  r.endEnemyTurn(); assert.equal(r.state.over, false); assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+  assert.equal(raidFinish(b).classes.adventurer.games, 1);
+});
+
+test('raid history: terminal retry, delayed modal and repeated reload are idempotent even after list eviction', () => {
+  const b = raidBrowser({ menus: true });
+  raidFinish(b); const first = b.storage.get(RAID_HISTORY_KEY);
+  for (let n = 0; n < 4; n++) { b.raid.saveRun(); b.raid.endEnemyTurn(); b.advance(1000); }
+  assert.equal(b.storage.get(RAID_HISTORY_KEY), first);
+  for (let n = 0; n < 3; n++) {
+    const next = raidBrowser({ start: false, saved: b.storage });
+    assert.equal(next.raid.savedRunInfo(), null); assert.equal(next.raid.resumeSavedRun(), false);
+    assert.equal(b.storage.get(RAID_HISTORY_KEY), first);
+  }
+  const profile = JSON.parse(first), record = profile.records[1][0];
+  profile.records[1] = []; profile.last = null; b.storage.set(RAID_HISTORY_KEY, JSON.stringify(profile));
+  const next = raidBrowser({ start: false, saved: b.storage }); next.raid.savedRunInfo();
+  assert.equal(next.raid.getLocalHistory().classes.adventurer.games, 1);
+  assert.equal(next.raid.getLocalHistory().records[1].length, 0, 'retained receipt stops reinsertion of a nonlisted result');
+  assert.ok(next.raid.getLocalHistory().completed.includes(record.id));
+});
+
+test('raid history: record IDs and read-only access do not consume any of the six gameplay RNG streams', () => {
+  const a = raidBrowser({ seed: 913 }), b = raidBrowser({ seed: 913 });
+  assert.notEqual(a.raid.state.historyId, b.raid.state.historyId);
+  assert.deepEqual(raidJSON(a.raid.state.rngSeeds), raidJSON(b.raid.state.rngSeeds));
+  assert.deepEqual(raidJSON(a.raid.state.board), raidJSON(b.raid.state.board));
+  const before = JSON.stringify(a.raid.state);
+  a.raid.getLocalHistory(); a.raid.getLocalHistory(); assert.equal(JSON.stringify(a.raid.state), before);
+  assert.deepEqual(raidJSON(a.raid.makeShopOffers()), raidJSON(b.raid.makeShopOffers()));
+});
+
+test('raid history: Pretzel keeps only scoring chains and truncates its running mean on every update', () => {
+  const b = raidBrowser({ mode: 'pretzel', menus: true });
+  let average = 0, count = 0, total = 0;
+  for (const cross of [0, 1, 2, 2, 3, 1, 3]) {
+    raidPretzelChain(b, cross);
+    if (cross) { average = Math.trunc((average * count + 10 * cross) / ++count); total += cross; }
+    assert.deepEqual(raidJSON(b.raid.state.pretzelStats), { scoringChains: count, avgTimes10: average, maxCross: Math.min(3, count ? Math.max(...[1, 2, 2, 3, 1, 3].slice(0, count)) : 0) });
+    b.advance(2000);
+  }
+  assert.equal(b.raid.state.pretzelScore, total); assert.notEqual(average, Math.trunc(10 * total / count), 'fixture distinguishes iterative from final-only truncation');
+  const row = raidFinish(b).records[5][0];
+  assert.deepEqual(raidJSON(row.pretzel), { scoringChains: 6, avgTimes10: average, maxCross: 3 });
+  assert.equal(row.score, total);
+});
+
+test('raid history: Pretzel stats at the committed match boundary survive resume without double counting', () => {
+  const b = raidBrowser({ mode: 'pretzel', menus: true });
+  raidPretzelChain(b, 2);
+  const stats = raidJSON(b.raid.state.pretzelStats), score = b.raid.runScore(), next = raidReload(b);
+  assert.deepEqual(raidJSON(next.raid.state.pretzelStats), stats); assert.equal(next.raid.runScore(), score);
+  next.advance(2000); assert.deepEqual(raidJSON(next.raid.state.pretzelStats), stats); assert.equal(next.raid.state.turn, 1);
+});
+
+test('raid history: released v1 active saves migrate without losing frozen setup, offers, RNG or identity on the next reload', () => {
+  const b = raidBrowser({ menus: true, classId: 'mage', seed: 913 });
+  b.raid.state.hero.gold = 100; b.raid.checkGoldBox(); assert.equal(b.raid.saveRun(), true);
+  const raw = JSON.parse(b.storage.get(RAID_RUN_KEY)); delete raw.state.historyId; delete raw.state.pretzelStats;
+  b.storage.set(RAID_RUN_KEY, JSON.stringify(raw));
+  const expected = raidJSON([b.raid.state.board, b.raid.state.rngSeeds, b.raid.state.menuCandidates, b.raid.state.classConfig]);
+  const next = raidReload(b); assert.match(next.raid.state.historyId, /^v1-/);
+  assert.deepEqual(raidJSON([next.raid.state.board, next.raid.state.rngSeeds, next.raid.state.menuCandidates, next.raid.state.classConfig]), expected);
+  const again = raidReload(next); assert.equal(again.raid.state.historyId, next.raid.state.historyId);
+  assert.deepEqual(raidJSON(again.raid.state.pretzelStats), { scoringChains: 0, avgTimes10: 0, maxCross: 0 });
+});
+
+for (const oldScore of [0, 19]) test(`raid history: legacy Pretzel score ${oldScore} is kept without inventing unavailable crossing statistics`, () => {
+  const b = raidBrowser({ mode: 'pretzel', menus: true }); b.raid.state.pretzelScore = oldScore; b.raid.saveRun();
+  const raw = JSON.parse(b.storage.get(RAID_RUN_KEY)); delete raw.state.historyId; delete raw.state.pretzelStats; b.storage.set(RAID_RUN_KEY, JSON.stringify(raw));
+  const next = raidReload(b); assert.equal(next.raid.runScore(), oldScore);
+  assert.deepEqual(raidJSON(next.raid.state.pretzelStats), oldScore ? null : { scoringChains: 0, avgTimes10: 0, maxCross: 0 });
+  raidPretzelChain(next, 1); next.advance(2000);
+  const row = raidFinish(next).records[5][0]; assert.equal(row.score, oldScore + 1);
+  assert.deepEqual(raidJSON(row.pretzel), oldScore ? null : { scoringChains: 1, avgTimes10: 10, maxCross: 1 });
+});
+
+test('raid history: old v1 terminal tombstones stay terminal and do not invent past games', () => {
+  const b = raidBrowser({ start: false, saved: { [RAID_RUN_KEY]: JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'finished' }) } });
+  assert.equal(b.raid.resumeSavedRun(), false); assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 0); assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+});
+
+test('raid history: a profile-only write failure preserves the previous profile and a recoverable terminal receipt', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault });
+  raidFinish(b); const first = b.storage.get(RAID_HISTORY_KEY);
+  b.raid.newGame(71); fault.write = key => key === RAID_HISTORY_KEY; raidFinish(b, { kills: 7 });
+  assert.equal(b.storage.get(RAID_HISTORY_KEY), first); assert.equal(b.raid.historyStatus.state, 'unavailable');
+  assert.equal(JSON.parse(b.storage.get(RAID_RUN_KEY)).status, 'finished'); assert.equal(b.raid.savedRunInfo(), null);
+  const next = raidBrowser({ start: false, saved: b.storage }); assert.equal(next.raid.resumeSavedRun(), false);
+  const history = next.raid.getLocalHistory(); assert.equal(history.classes.adventurer.games, 2); assert.equal(history.classes.adventurer.kills, 10);
+  const second = b.storage.get(RAID_HISTORY_KEY); next.raid.retryRunHistory(); next.raid.savedRunInfo(); assert.equal(b.storage.get(RAID_HISTORY_KEY), second);
+});
+
+test('raid history: same-page retry commits records and class counters together once after storage recovers', () => {
+  const fault = { write: key => key === RAID_HISTORY_KEY }, b = raidBrowser({ menus: true, fault });
+  raidFinish(b); assert.equal(b.storage.has(RAID_HISTORY_KEY), false); assert.equal(b.raid.historyStatus.state, 'unavailable');
+  fault.write = false; assert.equal(b.raid.retryRunHistory(), true);
+  assert.equal(b.raid.getLocalHistory().records[1].length, 1); assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1);
+  const raw = b.storage.get(RAID_HISTORY_KEY); assert.equal(b.raid.retryRunHistory(), true); assert.equal(b.storage.get(RAID_HISTORY_KEY), raw);
+});
+
+test('raid history: a stale tab cannot finalize or modify profile totals after another tab resumes', () => {
+  const b = raidBrowser({ menus: true }); raidBoard(b.raid, 'sword'); b.raid.saveRun(); const other = raidReload(b);
+  raidFinish(b); assert.equal(b.storage.has(RAID_HISTORY_KEY), false); assert.equal(b.raid.saveStatus.state, 'conflict');
+  assert.equal(raidFinish(other).classes.adventurer.games, 1);
+});
+
+test('raid history: concurrent profile change is preserved and explicit retry merges instead of overwriting it', () => {
+  const other = raidBrowser({ menus: true }); raidFinish(other, { kills: 8 }); const rival = other.storage.get(RAID_HISTORY_KEY);
+  const fault = {}, b = raidBrowser({ menus: true, fault }); let reads = 0;
+  fault.read = key => { if (key === RAID_HISTORY_KEY && ++reads === 2) b.storage.set(key, rival); return false; };
+  raidFinish(b, { kills: 5 }); assert.equal(b.raid.historyStatus.state, 'conflict'); assert.equal(b.storage.get(RAID_HISTORY_KEY), rival);
+  fault.read = false; assert.equal(b.raid.retryRunHistory(), true);
+  const history = b.raid.getLocalHistory(); assert.equal(history.classes.adventurer.games, 2); assert.equal(history.classes.adventurer.kills, 13);
+});
+
+for (const corruption of ['version', 'nan', 'html', 'prototype', 'shape', 'skills', 'duplicate', 'sort', 'last', 'oversize']) test(`raid history: malformed ${corruption} profile is not displayed as valid, overwritten or used as code`, () => {
+  const fixture = raidBrowser({ menus: true }); raidFinish(fixture);
+  const profile = JSON.parse(fixture.storage.get(RAID_HISTORY_KEY)); let raw;
+  if (corruption === 'version') profile.version = 2;
+  if (corruption === 'nan') profile.classes.adventurer.games = null;
+  if (corruption === 'html') profile.records[1][0].classId = '<img src=x onerror=alert(1)>';
+  if (corruption === 'prototype') profile.classes.adventurer.constructor = {};
+  if (corruption === 'shape') profile.records = {};
+  if (corruption === 'skills') profile.records[1][0].skills = [{ id: 'constructor', level: 1 }];
+  if (corruption === 'duplicate') profile.records[1].push({ ...profile.records[1][0] });
+  if (corruption === 'sort') { const row = profile.records[1][0]; profile.records[1].push({ ...row, id: 'run-higher', score: row.score + 1 }); }
+  if (corruption === 'last') profile.last.index = 9;
+  raw = corruption === 'oversize' ? ' '.repeat(256 * 1024 + 1) : JSON.stringify(profile);
+  const b = raidBrowser({ menus: true, saved: { [RAID_HISTORY_KEY]: raw } });
+  assert.equal(b.raid.getLocalHistory(), null); assert.equal(b.raid.historyStatus.state, 'invalid');
+  raidFinish(b); assert.equal(b.storage.get(RAID_HISTORY_KEY), raw); assert.equal(b.raid.savedRunInfo(), null);
+  assert.equal({}.polluted, undefined);
+});
+
+test('raid history: a bounded 512-receipt journal and listed-record check keep the profile small and retries idempotent', () => {
+  const fixture = raidBrowser({ menus: true }); raidFinish(fixture); const data = fixture.raid.getLocalHistory();
+  data.completed = Array.from({ length: 512 }, (_, i) => 'receipt-' + String(i).padStart(5, '0'));
+  fixture.storage.set(RAID_HISTORY_KEY, JSON.stringify(data));
+  fixture.raid.saveRun(); assert.equal(fixture.raid.getLocalHistory().classes.adventurer.games, 1, 'listed ID is still idempotent without its receipt');
+  fixture.raid.newGame(71); const history = raidFinish(fixture);
+  assert.equal(history.completed.length, 512); assert.equal(history.completed[0], 'receipt-00001');
+  assert.equal(history.completed.at(-1), fixture.raid.state.historyId); assert.equal(history.classes.adventurer.games, 2);
+});
+
+test('raid history: terminal slot-write failure can still record the result when the independent profile remains writable', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault }); fault.write = key => key === RAID_RUN_KEY;
+  const history = raidFinish(b); assert.equal(history.classes.adventurer.games, 1); assert.equal(history.records[1].length, 1);
+  assert.equal(b.raid.saveStatus.state, 'unavailable'); assert.equal(b.storage.has(RAID_RUN_KEY), false);
+  assert.equal(b.raid.historyStatus.state, 'saved');
+  const next = raidBrowser({ start: false, saved: b.storage }); assert.equal(next.raid.resumeSavedRun(), false); assert.equal(next.raid.getLocalHistory().classes.adventurer.games, 1);
+});
+
+test('raid history: profile-read denial leaves the terminal recovery receipt and can be retried without modifying the run', () => {
+  const fault = {}, b = raidBrowser({ menus: true, fault }); fault.read = key => key === RAID_HISTORY_KEY;
+  raidFinish(b); assert.equal(b.raid.historyStatus.state, 'unavailable'); assert.equal(b.storage.has(RAID_HISTORY_KEY), false);
+  const terminal = b.storage.get(RAID_RUN_KEY); fault.read = false; assert.equal(b.raid.retryRunHistory(), true);
+  assert.equal(b.storage.get(RAID_RUN_KEY), terminal); assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1);
+});
+
+test('raid history: an invalid terminal receipt is not replayed or used to alter persistent class statistics', () => {
+  const fixture = raidBrowser({ menus: true }); raidFinish(fixture);
+  const terminal = JSON.parse(fixture.storage.get(RAID_RUN_KEY)); terminal.record.classId = '<svg onload=alert(1)>';
+  const raw = JSON.stringify(terminal), b = raidBrowser({ start: false, saved: { [RAID_RUN_KEY]: raw } });
+  assert.equal(b.raid.resumeSavedRun(), false); assert.equal(b.raid.saveStatus.state, 'invalid');
+  assert.equal(b.storage.has(RAID_HISTORY_KEY), false); assert.equal(b.storage.get(RAID_RUN_KEY), raw);
+});
+
+test('raid history: returned data is a detached read-only snapshot, not a mutable stored profile', () => {
+  const b = raidBrowser({ menus: true }); const history = raidFinish(b), before = b.storage.get(RAID_HISTORY_KEY);
+  history.records[1][0].score = 999999; history.classes.adventurer.games = 999;
+  const next = b.raid.getLocalHistory(); assert.equal(next.classes.adventurer.games, 1); assert.notEqual(next.records[1][0].score, 999999);
+  assert.equal(b.storage.get(RAID_HISTORY_KEY), before);
 });

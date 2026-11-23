@@ -671,5 +671,32 @@ body { display: flex; align-items: stretch; justify-content: center; }
 #picker-resume { white-space: normal; overflow-wrap: anywhere; }
 #picker-save-status { flex: none; margin: 0; }
 
+/* Local history: vertically scrolling cards, never a wide/clipped table. */
+.history-modal { z-index: 120; }
+.history-card { width: min(100%, 600px); max-height: calc(100dvh - 32px); min-width: 0; overflow: hidden; }
+.history-card > :not(.history-body) { flex: none; }
+.history-card .save-note { margin: 0; }
+.history-card .btn { min-height: 44px; margin-top: 0; }
+.history-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.history-controls label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: #c9b5d2; font-size: 12px; }
+.history-controls select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 5px; border: 1px solid #73518d; border-radius: 8px; background: #241832; color: #ffe2a9; font-size: 12px; }
+.history-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.history-record { padding: 10px; margin: 0 0 9px; border: 1px solid #574065; border-radius: 10px; background: #1d142a; overflow-wrap: anywhere; }
+.history-record.latest { border-color: #d4b965; }
+.history-record h4 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; margin: 0 0 6px; color: #ffe2a9; font-size: 14px; }
+.history-record p, .history-hint { margin: 5px 0; color: #c9b5d2; font-size: 12px; line-height: 1.5; }
+.history-hint summary { cursor: pointer; color: #dfc1ec; min-height: 32px; padding: 5px 0; }
+.history-hint p { margin: 3px 0 10px; }
+.history-record .history-latest { color: #e5d184; }
+.history-record .history-skills { color: #aebee1; }
+.history-bests { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 8px 0 0; font-size: 11px; }
+.history-bests dt { color: #b7a3c4; overflow-wrap: normal; }
+.history-bests dd { margin: 4px 0 0; font-size: 14px; color: #ffe2a9; }
+#picker-history { margin: 8px 0; }
+#picker-history-status { color: #ffca98; margin-bottom: 10px; }
+.history-card :focus-visible, #picker-history:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (max-width: 380px) { .history-controls { grid-template-columns: 1fr; } }
+@media (max-height: 560px) { .history-card { overflow-y: auto; } .history-body { flex: none; overflow: visible; } }
+
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */
 [hidden] { display: none !important; }
