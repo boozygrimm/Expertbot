@@ -10,7 +10,10 @@ from types import SimpleNamespace
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import secrets
+import unicodedata
 
 from config import ADMIN_ID
 from database import db
@@ -21,20 +24,30 @@ from news_prototype import owner_daily, owner_trial
 router = Router()
 logger = logging.getLogger(__name__)
 _input_state_lock = asyncio.Lock()
+_raid_broadcast_lock = asyncio.Lock()
 RAID_PREVIEW_URL = 'https://boozygrimm.github.io/Expertbot/lunapark-raid-magitech.html?telegram=1'
+RAID_DESCRIPTION_LIMIT = 700  # UTF-16 units; the whole preview fits one Telegram message.
 
 
-def raid_preview_content(*, owner=True):
-    # Fixed public Pages target, never a user-supplied URL. The command/button
-    # is restricted by the bot; the demo itself remains public and browser-local.
-    build = ''
+class RaidAnnouncementInput(StatesGroup):
+    description = State()
+    preview = State()
+
+
+def raid_build_id():
+    """Packaged game revision, not evidence that Pages/Render has deployed it."""
     try:
         with (Path(__file__).resolve().parents[1] / 'lunapark-raid-magitech.html').open(encoding='utf-8') as page:
             match = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">', page.read(1024))
-        if match:
-            build = match[1]
+        return match[1] if match else ''
     except (OSError, UnicodeError):
-        pass
+        return ''
+
+
+def raid_preview_content(*, owner=True, updates_enabled=True):
+    # Fixed public Pages target, never a user-supplied URL. The command/button
+    # is restricted by the bot; the demo itself remains public and browser-local.
+    build = raid_build_id()
     text = ('⚔️ RAID · магитех-тест Mini App\n\n'
             'Эта версия заменяет классический тест во входе /raid_test. '
             'Прогресс классики остаётся отдельно и сюда не переносится.\n'
@@ -51,8 +64,12 @@ def raid_preview_content(*, owner=True):
     b.adjust(1)
     if owner:
         b.row(types.InlineKeyboardButton(text='👥 Тестеры', callback_data='raid_access:list:pending:0'))
+        b.row(types.InlineKeyboardButton(text='📣 Сообщить об обновлении', callback_data='raid_announce:compose'))
         add_nav(b, back=HOME_CALLBACK, back_label='‹ Пульт', refresh='owner_panel:raid_test')
     else:
+        b.row(types.InlineKeyboardButton(
+            text='🔔 Обновления: включены' if updates_enabled else '🔕 Обновления: выключены',
+            callback_data='raid_updates:preferences'))
         b.row(types.InlineKeyboardButton(text='🔄 Обновить допуск', callback_data='raid_access:open'),
               types.InlineKeyboardButton(text='Закрыть', callback_data='raid_access:close'))
     return text, b.as_markup()
@@ -71,7 +88,7 @@ async def raid_notify(bot, user_id, text, markup=None) -> bool:
         await bot.send_message(user_id, text, reply_markup=markup, parse_mode=None, protect_content=False)
         return True
     except Exception as exc:
-        logger.warning('Не доставлено уведомление допуска Рейда: %s', type(exc).__name__)
+        logger.warning('Доставка уведомления Рейда не подтверждена: %s', type(exc).__name__)
         return False
 
 
@@ -125,7 +142,8 @@ async def open_raid_test(message: types.Message, state: FSMContext = None):
             return
     if state:
         await state.clear()
-    text, markup = raid_preview_content(owner=owner)
+    text, markup = raid_preview_content(owner=owner,
+        updates_enabled=True if owner else owner_preferences.raid_tester_updates_enabled(doc))
     await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
 
 
@@ -154,7 +172,8 @@ async def raid_access_action(callback: types.CallbackQuery, state: FSMContext = 
                 return
             if state:
                 await state.clear()
-            text, markup = raid_preview_content(owner=owner)
+            text, markup = raid_preview_content(owner=owner,
+                updates_enabled=True if owner else owner_preferences.raid_tester_updates_enabled(doc))
             await callback.message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
             await callback.answer()
             return
@@ -222,7 +241,7 @@ async def raid_access_action(callback: types.CallbackQuery, state: FSMContext = 
             await callback.answer('Решение уже изменилось. Обнови карточку тестера.', show_alert=True)
             return
         if status == 'allowed':
-            text, markup = raid_preview_content(owner=False)
+            text, markup = raid_preview_content(owner=False, updates_enabled=owner_preferences.raid_tester_updates_enabled(doc))
             delivered = await raid_notify(callback.bot, uid, '✅ Допуск к тесту разрешён.\n\n' + text, markup)
         else:
             delivered = await raid_notify(callback.bot, uid,
@@ -234,6 +253,278 @@ async def raid_access_action(callback: types.CallbackQuery, state: FSMContext = 
     except Exception as exc:
         logger.warning('Ошибка управления допуском Рейда: %s', type(exc).__name__)
         await callback.answer('Не удалось выполнить действие. Обнови список или попробуй позже.', show_alert=True)
+
+
+@router.callback_query(F.data.startswith('raid_updates:'))
+async def raid_update_subscription(callback: types.CallbackQuery):
+    """Self-service preferences, including buttons on an old announcement."""
+    if (not callback.from_user or not callback.message
+            or not raid_private_user(callback.message, callback.from_user)):
+        await callback.answer('Уведомления настраиваются только в своей личке.', show_alert=True)
+        return
+    action = (callback.data or '').removeprefix('raid_updates:')
+    if action not in ('preferences', 'on', 'off') or callback.from_user.id == ADMIN_ID:
+        await callback.answer('Эта настройка доступна тестеру в своей личке.', show_alert=True)
+        return
+    try:
+        uid = callback.from_user.id  # Never accept a target ID from callback_data.
+        doc = await owner_preferences.get_raid_tester(db.settings, uid)
+        if doc is None:
+            await callback.answer('Заявки на тест нет. Сначала отправь /raid_test.', show_alert=True)
+            return
+        if action != 'preferences':
+            if not await owner_preferences.set_raid_tester_updates(db.settings, uid, action == 'on'):
+                await callback.answer('Настройка не сохранена. Попробуй позже.', show_alert=True)
+                return
+            doc = await owner_preferences.get_raid_tester(db.settings, uid)
+        enabled = owner_preferences.raid_tester_updates_enabled(doc)
+        text = ('🔔 Обновления теста Рейда\n\n'
+                + ('Сообщения об обновлениях включены.' if enabled else 'Сообщения об обновлениях выключены.')
+                + '\nПолучают их только допущенные тестеры. Отказ не отменяет допуск, '
+                'не меняет локальный прогресс и сохраняется после перезапуска бота. '
+                'Сообщения о решении по допуску — отдельно. Включить обновления обратно можно здесь или через /raid_test.')
+        b = InlineKeyboardBuilder()
+        b.button(text='🔕 Не присылать обновления' if enabled else '🔔 Получать обновления',
+                 callback_data='raid_updates:off' if enabled else 'raid_updates:on')
+        if doc['status'] == 'allowed':
+            b.button(text='‹ Рейд · тест', callback_data='raid_access:open')
+        b.button(text='Закрыть', callback_data='raid_access:close')
+        b.adjust(1)
+        await edit(callback.message, text, b.as_markup())
+        await callback.answer('Настройка сохранена.' if action != 'preferences' else None)
+    except Exception as exc:
+        logger.warning('Не удалось изменить уведомления Рейда: %s', type(exc).__name__)
+        await callback.answer('Не удалось прочитать или сохранить настройку. Попробуй позже.', show_alert=True)
+
+
+def raid_update_message(description, build):
+    return (f'📣 Обновление теста Рейда\nСборка: {build}\n\n{description}\n\n'
+            'Закрой уже открытый Mini App и открой тест заново кнопкой ниже. '
+            'Номер внутри игры должен совпасть со сборкой выше. '
+            'Твой локальный прогресс остаётся на этом устройстве.')
+
+
+def raid_update_markup(build):
+    b = InlineKeyboardBuilder()
+    b.button(text='⚔️ Открыть обновлённый тест',
+             web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + f'&build={build}'))
+    b.button(text='🔕 Не присылать обновления', callback_data='raid_updates:off')
+    b.adjust(1)
+    return b.as_markup()
+
+
+def raid_announcement_preview(draft, count):
+    token, build = draft['token'], draft['build']
+    text = ('👁 Предпросмотр — ещё не отправлено\n\n'
+            + raid_update_message(draft['description'], build)
+            + f'\n\nПолучателей сейчас: {count}. Только допущенные, не отказавшиеся от обновлений. '
+            'Перед отправкой допуск и подписка проверяются ещё раз. '
+            'Сборка взята из этого процесса бота; готовность Pages проверь кнопкой. '
+            'Публикация сама по себе ничего тестерам не рассылает.')
+    b = InlineKeyboardBuilder()
+    b.button(text='⚔️ Проверить сборку', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + f'&build={build}'))
+    if count:
+        b.button(text=f'📣 Отправить тестерам ({count})', callback_data=f'raid_announce:send:{token}')
+    b.button(text='✏️ Изменить описание', callback_data=f'raid_announce:edit:{token}')
+    b.button(text='Отмена', callback_data=f'raid_announce:cancel:{token}')
+    b.adjust(1)
+    add_nav(b, back='owner_panel:raid_test', back_label='‹ Рейд · тест', refresh=f'raid_announce:preview:{token}')
+    return text, b.as_markup()
+
+
+def raid_announcement_prompt(draft, previous=None):
+    text = ('📣 Сообщить тестерам об обновлении\nПульт › Рейд › Объявление\n\n'
+            f'Сборка этого процесса бота: {draft["build"]}.\n'
+            f'Пришли краткое описание изменений одним текстовым сообщением (до {RAID_DESCRIPTION_LIMIT} символов; '
+            'эмодзи могут занимать два). Сначала будет предпросмотр и отдельная кнопка отправки. '
+            'Ничего не отправляется автоматически.\n\n'
+            'После обновления main дождись Pages и автодеплоя Render, открой свежий /raid_test '
+            'и сверь номер сборки в самой игре. Старое открытое окно само не обновится.')
+    if previous and previous.get('status') in ('sending', 'interrupted'):
+        text += ('\n\n⚠️ Итог предыдущей отправки не полный: часть сообщений могла дойти. '
+                 'Автоматического продолжения или повтора нет. Не повторяй то же объявление вслепую.')
+    elif previous and previous.get('status') == 'complete':
+        text += (f'\n\nПоследний итог: доставлено {previous.get("sent", 0)}, '
+                 f'не подтверждено {previous.get("unconfirmed", 0)}, пропущено {previous.get("skipped", 0)}.')
+    b = InlineKeyboardBuilder()
+    b.button(text='Отмена', callback_data=f'raid_announce:cancel:{draft["token"]}')
+    b.adjust(1)
+    add_nav(b, back='owner_panel:raid_test', back_label='‹ Рейд · тест', refresh='raid_announce:compose')
+    return text, b.as_markup()
+
+
+# Registered on the root dispatcher before broad FSM/media input handlers.
+async def receive_raid_announcement(message: types.Message, state: FSMContext):
+    if not raid_private_user(message) or message.from_user.id != ADMIN_ID:
+        return
+    async with _input_state_lock:
+        if await state.get_state() != RaidAnnouncementInput.description.state:
+            return
+        data = await state.get_data()
+        draft = data.get('raid_announcement') or {}
+        if not re.fullmatch(r'[a-f0-9]{16}', draft.get('token', '')):
+            return
+        description = ''.join(c for c in (message.text or '').replace('\r\n', '\n').replace('\t', ' ')
+                              if c == '\n' or not unicodedata.category(c).startswith('C')).strip()
+        if not description or len(description.encode('utf-16-le')) // 2 > RAID_DESCRIPTION_LIMIT:
+            await message.answer(f'Нужен текст от 1 до {RAID_DESCRIPTION_LIMIT} символов; '
+                                 'эмодзи могут занимать два. Это пока только черновик.', parse_mode=None)
+            return
+        if (message.text or '').startswith('/'):
+            return  # Root routing also leaves commands to their normal handlers.
+        try:
+            if draft.get('build') != raid_build_id():
+                await state.clear()
+                await message.answer('Сборка изменилась. Открой «Рейд · тест → Сообщить об обновлении» заново.', parse_mode=None)
+                return
+            recipients = await owner_preferences.raid_update_recipients(db.settings)
+            draft = {**draft, 'description': description}
+            await state.update_data(raid_announcement=draft)
+            await state.set_state(RaidAnnouncementInput.preview)
+            text, markup = raid_announcement_preview(draft, len(recipients))
+            await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
+        except Exception as exc:
+            logger.warning('Не удалось подготовить объявление Рейда: %s', type(exc).__name__)
+            await message.answer('Не удалось подготовить предпросмотр. Ничего не отправлено; открой форму заново.', parse_mode=None)
+
+
+async def deliver_raid_announcement(callback, draft, recipients):
+    """At most one attempt per snapshot recipient; no automatic retries/resume."""
+    sent = unconfirmed = skipped = 0
+    saved = True
+    try:
+        # A callback acknowledgement/UI failure must not lose a confirmed batch
+        # after its durable claim. The owner can read the final report instead.
+        try:
+            await callback.answer('Отправка началась.')
+        except Exception as exc:
+            logger.warning('Не подтверждена кнопка объявления Рейда: %s', type(exc).__name__)
+        text, markup = raid_update_message(draft['description'], draft['build']), raid_update_markup(draft['build'])
+        for uid in recipients:
+            try:
+                doc = await owner_preferences.get_raid_tester(db.settings, uid)
+            except Exception as exc:
+                # Fail closed on unavailable/corrupt admission; do not broadcast
+                # on a stale allowlist or assume the user is still subscribed.
+                logger.warning('Отправка Рейда остановлена: %s', type(exc).__name__)
+                break
+            if not doc or doc['status'] != 'allowed' or not owner_preferences.raid_tester_updates_enabled(doc):
+                skipped += 1
+                continue
+            if await raid_notify(callback.bot, uid, text, markup):
+                sent += 1
+            else:
+                unconfirmed += 1  # A network timeout is NOT proof of non-delivery.
+            await asyncio.sleep(.06)  # Below Telegram's global send rate; no retries.
+    finally:
+        remaining = len(recipients) - sent - unconfirmed - skipped
+        try:
+            await owner_preferences.finish_raid_announcement(db.settings, draft['token'],
+                sent=sent, unconfirmed=unconfirmed, skipped=skipped, remaining=remaining)
+        except Exception as exc:
+            saved = False
+            logger.warning('Не сохранён итог объявления Рейда: %s', type(exc).__name__)
+    text = (f'📣 Объявление Рейда · {draft["build"]}\n\n'
+            f'Доставлено: {sent}\nДоставка не подтверждена: {unconfirmed}\n'
+            f'Пропущено (отказ/нет допуска): {skipped}\nНе завершено: {remaining}\n\n'
+            'Автоматических повторов нет. Неподтверждённое сообщение могло дойти; '
+            'не повторяй всю рассылку вслепую.')
+    if not saved:
+        text += '\nИтог не удалось сохранить в settings. Отправка автоматически не повторяется.'
+    b = InlineKeyboardBuilder()
+    b.button(text='Новое объявление', callback_data='raid_announce:compose')
+    b.adjust(1)
+    add_nav(b, back='owner_panel:raid_test', back_label='‹ Рейд · тест')
+    await edit(callback.message, text, b.as_markup())
+
+
+@router.callback_query(F.data.startswith('raid_announce:'))
+async def raid_announcement_action(callback: types.CallbackQuery, state: FSMContext = None):
+    if (not authorized(callback) or not raid_private_user(callback.message, callback.from_user)):
+        await callback.answer('Объявления доступны только владельцу в своей личке.', show_alert=True)
+        return
+    action = (callback.data or '').removeprefix('raid_announce:')
+    match = re.fullmatch(r'(preview|edit|cancel|send):([a-f0-9]{16})', action)
+    if not state or action != 'compose' and not match:
+        await callback.answer('Неизвестная или устаревшая кнопка. Открой объявление заново.', show_alert=True)
+        return
+    broadcast_lock = False
+    try:
+        async with _input_state_lock:
+            if _raid_broadcast_lock.locked():
+                await callback.answer('Предыдущая отправка ещё выполняется. Дождись итога.', show_alert=True)
+                return
+            if action == 'compose':
+                build = raid_build_id()
+                if not build:
+                    await callback.answer('Номер сборки недоступен. Объявление не создано.', show_alert=True)
+                    return
+                previous = await owner_preferences.get_raid_announcement(db.settings)
+                draft = {'token': secrets.token_hex(8), 'build': build}
+                await state.clear()
+                await state.set_state(RaidAnnouncementInput.description)
+                await state.update_data(raid_announcement=draft)
+                text, markup = raid_announcement_prompt(draft, previous)
+                await edit(callback.message, text, markup)
+                await callback.answer()
+                return
+            command, token = match[1], match[2]
+            current, data = await state.get_state(), await state.get_data()
+            draft = data.get('raid_announcement') or {}
+            if (current not in (RaidAnnouncementInput.description.state, RaidAnnouncementInput.preview.state)
+                    or draft.get('token') != token):
+                await callback.answer('Этот черновик уже закрыт или заменён. Ничего не отправлено.', show_alert=True)
+                return
+            if command == 'cancel':
+                await state.clear()
+                text, markup = raid_preview_content()
+                await edit(callback.message, text, markup)
+                await callback.answer('Черновик отменён.')
+                return
+            if command == 'edit':
+                draft = {'token': secrets.token_hex(8), 'build': raid_build_id()}
+                if not draft['build']:
+                    await callback.answer('Номер сборки недоступен. Ничего не отправлено.', show_alert=True)
+                    return
+                await state.update_data(raid_announcement=draft)
+                await state.set_state(RaidAnnouncementInput.description)
+                text, markup = raid_announcement_prompt(draft)
+                await edit(callback.message, text, markup)
+                await callback.answer()
+                return
+            if current != RaidAnnouncementInput.preview.state or not draft.get('description'):
+                await callback.answer('Сначала пришли описание и проверь предпросмотр.', show_alert=True)
+                return
+            if draft.get('build') != raid_build_id():
+                await callback.answer('Сборка изменилась. Создай новый предпросмотр перед отправкой.', show_alert=True)
+                return
+            recipients = await owner_preferences.raid_update_recipients(db.settings)
+            if command == 'preview':
+                text, markup = raid_announcement_preview(draft, len(recipients))
+                await edit(callback.message, text, markup)
+                await callback.answer()
+                return
+            if not recipients:
+                await callback.answer('Нет допущенных подписанных тестеров. Ничего не отправлено.', show_alert=True)
+                return
+            if not await owner_preferences.claim_raid_announcement(db.settings, token, draft['build'], len(recipients)):
+                await callback.answer('Эта отправка уже начиналась. Автоматического повтора нет.', show_alert=True)
+                return
+            await _raid_broadcast_lock.acquire()
+            broadcast_lock = True
+            # Consume confirmation BEFORE any send. Old callbacks/restarts must
+            # never resend a partial batch, even if final UI/reporting fails.
+            await state.clear()
+        await deliver_raid_announcement(callback, draft, recipients)
+    except Exception as exc:
+        logger.warning('Не удалось выполнить объявление Рейда: %s', type(exc).__name__)
+        try:
+            await callback.answer('Действие не завершено. Проверь итог; не повторяй рассылку вслепую.', show_alert=True)
+        except Exception:
+            pass
+    finally:
+        if broadcast_lock:
+            _raid_broadcast_lock.release()
 
 
 def authorized(callback) -> bool:
