@@ -329,12 +329,13 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         build = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">',
                           (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').read_text()).group(1)
         self.assertEqual(parse_qs(url.query), {'telegram': ['1'], 'build': [build]})
+        self.assertEqual(parse_qs(url.fragment), {'raid_legacy_owner': [str(panel.ADMIN_ID)]})
         self.assertIn(build, text)
         self.assertIn('публичный', text)
         self.assertIn('локальные', text)
-        self.assertIn('Без рабочей базы', text)
+        self.assertIn('Без рабочей игровой базы', text)
         self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
-        self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close'})
+        self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close', 'raid_access:list:pending:0'})
 
     async def test_command_sends_web_app_and_clears_only_owner_private_input_without_db(self):
         class NoDatabase:
@@ -353,7 +354,6 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_command_denies_other_users_groups_wrong_private_id_and_missing_sender(self):
         for sender, chat_id, kind in (
-                (panel.ADMIN_ID + 1, panel.ADMIN_ID + 1, 'private'),
                 (panel.ADMIN_ID + 1, panel.ADMIN_ID, 'private'),
                 (panel.ADMIN_ID, panel.ADMIN_ID + 1, 'private'),
                 (panel.ADMIN_ID, -100123, 'group'),
@@ -398,7 +398,7 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(Path, 'open', side_effect=FileNotFoundError):
             text, markup = panel.raid_preview_content()
         self.assertIn('Номер сборки', text)
-        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, panel.RAID_PREVIEW_URL)
+        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, panel.RAID_PREVIEW_URL + f'#raid_legacy_owner={panel.ADMIN_ID}')
 
     async def test_command_menu_is_published_only_in_owner_chat_scope(self):
         from app_setup import set_commands
@@ -461,8 +461,7 @@ async def run():
                 assert new[0].reply_markup.inline_keyboard[0][0].web_app.url.startswith(panel.RAID_PREVIEW_URL)
                 assert new[0].protect_content is False
                 assert await context.get_state() is None and await context.get_data() == {}
-            for i, (sender, chat_id, kind) in enumerate(((ADMIN_ID+1, ADMIN_ID+1, 'private'),
-                    (ADMIN_ID+1, ADMIN_ID, 'private'), (ADMIN_ID, ADMIN_ID+1, 'private'),
+            for i, (sender, chat_id, kind) in enumerate(((ADMIN_ID+1, ADMIN_ID, 'private'), (ADMIN_ID, ADMIN_ID+1, 'private'),
                     (ADMIN_ID, -1001, 'supergroup')), 20):
                 who = dict(user, id=sender); where = {'id':chat_id, 'type':kind}
                 denied_context = dp.fsm.get_context(bot=bot, chat_id=chat_id, user_id=sender)
@@ -496,6 +495,40 @@ async def run():
             assert launchers[0].reply_markup.inline_keyboard[0][0].web_app
             assert any(isinstance(m, DeleteMessage) for m in updates)
             assert not any(isinstance(m, EditMessageText) for m in updates)
+            # Real root /raid_test: first request stays pending; approval is
+            # owner-only; approved testers escape their own FSM, not the panel.
+            from mongomock_motor import AsyncMongoMockClient
+            settings = AsyncMongoMockClient().test.settings
+            await settings.create_index([('setting', 1), ('chat_id', 1)], unique=True)
+            uid = ADMIN_ID + 11
+            tester = dict(user, id=uid, first_name='Tester')
+            tester_chat = {'id':uid, 'type':'private'}
+            tester_context = dp.fsm.get_context(bot=bot, chat_id=uid, user_id=uid)
+            await tester_context.set_state(tools.OwnerInput.waiting)
+            with patch.object(panel, 'db', SimpleNamespace(settings=settings)):
+                msg = {'message_id':300,'date':1760000000,'chat':tester_chat,'from':tester,'text':'/raid_test'}
+                before = len(sent)
+                await dp.feed_update(bot, Update.model_validate({'update_id':300,'message':msg}))
+                assert await tester_context.get_state() == tools.OwnerInput.waiting.state
+                assert not any(isinstance(m, SendMessage) and m.reply_markup and any(b.web_app for r in m.reply_markup.inline_keyboard for b in r) for m in sent[before:])
+                doc = await panel.owner_preferences.get_raid_tester(settings, uid)
+                assert doc['status'] == 'pending'
+                cb['id']='approval';cb['data']=f'raid_access:allow:{uid}:0'
+                cb['message']['has_protected_content']=False
+                await dp.feed_update(bot, Update.model_validate({'update_id':301,'callback_query':cb}))
+                assert (await panel.owner_preferences.get_raid_tester(settings, uid))['status'] == 'allowed'
+                assert any(isinstance(m, SendMessage) and m.chat_id == uid and m.reply_markup and m.reply_markup.inline_keyboard[0][0].web_app for m in sent)
+                before = len(sent)
+                msg['message_id']=302
+                await dp.feed_update(bot, Update.model_validate({'update_id':302,'message':msg}))
+                assert await tester_context.get_state() is None
+                assert len(sent[before:]) == 1 and sent[-1].reply_markup.inline_keyboard[0][0].web_app
+                assert not any((b.callback_data or '').startswith('owner_panel:') for r in sent[-1].reply_markup.inline_keyboard for b in r)
+                cb['id']='forged-management';cb['from']=tester;cb['message']['chat']=tester_chat
+                cb['data']=f'raid_access:allow:{uid}:0'
+                before = len(sent)
+                await dp.feed_update(bot, Update.model_validate({'update_id':303,'callback_query':cb}))
+                assert not any(isinstance(m, (SendMessage,EditMessageText)) for m in sent[before:])
     finally:
         await dp.storage.close()
         await bot.session.close()
@@ -540,3 +573,249 @@ asyncio.run(run())
                 message.answer.assert_not_awaited(); message.edit_text.assert_not_awaited()
                 message.delete.assert_not_awaited(); state.clear.assert_not_awaited()
                 self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+
+
+class RaidTesterAccessTests(unittest.IsolatedAsyncioTestCase):
+    """Admission is bot control metadata, not a game profile or server session."""
+
+    async def asyncSetUp(self):
+        self.settings = AsyncMongoMockClient().raid_test.settings
+        # Match Database.setup(): an _id alone must not collide on (setting, null).
+        await self.settings.create_index([('setting', 1), ('chat_id', 1)], unique=True)
+        class ControlDatabase:
+            def __getattr__(inner, key):
+                if key == 'settings':
+                    return self.settings
+                raise AssertionError('Tester admission touched game data: ' + key)
+        patcher = patch.object(panel, 'db', ControlDatabase())
+        patcher.start(); self.addCleanup(patcher.stop)
+        self.bot = SimpleNamespace(send_message=AsyncMock())
+        self.uid = panel.ADMIN_ID + 101
+        self.state = SimpleNamespace(clear=AsyncMock())
+
+    def message(self, uid=None, chat=None, kind='private'):
+        uid = self.uid if uid is None else uid
+        return SimpleNamespace(from_user=SimpleNamespace(id=uid, first_name='<Тестер>', is_bot=False),
+            chat=SimpleNamespace(id=uid if chat is None else chat, type=kind), bot=self.bot,
+            answer=AsyncMock(), edit_text=AsyncMock(), delete=AsyncMock())
+
+    def callback(self, data, uid=None, chat=None, kind='private'):
+        message = self.message(panel.ADMIN_ID if uid is None else uid, chat, kind)
+        return SimpleNamespace(from_user=message.from_user, message=message, data=data,
+                               bot=self.bot, answer=AsyncMock())
+
+    async def request(self, uid=None):
+        msg = self.message(uid)
+        await panel.open_raid_test(msg, self.state)
+        return msg
+
+    async def record(self, uid=None):
+        return await owner_preferences.get_raid_tester(self.settings, self.uid if uid is None else uid)
+
+    async def act(self, action, uid=None, revision=None):
+        uid = self.uid if uid is None else uid
+        if revision is None:
+            revision = (await self.record(uid))['revision']
+        cb = self.callback(f'raid_access:{action}:{uid}:{revision}')
+        await panel.raid_access_action(cb, self.state)
+        return cb
+
+    def launcher(self, markup):
+        return next(b for row in markup.inline_keyboard for b in row if b.web_app)
+
+    async def test_request_is_persistent_single_notification_and_no_launcher_before_approval(self):
+        msg = await self.request()
+        doc = await self.record()
+        self.assertEqual(doc['status'], 'pending'); self.assertEqual(doc['user_id'], self.uid)
+        self.assertEqual(doc['revision'], 0)
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        args = self.bot.send_message.await_args
+        self.assertEqual(args.args[0], panel.ADMIN_ID)
+        self.assertIn(f'raid_access:allow:{self.uid}:0', callbacks(args.kwargs['reply_markup']))
+        self.assertIn(f'raid_access:deny:{self.uid}:0', callbacks(args.kwargs['reply_markup']))
+        self.assertFalse(any(b.web_app for row in msg.answer.await_args.kwargs.get('reply_markup', SimpleNamespace(inline_keyboard=[])).inline_keyboard for b in row))
+        await self.request(); self.assertEqual(self.bot.send_message.await_count, 1)
+        self.state.clear.assert_not_awaited()
+
+    async def test_approval_notifies_only_target_and_gives_tester_no_owner_controls(self):
+        from urllib.parse import urlsplit, parse_qs
+        await self.request(); self.bot.send_message.reset_mock()
+        await self.act('allow')
+        self.assertEqual((await self.record())['status'], 'allowed')
+        self.assertEqual(self.bot.send_message.await_count, 1)
+        args = self.bot.send_message.await_args
+        self.assertEqual(args.args[0], self.uid)
+        markup = args.kwargs['reply_markup']; query = parse_qs(urlsplit(self.launcher(markup).web_app.url).query)
+        self.assertNotIn('legacy_owner', query)
+        self.assertFalse(urlsplit(self.launcher(markup).web_app.url).fragment)
+        self.assertTrue(all(not s.startswith('owner_') for s in callbacks(markup)))
+        self.assertIs(args.kwargs['protect_content'], False)
+        self.assertIn('свой', args.args[1].lower())
+        await self.act('allow', revision=0)
+        self.assertEqual(self.bot.send_message.await_count, 1, 'stale double approval must not repeat delivery')
+        msg = await self.request()
+        self.launcher(msg.answer.await_args.kwargs['reply_markup'])
+        self.state.clear.assert_awaited()
+
+    async def test_denied_or_revoked_cannot_spam_requests_and_revocation_does_not_delete_progress(self):
+        await self.request(); await self.act('deny')
+        before = self.bot.send_message.await_count
+        await self.request(); self.assertEqual(self.bot.send_message.await_count, before)
+        self.assertEqual((await self.record())['status'], 'denied')
+        await self.act('allow')
+        check = await self.act('revoke')
+        self.assertEqual((await self.record())['status'], 'allowed', 'first revoke asks confirmation')
+        self.assertIn(f'raid_access:remove:{self.uid}:2', callbacks(check.message.edit_text.await_args.kwargs['reply_markup']))
+        await self.act('remove')
+        self.assertEqual((await self.record())['status'], 'revoked')
+        before = self.bot.send_message.await_count
+        await self.request(); self.assertEqual(self.bot.send_message.await_count, before)
+        await self.act('allow', revision=0)
+        self.assertEqual((await self.record())['status'], 'revoked', 'old request cannot regrant revoked access')
+        self.assertEqual(self.bot.send_message.await_count, before)
+
+    async def test_owner_private_management_gates_run_before_db_clear_edit_or_delivery(self):
+        for data in ('raid_access:list:pending:0', f'raid_access:allow:{self.uid}:0',
+                     f'raid_access:remove:{self.uid}:1'):
+            for uid, chat, kind in ((self.uid, self.uid, 'private'), (panel.ADMIN_ID, self.uid, 'private'),
+                                    (panel.ADMIN_ID, -1001, 'supergroup')):
+                with self.subTest(data=data, uid=uid, chat=chat):
+                    cb = self.callback(data, uid, chat, kind)
+                    with patch.object(panel, 'db', None):
+                        await panel.raid_access_action(cb, self.state)
+                    self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+                    cb.message.edit_text.assert_not_awaited(); cb.message.answer.assert_not_awaited()
+        self.state.clear.assert_not_awaited(); self.bot.send_message.assert_not_awaited()
+
+    async def test_invalid_command_context_never_creates_or_notifies(self):
+        for uid, chat, kind in ((self.uid, panel.ADMIN_ID, 'private'), (self.uid, -1001, 'supergroup'),
+                                (panel.ADMIN_ID, self.uid, 'private')):
+            msg = self.message(uid, chat, kind)
+            with patch.object(panel, 'db', None):
+                await panel.open_raid_test(msg, self.state)
+            msg.answer.assert_not_awaited()
+        self.assertEqual(await self.settings.count_documents({}), 0)
+        self.bot.send_message.assert_not_awaited(); self.state.clear.assert_not_awaited()
+
+    async def test_database_failure_is_closed_not_an_approved_launcher(self):
+        settings = SimpleNamespace(find_one=AsyncMock(side_effect=RuntimeError('offline')))
+        msg = self.message()
+        with patch.object(panel, 'db', SimpleNamespace(settings=settings)):
+            await panel.open_raid_test(msg, self.state)
+        self.assertIn('позже', msg.answer.await_args.args[0])
+        self.assertNotIn('reply_markup', msg.answer.await_args.kwargs)
+        self.state.clear.assert_not_awaited(); self.bot.send_message.assert_not_awaited()
+
+    async def test_failed_notification_keeps_request_visible_and_approval_survives_delivery_failure(self):
+        self.bot.send_message.side_effect = RuntimeError('blocked')
+        msg = await self.request()
+        self.assertEqual((await self.record())['status'], 'pending')
+        self.assertIn('сохранена', msg.answer.await_args.args[0])
+        self.assertIn('не удалось', msg.answer.await_args.args[0])
+        cb = self.callback('raid_access:list:pending:0')
+        await panel.raid_access_action(cb, self.state)
+        self.assertIn(str(self.uid), cb.message.edit_text.await_args.args[0])
+        await self.act('allow')
+        self.assertEqual((await self.record())['status'], 'allowed')
+        msg = await self.request()
+        self.launcher(msg.answer.await_args.kwargs['reply_markup'])
+
+    async def test_list_paginates_and_shows_pending_allowed_and_revoked_without_granting(self):
+        for n in range(25):
+            await owner_preferences.request_raid_tester(self.settings, self.uid + n, 'Тестер' * 40)
+        for kind in ('pending', 'allowed', 'all'):
+            cb = self.callback(f'raid_access:list:{kind}:0')
+            await panel.raid_access_action(cb, self.state)
+            args = cb.message.edit_text.await_args
+            self.assertLess(len(args.args[0].encode('utf-16-le')) // 2, 4096)
+            self.assertTrue(all(len(s.encode()) <= 64 for s in callbacks(args.kwargs['reply_markup'])))
+            if kind != 'allowed':
+                self.assertIn(f'raid_access:list:{kind}:1', callbacks(args.kwargs['reply_markup']))
+        self.assertEqual(await self.settings.count_documents({'status':'pending'}), 25)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_unknown_malformed_or_stale_actions_never_create_admissions(self):
+        for data in (f'raid_access:allow:{self.uid}:0', 'raid_access:allow:0:0', 'raid_access:allow:01:0',
+                     'raid_access:allow:1:-1', 'raid_access:allow:1:0:extra', 'raid_access:list:bad:0'):
+            cb = self.callback(data)
+            await panel.raid_access_action(cb, self.state)
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.assertEqual(await self.settings.count_documents({}), 0)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_atomic_duplicate_requests_and_conflicting_decisions_have_single_winner(self):
+        import asyncio
+        records = await asyncio.gather(*(owner_preferences.request_raid_tester(self.settings, self.uid, 'Тестер') for _ in range(12)))
+        self.assertEqual(sum(created for _, created in records), 1)
+        self.assertEqual(await self.settings.count_documents({}), 1)
+        decisions = await asyncio.gather(*(owner_preferences.change_raid_tester(self.settings, self.uid, 0, s) for s in ('allowed','denied')))
+        self.assertEqual(sum(decisions), 1)
+        self.assertEqual((await self.record())['revision'], 1)
+
+    async def test_tester_refresh_rechecks_access_and_never_enters_owner_panel(self):
+        await self.request(); await self.act('allow')
+        cb = self.callback('raid_access:open', self.uid)
+        await panel.raid_access_action(cb, self.state)
+        self.launcher(cb.message.answer.await_args.kwargs['reply_markup'])
+        await self.act('remove')
+        cb = self.callback('raid_access:open', self.uid)
+        await panel.raid_access_action(cb, self.state)
+        cb.message.answer.assert_not_awaited()
+        self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        self.assertFalse(any(b.web_app for row in cb.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
+
+    async def test_owner_launcher_preserves_legacy_profile_only_for_owner_and_links_tester_panel(self):
+        from urllib.parse import parse_qs, urlsplit
+        msg = self.message(panel.ADMIN_ID)
+        with patch.object(panel, 'db', None):
+            await panel.open_raid_test(msg, self.state)
+        args = msg.answer.await_args
+        url = urlsplit(self.launcher(args.kwargs['reply_markup']).web_app.url)
+        self.assertEqual(parse_qs(url.fragment)['raid_legacy_owner'], [str(panel.ADMIN_ID)])
+        self.assertNotIn(str(panel.ADMIN_ID), url.query)
+        self.assertIn('raid_access:list:pending:0', callbacks(args.kwargs['reply_markup']))
+
+    async def test_missing_or_bot_sender_and_inline_callback_have_no_side_effects(self):
+        for shape in ('missing', 'bot', 'inline'):
+            cb = self.callback('raid_access:close')
+            if shape == 'missing':
+                cb.from_user = None
+            elif shape == 'bot':
+                cb.from_user.is_bot = True
+            else:
+                cb.message = None
+            with patch.object(panel, 'db', None):
+                await panel.raid_access_action(cb, self.state)
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+            if cb.message:
+                cb.message.delete.assert_not_awaited()
+        self.state.clear.assert_not_awaited(); self.bot.send_message.assert_not_awaited()
+
+    async def test_multiple_testers_coexist_with_existing_unique_settings_index(self):
+        await owner_preferences.migrate(self.settings)
+        first = await self.request()
+        second = await self.request(self.uid + 1)
+        await self.request(self.uid)
+        for uid in (self.uid, self.uid + 1):
+            doc = await self.record(uid)
+            self.assertIsNotNone(doc)
+            self.assertEqual(doc['chat_id'], uid)
+            await self.act('allow', uid)
+            self.assertEqual((await self.record(uid))['status'], 'allowed')
+        self.assertIn('сохранена', first.answer.await_args.args[0])
+        self.assertIn('сохранена', second.answer.await_args.args[0])
+        self.assertEqual(await self.settings.count_documents({'setting': owner_preferences.RAID_TESTER_SETTING}), 2)
+        self.assertEqual(await self.settings.count_documents({'setting': owner_preferences.SETTING}), 1)
+        self.assertEqual(self.bot.send_message.await_count, 4, 'two requests and two approvals, not duplicate notifications')
+
+    async def test_management_state_survives_restart_and_name_is_plain_bounded_text(self):
+        dangerous = '\x00<b>не владелец</b>\n' + 'я' * 200
+        doc, created = await owner_preferences.request_raid_tester(self.settings, self.uid, dangerous)
+        self.assertTrue(created); self.assertLessEqual(len(doc['name']), 80)
+        self.assertNotIn('\n', doc['name']); self.assertNotIn('\x00', doc['name'])
+        await self.act('allow')
+        # Fresh handler input reads persisted admission, no per-process allowlist.
+        msg = self.message(); await panel.open_raid_test(msg)
+        self.launcher(msg.answer.await_args.kwargs['reply_markup'])
+        self.assertIsNone(msg.answer.await_args.kwargs['parse_mode'])
+        self.assertEqual(await self.settings.count_documents({}), 1)

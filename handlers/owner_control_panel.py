@@ -24,9 +24,9 @@ _input_state_lock = asyncio.Lock()
 RAID_PREVIEW_URL = 'https://boozygrimm.github.io/Expertbot/lunapark-raid.html?telegram=1'
 
 
-def raid_preview_content():
+def raid_preview_content(*, owner=True):
     # Fixed public Pages target, never a user-supplied URL. The command/button
-    # is owner-private; the demo itself remains public and browser-local.
+    # is restricted by the bot; the demo itself remains public and browser-local.
     build = ''
     try:
         with (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').open(encoding='utf-8') as page:
@@ -36,30 +36,202 @@ def raid_preview_content():
     except (OSError, UnicodeError):
         pass
     text = ('⚔️ Рейд · тест Mini App\n\n'
-            'Запуск только из лички владельца. Сам пробник на Pages публичный.\n'
-            'Без рабочей базы, серверных наград и переноса прогресса алхимии. '
-            'Сохранения локальные и могут отличаться от обычного браузера.\n\n'
+            'Запуск из своей лички после допуска владельца. Сам пробник на Pages публичный.\n'
+            'Без рабочей игровой базы, серверных наград и переноса прогресса алхимии. '
+            'У каждого свой прогресс: сохранения локальные — забег, классы, настройки, рекорды и достижения. '
+            'Данные не переносятся между устройствами и могут отличаться от обычного браузера.\n\n'
             'Скриншоты не блокируем. Выход из игры: «Меню → Закрыть Mini App».\n'
             'Проверь цепочку пальцем, выбор наград, сворачивание и повторный вход → «Продолжить».\n'
             + (f'Ожидаемая сборка: {build}.' if build else 'Номер сборки показан внутри пробника.'))
     b = InlineKeyboardBuilder()
-    b.button(text='⚔️ Открыть Рейд · тест', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + (f'&build={build}' if build else '')))
+    b.button(text='⚔️ Открыть Рейд · тест', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + (f'&build={build}' if build else '')
+        + (f'#raid_legacy_owner={ADMIN_ID}' if owner else '')))
     b.adjust(1)
-    add_nav(b, back=HOME_CALLBACK, back_label='‹ Пульт', refresh='owner_panel:raid_test')
+    if owner:
+        b.row(types.InlineKeyboardButton(text='👥 Тестеры', callback_data='raid_access:list:pending:0'))
+        add_nav(b, back=HOME_CALLBACK, back_label='‹ Пульт', refresh='owner_panel:raid_test')
+    else:
+        b.row(types.InlineKeyboardButton(text='🔄 Обновить допуск', callback_data='raid_access:open'),
+              types.InlineKeyboardButton(text='Закрыть', callback_data='raid_access:close'))
     return text, b.as_markup()
+
+
+def raid_private_user(message, user=None) -> bool:
+    user = user or getattr(message, 'from_user', None)
+    chat = getattr(message, 'chat', None)
+    return bool(user and type(user.id) is int and 0 < user.id < 2 ** 52
+                and not getattr(user, 'is_bot', False) and chat
+                and chat.type == 'private' and chat.id == user.id)
+
+
+async def raid_notify(bot, user_id, text, markup=None) -> bool:
+    try:
+        await bot.send_message(user_id, text, reply_markup=markup, parse_mode=None, protect_content=False)
+        return True
+    except Exception as exc:
+        logger.warning('Не доставлено уведомление допуска Рейда: %s', type(exc).__name__)
+        return False
+
+
+def raid_decision_buttons(doc):
+    b = InlineKeyboardBuilder()
+    uid, rev, status = doc['user_id'], doc['revision'], doc['status']
+    if status != 'allowed':
+        b.button(text='✅ Разрешить', callback_data=f'raid_access:allow:{uid}:{rev}')
+    if status == 'pending':
+        b.button(text='❌ Отклонить', callback_data=f'raid_access:deny:{uid}:{rev}')
+    if status == 'allowed':
+        b.button(text='Убрать допуск', callback_data=f'raid_access:revoke:{uid}:{rev}')
+    b.adjust(2)
+    add_nav(b, back='raid_access:list:all:0', refresh=f'raid_access:user:{uid}:{rev}')
+    return b.as_markup()
+
+
+def raid_tester_text(doc):
+    status = {'pending': 'Заявка', 'allowed': 'Допущен', 'denied': 'Отклонён', 'revoked': 'Допуск отозван'}[doc['status']]
+    return (f"👤 {doc.get('name', 'Тестер')}\nID: {doc['user_id']}\nСтатус: {status}\n\n"
+            'Допуск только к пробнику, не к пульту и не к админским функциям. '
+            'У каждого свой локальный прогресс. Страница Pages публична; отзыв '
+            'останавливает выдачу новых кнопок, не блокирует старую ссылку и не удаляет сейвы.')
 
 
 # Registered on the root dispatcher before any broad FSM input handlers.
 async def open_raid_test(message: types.Message, state: FSMContext = None):
-    if (not message.from_user or message.from_user.id != ADMIN_ID or not message.chat
-            or message.chat.type != 'private' or message.chat.id != ADMIN_ID):
+    if not raid_private_user(message):
         return
+    owner = message.from_user.id == ADMIN_ID
+    if not owner:
+        try:
+            doc = await owner_preferences.get_raid_tester(db.settings, message.from_user.id)
+            created = False
+            if doc is None:
+                doc, created = await owner_preferences.request_raid_tester(
+                    db.settings, message.from_user.id, getattr(message.from_user, 'first_name', 'Тестер'))
+            if doc['status'] != 'allowed':
+                if doc['status'] == 'pending':
+                    notified = not created or await raid_notify(message.bot, ADMIN_ID,
+                        '📩 Заявка на тест Рейда\n\n' + raid_tester_text(doc), raid_decision_buttons(doc))
+                    text = ('Заявка на тест Рейда сохранена. Дождись решения владельца.' if notified else
+                            'Заявка на тест Рейда сохранена. Уведомление владельцу не удалось доставить; сообщи ему о заявке.')
+                else:
+                    text = 'Заявка отклонена или допуск отозван. Для повторного допуска обратись к владельцу.'
+                await message.answer(text, parse_mode=None)
+                return
+        except Exception as exc:
+            logger.warning('Не удалось проверить допуск Рейда: %s', type(exc).__name__)
+            await message.answer('Не удалось проверить или сохранить допуск. Попробуй позже.', parse_mode=None)
+            return
     if state:
         await state.clear()
-    text, markup = raid_preview_content()
-    # Access is checked above; content protection is not an auth boundary and
-    # can prohibit screenshots on Android, which this owner trial needs.
+    text, markup = raid_preview_content(owner=owner)
     await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
+
+
+@router.callback_query(F.data.startswith('raid_access:'))
+async def raid_access_action(callback: types.CallbackQuery, state: FSMContext = None):
+    if not callback.from_user or not callback.message or not raid_private_user(callback.message, callback.from_user):
+        await callback.answer('Допуск доступен только в своей личке.', show_alert=True)
+        return
+    action = (callback.data or '').removeprefix('raid_access:')
+    if action not in ('open', 'close') and not authorized(callback):
+        await callback.answer('Управлять тестерами может только владелец в личке.', show_alert=True)
+        return
+    try:
+        if action == 'close':
+            await callback.answer()
+            await callback.message.delete()
+            return
+        if action == 'open':
+            owner = callback.from_user.id == ADMIN_ID
+            doc = None if owner else await owner_preferences.get_raid_tester(db.settings, callback.from_user.id)
+            if not owner and (not doc or doc['status'] != 'allowed'):
+                b = InlineKeyboardBuilder()
+                b.button(text='Закрыть', callback_data='raid_access:close')
+                await edit(callback.message, 'Допуска к тесту нет. Обратись к владельцу.', b.as_markup())
+                await callback.answer('Допуска к тесту нет.', show_alert=True)
+                return
+            if state:
+                await state.clear()
+            text, markup = raid_preview_content(owner=owner)
+            await callback.message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
+            await callback.answer()
+            return
+        listing = re.fullmatch(r'list:(pending|allowed|all):(0|[1-9][0-9]{0,5})', action)
+        item = re.fullmatch(r'(user|allow|deny|revoke|remove):([1-9][0-9]{0,15}):(0|[1-9][0-9]{0,8})', action)
+        if not listing and not item:
+            await callback.answer('Неизвестное действие. Обнови список тестеров.', show_alert=True)
+            return
+        if state:
+            await state.clear()
+        if listing:
+            kind, page = listing[1], int(listing[2])
+            rows, more = await owner_preferences.list_raid_testers(db.settings, kind, page)
+            b = InlineKeyboardBuilder()
+            for label, value in [('Заявки', 'pending'), ('Допущенные', 'allowed'), ('Все', 'all')]:
+                b.button(text=label, callback_data=f'raid_access:list:{value}:0')
+            b.adjust(3)
+            lines = ['👥 Тестеры Рейда', 'Пульт › Рейд › Тестеры', '',
+                     'Тестер пишет /raid_test в свою личку бота. Разрешение не даёт прав пульта.', '']
+            for doc in rows:
+                uid, rev = doc['user_id'], doc['revision']
+                status_label = {'pending': 'заявка', 'allowed': 'допущен', 'denied': 'отклонён', 'revoked': 'допуск отозван'}.get(doc['status'], 'неизвестно')
+                lines.append(f"{doc.get('name', 'Тестер')[:32]} · ID {uid} · {status_label}")
+                b.row(types.InlineKeyboardButton(text=f"{doc.get('name', 'Тестер')[:22]} · {uid}",
+                      callback_data=f'raid_access:user:{uid}:{rev}'))
+            if not rows:
+                lines.append('Список пуст.')
+            navigation = []
+            if page:
+                navigation.append(types.InlineKeyboardButton(text='‹ Предыдущие', callback_data=f'raid_access:list:{kind}:{page-1}'))
+            if more:
+                navigation.append(types.InlineKeyboardButton(text='Следующие ›', callback_data=f'raid_access:list:{kind}:{page+1}'))
+            if navigation:
+                b.row(*navigation)
+            add_nav(b, back='owner_panel:raid_test', refresh=f'raid_access:list:{kind}:{page}')
+            await edit(callback.message, '\n'.join(lines), b.as_markup())
+            await callback.answer()
+            return
+        command, uid, rev = item[1], int(item[2]), int(item[3])
+        doc = await owner_preferences.get_raid_tester(db.settings, uid)
+        if not doc:
+            await callback.answer('Заявка не найдена.', show_alert=True)
+            return
+        if command == 'user':
+            await edit(callback.message, raid_tester_text(doc), raid_decision_buttons(doc))
+            await callback.answer()
+            return
+        if doc['revision'] != rev:
+            await callback.answer('Решение уже изменилось. Обнови карточку тестера.', show_alert=True)
+            return
+        if command == 'revoke':
+            if doc['status'] != 'allowed':
+                await callback.answer('Допуск уже изменился.', show_alert=True)
+                return
+            b = InlineKeyboardBuilder()
+            b.button(text='Да, убрать допуск', callback_data=f'raid_access:remove:{uid}:{rev}')
+            b.button(text='Отмена', callback_data=f'raid_access:user:{uid}:{rev}')
+            b.adjust(1)
+            add_nav(b, back='raid_access:list:allowed:0', refresh=f'raid_access:user:{uid}:{rev}')
+            await edit(callback.message, raid_tester_text(doc) + '\n\nУбрать допуск? Локальный прогресс не удаляется.', b.as_markup())
+            await callback.answer()
+            return
+        status = {'allow': 'allowed', 'deny': 'denied', 'remove': 'revoked'}[command]
+        if not await owner_preferences.change_raid_tester(db.settings, uid, rev, status):
+            await callback.answer('Решение уже изменилось. Обнови карточку тестера.', show_alert=True)
+            return
+        if status == 'allowed':
+            text, markup = raid_preview_content(owner=False)
+            delivered = await raid_notify(callback.bot, uid, '✅ Допуск к тесту разрешён.\n\n' + text, markup)
+        else:
+            delivered = await raid_notify(callback.bot, uid,
+                'Допуск к тесту Рейда ' + ('отозван' if status == 'revoked' else 'не разрешён')
+                + '. Локальный прогресс не удалён. По вопросам обратись к владельцу.')
+        doc = await owner_preferences.get_raid_tester(db.settings, uid)
+        await edit(callback.message, raid_tester_text(doc), raid_decision_buttons(doc))
+        await callback.answer('Решение сохранено.' if delivered else 'Решение сохранено, уведомление не удалось доставить.', show_alert=not delivered)
+    except Exception as exc:
+        logger.warning('Ошибка управления допуском Рейда: %s', type(exc).__name__)
+        await callback.answer('Не удалось выполнить действие. Обнови список или попробуй позже.', show_alert=True)
 
 
 def authorized(callback) -> bool:
