@@ -4716,8 +4716,8 @@ test('magitech quiet motion: six low-contrast material loops have no rotation, f
   assert.equal(loops.length, 6);
   assert.equal(new Set(loops.map(m => m[1])).size, 6);
   for (const [, name, seconds] of loops) assert.ok(Number(seconds) >= 14, `${name} must be an unobtrusive slow drift, not a spinner`);
-  const frames = css.slice(css.indexOf('@keyframes orb-fx-heat'), css.indexOf('@keyframes orb-prime'));
-  assert.doesNotMatch(frames, /\b(?:rotate|scale)\(|\b(?:opacity|filter)\s*:/, 'idle loops cannot spin, resize or blink the spheres');
+  const frames = css.slice(css.indexOf('@keyframes orb-fx-heat'), css.indexOf('/* Content-only 3D rotation'));
+  assert.doesNotMatch(frames, /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, 'material loops cannot spin, resize or blink the spheres; only the requested item itself may turn');
   assert.match(css, /\.orb-material\s*\{[^}]*opacity:\s*\.18/);
   assert.match(css, /\.raid-orb\.frozen \.orb-material[^}]*animation-play-state:\s*paused/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.orb-material::after[^}]*animation:\s*none !important/);
@@ -4725,16 +4725,16 @@ test('magitech quiet motion: six low-contrast material loops have no rotation, f
   assert.ok(explosive); assert.doesNotMatch(explosive, /animation:/, 'explosive item is marked statically, not with a .7s idle flash');
 });
 
-test('magitech weapon fog: the two-thirds gas layer stays quiet, frozen/reduced-motion safe and separate from item-aware artwork', () => {
+test('magitech weapon fog: the two-thirds elemental body stays quiet, frozen/reduced-motion safe and separate from item-aware artwork', () => {
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const haze = css.match(/\.orb-material\.orb-fog\s*\{([^}]+)\}/)?.[1];
   assert.ok(haze); assert.match(haze, /height:\s*66\.6667%/); assert.match(haze, /inset:\s*auto 0 0/);
   assert.match(haze, /overflow:\s*hidden/); assert.match(haze, /animation:\s*none/);
   assert.match(haze, /mask-image:\s*linear-gradient/);
-  const fogFrames = css.slice(css.indexOf('@keyframes orb-fog-drift'), css.indexOf('@keyframes orb-prime'));
+  const fogFrames = css.slice(css.indexOf('@keyframes orb-fog-drift'), css.indexOf('/* Content-only 3D rotation'));
   assert.ok(fogFrames.includes('@keyframes orb-fog-return'));
-  assert.doesNotMatch(fogFrames, /\b(?:rotate|scale)\(|\b(?:opacity|filter)\s*:/);
+  assert.doesNotMatch(fogFrames, /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/);
   assert.match(css, /animation:\s*orb-fog-drift 24s ease-in-out infinite/);
   assert.match(css, /animation:\s*orb-fog-return 30s ease-in-out infinite/);
   assert.match(css, /\.raid-orb\.frozen \.orb-fog-wisp\s*\{\s*animation-play-state:\s*paused/);
@@ -4751,4 +4751,218 @@ test('magitech weapon fog: the two-thirds gas layer stays quiet, frozen/reduced-
   assert.ok(sync); assert.match(sync, /setAttribute\('src', art\.src\)/);
   assert.doesNotMatch(sync, /innerHTML|replaceChildren|createElement|\.remove\(/, 'purchasing a new weapon must update, not replace, a surviving image/orb');
   assert.match(js, /raidItemIcon\(item\.slot, item\)/); assert.match(js, /raidItemIcon\(opt\.slot, item\)/);
+});
+
+
+test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const frames = name => {
+    const start = css.indexOf('@keyframes ' + name + ' '); assert.ok(start >= 0, name);
+    const next = css.indexOf('\n@keyframes ', start + 1);
+    return css.slice(start, next < 0 ? css.indexOf('\n@media', start) : next);
+  };
+  assert.match(frames('coin-axial-turn'), /rotateY\(0deg\)[^]*rotateY\(360deg\)/);
+  assert.match(frames('weapon-axial-turn'), /rotate3d\(1,-1,0,0deg\)[^]*rotate3d\(1,-1,0,360deg\)/);
+  assert.doesNotMatch(frames('weapon-axial-turn'), /rotateZ|\brotate\(|\btranslate/);
+  for (const name of ['heat','mist','flow','grain','sheen','sap'].map(n => 'orb-fx-' + n).concat(['orb-fog-drift','orb-fog-return','orb-water-slosh','orb-water-return'])) {
+    assert.doesNotMatch(frames(name), /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, name + ': still no spinning, pulsing or blinking material');
+  }
+  assert.match(css, /animation:\s*coin-axial-turn 16s linear infinite/);
+  assert.match(css, /animation:\s*weapon-axial-turn 20s linear infinite/);
+  assert.match(css, /transform-style:\s*preserve-3d/); assert.match(css, /backface-visibility:\s*hidden/);
+  assert.match(css, /\.coin-reverse\s*\{\s*transform:\s*rotateY\(180deg\) translateZ\(2px\)/);
+  assert.match(css, /\.coin-edge-belt\s*\{[^}]*width:\s*4px[^}]*repeating-linear-gradient[^}]*rotateY\(90deg\)/);
+  assert.match(css, /\.raid-orb\.frozen :is\(\.weapon-texture,\.coin-3d\)\s*\{\s*animation-play-state:\s*paused/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.raid-orb \*[^}]*animation:\s*none !important/);
+  assert.match(js, /class="ic coin-3d" aria-hidden="true"/); assert.match(js, /coin-face coin-obverse/); assert.match(js, /coin-face coin-reverse/);
+  assert.match(css, /\.raid-orb\[data-element="air"\] \.orb-fog\s*\{\s*inset:\s*0 0 auto/);
+  assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\s*\{[^}]*animation-name:\s*orb-water-slosh; animation-duration:\s*8s/);
+  assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\.orb-fog-back[^}]*animation-name:\s*orb-water-return; animation-duration:\s*11s/);
+});
+
+test('magitech material SFX source: no external audio, autoplay, loops, timer queues, harsh oscillators or gameplay writes', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const audio = js.slice(js.indexOf('  // --- audio'), js.indexOf('  function isChainUppercut'));
+  assert.doesNotMatch(audio, /\b(?:fetch|setTimeout|setInterval|randInt|orbElementIndex)\s*\(|Math\.random|RNG_SEEDS|localStorage|profileStorage|new Audio\b|'(?:square|sawtooth)'|\.loop\s*=/);
+  assert.doesNotMatch(audio, /\bS(?:\.[\w]+|\[[^\]]+\])*\s*(?:=|\+\+|--)/);
+  assert.match(audio, /if \(!event\.isTrusted\) return/);
+  assert.match(audio, /ctx\.state !== 'running'/);
+  assert.match(audio, /AUDIO_VOICES\.size \+ voices\.length > 18/);
+  assert.match(audio, /now - \(AUDIO_LAST\.get\(kind\) \?\? -1\) < \.085/);
+  assert.match(js, /clearFloatEffects\(\);\s*stopMaterialAudio\(\);/);
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  assert.match(html, /id="sound-on" checked aria-label="Звуковые эффекты"/);
+  assert.doesNotMatch(html, /id="sound-on"[^>]*hidden/);
+});
+
+// Exercise the REAL standalone audio section, without adding a production
+// debug API or pretending synthetic jsdom events can unlock native WebAudio.
+// Trusted browser activation and audible PCM are checked separately in Chromium.
+function materialAudioFixture(options = {}) {
+  const documentListeners = new Map(), windowListeners = new Map(), contexts = [];
+  let constructions = 0;
+  const input = { checked: true, addEventListener(name, fn) { documentListeners.set('sound:' + name, [fn]); } };
+  const parameter = () => ({ value: 0, calls: [],
+    setValueAtTime(value, time) { this.value = value; this.calls.push(['set', value, time]); },
+    exponentialRampToValueAtTime(value, time) { this.value = value; this.calls.push(['ramp', value, time]); },
+    cancelScheduledValues(time) { this.calls.push(['cancel', time]); },
+  });
+  class MaterialContext {
+    constructor() {
+      constructions++;
+      if (options.constructorFails) throw new Error('Audio unavailable');
+      this.state = options.state || 'running'; this.currentTime = 0; this.sampleRate = 24000;
+      this.nodes = []; this.buffers = []; this.destination = {}; this.resumes = 0; contexts.push(this);
+    }
+    node(kind, props = {}) {
+      const node = { kind, connections: [], disconnections: 0,
+        connect(to) { this.connections.push(to); }, disconnect() { this.disconnections++; }, ...props };
+      this.nodes.push(node); return node;
+    }
+    createGain() { return this.node('gain', { gain: parameter() }); }
+    createBiquadFilter() {
+      if (options.filterFails) throw new Error('Partial WebAudio implementation');
+      return this.node('filter', { frequency: parameter(), Q: parameter() });
+    }
+    source(kind, props) { return this.node(kind, { ...props, starts: [], stops: [],
+      start(time) { this.starts.push(time); }, stop(time) { this.stops.push(time); }, onended: null }); }
+    createOscillator() { return this.source('oscillator', { frequency: parameter(), type: '' }); }
+    createBufferSource() { return this.source('noise', {}); }
+    createBuffer(channels, length, rate) {
+      const data = new Float32Array(length), buffer = { channels, length, rate, getChannelData() { return data; } };
+      this.buffers.push(buffer); return buffer;
+    }
+    resume() {
+      this.resumes++;
+      if (options.resumeFails) return Promise.reject(new Error('Activation rejected'));
+      this.state = 'running'; return Promise.resolve();
+    }
+  }
+  const add = (map, name, fn) => map.set(name, [...(map.get(name) || []), fn]);
+  const document = { visibilityState: 'visible', addEventListener(name, fn) { add(documentListeners, name, fn); } };
+  const window = { addEventListener(name, fn) { add(windowListeners, name, fn); } };
+  if (options.api !== 'none') window[options.api === 'webkit' ? 'webkitAudioContext' : 'AudioContext'] = MaterialContext;
+  const state = { selected: [0, 1, 2], board: Array.from({ length: 3 }, () => ({ type: 'sword' })), rngSeeds: [1,2,3,4,5,6] };
+  const palettes = new WeakMap(state.board.map(cell => [cell, 0]));
+  const source = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const section = source.slice(source.indexOf('  // --- audio'), source.indexOf('  function isChainUppercut'));
+  assert.ok(section.includes('function materialVoice'));
+  const context = vm.createContext({ window, document, el: () => input, S: state, ORB_ELEMENTS: palettes,
+    Math: Object.assign(Object.create(Math), { random() { throw new Error('SFX must not use gameplay/global RNG'); } }),
+  });
+  vm.runInContext(section + `\nglobalThis.sfx = { play: materialSound, pick: audioPick, kill: audioKill, heal: audioHeal,
+    armor: audioArmor, gold: audioGold, level: audioLevel, over: audioGameOver, enemy: audioEnemy, boss: audioBoss,
+    get active() { return AUDIO_VOICES.size; }, get kinds() { return Object.keys(MATERIAL_SOUNDS); } }; initMaterialAudio();`, context);
+  return { api: context.sfx, input, state, palettes, document, contexts,
+    get constructions() { return constructions; }, get ctx() { return contexts[0]; },
+    get sources() { return contexts.flatMap(ctx => ctx.nodes.filter(n => n.kind === 'oscillator' || n.kind === 'noise')); },
+    fire(name, event = {}, target = 'document') {
+      for (const fn of (target === 'window' ? windowListeners : documentListeners).get(name) || []) fn({ target: input, ...event });
+    },
+  };
+}
+
+test('magitech material SFX: only a trusted activation opens audio; a suspended event is dropped, never queued', async () => {
+  const b = materialAudioFixture({ state: 'suspended' }), before = JSON.stringify(b.state);
+  b.api.pick('coin'); b.api.boss(); assert.equal(b.constructions, 0);
+  b.fire('pointerdown', { isTrusted: false }); b.api.gold(); assert.equal(b.constructions, 0);
+  b.fire('keydown', { isTrusted: true }); assert.equal(b.constructions, 1); assert.equal(b.ctx.resumes, 1);
+  b.api.gold(); assert.equal(b.sources.length, 3);
+  b.ctx.state = 'suspended'; const count = b.sources.length;
+  b.api.heal(); b.api.enemy(); assert.equal(b.sources.length, count); assert.equal(b.ctx.resumes, 1);
+  b.fire('pointerdown', { isTrusted: true }); assert.equal(b.ctx.resumes, 2);
+  await Promise.resolve(); assert.equal(b.sources.length, count, 'resume must not replay the dropped events');
+  assert.equal(JSON.stringify(b.state), before);
+});
+
+test('magitech material SFX: existing pick categories route to distinct gold, water, air and metal without assigning palettes', () => {
+  for (const [kind, element, firstFrequency, noise] of [
+    ['coin',0,1180,0], ['potion',0,560,1], ['shield',0,470,0],
+    ['sword',1,690,1], ['sword',3,560,1], ['sword',2,820,1], [undefined,0,920,0],
+  ]) {
+    const b = materialAudioFixture(), last = b.state.board[2]; b.palettes.set(last, element);
+    const before = JSON.stringify(b.state);
+    b.fire('pointerdown', { isTrusted: true }); b.api.pick(kind);
+    assert.equal(b.sources.find(n => n.kind === 'oscillator').frequency.calls[0][1], firstFrequency);
+    assert.equal(b.sources.filter(n => n.kind === 'noise').length, noise);
+    assert.equal(b.palettes.get(last), element); assert.equal(JSON.stringify(b.state), before);
+    b.palettes.delete(last); b.ctx.currentTime += 1; b.api.pick('sword');
+    assert.equal(b.palettes.has(last), false, 'sound reads the rendered palette; it cannot create cosmetic save metadata');
+  }
+});
+
+test('magitech material SFX: all eleven quiet presets use filtered sine/noise, soft attack, bounded decay and deterministic local noise', () => {
+  const b = materialAudioFixture(); b.fire('pointerdown', { isTrusted: true });
+  assert.equal(b.api.kinds.length, 11);
+  for (const kind of b.api.kinds) {
+    const start = b.ctx.nodes.length; b.api.play(kind);
+    const nodes = b.ctx.nodes.slice(start), voices = nodes.filter(n => n.kind === 'oscillator' || n.kind === 'noise');
+    assert.ok(voices.length >= 1 && voices.length <= 3, kind);
+    for (const voice of voices) {
+      if (voice.kind === 'oscillator') assert.equal(voice.type, 'sine');
+      assert.equal(voice.starts.length, 1); assert.equal(voice.stops.length, 1);
+      assert.ok(voice.stops[0] > voice.starts[0] && voice.stops[0] - voice.starts[0] <= .51);
+      const filter = voice.connections[0], gain = filter.connections[0];
+      assert.ok(['lowpass','bandpass'].includes(filter.type)); assert.ok(filter.Q.value <= .65);
+      const calls = gain.gain.calls;
+      assert.equal(calls[0][1], .0001); assert.equal(calls[1][1], .0001);
+      assert.equal(calls[2][0], 'ramp'); assert.ok(calls[2][1] <= .055);
+      assert.ok(Math.abs(calls[2][2] - voice.starts[0] - .008) < 1e-8, '8ms attack avoids clicks');
+      assert.equal(calls[3][1], .0001);
+      voice.onended(); assert.equal(voice.disconnections, 1); assert.equal(filter.disconnections, 1); assert.equal(gain.disconnections, 1);
+    }
+    assert.equal(b.api.active, 0); b.ctx.currentTime += 1;
+  }
+  assert.equal(b.ctx.buffers.length, 1, 'reuse one short local noise buffer, not samples/URLs');
+  const buffer = b.ctx.buffers[0], data = buffer.getChannelData(0);
+  assert.equal(buffer.length, 14400); assert.ok(data.some(n => n > 0) && data.some(n => n < 0));
+  assert.ok(data.every(n => Number.isFinite(n) && Math.abs(n) <= 1));
+  const c = materialAudioFixture(); c.fire('keydown', { isTrusted: true }); c.api.heal();
+  assert.deepEqual([...c.ctx.buffers[0].getChannelData(0)], [...data], 'noise seed is independent of gameplay/global RNG');
+});
+
+test('magitech material SFX: dense dragging is rate-limited and capped at eighteen voices, with natural-end cleanup', () => {
+  const b = materialAudioFixture(); b.fire('pointerdown', { isTrusted: true });
+  for (let i = 0; i < 100; i++) b.api.gold();
+  assert.equal(b.sources.length, 3, 'same-kind events less than 85ms apart cannot stack');
+  for (const kind of b.api.kinds) b.api.play(kind);
+  assert.equal(b.api.active, 18); assert.equal(b.sources.length, 18);
+  for (let i = 0; i < 50; i++) { b.ctx.currentTime += .086; b.api.play(b.api.kinds[i % 11]); }
+  assert.equal(b.sources.length, 18, 'a full voice budget drops, never schedules a backlog');
+  const peakBound = b.ctx.nodes.filter(n => n.kind === 'gain').slice(1).reduce((sum, n) => sum + n.gain.calls[2][1], 0) * .45;
+  assert.ok(peakBound < .5, 'even an artificial simultaneous maximum has headroom below digital clipping');
+  for (const voice of b.sources) voice.onended();
+  assert.equal(b.api.active, 0); b.ctx.currentTime += 1; b.api.gold(); assert.equal(b.api.active, 3);
+});
+
+test('magitech material SFX: mute/hidden/pagehide stop and disconnect even delayed voices; unmute/foreground never replay', () => {
+  for (const boundary of ['mute','hidden','pagehide']) {
+    const b = materialAudioFixture(); b.fire('pointerdown', { isTrusted: true }); b.api.level();
+    const old = [...b.sources], callbacks = old.map(n => n.onended);
+    assert.ok(old.some(n => n.starts[0] > b.ctx.currentTime), 'fixture includes a delayed voice');
+    if (boundary === 'mute') { b.input.checked = false; b.fire('sound:change'); }
+    if (boundary === 'hidden') { b.document.visibilityState = 'hidden'; b.fire('visibilitychange'); }
+    if (boundary === 'pagehide') b.fire('pagehide', {}, 'window');
+    assert.equal(b.api.active, 0); assert.equal(b.ctx.nodes[0].gain.value, 0);
+    for (const voice of old) { assert.equal(voice.stops.length, 2); assert.equal(voice.onended, null); assert.equal(voice.disconnections, 1); }
+    b.api.gold(); assert.equal(b.sources.length, old.length);
+    b.input.checked = true; b.document.visibilityState = 'visible'; b.ctx.currentTime += 1;
+    b.fire('sound:change', { isTrusted: true }); b.fire('visibilitychange'); b.fire('pageshow', {}, 'window');
+    assert.equal(b.sources.length, old.length, 'no replay on unmute/return');
+    b.api.gold(); assert.equal(b.api.active, 3);
+    for (const finish of callbacks) finish();
+    assert.equal(b.api.active, 3, 'late old cleanup cannot delete a new sound');
+  }
+});
+
+test('magitech material SFX: absent/denied/partial APIs fail silent; WebKit fallback and rejected resume remain safe', async () => {
+  for (const options of [{ api: 'none' }, { constructorFails: true }, { filterFails: true }, { state: 'suspended', resumeFails: true }, { state: 'closed' }]) {
+    const b = materialAudioFixture(options), before = JSON.stringify(b.state);
+    assert.doesNotThrow(() => { b.fire('pointerdown', { isTrusted: true }); for (const kind of b.api.kinds) b.api.play(kind); });
+    await Promise.resolve(); assert.equal(b.api.active, 0); assert.equal(JSON.stringify(b.state), before);
+    assert.doesNotThrow(() => { b.input.checked = false; b.fire('sound:change'); });
+  }
+  const webkit = materialAudioFixture({ api: 'webkit' }); webkit.fire('keydown', { isTrusted: true }); webkit.api.gold();
+  assert.equal(webkit.sources.length, 3);
 });

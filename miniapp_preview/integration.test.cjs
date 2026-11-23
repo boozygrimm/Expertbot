@@ -2537,10 +2537,13 @@ test('magitech weapon catalogue: all six existing weapon names have distinct art
   } finally { b.dom.window.close(); }
 });
 
-test('magitech weapon fog: four elements occupy the lower two thirds of neutral glass as gas, not full-shell colours or sigil badges', async () => {
+test('magitech weapon fog: water gently sloshes below, air drifts above, and four two-thirds bodies stay separate from neutral glass', async () => {
   const b = await orbFixture();
   try {
-    showOrbFixture(b, idx => ({ type: idx === 35 ? 'arrow' : 'sword', ...(idx === 0 ? { frozen: true } : {}) }));
+    showOrbFixture(b, idx => ({ type: idx === 35 ? 'arrow' : 'sword', ...(idx < 4 ? { frozen: true } : {}) }));
+    const key = magitechKey('raid:activeRun'), checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key));
+    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4);
+    b.dom.window.localStorage.setItem(key, JSON.stringify(checkpoint)); assert.equal(b.raid.resumeSavedRun(), true);
     const doc = b.dom.window.document, orbs = [...doc.querySelectorAll('.cell > .raid-orb')], before = JSON.stringify(b.raid.state);
     assert.deepEqual([...new Set(orbs.map(n => n.dataset.element))].sort(), ['air','earth','fire','water']);
     assert.equal(new Set(orbs.map(n => n.style.getPropertyValue('--orb-rgb'))).size, 4);
@@ -2548,16 +2551,123 @@ test('magitech weapon fog: four elements occupy the lower two thirds of neutral 
     for (const orb of orbs) {
       assert.equal(orb.dataset.state, 'gas'); assert.equal(orb.querySelector('.orb-sigil'), null);
       const fog = orb.querySelector('.orb-material.orb-fog'); assert.ok(fog);
-      assert.equal(b.dom.window.getComputedStyle(fog).height, '66.6667%');
+      const fogStyle = b.dom.window.getComputedStyle(fog), air = orb.dataset.element === 'air', water = orb.dataset.element === 'water';
+      assert.equal(fogStyle.height, '66.6667%'); assert.equal(fogStyle.inset, air ? '0 0 auto' : 'auto 0 0');
+      if (air) assert.equal(fogStyle.maskImage, 'linear-gradient(to bottom,#000 70%,transparent)');
+      if (water) assert.equal(fogStyle.maskImage, 'none');
       assert.equal(fog.querySelectorAll('.orb-fog-wisp').length, 2); assert.equal(fog.getAttribute('aria-hidden'), 'true');
       for (const wisp of fog.children) {
-        assert.match(b.dom.window.getComputedStyle(wisp).animation, /orb-fog-(?:drift|return) (?:24|30)s ease-in-out infinite/);
+        const style = b.dom.window.getComputedStyle(wisp), back = wisp.classList.contains('orb-fog-back');
+        if (water) {
+          assert.equal(style.animationName, back ? 'orb-water-return' : 'orb-water-slosh');
+          assert.equal(style.animationDuration, back ? '11s' : '8s'); assert.match(style.maskImage, /^url\("data:image\/svg\+xml/);
+        } else {
+          assert.match(style.animation, /orb-fog-(?:drift|return) (?:24|30)s ease-in-out infinite/);
+          if (air) assert.equal(style.animationDuration, back ? '19s' : '14s');
+        }
         if (orb.classList.contains('frozen')) assert.equal(b.dom.window.getComputedStyle(wisp).animationPlayState, 'paused');
       }
       assert.doesNotMatch(orb.textContent, /[a-zа-яё]/iu);
     }
     assert.equal(JSON.stringify(b.raid.state), before, 'haze rendering adds no element, RNG or saved item fields');
     b.raid.tryExtendChain(0); assert.equal(b.raid.state.selected.length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+test('magitech item motion: only coin/content has slow 3D rotation; frozen items pause, shop images stay static and keyed images survive repaint', async () => {
+  const b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: idx % 2 ? 'sword' : 'coin', ...(idx < 2 ? { frozen: true } : {}) }));
+    const doc = b.dom.window.document, before = orbGameplay(b), nodes = [...doc.querySelectorAll('.cell > .raid-orb')];
+    const images = nodes.map(n => n.querySelector('.weapon-texture,.coin-3d'));
+    nodes.forEach((orb, idx) => {
+      const core = orb.querySelector('.orb-core'), item = images[idx], style = b.dom.window.getComputedStyle(item);
+      assert.equal(b.dom.window.getComputedStyle(core).perspective, '260px');
+      assert.match(style.animation, idx % 2 ? /weapon-axial-turn 20s linear infinite/ : /coin-axial-turn 16s linear infinite/);
+      assert.equal(b.dom.window.getComputedStyle(orb).transform, '');
+      assert.equal(b.dom.window.getComputedStyle(orb).animation, '', 'glass itself does not rotate or pulse');
+      if (idx < 2) assert.equal(style.animationPlayState, 'paused');
+      if (idx % 2) assert.equal(item.draggable, false);
+      else {
+        assert.equal(item.getAttribute('aria-hidden'), 'true'); assert.equal(item.querySelectorAll('.coin-face').length, 2);
+        assert.equal(item.querySelectorAll('.coin-edge').length, 2); assert.equal(item.querySelectorAll('svg').length, 2);
+        assert.equal(b.dom.window.getComputedStyle(item).transformStyle, 'preserve-3d');
+        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-face')).backfaceVisibility, 'hidden');
+        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-reverse')).transform, 'rotateY(180deg) translateZ(2px)');
+        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-edge-belt')).transform, 'rotateY(90deg)');
+      }
+    });
+    b.raid.tryExtendChain(3); b.raid.tryExtendChain(9); b.raid.tryExtendChain(15);
+    nodes.forEach((orb, idx) => { assert.equal(orbAt(b, idx), orb); assert.equal(orb.querySelector('.weapon-texture,.coin-3d'), images[idx]); });
+    b.raid.state.selected = []; b.raid.state.chainType = null;
+    assert.equal(orbGameplay(b), before, 'painting/selection motion cannot pay rewards, draw RNG or add board fields');
+    showWeaponOffers(b, b.raid.makeItem('weapon'));
+    const offer = doc.querySelector('.shop-item[data-slot="weapon"] .weapon-texture'); assert.ok(offer);
+    assert.equal(b.dom.window.getComputedStyle(offer).animation, '', 'readable static catalogue, same item model/finish as before');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech sound control: the existing checkbox is keyboard-focusable and its mute icon updates without synthetic audio activation', async () => {
+  let contexts = 0;
+  const b = await openMagitech({ setup(w) { w.AudioContext = class { constructor() { contexts++; } }; } });
+  try {
+    const doc = b.dom.window.document, input = doc.querySelector('#sound-on');
+    assert.equal(input.hidden, false); assert.equal(input.type, 'checkbox'); assert.equal(input.checked, true);
+    assert.equal(input.getAttribute('aria-label'), 'Звуковые эффекты');
+    input.focus(); assert.equal(doc.activeElement, input);
+    const mute = doc.querySelector('.sound-mute-line'), waves = doc.querySelector('.sound-waves');
+    assert.equal(b.dom.window.getComputedStyle(mute).display, 'none');
+    // jsdom 26 caches :checked-dependent SVG computed styles until an
+    // attribute invalidates them. Native immediate toggling is also verified
+    // in Chromium, without this no-op attribute refresh.
+    const refreshStyle = () => input.parentNode.setAttribute('class', input.parentNode.className);
+    input.click(); assert.equal(input.checked, false); refreshStyle();
+    assert.notEqual(b.dom.window.getComputedStyle(mute).display, 'none'); assert.equal(b.dom.window.getComputedStyle(waves).display, 'none');
+    input.click(); assert.equal(input.checked, true); refreshStyle(); assert.equal(b.dom.window.getComputedStyle(mute).display, 'none');
+    doc.dispatchEvent(new b.dom.window.Event('pointerdown')); doc.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: ' ' }));
+    b.raid.tryExtendChain(0); b.raid.tryExtendChain(1); b.raid.tryExtendChain(2);
+    assert.equal(contexts, 0, 'jsdom/synthetic inputs must not masquerade as a trusted user activation');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+test('magitech material SFX: SDK deactivation silences pending voices and drops new picks until activation, without replay or gameplay changes', async () => {
+  const stub = raidTelegramStub(), voices = []; let unlock;
+  const b = await openMagitech({ url: testerRaidUrl, setup(w) {
+    w.Telegram = { WebApp: stub.tg };
+    // A deterministic API double, not native audio/authentication. The trusted
+    // gesture boundary itself also has separate real Chromium coverage.
+    const listen = w.document.addEventListener.bind(w.document);
+    w.document.addEventListener = (name, fn, options) => {
+      if (name === 'pointerdown' && fn.name === 'unlockMaterialAudio') unlock = () => fn({ isTrusted: true });
+      return listen(name, fn, options);
+    };
+    const parameter = () => ({ value: 0, setValueAtTime(value) { this.value = value; }, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} });
+    const node = props => ({ connect() {}, disconnect() {}, ...props });
+    w.AudioContext = class {
+      constructor() { this.state = 'running'; this.currentTime = 1; this.destination = {}; }
+      createGain() { return node({ gain: parameter() }); }
+      createBiquadFilter() { return node({ frequency: parameter(), Q: parameter() }); }
+      createOscillator() {
+        const voice = node({ frequency: parameter(), starts: 0, stops: 0, start() { this.starts++; }, stop() { this.stops++; } });
+        voices.push(voice); return voice;
+      }
+    };
+  } });
+  try {
+    showOrbFixture(b, () => ({ type: 'coin' }));
+    const before = orbGameplay(b); assert.equal(typeof unlock, 'function'); assert.equal(voices.length, 0);
+    unlock(); [0,1,2].forEach(i => b.raid.tryExtendChain(i)); assert.equal(voices.length, 3);
+    const old = [...voices]; stub.fire('deactivated');
+    assert.ok(old.every(v => v.stops === 2 && v.onended === null), 'cancel scheduled tails as well as currently audible voices');
+    b.raid.tryExtendChain(3); assert.equal(voices.length, 3);
+    stub.fire('activated'); assert.equal(voices.length, 3, 'returning to the host is silent, not a replay queue');
+    b.raid.tryExtendChain(4); assert.equal(voices.length, 6, 'a fresh pick may sound after reactivation');
+    assert.equal(orbGameplay(b), before, 'SFX/host lifecycle cannot award resources, move the turn or draw RNG');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
