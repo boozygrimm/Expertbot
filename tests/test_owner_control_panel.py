@@ -325,14 +325,17 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(launchers[0].url, 'ordinary URL button is not a Mini App launch')
         url = urlsplit(launchers[0].web_app.url)
         self.assertEqual((url.scheme, url.netloc, url.path),
-                         ('https', 'boozygrimm.github.io', '/Expertbot/lunapark-raid.html'))
+                         ('https', 'boozygrimm.github.io', '/Expertbot/lunapark-raid-magitech.html'))
         build = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">',
-                          (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').read_text()).group(1)
+                          (Path(__file__).resolve().parents[1] / 'lunapark-raid-magitech.html').read_text()).group(1)
         self.assertEqual(parse_qs(url.query), {'telegram': ['1'], 'build': [build]})
-        self.assertEqual(parse_qs(url.fragment), {'raid_legacy_owner': [str(panel.ADMIN_ID)]})
+        self.assertFalse(url.fragment, 'magitech never imports the classic owner profile')
         self.assertIn(build, text)
         self.assertIn('публичный', text)
         self.assertIn('локальные', text)
+        self.assertIn('магитех', text)
+        self.assertIn('Прогресс классики остаётся отдельно', text)
+        self.assertIn('Локация закреплена', text)
         self.assertIn('Без рабочей игровой базы', text)
         self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
         self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close', 'raid_access:list:pending:0'})
@@ -393,12 +396,33 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         await panel.control_action(cb, state)
         state.clear.assert_not_awaited()
 
+    async def test_both_roles_use_only_magitech_even_when_its_build_meta_is_invalid(self):
+        from io import StringIO
+        from pathlib import Path
+        from urllib.parse import parse_qs, urlsplit
+        for owner in (True, False):
+            for meta in ('', '<meta name="raid-build" content="not-a-build">'):
+                paths = []
+                def opened(path, *args, **kwargs):
+                    paths.append(path.name)
+                    return StringIO(meta)
+                with patch.object(Path, 'open', new=opened):
+                    text, markup = panel.raid_preview_content(owner=owner)
+                self.assertEqual(paths, ['lunapark-raid-magitech.html'])
+                url = urlsplit(next(b.web_app.url for row in markup.inline_keyboard for b in row if b.web_app))
+                self.assertEqual((url.scheme, url.netloc, url.path),
+                                 ('https', 'boozygrimm.github.io', '/Expertbot/lunapark-raid-magitech.html'))
+                self.assertEqual(parse_qs(url.query), {'telegram': ['1']})
+                self.assertFalse(url.fragment)
+                self.assertIn('Номер сборки', text)
+                self.assertNotIn('Ожидаемая сборка:', text)
+
     async def test_missing_build_file_does_not_break_fixed_https_launcher(self):
         from pathlib import Path
         with patch.object(Path, 'open', side_effect=FileNotFoundError):
             text, markup = panel.raid_preview_content()
         self.assertIn('Номер сборки', text)
-        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, panel.RAID_PREVIEW_URL + f'#raid_legacy_owner={panel.ADMIN_ID}')
+        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, panel.RAID_PREVIEW_URL)
 
     async def test_command_menu_is_published_only_in_owner_chat_scope(self):
         from app_setup import set_commands
@@ -645,7 +669,10 @@ class RaidTesterAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.send_message.await_count, 1)
         args = self.bot.send_message.await_args
         self.assertEqual(args.args[0], self.uid)
-        markup = args.kwargs['reply_markup']; query = parse_qs(urlsplit(self.launcher(markup).web_app.url).query)
+        markup = args.kwargs['reply_markup']; url = urlsplit(self.launcher(markup).web_app.url); query = parse_qs(url.query)
+        self.assertEqual(url.path, '/Expertbot/lunapark-raid-magitech.html')
+        self.assertEqual(query['telegram'], ['1'])
+        self.assertIn('build', query)
         self.assertNotIn('legacy_owner', query)
         self.assertFalse(urlsplit(self.launcher(markup).web_app.url).fragment)
         self.assertTrue(all(not s.startswith('owner_') for s in callbacks(markup)))
@@ -764,14 +791,15 @@ class RaidTesterAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
         self.assertFalse(any(b.web_app for row in cb.message.edit_text.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
 
-    async def test_owner_launcher_preserves_legacy_profile_only_for_owner_and_links_tester_panel(self):
-        from urllib.parse import parse_qs, urlsplit
+    async def test_owner_launcher_uses_isolated_magitech_without_legacy_import_and_links_tester_panel(self):
+        from urllib.parse import urlsplit
         msg = self.message(panel.ADMIN_ID)
         with patch.object(panel, 'db', None):
             await panel.open_raid_test(msg, self.state)
         args = msg.answer.await_args
         url = urlsplit(self.launcher(args.kwargs['reply_markup']).web_app.url)
-        self.assertEqual(parse_qs(url.fragment)['raid_legacy_owner'], [str(panel.ADMIN_ID)])
+        self.assertEqual(url.path, '/Expertbot/lunapark-raid-magitech.html')
+        self.assertFalse(url.fragment)
         self.assertNotIn(str(panel.ADMIN_ID), url.query)
         self.assertIn('raid_access:list:pending:0', callbacks(args.kwargs['reply_markup']))
 

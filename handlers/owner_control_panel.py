@@ -21,7 +21,7 @@ from news_prototype import owner_daily, owner_trial
 router = Router()
 logger = logging.getLogger(__name__)
 _input_state_lock = asyncio.Lock()
-RAID_PREVIEW_URL = 'https://boozygrimm.github.io/Expertbot/lunapark-raid.html?telegram=1'
+RAID_PREVIEW_URL = 'https://boozygrimm.github.io/Expertbot/lunapark-raid-magitech.html?telegram=1'
 
 
 def raid_preview_content(*, owner=True):
@@ -29,23 +29,25 @@ def raid_preview_content(*, owner=True):
     # is restricted by the bot; the demo itself remains public and browser-local.
     build = ''
     try:
-        with (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').open(encoding='utf-8') as page:
+        with (Path(__file__).resolve().parents[1] / 'lunapark-raid-magitech.html').open(encoding='utf-8') as page:
             match = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">', page.read(1024))
         if match:
             build = match[1]
     except (OSError, UnicodeError):
         pass
-    text = ('⚔️ Рейд · тест Mini App\n\n'
+    text = ('⚔️ RAID · магитех-тест Mini App\n\n'
+            'Эта версия заменяет классический тест во входе /raid_test. '
+            'Прогресс классики остаётся отдельно и сюда не переносится.\n'
             'Запуск из своей лички после допуска владельца. Сам пробник на Pages публичный.\n'
             'Без рабочей игровой базы, серверных наград и переноса прогресса алхимии. '
             'У каждого свой прогресс: сохранения локальные — забег, классы, настройки, рекорды и достижения. '
             'Данные не переносятся между устройствами и могут отличаться от обычного браузера.\n\n'
             'Скриншоты не блокируем. Выход из игры: «Меню → Закрыть Mini App».\n'
-            'Проверь цепочку пальцем, выбор наград, сворачивание и повторный вход → «Продолжить».\n'
+            'Локация закреплена на весь забег, в том числе после «Продолжить». '
+            'Проверь цепочку пальцем, выбор наград, сворачивание и повторный вход.\n'
             + (f'Ожидаемая сборка: {build}.' if build else 'Номер сборки показан внутри пробника.'))
     b = InlineKeyboardBuilder()
-    b.button(text='⚔️ Открыть Рейд · тест', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + (f'&build={build}' if build else '')
-        + (f'#raid_legacy_owner={ADMIN_ID}' if owner else '')))
+    b.button(text='⚔️ Открыть Рейд · тест', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + (f'&build={build}' if build else '')))
     b.adjust(1)
     if owner:
         b.row(types.InlineKeyboardButton(text='👥 Тестеры', callback_data='raid_access:list:pending:0'))

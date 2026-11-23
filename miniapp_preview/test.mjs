@@ -4966,3 +4966,47 @@ test('magitech material SFX: absent/denied/partial APIs fail silent; WebKit fall
   const webkit = materialAudioFixture({ api: 'webkit' }); webkit.fire('keydown', { isTrusted: true }); webkit.api.gold();
   assert.equal(webkit.sources.length, 3);
 });
+
+// The run location is presentation metadata, independent from future previews.
+test('magitech location: all four v1 snapshots restore the same rolled reward, board and six RNG streams', () => {
+  for (const region of ['fire', 'air', 'earth', 'water']) {
+    const b = raidBrowser({ variant: 'magitech', menus: true, seed: 1337 });
+    b.raid.state.hero.gold = 100; b.raid.checkGoldBox(); b.raid.saveRun();
+    const data = magitechSave(b); data.region = region;
+    const raw = JSON.stringify(data); b.storage.set(MAGITECH_RUN_KEY, raw);
+    const next = raidBrowser({ variant: 'magitech', menus: true, start: false, saved: b.storage });
+    assert.equal(next.raid.state, null); assert.ok(next.raid.savedRunInfo());
+    assert.equal(next.storage.get(MAGITECH_RUN_KEY), raw, 'reading is not resuming or rewriting the checkpoint');
+    assert.equal(next.raid.resumeSavedRun(), true);
+    const restored = magitechSave(next);
+    assert.equal(restored.version, 1); assert.equal(restored.region, region);
+    for (const key of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[key], data[key], region + ':' + key);
+    assert.equal(Object.hasOwn(next.raid.state, 'region'), false, 'location never enters the combat model');
+  }
+});
+
+test('magitech location: released v1 without location remains read-only until explicit Continue and keeps its queues', () => {
+  const b = raidBrowser({ variant: 'magitech', menus: true, seed: 1337 });
+  b.raid.state.hero.xp = 100; b.raid.checkLevelUp();
+  b.elements.get('modal-body').querySelectorAll('.lv-card')[1].click(); b.raid.saveRun();
+  const data = magitechSave(b); delete data.region;
+  const raw = JSON.stringify(data); b.storage.set(MAGITECH_RUN_KEY, raw);
+  const next = raidBrowser({ variant: 'magitech', menus: true, start: false, saved: b.storage });
+  next.raid.savedRunInfo(); next.raid.savedRunInfo();
+  assert.equal(next.storage.get(MAGITECH_RUN_KEY), raw); assert.equal(next.raid.state, null);
+  assert.equal(next.raid.resumeSavedRun(), true);
+  const restored = magitechSave(next);
+  assert.equal(restored.region, 'earth'); assert.equal(restored.version, 1);
+  for (const key of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[key], data[key], key);
+});
+
+test('magitech location: malformed optional region cannot replace a live run or overwrite the rejected checkpoint', () => {
+  for (const region of [null, 0, false, {}, [], ['fire'], 'lava', 'FIRE', '__proto__', 'constructor']) {
+    const b = raidBrowser({ variant: 'magitech', seed: 17 });
+    const state = b.raid.state, before = raidJSON(state), raw = JSON.stringify({ ...magitechSave(b), region });
+    b.storage.set(MAGITECH_RUN_KEY, raw);
+    assert.equal(b.raid.resumeSavedRun(), false); assert.equal(b.raid.state, state);
+    assert.deepEqual(raidJSON(state), before); assert.equal(b.raid.saveStatus.state, 'invalid');
+    assert.equal(b.storage.get(MAGITECH_RUN_KEY), raw);
+  }
+});

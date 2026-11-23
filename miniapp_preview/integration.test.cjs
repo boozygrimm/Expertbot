@@ -1903,8 +1903,8 @@ test('magitech fork: classical checkpoint under a redesign key is rejected witho
   } finally { classic.dom.window.close(); b?.dom.window.close(); }
 });
 
-test('magitech fork: appearance themes are cosmetic, preserve RNG/state and persist only in the separate profile', async () => {
-  let b = await openMagitech();
+test('magitech fork: pre-run appearance previews are cosmetic and persist only in the separate profile', async () => {
+  let b = await openMagitech({ start: false });
   try {
     const doc = b.dom.window.document, before = JSON.stringify(b.raid.state), classicKeys = Object.keys(raidStorage(b.dom.window)).filter(k => !k.startsWith('raid:magitech:'));
     for (const region of ['fire', 'air', 'earth', 'water']) {
@@ -1990,13 +1990,14 @@ test('magitech fork: every inherited profile key and appearance is namespaced wi
   const names = ['class','classLevels','classConfigs','mode','difficulty','trophyRemaining','activeRun','history'];
   const sentinel = Object.fromEntries(names.flatMap(name => [[`raid:${name}`, `classic browser ${name}`], [`raid:tg:71001:${name}`, `classic account ${name}`]]));
   for (const account of [null, 71001]) {
-    const b = await openMagitech({ saved: sentinel, ...(account ? { url: testerRaidUrl + '#raid_legacy_owner=71001', setup(w) { w.Telegram = { WebApp: localAccountSDK(account) }; } } : {}) });
+    const b = await openMagitech({ saved: sentinel, start: false, ...(account ? { url: testerRaidUrl + '#raid_legacy_owner=71001', setup(w) { w.Telegram = { WebApp: localAccountSDK(account) }; } } : {}) });
     try {
+      b.dom.window.document.querySelector('button[data-raid-region="air"]').click();
+      b.dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
       const key = name => account ? magitechAccountKey(account, 'raid:' + name) : magitechKey('raid:' + name);
       b.raid.unlockClass('mage');
       assert.equal(b.raid.saveClassConfig('mage', b.raid.defaultClassConfig('mage')), true);
       b.raid.setSelectedClassId('mage');
-      b.dom.window.document.querySelector('button[data-raid-region="air"]').click();
       b.raid.state.trophyRemaining = 23;
       b.raid.state.board[0] = { type: 'skull', skull: Object.assign(b.raid.makeSkull(false, true, 4), { hp: 1, def: 0, atk: 0 }) };
       b.raid.collectIndices([0]);
@@ -2668,6 +2669,131 @@ test('magitech material SFX: SDK deactivation silences pending voices and drops 
     stub.fire('activated'); assert.equal(voices.length, 3, 'returning to the host is silent, not a replay queue');
     b.raid.tryExtendChain(4); assert.equal(voices.length, 6, 'a fresh pick may sound after reactivation');
     assert.equal(orbGameplay(b), before, 'SFX/host lifecycle cannot award resources, move the turn or draw RNG');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// Compact controls and immutable per-run scenery, exercised on the built page.
+test('magitech compact header: only sound, character and menu remain; help and confirmed restart still work from the menu', async () => {
+  const b = await openMagitech();
+  try {
+    const doc = b.dom.window.document, before = JSON.stringify(b.raid.state);
+    assert.deepEqual([...doc.querySelectorAll('.brand-actions > *')].map(n => n.matches('label') ? n.querySelector('input').id : n.id), ['sound-on', 'stats-btn', 'menu-btn']);
+    assert.equal(doc.querySelector('.skills-head .run-actions'), null);
+    assert.equal(doc.querySelector('.shell .raid-run-heading'), null);
+    assert.equal(doc.querySelector('.shell #help'), null); assert.equal(doc.querySelector('.shell #restart'), null);
+    assert.equal(doc.querySelectorAll('#menu-modal button[data-raid-region]').length, 0);
+    assert.equal(doc.querySelectorAll('.skill').length, 4);
+    doc.querySelector('#stats-btn').click(); assert.equal(b.raid.state.pendingModal, 'stats');
+    doc.querySelector('#modal-body .btn').click();
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-help').click();
+    assert.ok(doc.querySelector('#help-modal').classList.contains('show'));
+    doc.querySelector('#help-close').click(); assert.equal(doc.activeElement.id, 'menu-btn');
+    assert.equal(JSON.stringify(b.raid.state), before);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-restart').click();
+    assert.ok(doc.querySelector('#restart-modal').classList.contains('show'));
+    doc.querySelector('#restart-cancel').click(); assert.equal(JSON.stringify(b.raid.state), before);
+    doc.querySelector('#menu-restart').click(); doc.querySelector('#restart-confirm').click();
+    assert.equal(b.raid.state.turn, 0); assert.equal(b.raid.state.over, false);
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), false);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech location: hidden controls cannot change a run; next-run previews do not repaint its shell or existing orbs', async () => {
+  const b = await openMagitech({ start: false });
+  try {
+    const doc = b.dom.window.document;
+    doc.querySelector('button[data-raid-region="fire"]').click();
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    const state = b.raid.state, before = JSON.stringify(state), orbs = [...doc.querySelectorAll('.raid-orb')];
+    const saved = b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'));
+    assert.equal(doc.documentElement.dataset.raidRegion, 'fire');
+    doc.querySelector('button[data-raid-region="water"]').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, 'fire');
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:appearance')), 'fire');
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), saved);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
+    const checkpoint = b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'));
+    for (const region of ['water', 'earth', 'air']) {
+      doc.querySelector(`button[data-raid-region="${region}"]`).click();
+      assert.equal(doc.querySelector('#class-picker').dataset.raidRegion, region);
+      assert.equal(doc.documentElement.dataset.raidRegion, 'fire');
+      assert.equal(doc.querySelector('.brand [data-raid-region-title]').textContent, 'Пылающая кузня');
+      assert.equal(doc.querySelector('.raid-menu-location').textContent, 'Пылающая кузня');
+      assert.equal(b.raid.state, state); assert.equal(JSON.stringify(state), before);
+      assert.deepEqual([...doc.querySelectorAll('.raid-orb')], orbs);
+      assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), checkpoint);
+    }
+    doc.querySelector('#picker-resume').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, 'fire');
+    assert.equal(b.raid.saveRun(), true);
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).region, 'fire');
+    // Only a confirmed replacement starts the selected next location.
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    doc.querySelector('button[data-raid-region="water"]').dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true }));
+    assert.equal(doc.querySelector('#class-picker').dataset.raidRegion, 'air', 'a pending confirmation rejects stale location events');
+    doc.querySelector('#restart-cancel').click();
+    assert.equal(b.raid.state, state); assert.equal(doc.documentElement.dataset.raidRegion, 'fire');
+    doc.querySelector('.picker-card-btn:not(.locked)').click(); doc.querySelector('#restart-confirm').click();
+    assert.notEqual(b.raid.state, state); assert.equal(doc.documentElement.dataset.raidRegion, 'air');
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).region, 'air');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const sdk of [false, true]) test(`magitech location: ${sdk ? 'SDK Close' : 'browser reload'} and Continue restore the saved location, not the latest preview, without rerolling rewards`, async () => {
+  const stub = raidTelegramStub();
+  const host = sdk ? { url: telegramRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } } : {};
+  const key = name => sdk ? magitechAccountKey(701, 'raid:' + name) : magitechKey('raid:' + name);
+  const sentinel = { 'raid:activeRun': 'classic browser', 'raid:tg:701:activeRun': 'classic account' };
+  let b = await openMagitech({ ...host, saved: sentinel, start: false });
+  try {
+    let doc = b.dom.window.document;
+    doc.querySelector('button[data-raid-region="water"]').click();
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
+    doc.querySelector('button[data-raid-region="air"]').click(); doc.querySelector('#picker-resume').click();
+    b.raid.state.hero.xp = 100; b.raid.checkLevelUp(); doc.querySelectorAll('.lv-card')[1].click();
+    b.raid.saveRun(); const checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key('activeRun')));
+    assert.equal(checkpoint.region, 'water');
+    assert.equal(b.dom.window.localStorage.getItem(key('appearance')), 'air');
+    if (sdk) { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click(); assert.ok(stub.calls.includes('close')); }
+    b = await reopenMagitech(b, host); doc = b.dom.window.document;
+    assert.equal(b.raid.state, null);
+    doc.querySelector('button[data-raid-region="earth"]').click();
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key('activeRun'))).region, 'water');
+    doc.querySelector('#picker-resume').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, 'water');
+    assert.equal(doc.querySelector('.brand [data-raid-region-title]').textContent, 'Затопленный храм');
+    const restored = JSON.parse(b.dom.window.localStorage.getItem(key('activeRun')));
+    for (const name of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[name], checkpoint[name], name);
+    assert.equal(b.raid.state.pendingModal, 'level'); assert.deepEqual([...b.raid.state.levelDraft], [1]);
+    assert.equal(b.raid.state.over, false);
+    for (const [name, value] of Object.entries(sentinel)) assert.equal(b.dom.window.localStorage.getItem(name), value);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech location: a released v1 fallback survives a different preview and closing before Continue, without silently rewriting the old save', async () => {
+  let b = await openMagitech({ start: false });
+  try {
+    let doc = b.dom.window.document;
+    doc.querySelector('button[data-raid-region="water"]').click(); doc.querySelector('.picker-card-btn:not(.locked)').click();
+    b.raid.saveRun(); const saved = raidStorage(b.dom.window), old = JSON.parse(saved[magitechKey('raid:activeRun')]);
+    delete old.region; saved[magitechKey('raid:activeRun')] = JSON.stringify(old);
+    b.dom.window.close(); b = await openMagitech({ saved, start: false }); doc = b.dom.window.document;
+    doc.querySelector('button[data-raid-region="fire"]').click(); b.raid.savedRunInfo(); b.raid.savedRunInfo();
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), saved[magitechKey('raid:activeRun')]);
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:appearance')), 'water', 'an unpinned legacy fallback cannot be overwritten by a next-run preview');
+    b = await reopenMagitech(b); doc = b.dom.window.document;
+    assert.equal(doc.querySelector('#class-picker').dataset.raidRegion, 'water');
+    doc.querySelector('button[data-raid-region="air"]').click(); doc.querySelector('#picker-resume').click();
+    assert.equal(doc.documentElement.dataset.raidRegion, 'water');
+    const restored = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')));
+    assert.equal(restored.region, 'water'); assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:appearance')), 'air');
+    for (const name of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[name], old[name], name);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
