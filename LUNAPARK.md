@@ -39,8 +39,9 @@
 **`17f630072dcd3b94c8f874a1f542f31720972111dcc8788f344b03582901e059`**.
 Свежие **618npm PASS**, **104 Python PASS +47subtests**, **32 Chromium153 cases**,
 ESLint0errors (прежние13 fork warnings). Это web/SDK-stub, не настоящий Telegram.
-Выпуск — commit/PR/merge текущей ветки, затем проверка Pages; фактический результат
-доставки фиксируется в протоколе выпуска вверху §7. Владелец подтвердил Render
+Выпуск — [PR129](https://github.com/boozygrimm/Expertbot/pull/129); фактические
+merge/Pages/артефакт и отдельные границы Render — [протокол выпуска](https://github.com/boozygrimm/Expertbot/pull/129#issuecomment-7107293129).
+Владелец подтвердил Render
 auto-main для существующего бота; Pages не доказывает rollout процесса. После
 автодеплоя закрыть старый Mini App, запросить свежий `/raid_test` и сверить
 **`6d4b5abca254`** внутри игры. Второй polling/реальная рассылка не запускались.
@@ -112,7 +113,9 @@ auto-main для существующего бота; Pages не доказыв�
     `1d1ac62d112e69eb1ae37fe07e6f2e0e48a1ced3`. Только11 существующих файлов,
     без новых файлов проекта/зависимостей. По новому прямому поручению владельца
     выпускать проверенное в `main` **даже с неполным артом**. Ссылки/фактический
-    результат commit/PR/merge/Pages — протокол выпуска вверху §7, не локальный PASS.
+    результат — [PR129](https://github.com/boozygrimm/Expertbot/pull/129) и
+    [протокол merge/Pages/Render](https://github.com/boozygrimm/Expertbot/pull/129#issuecomment-7107293129),
+    не локальный PASS. Продуктовый commit `14e9330341198398db26e9cd7d99a42c90a3c6d0`.
   - **Объявления:** owner-only «Сообщить об обновлении» → ввод до700 UTF-16 →
     preview/число адресатов/проверить build → отдельный Send. Nonce, once-claim
     перед первой отправкой и очистка FSM защищают от старых/повторных кнопок.
@@ -137,7 +140,7 @@ auto-main для существующего бота; Pages не доказыв�
     `17f630072dcd3b94c8f874a1f542f31720972111dcc8788f344b03582901e059`.
     Свежие618npm/104Python+47subtests/32native PASS, ESLint0errors/13 старых fork
     warnings; repeat build идентичен. Classic `63b4ca81a10e` /795638B прежний;
-   6 weapon payloads и combat/save/6RNG/420–550ms/reward ordering сохранены.
+    6 weapon payloads и combat/save/6RNG/420–550ms/reward ordering сохранены.
   - Владелец подтвердил Render auto-deploy **текущего** бота из `main`.
     В доступных GitHub checks/deployments до этого виден только Pages; живой
     Render/физический Telegram не подтверждаются этим QA. Не запускать `main.py`
@@ -1534,10 +1537,14 @@ auto-main для существующего бота; Pages не доказыв�
   **`17f630072dcd3b94c8f874a1f542f31720972111dcc8788f344b03582901e059`**;
   classic **`63b4ca81a10e` /795638B**, SHA256
   **`7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`**.
-- **Выпуск/границы:** выполнить commit/push/PR/merge только текущей ветки, не
-  удерживать пакет ради11 недостающих основ. Фактические SHA/PR/Pages и отдельные
-  сведения о Render фиксируются в протоколе выпуска после операций. Владелец
-  подтвердил Render auto-main; доступный healthcheck общий и не сообщает build.
+- **Выпуск/границы:** продуктовый commit **`14e9330341198398db26e9cd7d99a42c90a3c6d0`**;
+  [PR129](https://github.com/boozygrimm/Expertbot/pull/129) из текущей ветки в `main`.
+  Неполный каталог больше не удерживает пакет. Фактические final-head/merge SHA,
+  Pages workflow/артефакт и отдельные сведения о Render фиксируются **после операций**
+  в [протоколе выпуска](https://github.com/boozygrimm/Expertbot/pull/129#issuecomment-7107293129);
+  локальный PASS не выдавать за публикацию. Финализация ссылок в docs не меняет
+  проверенный HTML/build. Владелец подтвердил Render auto-main; доступный
+  healthcheck общий и не сообщает build.
   Pages и SDK-stub не доказывают живой процесс/телефон. Не запускать второй
   polling/`main.py`; не делать реальную рассылку. В Telegram после auto-deploy:
   закрыть старый Mini App → свежая `/raid_test` → сверить **`6d4b5abca254`** в игре.
