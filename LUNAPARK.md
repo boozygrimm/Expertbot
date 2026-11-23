@@ -39,8 +39,10 @@ Continue без нового забега. JS executable tokens идентичн
 **Chromium153:32 current+32 exact3a59 geometry+2 genuine v1+2 released-v2 upgrade**, errors[].
 Art/LUT/provenance/deterministic build/inline/preview Host/ESLint0errors
 (13 прежних warnings)/classic guard PASS; новый Лич/4палитры и actual browser
-снимки просмотрены. Это **локальная приёмка**, не уже подтверждённый новый rollout:
-PR/merge/Pages/публичную сборку и отдельную границу Render дописать по операциям.
+снимки просмотрены. **Доставка — [PR132](https://github.com/boozygrimm/Expertbot/pull/132)
+и [release-протокол](https://github.com/boozygrimm/Expertbot/pull/132#issuecomment-7116951284).**
+Этот Git-текст записан до merge: actual merge/head/Pages/public build и отдельные
+границы Render читать в протоколе, не выводить из local PASS.
 Для существующего Telegram-входа packaged helper уже читает78d95d038161; после
 auto-main нужен свежий `/raid_test` и сверка build. Никаких реальных объявлений,
 второго poller/новых способностей боссов/парка; предложения §5 не выбраны.
@@ -206,10 +208,10 @@ auto-main для существующего бота; Pages не доказыв�
   - Арт/LUT/sourceSHA/repeat/inline/Host HTTP bytes/classic guards PASS,
     ESLint0errors/13 прежних warnings; все4 полных elemental sheets и Лич96/52px,
     browser details earth/water, board fire-SDK390 и popup320px просмотрены.
-  - Доставка проверенного шага в main/Pages для существующего Render auto-main
-    ещё предстоит; actual PR/merge/Pages/public build — верх§7/протокол после
-    операций. Packaged `/raid_test` helper локально даёт новый78d95d038161,
-    не доказательство live-процесса. Никакого второго polling/настоящей рассылки/
+  - Доставка проверенного шага — [PR132](https://github.com/boozygrimm/Expertbot/pull/132),
+    actual merge/head/Pages/public build — [release-протокол](https://github.com/boozygrimm/Expertbot/pull/132#issuecomment-7116951284).
+    Эта Git-запись pre-merge; packaged `/raid_test` helper локально даёт
+    новый78d95d038161, не доказательство live-процесса. Никакого второго polling/настоящей рассылки/
     новых boss abilities/парка/серверного прогресса. Следом — физическая приёмка,
     не повторная просьба «закончить Лича»; A/B/C/D из §5 остаются предложениями.
 
@@ -1812,7 +1814,7 @@ auto-main для существующего бота; Pages не доказыв�
   верх§7 и контракты каталога/попапа/доставки пересверены. На входе чистая та же
   `arena/4dac0ee2-expertbot`; `fetch origin main` +`merge --ff-only origin/main`
   довели до **d76ea3c8f908c572ef0661bbe5acf2400f297935** без смены/создания ветки.
-  GitHub фактически PR131 MERGED; следующий PR с той же рабочей ветки.
+  GitHub фактически PR131 MERGED; этот шаг — отдельный PR132 с той же ветки.
 - **Лич32:**1 успешная image generation, новый коронованный скелет с филактерием
   в костяных руках, не повтор Маг15/Мстительный21. Raw SHA256
   `e79392e68cf833849615d9b5162da0228f6a95a75853d6aa2a0d19c9c1ef2889`.
@@ -1874,8 +1876,15 @@ auto-main для существующего бота; Pages не доказыв�
   фактический packaged `raid_build_id` (без запуска бота/сетевых запросов):
   ожидаемый URL после Render auto-main —
   `lunapark-raid-magitech.html?telegram=1&build=78d95d038161`. Это локальное
-  подтверждение helper/артефакта, не proof live bot. На момент этой записи новый
-  commit/PR/merge/Pages ещё предстоят; фактические операции/протокол добавить ниже.
+  подтверждение helper/артефакта, не proof live bot. Продуктовый commit
+  **`fb5247d64a184d7e7cdbff986c4635d1d3e638f9`** отправлен,
+  **[PR132](https://github.com/boozygrimm/Expertbot/pull/132)** открыт.
+  Фактические merged head/main SHA/Pages/deployment/public build — в
+  **[release-протоколе](https://github.com/boozygrimm/Expertbot/pull/132#issuecomment-7116951284)**,
+  дополняемом после операций без post-merge commit. Эта запись pre-merge:
+  на момент docs PR OPEN/MERGEABLE/CLEAN, `statusCheckRollup=[]`, CI до merge нет
+  (не выдавать за зелёный). Только push своей ветки/merge явного номера,
+  без push main/смены ветки. Все новые факты доставки читать в протоколе.
 - **Границы/далее:** существующий Render auto-main подтверждён владельцем раньше;
   Pages не выдавать за rollout процесса/physical Telegram/audio/FPS/баланс. Бот/
   второй poller/webhook/drop_pending_updates не запускались, реальные объявления
