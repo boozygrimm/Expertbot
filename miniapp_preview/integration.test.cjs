@@ -2538,7 +2538,7 @@ test('magitech weapon catalogue: all six existing weapon names have distinct art
   } finally { b.dom.window.close(); }
 });
 
-test('magitech weapon fog: water gently sloshes below, air drifts above, and four two-thirds bodies stay separate from neutral glass', async () => {
+test('magitech weapon fog: selection-only water/air keep their two-thirds geometry, without permanent filling or idle animation', async () => {
   const b = await orbFixture();
   try {
     showOrbFixture(b, idx => ({ type: idx === 35 ? 'arrow' : 'sword', ...(idx < 4 ? { frozen: true } : {}) }));
@@ -2553,6 +2553,8 @@ test('magitech weapon fog: water gently sloshes below, air drifts above, and fou
       assert.equal(orb.dataset.state, 'gas'); assert.equal(orb.querySelector('.orb-sigil'), null);
       const fog = orb.querySelector('.orb-material.orb-fog'); assert.ok(fog);
       const fogStyle = b.dom.window.getComputedStyle(fog), air = orb.dataset.element === 'air', water = orb.dataset.element === 'water';
+      assert.equal(fogStyle.opacity, '0', 'the former body is hidden until selection');
+      assert.equal(fogStyle.animationPlayState, 'paused');
       assert.equal(fogStyle.height, '66.6667%'); assert.equal(fogStyle.inset, air ? '0 0 auto' : 'auto 0 0');
       if (air) assert.equal(fogStyle.maskImage, 'linear-gradient(to bottom,#000 70%,transparent)');
       if (water) assert.equal(fogStyle.maskImage, 'none');
@@ -2794,6 +2796,102 @@ test('magitech location: a released v1 fallback survives a different preview and
     const restored = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')));
     assert.equal(restored.region, 'water'); assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:appearance')), 'air');
     for (const name of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[name], old[name], name);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+test('magitech clear tiles: every idle category is transparent; only the selected path gets material and undo removes it immediately', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid, doc = b.dom.window.document, style = node => b.dom.window.getComputedStyle(node);
+    const skull = Object.assign(r.makeSkull(false, true, 3), { hp: 50, maxHp: 50, atk: 0 });
+    const resources = { 1: 'shield', 2: 'potion', 3: 'coin', 4: 'arrow', 5: 'trophy', 35: 'chain' };
+    showOrbFixture(b, idx => idx === 0 ? { type: 'skull', skull } : { type: resources[idx] || 'sword' });
+    const nodes = [...doc.querySelectorAll('.cell > .raid-orb')];
+    assert.equal(nodes.length, 36);
+    assert.deepEqual([...new Set(nodes.map(n => n.dataset.type))].sort(), ['arrow','chain','coin','potion','shield','skull','sword','trophy']);
+    for (const orb of nodes) {
+      assert.ok(['', 'none'].includes(style(orb).backgroundImage), 'jsdom may serialize background:none as an empty image');
+      assert.equal(style(orb).backgroundColor, 'rgba(0, 0, 0, 0)');
+      assert.equal(style(orb.querySelector('.orb-material')).opacity, '0');
+      assert.equal(style(orb.querySelector('.orb-material')).animationPlayState, 'paused');
+    }
+    const board = JSON.stringify(r.state.board), rng = JSON.stringify(r.state.rngSeeds), equipment = JSON.stringify(r.state.equipment);
+    r.tryExtendChain(6); r.tryExtendChain(7); r.tryExtendChain(8);
+    assert.deepEqual(Array.from(r.state.selected), [6,7,8]);
+    for (const idx of [6,7,8]) {
+      const orb = orbAt(b, idx);
+      assert.equal(orb, nodes[idx]); assert.equal(style(orb.querySelector('.orb-fog')).opacity, '0.26');
+      assert.equal(style(orb.querySelector('.orb-fog-wisp')).animationPlayState, 'running');
+      assert.equal(style(orb).outline, '2px solid #ffebaa'); // jsdom keeps the outline shorthand
+    }
+    assert.equal(style(orbAt(b, 9).querySelector('.orb-material')).opacity, '0');
+    r.tryExtendChain(6); // actual backtracking, not merely clearing CSS in the test
+    assert.deepEqual(Array.from(r.state.selected), [6]);
+    for (const idx of [7,8]) {
+      assert.equal(orbAt(b, idx), nodes[idx]);
+      assert.equal(style(nodes[idx]).backgroundColor, 'rgba(0, 0, 0, 0)');
+      assert.equal(style(nodes[idx].querySelector('.orb-fog')).opacity, '0');
+      assert.equal(style(nodes[idx].querySelector('.orb-fog-wisp')).animationPlayState, 'paused');
+    }
+    assert.equal(JSON.stringify(r.state.board), board); assert.equal(JSON.stringify(r.state.rngSeeds), rng);
+    assert.equal(JSON.stringify(r.state.equipment), equipment); assert.equal(r.state.turn, 0); assert.equal(r.state.chainCount, 0);
+    assert.equal(doc.querySelectorAll('.orb-burst,[data-motion]').length, 0); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech clear weapons: four cosmetic metal colours and pixel relief preserve item/element identity through selection, purchase and Continue', async () => {
+  let b = await orbFixture();
+  try {
+    let r = b.raid, doc = b.dom.window.document;
+    showOrbFixture(b, () => ({ type: 'sword' }));
+    const key = magitechKey('raid:activeRun'), checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key));
+    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4);
+    b.dom.window.localStorage.setItem(key, JSON.stringify(checkpoint)); assert.equal(r.resumeSavedRun(), true);
+    const style = node => b.dom.window.getComputedStyle(node);
+    const nodes = [...doc.querySelectorAll('.cell > .raid-orb')], images = nodes.map(n => n.querySelector('.weapon-texture'));
+    const tones = nodes.slice(0,4).map(n => style(n).getPropertyValue('--weapon-tone'));
+    assert.equal(new Set(tones).size, 4); assert.ok(tones.every(Boolean));
+    const edges = nodes.slice(0,4).map(n => style(n).getPropertyValue('--weapon-edge'));
+    assert.equal(new Set(edges).size, 4);
+    for (const image of images) {
+      assert.match(style(image).filter, /drop-shadow\(-\.65px -\.65px 0 var\(--weapon-edge/);
+      assert.match(style(image).filter, /drop-shadow\(1px 1px 0 #020b11\)/);
+    }
+    const rng = JSON.stringify(r.state.rngSeeds), board = JSON.stringify(r.state.board);
+    r.tryExtendChain(0); r.tryExtendChain(1); r.tryExtendChain(2); r.tryExtendChain(0);
+    for (let idx = 0; idx < 36; idx++) {
+      assert.equal(orbAt(b, idx), nodes[idx]); assert.equal(orbAt(b, idx).querySelector('.weapon-texture'), images[idx]);
+      assert.equal(style(nodes[idx]).getPropertyValue('--weapon-tone'), tones[idx % 4]);
+    }
+    assert.equal(JSON.stringify(r.state.rngSeeds), rng); assert.equal(JSON.stringify(r.state.board), board);
+    r.state.selected = []; r.state.chainType = null;
+    const mace = Object.assign(r.makeItem('weapon'), { suffixIndex: 2, appearance: 37, name: 'Тяжёлая булава «Искра»' });
+    showWeaponOffers(b, mace);
+    const offered = weaponView(doc.querySelector('.shop-item[data-slot="weapon"] .weapon-texture'));
+    const current = [...doc.querySelectorAll('.cell > .raid-orb')], currentImages = current.map(n => n.querySelector('.weapon-texture'));
+    const purchaseRng = JSON.stringify(r.state.rngSeeds);
+    doc.querySelector('.shop-item[data-slot="weapon"]').click(); await until(() => !r.state.pendingModal && !r.state.resolving);
+    for (let idx = 0; idx < 36; idx++) {
+      assert.equal(orbAt(b, idx), current[idx]); assert.equal(orbAt(b, idx).querySelector('.weapon-texture'), currentImages[idx]);
+      assert.deepEqual(weaponView(currentImages[idx]), offered);
+      assert.equal(style(current[idx]).getPropertyValue('--weapon-tone'), tones[idx % 4]);
+      assert.equal(style(current[idx].querySelector('.orb-fog')).opacity, '0');
+    }
+    assert.equal(JSON.stringify(r.state.rngSeeds), purchaseRng); assert.equal(JSON.stringify(r.state.board), board);
+    assert.equal(r.state.turn, 0); assert.equal(r.state.chainCount, 0);
+    assert.equal(r.state.board.some(cell => Object.hasOwn(cell, 'element')), false, 'tint is not an implicit combat/save migration');
+    b = await reopenMagitech(b); r = b.raid; doc = b.dom.window.document; doc.querySelector('#picker-resume').click();
+    const restored = [...doc.querySelectorAll('.cell > .raid-orb')];
+    restored.forEach((orb, idx) => {
+      const computed = b.dom.window.getComputedStyle(orb);
+      assert.equal(computed.getPropertyValue('--weapon-tone'), tones[idx % 4]);
+      assert.ok(['', 'none'].includes(computed.backgroundImage)); assert.equal(computed.backgroundColor, 'rgba(0, 0, 0, 0)');
+      assert.deepEqual(weaponView(orb.querySelector('.weapon-texture')), offered);
+      assert.equal(b.dom.window.getComputedStyle(orb.querySelector('.orb-fog')).opacity, '0');
+    });
+    assert.equal(JSON.stringify(r.state.rngSeeds), purchaseRng); assert.equal(JSON.stringify(r.state.board), board);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

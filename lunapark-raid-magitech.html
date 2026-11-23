@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="b3a390d93e68">
+<meta name="raid-build" content="ccbb00c7bb76">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1096,35 +1096,35 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   box-shadow: none !important; overflow: visible; opacity: 1;
   transform: none; transition: none; filter: none; animation: none;
 }
-#board .cell::before { content: ''; position: absolute; inset: 6%; border: 1px solid #8ab8a61c; border-radius: 50%; background: #03151c35; pointer-events: none; }
+#board .cell::before { content: ''; position: absolute; inset: 6%; border: 0; border-radius: 50%; background: none; pointer-events: none; }
 #board .cell.empty::before { opacity: .4; }
 .raid-orb {
   position: absolute; inset: 2%; display: grid; place-items: center;
   container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
-  border: 1px solid rgb(var(--orb-rgb) / .6);
-  background: radial-gradient(circle at 36% 23%,var(--orb-light) 0%,var(--orb-mid) 35%,var(--orb-dark) 82%);
-  box-shadow: inset 0 1px 2px #fffa,inset -4px -6px 10px #040d20b3,0 3px 6px #0008,0 0 7px rgb(var(--orb-rgb) / .15);
+  /* Readability pass: no permanent coloured fill or milky glass highlight. */
+  border: 1px solid #9ab5b54d; background: none;
+  box-shadow: inset 0 1px 0 #e7f4ed1a,0 1px 2px #0004;
   pointer-events: none; backface-visibility: hidden;
 }
 .raid-orb::before {
   content: ''; position: absolute; z-index: 4; left: 17%; top: 8%; width: 38%; height: 14%;
-  border-radius: 50%; transform: rotate(-28deg); background: linear-gradient(100deg,#fffceee0,#ffffff0a);
-  filter: blur(.3px); pointer-events: none;
+  border-radius: 50%; transform: rotate(-28deg); background: none;
+  border-top: 1px solid #e9f7f22e; pointer-events: none;
 }
 .raid-orb::after {
   content: ''; position: absolute; z-index: 4; right: 10%; bottom: 15%; width: 14%; height: 24%;
-  border-right: 1.5px solid #ffffff6b; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
+  border-right: 1px solid #ffffff26; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
 }
-/* Quiet idle motion: no spinning conic bands, blinking highlights or orb
-   pulsing. Only low-contrast material drifts at most 1–2% over 14–32 seconds. */
-.orb-material { position: absolute; inset: -12%; z-index: 0; border-radius: 50%; opacity: .18; mix-blend-mode: screen; pointer-events: none; }
+/* Quiet selection material: hidden/paused at rest, not a filled tile.
+   No spinning conic bands, blinking highlights or orb pulsing. */
+.orb-material { position: absolute; inset: -12%; z-index: 0; border-radius: 50%; opacity: 0; mix-blend-mode: screen; pointer-events: none; }
 .orb-material::before, .orb-material::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
 .state-fire .orb-material { background: radial-gradient(ellipse at 40% 80%,#ffd49780,transparent 56%),radial-gradient(ellipse at 64% 72%,#fa693c80,transparent 65%); animation: orb-fx-heat 14s ease-in-out infinite; }
 .state-fire .orb-material::before { background: radial-gradient(ellipse at 50% 90%,#f4b67360,transparent 65%); }
 .state-gas .orb-material { background: radial-gradient(ellipse at 28% 32%,rgb(var(--orb-rgb) / .6),transparent 57%),radial-gradient(ellipse at 70% 65%,#d8ecff55,transparent 57%); animation: orb-fx-mist 22s ease-in-out infinite; }
 .state-liquid .orb-material { background: radial-gradient(ellipse at 35% 72%,rgb(var(--orb-rgb) / .7),transparent 66%); animation: orb-fx-flow 18s ease-in-out infinite; }
 .state-liquid .orb-material::before { inset: 35% -10% -10%; border-top: 1px solid rgb(var(--orb-rgb) / .28); border-radius: 45%; background: linear-gradient(transparent,rgb(var(--orb-rgb) / .3)); }
-.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .5) .6px,transparent 1.25px); background-size: 8px 10px; opacity: .14; animation: orb-fx-grain 32s linear infinite; }
+.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .5) .6px,transparent 1.25px); background-size: 8px 10px; animation: orb-fx-grain 32s linear infinite; }
 .state-solid .orb-material { background: linear-gradient(130deg,transparent 25%,rgb(var(--orb-rgb) / .4) 26% 36%,transparent 37% 60%,#dbe8e333 61% 70%,transparent 71%); }
 .state-solid .orb-material::before { background: radial-gradient(ellipse at 35% 28%,#e2eeeb55,transparent 60%); animation: orb-fx-sheen 28s ease-in-out infinite; }
 .state-organic .orb-material { background: radial-gradient(ellipse at 45% 60%,rgb(var(--orb-rgb) / .6),transparent 64%); animation: orb-fx-sap 24s ease-in-out infinite; }
@@ -1132,17 +1132,43 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .orb-material, .orb-material::before { animation-delay: var(--orb-phase,0ms) !important; }
 .orb-core { position: absolute; inset: 13% 12%; z-index: 2; display: grid; place-items: center; }
 .raid-orb .orb-core > .ic { width: 100%; height: 100%; filter: drop-shadow(0 2px 2px #071323b3); }
-.weapon-texture { display: block; object-fit: contain; filter: var(--weapon-finish,none); }
+/* The same item image/finish is used in the shop and on the board. Only
+   the board inherits a cosmetic elemental metal tone, NOT a new item stat.
+   Opposing zero-blur subpixel/1px edges read as a bevel, never a neon halo. */
+.weapon-texture, .raid-orb .orb-core > .weapon-texture {
+  display: block; object-fit: contain;
+  filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1))
+    drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd))
+    drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
+}
+.raid-orb[data-element="fire"] {
+  --weapon-tone: sepia(1) saturate(3) hue-rotate(336deg) contrast(1.12) brightness(1.2);
+  --weapon-edge: #ffe2b5; --weapon-colour: #fa9b4a;
+}
+.raid-orb[data-element="air"] {
+  --weapon-tone: grayscale(.96) contrast(1.12) brightness(1.46);
+  --weapon-edge: #f1fcff; --weapon-colour: #e3f5f6;
+}
+.raid-orb[data-element="earth"] {
+  --weapon-tone: sepia(1) saturate(2) hue-rotate(45deg) contrast(1.18) brightness(1.14);
+  --weapon-edge: #e1f3b0; --weapon-colour: #b1cb69;
+}
+.raid-orb[data-element="water"] {
+  --weapon-tone: grayscale(1) sepia(1) saturate(3.2) hue-rotate(180deg) contrast(1.12) brightness(1.25);
+  --weapon-edge: #c5efff; --weapon-colour: #62bce9;
+}
+.raid-orb[data-type="arrow"] .orb-core > .ic {
+  filter: drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd)) drop-shadow(1px 1px 0 #020b11);
+}
 .raid-orb[data-type="sword"] .orb-core { inset: 7%; }
-.raid-orb .orb-core > .weapon-texture { filter: var(--weapon-finish,none) drop-shadow(0 1px 1px #031119b3); }
 .raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
 #board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
-/* Element = a quiet coloured body in two thirds of neutral weapon glass.
-   Air is above, water below; inventory image/finish is independent of it. */
-.raid-orb:is([data-type="sword"],[data-type="arrow"]) { border-color: #9db6c080; }
+/* Element is readable on the weapon itself. The earlier two-thirds body
+   is retained only as a quiet SELECTION treatment: air above, water below. */
+.raid-orb:is([data-type="sword"],[data-type="arrow"]) { border-color: #9ab5b54d; }
 .orb-material.orb-fog {
   inset: auto 0 0; height: 66.6667%; border-radius: 0; overflow: hidden;
-  opacity: .72; background: none; animation: none; mix-blend-mode: screen;
+  opacity: 0; background: none; animation: none; mix-blend-mode: screen;
   -webkit-mask-image: linear-gradient(to bottom,transparent,#000 26%);
   mask-image: linear-gradient(to bottom,transparent,#000 26%);
 }
@@ -1206,7 +1232,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb[data-element="air"] .orb-fog-wisp { animation-duration: 14s; }
 .raid-orb[data-element="air"] .orb-fog-back { animation-duration: 19s; }
 .raid-orb[data-element="water"] .orb-fog {
-  -webkit-mask-image: none; mask-image: none; opacity: .66;
+  -webkit-mask-image: none; mask-image: none;
 }
 .raid-orb[data-element="water"] .orb-fog-wisp {
   inset: 0 -24% -10%; filter: none;
@@ -1216,6 +1242,14 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   animation-name: orb-water-slosh; animation-duration: 8s;
 }
 .raid-orb[data-element="water"] .orb-fog-wisp.orb-fog-back { inset: 4% -24% -12%; opacity: .44; animation-name: orb-water-return; animation-duration: 11s; }
+/* Invisible material layers do not run idle animations. Frozen and
+   reduced-motion still win; content-only coin/weapon turns are independent. */
+.raid-orb .orb-material, .raid-orb .orb-material::before,
+.raid-orb .orb-material::after, .raid-orb .orb-fog-wisp { animation-play-state: paused; }
+#board .cell.selected .raid-orb:not(.frozen) .orb-material,
+#board .cell.selected .raid-orb:not(.frozen) .orb-material::before,
+#board .cell.selected .raid-orb:not(.frozen) .orb-material::after,
+#board .cell.selected .raid-orb:not(.frozen) .orb-fog-wisp { animation-play-state: running; }
 .sound-control { position: relative; }
 .sound-control input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; clip-path: inset(50%); overflow: hidden; }
 .sound-control:focus-within { outline: 2px solid #f5dfa0; outline-offset: 3px; }
@@ -1228,14 +1262,22 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb.special { border: 2px solid #efce8d; box-shadow: inset 0 0 0 1px #614726,0 0 7px #e8ba5450; }
 .raid-orb.boss { border: 2px solid #ffc5a0; box-shadow: inset 0 0 0 2px #722f3d,0 0 9px #e8ab6350; }
 .raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; transform: none; }
-#board .cell.selected .raid-orb { outline: 2px solid #ffebaa; outline-offset: -1px; box-shadow: 0 0 12px #fae2a566,inset 0 0 7px #f3e3a38c; }
+/* A selected path gets a restrained fill; undo/cancel removes it via the
+   existing selected class. No animation callback controls damage/rewards. */
+#board .cell.selected .raid-orb {
+  outline: 2px solid #ffebaa; outline-offset: -1px;
+  background: rgb(var(--orb-rgb) / .12);
+  box-shadow: inset 0 0 0 1px #0c191e,0 0 5px #fae2a52e;
+}
+#board .cell.selected .orb-material { opacity: .18; }
+#board .cell.selected .orb-material.orb-fog { opacity: .26; }
 #board .cell.rune-inside { outline: 0; }
 #board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
 #board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
 #board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
-.raid-orb.primed .orb-material { opacity: .85; }
+.raid-orb.primed .orb-material { opacity: .18; }
 .orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
 .orb-ice svg { width: 100%; height: 100%; }
 .raid-orb.frozen .orb-ice { opacity: 1; }
@@ -1244,7 +1286,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
 .raid-orb.broken .orb-crack { opacity: .9; }
 #board .cell.broken .ic, .raid-orb.broken .ic { opacity: .45; filter: grayscale(.8); }
-#board .cell.broken .weapon-texture, .raid-orb.broken .weapon-texture { filter: var(--weapon-finish,none) grayscale(.8) drop-shadow(0 1px 1px #031119b3); }
+#board .cell.broken .weapon-texture, .raid-orb.broken .weapon-texture {
+  filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1)) grayscale(.8)
+    drop-shadow(-.65px -.65px 0 #b3c5be) drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
+}
 .raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
@@ -1305,11 +1350,11 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка b3a390d93e68</p>
+    <p class="build-label">Сборка ccbb00c7bb76</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Боевой комплект определяет способности. Выбери доступный мех — или продолжи свой рейд.</p>
-    <p class="raid-prototype-note" id="raid-prototype-note"><b>Сферы алхимии · этап 02.</b> Вода мягко плещется снизу, воздух плывёт сверху. Монета и надетое оружие медленно поворачиваются внутри неподвижного стекла. Покупка меняет рисунок оружия и на поле. Бой классический: стихийные множители и грейды бойцов не включены.</p>
+    <p class="raid-prototype-note" id="raid-prototype-note"><b>Прозрачные плитки · проба оформления.</b> Постоянная заливка убрана; мягкий цвет появляется у выбранной цепи. Стихия видна на самом оружии, светлая грань и тёмный торец добавляют объём. Покупка меняет модель и на поле. Стихийная основа ±25% согласована, но множители и грейды бойцов ещё не включены в бой.</p>
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <div class="picker-tools"><button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
@@ -1421,7 +1466,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note">Классический бой · стихийные множители ещё не включены.</p>
-    <p class="build-label">Сборка b3a390d93e68</p>
+    <p class="build-label">Сборка ccbb00c7bb76</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1484,8 +1529,8 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 <div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
   <div class="help-card">
     <h3>RAID / Как играть</h3>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка b3a390d93e68.</p>
-    <p><b>Этап 02 — сферы алхимии.</b> Все клетки — неподвижные стеклянные сферы с мягким движением материала без кругового вращения оболочки и частого мерцания. Стихия мечевой клетки занимает около двух третей нейтрального стекла: оранжевая дымка — Огонь, светло-серебристый воздух — вверху, зелёная дымка — Земля, синяя вода с неспешной волной — внизу. Золотая монета медленно показывает две чеканные стороны и ребристый гурт; внутри мечевой сферы именно надетое оружие неторопливо поворачивается вокруг продольной оси рукоятки, а не по кругу в шарике. Заморозка останавливает движение внутри, системная настройка уменьшения движения отключает его. Звуки тихие и материальные: мягкая вода, воздушный шелест, звон золота и металла. Кнопка звука полностью отключает эффекты; в фоне они не звучат. Музыки и непрерывного фона нет. У предложений магазина свои рисунки: клинок, сабля, булава, молот, топор или клинок стражи. После покупки все мечевые клетки получают тот же рисунок и отделку, что у купленного предмета; просмотр предложения не переодевает поле. Обычный апгрейд меняет параметры вещи, не её модель; «Продолжить» восстанавливает изображение надетого оружия без переброса. Это визуальный прототип каталога, не утверждённая финальная графика. Любые мечи соединяются вместе и дают одинаковый исходный базовый вклад; стихийные коэффициенты ещё <b>не включены в бой</b>. Материал сферы — оформление, не новый эффект. Мехи/бойцы пока наследуют исходные классы/расы; грейды, распределение стихий врагов, двойная стихия босса, задания и музыка ждут согласования. Четыре темы меняют фон и оформление, не характеристики или генерацию.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка ccbb00c7bb76.</p>
+    <p><b>Прозрачные плитки — проба оформления.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; только золотая монета и надетое оружие медленно поворачиваются, оружие — вокруг продольной оси рукоятки. Заморозка сохраняет лёд и останавливает движение, системное уменьшение движения отключает анимацию. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи соединяются вместе и пока наносят классический урон. Основа прямого стихийного удара согласована: нейтральная база, каждый меч ×1,25 / ×1 / ×0,75, но множители ещё <b>не включены в бой</b>. Обработка вторичных источников, игровые стихии врагов и их распределение ещё требуют решения. Мехи/бойцы пока наследуют исходные классы/расы; грейды, задания и музыка не добавлены. Четыре темы меняют оформление, не характеристики или генерацию.</p>
     <ul>
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
       <li>Урон — исходная база плюс урон оружия за каждый меч. Boost удваивает только вклад мечей. Сначала защита цели поглощает удар, затем теряется HP; броски разрушения брони идут после этого. Предпросмотр не тратит случайность и не обещает случайные награды.</li>
@@ -3931,7 +3976,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '<\/svg>';
     if (cell.type === 'sword') return raidWeaponTexture('ic');
-    if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="#d5e9e4"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="#7fe5d2" stroke-width="2"/>' + end;
+    if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return start + '<path d="M24 3 42 11v14c0 10-10 17-18 21C16 42 6 35 6 25V11Z" fill="#a58d57" stroke="#dec692" stroke-width="1.5"/><path d="m24 8 13 6v11c0 7-6 12-13 16-7-4-13-9-13-16V14Z" fill="#2b5c69" stroke="#92cbd4"/><path d="M24 11v27m-10-21 20 13m0-13L14 30" stroke="#6cb0ba" stroke-width="1.2"/><path d="m24 17 7 7-7 9-7-9Z" fill="#b4f1e9"/>' + end;
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
       + '<i class="coin-edge"><\/i><i class="coin-edge coin-edge-belt"><\/i>'
@@ -3948,7 +3993,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
 
   // Alchemy reference: discovery.css/js on arena/771875a3-expertbot
   // (37a857da), consolidated in PR87. Six resource/enemy materials plus the
-  // weapon gas haze are cosmetic; they never assign a combat multiplier.
+  // weapon selection haze are cosmetic; they never assign a combat multiplier.
   const ORB_ELEMENT_ORDER = ['fire', 'air', 'earth', 'water'];
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
@@ -4008,8 +4053,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function orbLook(cell, idx) {
     const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
-    // Weapon glass is neutral. Its element is a separate 2/3-height body:
-    // air above, gently sloshing water below, not a recoloured shell/badge.
+    // Unselected glass is clear. Elemental metal tint is CSS-only; the old
+    // 2/3-height body appears only on selection (air above, water below).
     if (['sword', 'arrow'].includes(cell.type)) return { ...elemental, state: 'gas', light: '#d9e7ed', mid: '#344957', dark: '#101e2b' };
     if (cell.type === 'skull') {
       if (index === 2) return { ...elemental, state: /ent|worm/.test(raidPortraitKey(cell.skull)) ? 'organic' : 'solid' };

@@ -2422,7 +2422,7 @@
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
     if (cell.type === 'sword') return raidWeaponTexture('ic');
-    if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="#d5e9e4"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="#7fe5d2" stroke-width="2"/>' + end;
+    if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return start + '<path d="M24 3 42 11v14c0 10-10 17-18 21C16 42 6 35 6 25V11Z" fill="#a58d57" stroke="#dec692" stroke-width="1.5"/><path d="m24 8 13 6v11c0 7-6 12-13 16-7-4-13-9-13-16V14Z" fill="#2b5c69" stroke="#92cbd4"/><path d="M24 11v27m-10-21 20 13m0-13L14 30" stroke="#6cb0ba" stroke-width="1.2"/><path d="m24 17 7 7-7 9-7-9Z" fill="#b4f1e9"/>' + end;
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
       + '<i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>'
@@ -2439,7 +2439,7 @@
 
   // Alchemy reference: discovery.css/js on arena/771875a3-expertbot
   // (37a857da), consolidated in PR87. Six resource/enemy materials plus the
-  // weapon gas haze are cosmetic; they never assign a combat multiplier.
+  // weapon selection haze are cosmetic; they never assign a combat multiplier.
   const ORB_ELEMENT_ORDER = ['fire', 'air', 'earth', 'water'];
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
@@ -2499,8 +2499,8 @@
   }
   function orbLook(cell, idx) {
     const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
-    // Weapon glass is neutral. Its element is a separate 2/3-height body:
-    // air above, gently sloshing water below, not a recoloured shell/badge.
+    // Unselected glass is clear. Elemental metal tint is CSS-only; the old
+    // 2/3-height body appears only on selection (air above, water below).
     if (['sword', 'arrow'].includes(cell.type)) return { ...elemental, state: 'gas', light: '#d9e7ed', mid: '#344957', dark: '#101e2b' };
     if (cell.type === 'skull') {
       if (index === 2) return { ...elemental, state: /ent|worm/.test(raidPortraitKey(cell.skull)) ? 'organic' : 'solid' };
