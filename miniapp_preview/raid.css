@@ -34,7 +34,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   border-left: 1px solid #4a315a;
   border-right: 1px solid #4a315a;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
 }
 /* top brand */
 .brand {
@@ -67,16 +67,20 @@ body { display: flex; align-items: stretch; justify-content: center; }
 
 /* board */
 .board-wrap {
-  position: relative; flex: 1 1 auto; min-height: 0;
+  position: relative; flex: 1 0 auto; min-height: 0;
   display: grid; place-items: center; margin: 2px 0 8px;
+  grid-template-rows: minmax(180px, 1fr) auto; gap: 6px;
 }
 #board {
   position: relative;
-  width: min(94vw, 430px);
-  height: min(52vh, 430px);
+  /* Reserve the real board + footer before the HUD. Size containment stops
+     percentage SVG/images from imposing their intrinsic height on this track. */
+  contain: size;
+  width: min(100%, 430px);
+  height: 100%; min-height: 180px; max-height: 430px;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   gap: 3px;
   padding: 6px;
   background: linear-gradient(160deg, #241532 0%, #160f26 100%);
@@ -109,7 +113,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   filter: drop-shadow(0 0 6px rgba(201,168,255,0.8));
 }
 .cell {
-  position: relative; display: grid; place-items: center;
+  position: relative; display: grid; place-items: center; min-width: 0; min-height: 0;
   border: 1px solid rgba(99, 65, 124, 0.22);
   border-radius: 9px;
   background: radial-gradient(circle at 50% 35%, #2a1a35 0%, #1a1026 80%);
@@ -448,14 +452,14 @@ body { display: flex; align-items: stretch; justify-content: center; }
 
 /* responsive */
 @media (max-height: 720px) {
-  #board { width: min(94vw, 370px); height: min(46vh, 370px); }
+  #board { width: min(100%, 370px); max-height: 370px; }
   .brand-text strong { font-size: 14px; }
   .notice { margin-bottom: 6px; padding: 5px 10px; }
   .skills { min-height: 50px; }
 }
 @media (max-height: 560px) {
   .shell { padding-top: 8px; }
-  #board { width: min(94vw, 320px); height: min(44dvh, 320px); }
+  #board { width: min(100%, 320px); max-height: 320px; }
   .hud-row { gap: 4px; }
   .hud-cell { padding: 4px 6px; }
   .skills { min-height: 46px; }
@@ -580,10 +584,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
   border-radius: 8px; padding: 5px 8px; margin-bottom: 6px;
 }
 .board-foot {
-  position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%);
-  display: flex; gap: 10px; font-size: 9px; color: #bfa8c9; font-weight: 700;
+  position: static; transform: none; max-width: 100%;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; font-size: 9px; color: #bfa8c9; font-weight: 700;
   background: rgba(14,9,22,0.8); border: 1px solid #3d2a52; border-radius: 999px;
-  padding: 2px 9px; white-space: nowrap;
+  padding: 2px 9px; white-space: normal;
 }
 .board-wrap { margin-bottom: 14px; }
 .hud { gap: 4px; }
@@ -608,10 +612,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .menu-modal.show { opacity: 1; pointer-events: auto; }
 .menu-card {
   width: min(100%, 340px); min-width: 0; display: flex; flex-direction: column; gap: 7px;
+  max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain;
   background: linear-gradient(160deg, #2c1b40, #161028); border: 1px solid #8a5fb0;
   border-radius: 16px; padding: 16px;
 }
 .menu-card h3 { margin: 0 0 6px; text-align: center; color: #ffe2a9; font: 700 19px Georgia, serif; }
+.menu-card .btn { min-height: 44px; }
 @media (max-height: 720px) {
   .skills { min-height: 48px; }
   .run-actions .icon-btn { font-size: 9px; padding: 4px 6px; }
@@ -667,6 +673,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .save-note { margin: 4px 0 12px; color: #c9b5d2; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .save-warning { flex: none; margin: 2px 0 4px; padding: 6px 8px; border: 1px solid #bc794c; border-radius: 8px; color: #ffdaab; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
 .restart-modal { z-index: 110; }
+.exit-modal { z-index: 140; }
 .restart-modal .menu-card { min-width: 0; }
 #picker-resume { white-space: normal; overflow-wrap: anywhere; }
 #picker-save-status { flex: none; margin: 0; }
@@ -709,35 +716,32 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .achievement-record progress { display: block; width: 100%; height: 9px; accent-color: #d0ae61; }
 .achievement-notice { position: fixed; z-index: 150; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; width: fit-content; max-width: min(480px, calc(100% - 24px)); margin: 0 auto; padding: 10px 14px; border: 1px solid #b8a35b; border-radius: 12px; background: #292035; color: #ffe7b4; box-shadow: 0 5px 25px #0009; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
 
-/* Telegram launch is opt-in; ordinary/offline browser layout is unchanged. */
+/* Telegram host dimensions/safe areas are opt-in; the field flow is shared. */
 .telegram-status { margin: 0; color: #d3bedf; font-size: 11px; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
 .telegram-preview {
+  --raid-tg-visible-height: min(100dvh, var(--raid-tg-height, 100dvh));
   --raid-inset-top: calc(max(env(safe-area-inset-top, 0px), var(--raid-tg-safe-top, 0px)) + var(--raid-tg-content-top, 0px));
   --raid-inset-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--raid-tg-safe-bottom, 0px)) + var(--raid-tg-content-bottom, 0px));
   --raid-inset-left: calc(max(env(safe-area-inset-left, 0px), var(--raid-tg-safe-left, 0px)) + var(--raid-tg-content-left, 0px));
   --raid-inset-right: calc(max(env(safe-area-inset-right, 0px), var(--raid-tg-safe-right, 0px)) + var(--raid-tg-content-right, 0px));
 }
 .telegram-preview .shell {
-  height: var(--raid-tg-height, 100dvh);
+  height: var(--raid-tg-visible-height);
   padding: calc(8px + var(--raid-inset-top)) calc(14px + var(--raid-inset-right)) calc(10px + var(--raid-inset-bottom)) calc(14px + var(--raid-inset-left));
   overflow-y: auto; overscroll-behavior: contain;
 }
-.telegram-preview .board-wrap { min-height: 180px; }
-/* A percentage of the shrinking grid track can still overflow a short host
-   viewport. Use its stable pixel height, leaving the HUD scrollable below. */
-.telegram-preview #board {
-  width: min(100%, 430px);
-  height: clamp(180px, calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 300px), 430px);
-}
+/* The shared non-shrinking board/footer layout uses the actual remaining
+   space, not a fixed subtraction from Telegram's viewport height. */
+.telegram-preview #board { width: min(100%, 430px); max-height: 430px; }
 .telegram-preview :is(.class-picker, .menu-modal, .modal, .help-modal) {
-  bottom: auto; height: var(--raid-tg-height, 100dvh);
+  bottom: auto; height: var(--raid-tg-visible-height);
   padding: calc(16px + var(--raid-inset-top)) calc(12px + var(--raid-inset-right)) calc(16px + var(--raid-inset-bottom)) calc(12px + var(--raid-inset-left));
 }
 .telegram-preview :is(.picker-card, .modal-card, .menu-card, .help-card) {
-  max-height: calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px);
+  max-height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px);
   overflow-y: auto;
 }
-.telegram-preview .picker-card.editor-open { height: calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px); overflow: hidden; }
+.telegram-preview .picker-card.editor-open { height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px); overflow: hidden; }
 .telegram-preview .achievement-notice { top: calc(12px + var(--raid-inset-top)); }
 
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */

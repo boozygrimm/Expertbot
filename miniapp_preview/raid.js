@@ -1292,6 +1292,7 @@
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
     SCHEDULED_STEP = AFTER_ARRIVALS = RESOURCE_BATCH = null; DRAINING_ARRIVALS = false;
@@ -2618,6 +2619,7 @@
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    cancelTelegramExit(false);
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
     clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
     closeRunHistory();
@@ -5344,7 +5346,7 @@
   // public, and only its launcher in the bot is owner-private. Our code never sends or
   // persists initData/user details; gameplay and storage stay browser-local.
   let TELEGRAM_APP = null;
-  let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null;
+  let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null, TELEGRAM_EXIT = null;
   function telegramCall(target, method, ...args) {
     try { if (typeof target?.[method] === 'function') { target[method](...args); return true; } }
     catch (ignored) { /* Old clients/SDK failures must not break the game. */ }
@@ -5359,21 +5361,54 @@
   function syncTelegramChrome() {
     if (!TELEGRAM_APP) return;
     const live = !!S && !S.over;
-    const back = live || HISTORY_OPEN || !!classEditor || telegramLayer('help-modal') || telegramLayer('restart-modal');
+    // Back belongs to nested views only. At the board/reward root Telegram
+    // must keep its native Close control, not trap the user in a menu loop.
+    const back = HISTORY_OPEN || !!classEditor || pickerOpen && live
+      || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
+      || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
+  function cancelTelegramExit(focus = true) {
+    const previous = TELEGRAM_EXIT; TELEGRAM_EXIT = null;
+    const wrap = el('exit-modal');
+    if (wrap) { wrap.classList.remove('show'); wrap.hidden = true; }
+    if (focus) previous?.focus?.focus();
+  }
+  function requestTelegramClose(discard = false) {
+    if (!TELEGRAM_APP) return false;
+    cancelPointerGesture();
+    // A pending reward is a resumable checkpoint, not a reason to forbid exit.
+    // close() can bypass the native closing prompt, so an unsuccessful write
+    // needs our explicit, accessible discard confirmation before that request.
+    const saved = !S || saveRun();
+    if (!saved && !discard) {
+      const wrap = el('exit-modal');
+      if (!wrap) return false;
+      TELEGRAM_EXIT = { runId: RUN_ID, focus: document.activeElement };
+      el('exit-confirm-text').textContent = 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
+      wrap.hidden = false; wrap.classList.add('show'); el('exit-cancel')?.focus();
+      syncTelegramChrome();
+      return false;
+    }
+    cancelTelegramExit(false);
+    if (telegramCall(TELEGRAM_APP, 'close')) return true;
+    telegramNotice('Команда закрытия недоступна. Вернись в игру и используй кнопку закрытия Telegram в шапке.');
+    flash('Для выхода используй кнопку закрытия Telegram в шапке');
+    syncTelegramChrome();
+    return false;
+  }
   function telegramBack() {
     cancelPointerGesture();
-    if (telegramLayer('restart-modal')) cancelNewGame();
+    if (telegramLayer('exit-modal')) cancelTelegramExit();
+    else if (telegramLayer('restart-modal')) cancelNewGame();
     else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('help')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
-    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
+    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
-    else if (S && !S.over) { saveRun(); el('menu-modal')?.classList.add('show'); el('menu-resume')?.focus(); }
     syncTelegramChrome();
   }
   function initTelegramPreview() {
@@ -5388,6 +5423,7 @@
       if (TELEGRAM_APP) return;
       TELEGRAM_APP = tg;
       document.documentElement.classList.add('telegram-preview');
+      const close = el('menu-close'); if (close) close.textContent = 'Закрыть Mini App';
       const root = document.documentElement.style;
       const validHeight = value => Number.isFinite(value) && value >= 160 && value <= 10000;
       const inset = value => Number.isFinite(value) && value >= 0 && value <= 160 ? value : 0;
@@ -5414,7 +5450,7 @@
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'menu-modal', 'modal']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -5477,6 +5513,20 @@
         }
       }
     });
+    el('exit-cancel')?.addEventListener('click', () => cancelTelegramExit());
+    el('exit-confirm')?.addEventListener('click', () => {
+      if (TELEGRAM_EXIT?.runId === RUN_ID) requestTelegramClose(true);
+    });
+    el('exit-modal')?.addEventListener('keydown', event => {
+      if (!TELEGRAM_EXIT) return;
+      if (event.key === 'Escape') { event.preventDefault(); cancelTelegramExit(); }
+      if (event.key === 'Tab') {
+        const first = el('exit-cancel'), last = el('exit-confirm');
+        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+        }
+      }
+    });
     const restartBtn = qs('#restart');
     if (restartBtn) restartBtn.addEventListener('click', () => requestNewGame());
     const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
@@ -5495,7 +5545,7 @@
       menuBtn.addEventListener('click', () => { if (S) saveRun(); menuModal.classList.add('show'); });
       const hide = () => menuModal.classList.remove('show');
       const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
-      const close = qs('#menu-close'); if (close) close.addEventListener('click', hide);
+      const close = qs('#menu-close'); if (close) close.addEventListener('click', () => { if (TELEGRAM_APP) requestTelegramClose(); else hide(); });
       const classes = el('menu-classes'); if (classes) classes.addEventListener('click', () => {
         if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return; }
         hide(); showClassPicker();

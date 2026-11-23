@@ -349,7 +349,7 @@ class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
         args = message.answer.await_args
         self.assert_launcher(args.args[0], args.kwargs['reply_markup'])
         self.assertIsNone(args.kwargs['parse_mode'])
-        self.assertTrue(args.kwargs['protect_content'])
+        self.assertIs(args.kwargs['protect_content'], False, 'owner-only launch must not prohibit test screenshots')
 
     async def test_command_denies_other_users_groups_wrong_private_id_and_missing_sender(self):
         for sender, chat_id, kind in (
@@ -421,7 +421,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from aiogram import Bot
-from aiogram.methods import SendMessage, EditMessageText, GetMe
+from aiogram.methods import SendMessage, EditMessageText, DeleteMessage, GetMe
 from aiogram.types import Update, User
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
@@ -459,6 +459,7 @@ async def run():
                 new = sent[before:]
                 assert len(new) == 1 and isinstance(new[0], SendMessage), new
                 assert new[0].reply_markup.inline_keyboard[0][0].web_app.url.startswith(panel.RAID_PREVIEW_URL)
+                assert new[0].protect_content is False
                 assert await context.get_state() is None and await context.get_data() == {}
             for i, (sender, chat_id, kind) in enumerate(((ADMIN_ID+1, ADMIN_ID+1, 'private'),
                     (ADMIN_ID+1, ADMIN_ID, 'private'), (ADMIN_ID, ADMIN_ID+1, 'private'),
@@ -485,6 +486,16 @@ async def run():
             assert isinstance(sent[-1], EditMessageText)
             assert sent[-1].reply_markup.inline_keyboard[0][0].web_app
             assert await context.get_state() is None
+            # Old protected launchers cannot be unprotected with editMessageText.
+            cb['id'] = 'protected'; cb['message']['has_protected_content'] = True
+            before = len(sent)
+            await asyncio.wait_for(dp.feed_update(bot, Update.model_validate({'update_id':201, 'callback_query':cb})), 4)
+            updates = sent[before:]
+            launchers = [m for m in updates if isinstance(m, SendMessage)]
+            assert len(launchers) == 1 and launchers[0].protect_content is False
+            assert launchers[0].reply_markup.inline_keyboard[0][0].web_app
+            assert any(isinstance(m, DeleteMessage) for m in updates)
+            assert not any(isinstance(m, EditMessageText) for m in updates)
     finally:
         await dp.storage.close()
         await bot.session.close()
@@ -492,3 +503,40 @@ asyncio.run(run())
 '''
         result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=40)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    async def test_protected_old_launcher_is_replaced_not_edited_so_screenshot_protection_is_not_inherited(self):
+        from aiogram.exceptions import TelegramBadRequest
+        from aiogram.methods import DeleteMessage
+        for cannot_delete in (False, True):
+            with self.subTest(cannot_delete=cannot_delete):
+                message = self.message()
+                message.has_protected_content = True
+                message.delete = AsyncMock(side_effect=TelegramBadRequest(
+                    method=DeleteMessage(chat_id=panel.ADMIN_ID, message_id=99),
+                    message="message can't be deleted") if cannot_delete else None)
+                cb = SimpleNamespace(from_user=message.from_user, message=message,
+                                     data='owner_panel:raid_test', answer=AsyncMock())
+                state = SimpleNamespace(clear=AsyncMock())
+                with patch.object(panel, 'db', None):
+                    await panel.control_action(cb, state)
+                state.clear.assert_awaited_once()
+                message.answer.assert_awaited_once()
+                self.assertIs(message.answer.await_args.kwargs['protect_content'], False)
+                self.assert_launcher(message.answer.await_args.args[0], message.answer.await_args.kwargs['reply_markup'])
+                message.edit_text.assert_not_awaited()
+                message.delete.assert_awaited_once()
+
+    async def test_protected_launcher_replacement_still_checks_owner_private_sender_before_sending_or_deleting(self):
+        for sender, chat_id, kind in ((panel.ADMIN_ID + 1, panel.ADMIN_ID, 'private'),
+                                     (panel.ADMIN_ID, panel.ADMIN_ID + 1, 'private'),
+                                     (panel.ADMIN_ID, -100123, 'supergroup')):
+            with self.subTest(sender=sender, chat_id=chat_id, kind=kind):
+                message = self.message(sender, chat_id, kind)
+                message.has_protected_content = True; message.delete = AsyncMock()
+                cb = SimpleNamespace(from_user=message.from_user, message=message,
+                                     data='owner_panel:raid_test', answer=AsyncMock())
+                state = SimpleNamespace(clear=AsyncMock())
+                await panel.control_action(cb, state)
+                message.answer.assert_not_awaited(); message.edit_text.assert_not_awaited()
+                message.delete.assert_not_awaited(); state.clear.assert_not_awaited()
+                self.assertTrue(cb.answer.await_args.kwargs['show_alert'])

@@ -39,6 +39,7 @@ def raid_preview_content():
             'Запуск только из лички владельца. Сам пробник на Pages публичный.\n'
             'Без рабочей базы, серверных наград и переноса прогресса алхимии. '
             'Сохранения локальные и могут отличаться от обычного браузера.\n\n'
+            'Скриншоты не блокируем. Выход из игры: «Меню → Закрыть Mini App».\n'
             'Проверь цепочку пальцем, выбор наград, сворачивание и повторный вход → «Продолжить».\n'
             + (f'Ожидаемая сборка: {build}.' if build else 'Номер сборки показан внутри пробника.'))
     b = InlineKeyboardBuilder()
@@ -56,7 +57,9 @@ async def open_raid_test(message: types.Message, state: FSMContext = None):
     if state:
         await state.clear()
     text, markup = raid_preview_content()
-    await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=True)
+    # Access is checked above; content protection is not an auth boundary and
+    # can prohibit screenshots on Android, which this owner trial needs.
+    await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
 
 
 def authorized(callback) -> bool:
@@ -464,6 +467,16 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             text, markup = await home_content()
         elif action == 'raid_test':
             text, markup = raid_preview_content()
+            if getattr(callback.message, 'has_protected_content', False):
+                # Editing cannot remove the old sendMessage protection flag.
+                # Replace that launcher, then best-effort remove the old one.
+                await callback.answer()
+                await callback.message.answer(text, reply_markup=markup, parse_mode=None, protect_content=False)
+                try:
+                    await callback.message.delete()
+                except TelegramBadRequest:
+                    logger.warning('Старый защищённый вход Рейда не удалён; новый отправлен без защиты.')
+                return
         elif action == 'status':
             text, markup = await status_content()
         elif action == 'worker':

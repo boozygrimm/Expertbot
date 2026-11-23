@@ -1014,6 +1014,7 @@ function raidTelegramStub({ version = '8.0', overrides = {} } = {}) {
     setBackgroundColor(color) { calls.push('background:' + color); },
     enableClosingConfirmation() { calls.push('enableClosingConfirmation'); this.isClosingConfirmationEnabled = true; },
     disableClosingConfirmation() { calls.push('disableClosingConfirmation'); this.isClosingConfirmationEnabled = false; },
+    close() { calls.push('close'); },
     onEvent(name, fn) { assert.equal(events.has(name), false, 'register SDK event once'); events.set(name, fn); },
     BackButton: {
       isVisible: false,
@@ -1173,7 +1174,8 @@ test('built raid Telegram Back handles startup readers/editor/Escape and live me
     doc.querySelector('.picker-card-btn:not(.locked)').click();
     assert.equal(stub.tg.isClosingConfirmationEnabled, true);
     const before = JSON.stringify(raid.state);
-    stub.back(); assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), true);
+    assert.equal(stub.tg.BackButton.isVisible, false, 'native Close remains at the run root');
+    doc.querySelector('#menu-btn').click(); assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), true);
     stub.back(); assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
     doc.querySelector('#help').click(); stub.back();
     assert.equal(doc.querySelector('#help-modal').classList.contains('show'), false);
@@ -1274,5 +1276,150 @@ test('built raid Telegram deactivate/reopen requires explicit Continue and prese
     assert.equal(s.turn, 1); assert.equal(s.arrivals.length, 0);
     assert.equal(s.hero.xp, 1); assert.equal(s.hero.gold, 1);
     assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// The first phone report exposed three gaps in the synthetic-host acceptance:
+// protected launch messages, a root Back loop, and a shrinking board wrapper.
+for (const telegram of [false, true]) test(`built raid ${telegram ? 'Telegram' : 'browser'} layout reserves a real footer row and cannot shrink below the board`, async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ url: telegram ? telegramRaidUrl : 'https://raid.test/', setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document, style = node => b.dom.window.getComputedStyle(doc.querySelector(node));
+    assert.equal(style('.board-wrap').flexShrink, '0');
+    assert.match(style('.board-wrap').gridTemplateRows, /minmax\(180px,\s*1fr\) auto/);
+    assert.equal(style('#board').contain, 'size', 'percentage SVG contents cannot inflate the intrinsic grid height');
+    assert.equal(style('.board-foot').position, 'static');
+    assert.equal(style('.board-foot').transform, 'none');
+    assert.equal(style('.shell').overflowY, 'auto', 'short viewports scroll instead of overlapping HP');
+    assert.equal(style('#menu-modal .menu-card').overflowY, 'auto', 'Close stays reachable in a short browser too');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid Telegram leaves native Close at the gameplay root; nested Back never loops into a new menu', async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document;
+    await until(() => !stub.tg.BackButton.isVisible);
+    assert.equal(stub.tg.isClosingConfirmationEnabled, true);
+    const state = JSON.stringify(b.raid.state);
+    doc.querySelector('#menu-btn').click(); await until(() => stub.tg.BackButton.isVisible);
+    stub.back(); await until(() => !stub.tg.BackButton.isVisible);
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
+    stub.back(); // A stale host event at root must not open the menu again.
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
+    assert.equal(JSON.stringify(b.raid.state), state);
+    b.raid.state.hero.xp = 100; b.raid.checkLevelUp();
+    await until(() => !stub.tg.BackButton.isVisible);
+    const pending = JSON.stringify(b.raid.state);
+    stub.back();
+    assert.equal(JSON.stringify(b.raid.state), pending, 'Back cannot dismiss or pick mandatory rewards');
+    assert.equal(stub.calls.includes('close'), false);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid Telegram explicit Close checkpoints and cancels only the uncommitted gesture before requesting native exit', async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document;
+    b.raid.state.hero.hp = 31;
+    raidDrag(b);
+    doc.querySelector('#menu-btn').click();
+    assert.equal(doc.querySelector('#menu-close').textContent, 'Закрыть Mini App');
+    doc.querySelector('#menu-close').click();
+    assert.deepEqual(stub.calls.filter(c => c === 'close'), ['close']);
+    const saved = JSON.parse(b.dom.window.localStorage.getItem('raid:activeRun'));
+    assert.equal(saved.status, 'active'); assert.equal(saved.state.hero.hp, 31); assert.equal(saved.state.turn, 0);
+    assert.equal(b.raid.state.over, false); assert.equal(b.raid.state.selected.length, 0);
+    raidPointer(b.dom.window, b.dom.window, 'pointerup');
+    assert.equal(b.raid.state.turn, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const failure of ['missing', 'throwing']) test(`built raid Telegram ${failure} close method stays visible and leaves a usable native exit`, async () => {
+  const stub = raidTelegramStub({ overrides: { close: failure === 'missing' ? undefined : () => { throw new Error('unsupported close'); } } });
+  const b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document, before = JSON.stringify(b.raid.state);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click();
+    assert.match(doc.querySelector('#menu-telegram-status').textContent, /закрытия.*Telegram/);
+    assert.equal(JSON.stringify(b.raid.state), before);
+    stub.back(); await until(() => !stub.tg.BackButton.isVisible);
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid ordinary-browser Close is explicitly menu-only and never invokes an injected Telegram object', async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const doc = b.dom.window.document, before = JSON.stringify(b.raid.state);
+    doc.querySelector('#menu-btn').click();
+    assert.equal(doc.querySelector('#menu-close').textContent, 'Закрыть меню');
+    doc.querySelector('#menu-close').click();
+    assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
+    assert.equal(JSON.stringify(b.raid.state), before); assert.deepEqual(stub.calls, []);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid failed exit checkpoint requires explicit discard, offers cancellation/Back/Escape and guards stale confirmations', async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const { window } = b.dom, doc = window.document, original = window.Storage.prototype.setItem;
+    let fail = true;
+    window.Storage.prototype.setItem = function (key, value) { if (fail && key === 'raid:activeRun') throw new Error('quota'); return original.call(this, key, value); };
+    const openExit = () => { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').focus(); doc.querySelector('#menu-close').click(); };
+    for (const cancel of ['button', 'back', 'escape']) {
+      openExit(); assert.equal(doc.querySelector('#exit-modal').classList.contains('show'), true);
+      assert.match(doc.querySelector('#exit-confirm-text').textContent, /не удалось сохранить/i);
+      assert.equal(doc.activeElement.id, 'exit-cancel');
+      if (cancel === 'button') doc.querySelector('#exit-cancel').click();
+      else if (cancel === 'back') stub.back();
+      else doc.querySelector('#exit-modal').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      assert.equal(doc.querySelector('#exit-modal').classList.contains('show'), false);
+      assert.equal(doc.activeElement.id, 'menu-close');
+      assert.equal(stub.calls.includes('close'), false);
+    }
+    openExit(); fail = false; b.raid.newGame(2);
+    assert.equal(doc.querySelector('#exit-modal').classList.contains('show'), false);
+    doc.querySelector('#exit-confirm').click();
+    assert.equal(stub.calls.includes('close'), false, 'an earlier run cannot confirm exit of this run');
+    fail = true; openExit();
+    const before = JSON.stringify(b.raid.state);
+    doc.querySelector('#exit-confirm').click(); doc.querySelector('#exit-confirm').click();
+    assert.equal(stub.calls.filter(c => c === 'close').length, 1);
+    assert.equal(JSON.stringify(b.raid.state), before);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid Close preserves a reversible reward draft, then reopen→Continue has no reroll or bypass', async () => {
+  let stub = raidTelegramStub();
+  let b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    b.raid.state.hero.xp = 100; b.raid.checkLevelUp();
+    let doc = b.dom.window.document;
+    doc.querySelectorAll('.lv-card')[1].click(); doc.querySelectorAll('.lv-card')[0].click();
+    const expected = JSON.stringify([b.raid.state.hero, b.raid.state.menuCandidates, b.raid.state.rngSeeds]);
+    // A visible menu could have been opened before the pending reward arrived.
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click();
+    assert.equal(stub.calls.filter(c => c === 'close').length, 1);
+    assert.equal(JSON.stringify([b.raid.state.hero, b.raid.state.menuCandidates, b.raid.state.rngSeeds]), expected);
+    const saved = raidStorage(b.dom.window); b.dom.window.close();
+    stub = raidTelegramStub();
+    b = await openRaid({ url: telegramRaidUrl, start: false, saved, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+    assert.equal(b.raid.state, null);
+    doc = b.dom.window.document; doc.querySelector('#picker-resume').click();
+    assert.equal(b.raid.state.pendingModal, 'level'); assert.deepEqual(Array.from(b.raid.state.levelDraft), [1, 0]);
+    assert.deepEqual(JSON.parse(JSON.stringify([b.raid.state.hero, b.raid.state.menuCandidates, b.raid.state.rngSeeds])), JSON.parse(expected));
+    assert.equal(b.raid.state.turn, 0); assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
