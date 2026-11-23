@@ -1244,9 +1244,10 @@
   Classic HTML/source/CSS/template/builder/art, fork-builder/portraits/4scenes,
   bot/admission/package-lock/SDK tests не менялись. Classic **`63b4ca81a10e` /
   795638B**, SHA256 `7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`.
-  **Доставка:** результат merge/Pages и фактический публичный build фиксировать
-  release-комментарием PR только после публикации; локальный PASS не равен deploy.
-  Ссылка на сборку для просмотра после доставки:
+  **Выпуск — [PR #125](https://github.com/boozygrimm/Expertbot/pull/125)**,
+  feature commit **`55ab217`**. Результат merge/Pages и фактический публичный build
+  фиксировать release-комментарием этого PR только после публикации;
+  локальный PASS не равен deploy. Ссылка на сборку для просмотра после доставки:
   https://boozygrimm.github.io/Expertbot/lunapark-raid-magitech.html?build=eb07bc8b1f84 .
   **Дальше:** владелец смотрит дымку/модели; финальная графика и стихийные числа
   требуют отдельной приёмки. Коэффициенты/новые способности/грейды/веса врагов/
