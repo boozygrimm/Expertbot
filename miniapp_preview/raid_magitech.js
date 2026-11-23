@@ -896,7 +896,7 @@
   let RAID_REGION = 'earth';
   function raidPortraitKey(skull) {
     // Deterministic visual assignment only. No element is added to the enemy
-    // or sword; no distribution, damage, status, loot or RNG draw changes.
+    // in combat; no distribution, damage, status, loot or RNG draw changes.
     const family = Math.abs((skull.uid || 1) - 1) % 4;
     const role = skull.boss ? 3 : skull.special ? 1 + Math.abs(skull.type || 0) % 2 : 0;
     return RAID_PORTRAITS[family][role];
@@ -1279,7 +1279,9 @@
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
       readHistoryRecord(data.record); return { status: 'finished', record: data.record };
     }
-    saveObject(data, ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs']);
+    const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
+    saveObject(data, [...keys, 'orbElements'], keys);
+    if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
     saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
@@ -1357,7 +1359,7 @@
       : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
     return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: 1, status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
       build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
-      menu, results, arrivals, next, leechFadeMs });
+      menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex) });
   }
   function saveStatus(state, message) {
     RUN_SAVE_STATUS = { state, message };
@@ -1461,6 +1463,7 @@
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    resetOrbPresentation();
     clearFloatEffects();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
@@ -1469,6 +1472,7 @@
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeRunHistory();
     S = data.state;
+    if (data.orbElements) S.board.forEach((cell, idx) => ORB_ELEMENTS.set(cell, data.orbElements[idx]));
     syncClassAchievements();
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
@@ -2357,7 +2361,7 @@
   function tileSymbol(cell) {
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
-    if (cell.type === 'sword') return start + '<path d="m28 5 12-2-2 12-16 17-6-6Z" fill="#d8ebe5" stroke="#698e89" stroke-width="1.2"/><path d="m34 9-15 19" stroke="#75e5cb" stroke-width="2"/><path d="m12 24 13 13-4 4L8 28Z" fill="#b79859" stroke="#ebce8b"/><path d="m12 33 4 4-7 8-5-5Z" fill="#526e68"/><circle cx="14" cy="34" r="2" fill="#9cf5d9"/>' + end;
+    if (cell.type === 'sword') return start + '<path d="m28 5 12-2-2 12-16 17-6-6Z" fill="#d8ebe5" stroke="#698e89" stroke-width="1.2"/><path d="m34 9-15 19" stroke="var(--orb-light)" stroke-width="2"/><path d="m12 24 13 13-4 4L8 28Z" fill="#b79859" stroke="#ebce8b"/><path d="m12 33 4 4-7 8-5-5Z" fill="#526e68"/><circle cx="14" cy="34" r="2" fill="var(--orb-light)"/>' + end;
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="#d5e9e4"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="#7fe5d2" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return start + '<path d="M24 3 42 11v14c0 10-10 17-18 21C16 42 6 35 6 25V11Z" fill="#a58d57" stroke="#dec692" stroke-width="1.5"/><path d="m24 8 13 6v11c0 7-6 12-13 16-7-4-13-9-13-16V14Z" fill="#2b5c69" stroke="#92cbd4"/><path d="M24 11v27m-10-21 20 13m0-13L14 30" stroke="#6cb0ba" stroke-width="1.2"/><path d="m24 17 7 7-7 9-7-9Z" fill="#b4f1e9"/>' + end;
     if (cell.type === 'coin') return start + '<path d="m21 3 6 0 2 4 5-1 4 5-1 5 5 3v9l-5 2 1 5-5 4-5-1-3 5h-6l-2-4-5 1-4-5 1-5-5-3v-7l5-2-1-5 5-4 5 1Z" fill="#b58c46" stroke="#ebce84"/><circle cx="24" cy="24" r="14" fill="#dfbb63" stroke="#f8dfa1"/><circle cx="24" cy="24" r="10" fill="#a97c37" stroke="#f3d58d"/><path d="m24 15 7 9-7 9-7-9Z" fill="#f9dda0"/><path d="M21 21h6v6h-6Z" fill="#b78a47"/>' + end;
@@ -2370,80 +2374,203 @@
     return start + '<circle cx="24" cy="24" r="17" fill="#607c73"/><path d="m14 19 7 2-3 7-6-2m22-7-7 2 3 7 6-2M20 34h8" stroke="#142826" stroke-width="3" fill="none"/>' + end;
   }
 
-  function renderCell(cell, idx) {
+  // Alchemy reference: discovery.css/js on arena/771875a3-expertbot
+  // (37a857da), consolidated in PR87. Glass, tint and the same six material
+  // motions are presentation only; they never assign a combat multiplier.
+  const ORB_ELEMENT_ORDER = ['fire', 'air', 'earth', 'water'];
+  const ORB_ELEMENT_LOOKS = [
+    { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
+    { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },
+    { state: 'sand', rgb: '171 197 111', light: '#e2e9ad', mid: '#63733b', dark: '#1c3028' },
+    { state: 'liquid', rgb: '71 185 232', light: '#b2eeff', mid: '#266c99', dark: '#112b44' },
+  ];
+  const ORB_SIGILS = [
+    '<path d="M17 3c2 7 10 10 7 17-4 9-18 6-17-3 3 3 5 0 5-2 0-5 2-8 5-12Z"/>',
+    '<path d="M4 12h16c9 0 8-10 2-8M6 18h17c8 0 7 10 1 9M3 23h11" fill="none"/>',
+    '<path d="m3 23 9-16 6 9 3-6 8 13ZM12 7l-1 10 7-1" fill="none"/>',
+    '<path d="M16 3C13 10 6 14 6 20a10 10 0 0 0 20 0c0-6-7-10-10-17Z"/><path d="M11 19q-2 5 4 6" fill="none"/>',
+  ];
+  const ORB_ICE = '<svg viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="m11 31 16-20 24 5L69 9l20 23-5 22 7 17-24 19-18-7-22 7-16-22 8-19Z" fill="#c5f5ff" fill-opacity=".16" stroke="#dcfbff" stroke-opacity=".8" stroke-width="1.4"/><path d="m27 11 9 24-17 14m32-33-5 22 20 5L89 32M11 68l25-9 13 24m18 7-1-24 18-12M36 35l10 3-10 21 16-7 14 14m-20-28 6 14 14-9" stroke="#ebfcff" stroke-opacity=".7" stroke-width="1.1"/><path d="M52 29v36M36 38l32 18M36 56l32-18m-22-2 6 5 6-5m-12 22 6-5 6 5" stroke="#f1feff" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  let ORB_ELEMENTS = new WeakMap();
+  let ORB_VIEWS = new Map(); // resource object / enemy UID -> one movable DOM orb
+  let ORB_VIEW_UID = 0;
+  const ORB_ANIMATIONS = new Map();
+
+  function orbElementIndex(cell, idx) {
+    if (cell?.type === 'skull') return Math.abs((cell.skull.uid || 1) - 1) % 4;
+    if (!cell || !['sword', 'arrow'].includes(cell.type)) return 0;
+    if (!ORB_ELEMENTS.has(cell)) {
+      // Stable cosmetic hash, not any of the six gameplay streams. Cache by
+      // object, not slot: gravity cannot recolour a sword. The optional save
+      // array preserves that palette through explicit Continue, even mid-drop.
+      let word = (S.seed ^ Math.imul(S.turn + 1, 0x9e3779b1) ^ Math.imul(idx + 1, 0x85ebca6b)) >>> 0;
+      word = Math.imul(word ^ word >>> 16, 0x45d9f3b);
+      ORB_ELEMENTS.set(cell, (word ^ word >>> 16) & 3);
+    }
+    return ORB_ELEMENTS.get(cell);
+  }
+  function orbIdentity(cell) { return cell.type === 'skull' ? 'skull:' + cell.skull.uid : cell; }
+  function orbReducedMotion() { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
+  function animateOrb(node, frames, options, cleanup) {
+    if (!node || orbReducedMotion() || typeof node.animate !== 'function') { cleanup?.(); return null; }
+    let animation;
+    try { animation = node.animate(frames, options); }
+    catch (ignored) { cleanup?.(); return null; }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true; ORB_ANIMATIONS.delete(animation); cleanup?.();
+      animation.onfinish = animation.oncancel = null;
+      animation.cancel(); // no retained fill/opacity/transform on a surviving orb
+    };
+    ORB_ANIMATIONS.set(animation, finish);
+    animation.onfinish = animation.oncancel = finish;
+    return animation;
+  }
+  function finishOrbAnimations() {
+    for (const finish of [...ORB_ANIMATIONS.values()]) finish();
+    // Also clear anticipation; cancellation never runs a gameplay continuation.
+    for (const view of ORB_VIEWS.values()) {
+      view.motion = null; delete view.node.dataset.motion;
+      view.node.classList.remove('primed');
+    }
+    el('board-fx')?.replaceChildren();
+  }
+  function resetOrbPresentation() {
+    finishOrbAnimations();
+    ORB_VIEWS.clear(); ORB_ELEMENTS = new WeakMap(); ORB_VIEW_UID = 0;
+  }
+  function orbLook(cell, idx) {
+    const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
+    if (['sword', 'arrow', 'skull'].includes(cell.type)) {
+      if (cell.type === 'skull' && index === 2) return { ...elemental, state: /ent|worm/.test(raidPortraitKey(cell.skull)) ? 'organic' : 'solid' };
+      return elemental;
+    }
+    if (cell.type === 'coin' || cell.type === 'trophy') return { state: cell.type === 'coin' ? 'sand' : 'solid', rgb: '228 190 94', light: '#ffeab0', mid: '#907331', dark: '#352c20' };
+    if (cell.type === 'shield') return { state: 'solid', rgb: '117 192 195', light: '#d0ece7', mid: '#3b666c', dark: '#152e38' };
+    if (cell.type === 'chain') return { state: 'gas', rgb: '183 151 235', light: '#e7d8ff', mid: '#6a548d', dark: '#29223e' };
+    if (cell.acid) return { state: 'liquid', rgb: '167 218 84', light: '#e7fca7', mid: '#5b7930', dark: '#253627' };
+    if (cell.mana) return { ...ORB_ELEMENT_LOOKS[3], light: '#e0d6ff', mid: '#4e65a7' };
+    return { state: 'liquid', rgb: '237 128 153', light: '#ffdade', mid: '#9b4e68', dark: '#3e2438' };
+  }
+  function primeOrbChain(indices) {
+    for (const idx of indices) {
+      const cell = S.board[idx];
+      if (cell && cell.type !== 'empty') ORB_VIEWS.get(orbIdentity(cell))?.node.classList.add('primed');
+    }
+  }
+  function burstOrb(view, rect, boardRect) {
+    view.motion?.cancel(); view.node.classList.remove('primed');
+    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+    const board = el('board');
+    let layer = el('board-fx');
+    if (!layer) {
+      layer = document.createElement('div'); layer.id = 'board-fx';
+      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
+    }
+    const burst = document.createElement('div'); burst.className = 'orb-burst';
+    burst.dataset.orbId = view.node.dataset.orbId;
+    burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')}`;
+    const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
+    for (let i = 0; i < 4; i++) {
+      const shard = document.createElement('i'); shard.className = 'orb-shard';
+      shard.style.setProperty('--dx', (i % 2 ? .68 : -.68) * rect.width + 'px');
+      shard.style.setProperty('--dy', (i < 2 ? -.6 : .6) * rect.height + 'px');
+      burst.appendChild(shard);
+    }
+    view.node.classList.add('orb-ghost'); burst.appendChild(view.node); layer.appendChild(burst);
+    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration: 240, easing: 'ease-out', fill: 'forwards' }, () => view.node.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360 }, () => burst.remove());
+  }
+  function moveOrb(view, dx, dy, incoming, delay) {
+    if (Math.abs(dx) + Math.abs(dy) < 1) return;
+    view.motion?.cancel();
+    view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
+    const falling = Math.abs(dx) < 1 && dy < 0;
+    const duration = falling ? Math.min(390, 245 + Math.sqrt(Math.abs(dy)) * 7) : 300;
+    let animation;
+    animation = animateOrb(view.node, [
+      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .35 : 1, offset: 0, easing: 'cubic-bezier(.42,0,.76,.42)' },
+      { transform: 'translate(0,0)', opacity: 1, offset: .8 },
+      { transform: falling ? 'translateY(1px) scale(1.035,.965)' : 'translate(0,0)', opacity: 1, offset: .89 },
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+    ], { duration, delay, fill: 'both' }, () => {
+      if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
+    });
+    view.motion = animation;
+    if (!animation) delete view.node.dataset.motion;
+  }
+
+  function renderCell(cell, idx, view) {
     const cellEl = qs(`.cell[data-idx="${idx}"]`);
     if (!cellEl) return;
-    const isSkull = !!(cell && cell.type === 'skull');
-    // state key: render the cell fresh only when its content identity changes —
-    // skull cells reuse their <img> and badge across turns; only the numbers move
-    const key = !cell || cell.type === 'empty'
-      ? 'empty'
-      : isSkull
-        ? `skull:${cell.skull.uid}`
-        : `tile:${cell.type}:${cell.broken ? 'b' : ''}${cell.acid ? 'a' : ''}${cell.mana ? 'm' : ''}${cell.burn ? 'f' : ''}${cell.frozen ? 'z' : ''}`;
+    if (!view) {
+      cellEl.className = 'cell empty'; cellEl.replaceChildren();
+      cellEl.title = ''; cellEl.removeAttribute('aria-label'); return;
+    }
+    const orb = view.node, isSkull = cell.type === 'skull', s = cell.skull;
+    const frozen = !!cell.frozen || !!(isSkull ? s.stunned : cell.stunned);
+    const burned = !!(isSkull ? s.burn : cell.burn), boss = !!s?.boss, special = !!s?.special && !boss;
+    const look = orbLook(cell, idx), element = ORB_ELEMENT_ORDER[orbElementIndex(cell, idx)];
+    const status = (cell.broken ? ' broken' : '') + (cell.acid ? ' acid' : '') + (cell.mana ? ' mana' : '')
+      + (burned ? ' burned' : '') + (frozen ? ' frozen' : '') + (boss ? ' boss' : special ? ' special' : '')
+      + (cell.explosive ? ' explosive' : '') + (cell.magicSword ? ' magic-sword' : '') + (s?.phylactery ? ' phylactery' : '');
+    cellEl.className = 'cell tile type-' + cell.type + status;
+    orb.className = 'raid-orb fx state-' + look.state + status;
+    orb.dataset.type = cell.type; orb.dataset.state = look.state;
+    if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
+    else delete orb.dataset.element;
+    orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
+    orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
+    const key = `${cell.type}:${!!cell.acid}:${!!cell.mana}:${!!cell.magicSword}:${isSkull ? s.uid : ''}`;
+    if (view.key !== key) {
+      orb.innerHTML = '<span class="orb-material" aria-hidden="true"></span><span class="orb-core"></span>'
+        + (['sword', 'arrow'].includes(cell.type) ? `<svg class="orb-sigil" viewBox="0 0 32 32" aria-hidden="true">${ORB_SIGILS[orbElementIndex(cell, idx)]}</svg>` : '')
+        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
+        + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-crack" aria-hidden="true"></span>';
+      view.key = key;
+      const core = orb.querySelector('.orb-core');
+      if (isSkull) {
+        let img = SKULL_IMAGES.get(s.uid);
+        if (!img) { img = document.createElement('img'); SKULL_IMAGES.set(s.uid, img); }
+        img.className = 'skull-art'; img.alt = ''; img.draggable = false;
+        core.appendChild(img);
+      } else core.innerHTML = tileSymbol(cell);
+    }
+    let label;
     if (isSkull) {
-      const s = cell.skull;
-      const boss = !!s.boss;
-      const special = !!s.special && !boss;
-      let img = SKULL_IMAGES.get(s.uid);
-      if (!img) {
-        img = document.createElement('img');
-        SKULL_IMAGES.set(s.uid, img);
-      }
-      const portrait = raidPortraitKey(s);
+      const img = orb.querySelector('img'), portrait = raidPortraitKey(s);
       if (img.dataset.portrait !== portrait) { img.src = raidPortrait(s); img.dataset.portrait = portrait; }
-      img.className = 'skull-art' + (boss ? ' boss' : special ? ' special' : '');
-      img.alt = boss ? 'Босс' : special ? 'Спец-череп' : 'Череп';
-      const keyChanged = cellEl._renderKey !== key;
-      if (keyChanged) {
-        // cell is now showing a different skull (or a skull replacing a tile) —
-        // drop stale tile art and any other skull's art; keep a badge element if any
-        Array.from(cellEl.children).forEach(child => {
-          if (child === img) return;
-          if (child.classList && (child.classList.contains('skull-art') || child.classList.contains('skull-badge'))) {
-            if (child.classList.contains('skull-art')) child.remove(); // different skull's art — keep only this uid's img
-            return;
-          }
-          child.remove(); // stale tile svg
-        });
-        cellEl.className = 'cell tile type-skull' + (boss ? ' boss' : special ? ' special' : '');
-        cellEl._renderKey = key;
-      }
-      // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
-      cellEl.classList.toggle('frozen', !!cell.frozen || !!s.stunned);
-      const crippleTarget = clsRace() === 'Werewolf' && isCrippleTarget(s);
-      cellEl.classList.toggle('cripple-target', !!crippleTarget);
-      cellEl.title = crippleTarget
-        ? `🐺 Калечение: HP ${s.hp} < собственная защита ${s.def}; будет собран в конце хода с наградой опытом.`
-        : '';
-      if (img.parentNode !== cellEl) cellEl.appendChild(img);
-      // badge: reuse the same element — only the numbers change in place
-      let badge = cellEl.querySelector('.skull-badge');
-      if (!badge) {
-        badge = document.createElement('div');
-        cellEl.appendChild(badge);
-      }
+      const badge = orb.querySelector('.skull-badge');
       badge.className = 'skull-badge' + (boss ? ' boss' : special ? ' special' : '');
-      const text = (boss ? 'Б ' : special ? '◆ ' : '') + `${s.atk}·${s.def}·${s.hp}` + (s.countdown > 0 ? ` [${s.countdown}]` : '');
+      const text = `${s.atk}·${s.def}·${s.hp}`;
       if (badge.textContent !== text) badge.textContent = text;
-      return;
+      badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
+      const countdown = orb.querySelector('.orb-countdown');
+      countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
+      const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
+      cellEl.classList.toggle('cripple-target', cripple);
+      label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
+        + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '');
+    } else {
+      label = { sword: 'Меч', arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
+      if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + ' (оформление; урон классический)';
+      if (cell.magicSword) label += ', сила 5 мечей';
+      if (cell.explosive) label += ', взрывное';
+      if (cell.broken) label += ', сломано: без награды';
     }
-    if (cellEl._renderKey === key) return;
-    cellEl._renderKey = key;
-    cellEl.className = 'cell';
-    cellEl.innerHTML = '';
-    if (!cell || cell.type === 'empty') {
-      cellEl.className = 'cell empty';
-      return;
+    if (frozen) label += ', заморожено';
+    if (burned) label += ', горит';
+    cellEl.title = label; cellEl.setAttribute('aria-label', label);
+    if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
+    // Remove an orb vacating this socket, never rebuild the incoming object.
+    for (const child of [...cellEl.children]) if (child !== orb) child.remove();
+    if (view.initialized && view.frozen !== frozen) {
+      animateOrb(orb.querySelector('.orb-ice'), frozen
+        ? [{ transform: 'scale(.15) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.06)', opacity: 1, offset: .75 }, { transform: 'scale(1)', opacity: 1 }]
+        : [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.15)', opacity: 0 }], { duration: frozen ? 380 : 260, easing: 'ease-out' });
     }
-    cellEl.className = 'cell tile type-' + cell.type
-      + (cell.broken ? ' broken' : '')
-      + (cell.acid ? ' acid' : '')
-      + (cell.mana ? ' mana' : '')
-      + (cell.burn ? ' burned' : '')
-      + (cell.frozen ? ' frozen' : '');
-    cellEl.innerHTML = tileSymbol(cell);
-    cellEl.title = cell.type === 'trophy' ? (cell.frozen ? '🏆 Трофей заморожен — сначала разморозь' : '🏆 Нажми: рост или открытие меха, без хода врагов') : '';
+    view.frozen = frozen; view.initialized = true;
   }
 
   function renderBoard() {
@@ -2452,25 +2579,57 @@
     if (!board.dataset.cellsReady) {
       board.innerHTML = '';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('id', 'chain-line');
-      svg.setAttribute('aria-hidden', 'true');
-      board.appendChild(svg);
+      svg.setAttribute('id', 'chain-line'); svg.setAttribute('aria-hidden', 'true'); board.appendChild(svg);
       for (let i = 0; i < CELL_COUNT; i++) {
-        const cellEl = document.createElement('div');
-        cellEl.className = 'cell';
-        cellEl.dataset.idx = String(i);
-        board.appendChild(cellEl);
+        const cellEl = document.createElement('div'); cellEl.className = 'cell'; cellEl.dataset.idx = String(i); board.appendChild(cellEl);
       }
       board.dataset.cellsReady = '1';
     }
-    // transient pop animation: only for cleared cells on the tiles — drop the class
-    // at the start of every render so surviving skulls never stay faded/invisible
-    qsa('.cell').forEach(c => c.classList.remove('pop'));
-    for (let i = 0; i < CELL_COUNT; i++) {
-      renderCell(S.board[i], i);
+    const previous = ORB_VIEWS, next = new Map(), rects = new Map(), boardRect = board.getBoundingClientRect();
+    const keys = S.board.map(cell => cell && cell.type !== 'empty' ? orbIdentity(cell) : null);
+    // FIRST: capture the actual, possibly interrupted on-screen positions before
+    // touching the DOM. A same-type neighbour is NOT the same orb.
+    for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
+    for (const [key, view] of previous) if (!keys.includes(key)) {
+      burstOrb(view, rects.get(key), boardRect);
+      if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
-    renderSelection();
-    renderChainLine();
+    const incoming = Array(COLS).fill(0);
+    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+      const key = keys[r * COLS + c];
+      if (!key || previous.has(key)) break;
+      incoming[c]++;
+    }
+    // LAST: reparent the same nodes into the final fixed hit sockets, then
+    // invert that displacement for Web Animations. Physics/refill/RNG have
+    // already resolved in their original order; no animation settles rewards.
+    for (let idx = 0; idx < CELL_COUNT; idx++) {
+      const key = keys[idx]; let view = key && previous.get(key);
+      if (key && !view) {
+        const node = document.createElement('div'); node.dataset.orbId = String(++ORB_VIEW_UID);
+        node.style.setProperty('--orb-phase', -(ORB_VIEW_UID * 137 % 3100) + 'ms');
+        view = { node, slot: idx, initialized: false, motion: null };
+      }
+      renderCell(S.board[idx], idx, view);
+      if (!view) continue;
+      next.set(key, view);
+      const old = rects.get(key), moved = previous.has(key) && view.slot !== idx;
+      if (moved) view.motion?.cancel();
+      const rect = view.node.getBoundingClientRect();
+      if (rect.width && !orbReducedMotion() && previous.size) {
+        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, 65);
+        else if (!old) {
+          const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
+          if (row < count) {
+            const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - qs('.cell[data-idx="0"]').getBoundingClientRect().top;
+            moveOrb(view, 0, -pitch * count, true, 65);
+          } else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260 });
+        }
+      }
+      view.slot = idx;
+    }
+    ORB_VIEWS = next;
+    renderSelection(); renderChainLine();
   }
 
   // Rune uses row parity at CHAIN NODES, not an arbitrary polygon fill. Only
@@ -2793,6 +2952,7 @@
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
+    resetOrbPresentation();
     clearFloatEffects();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
@@ -3599,6 +3759,7 @@
     const runId = RUN_ID;
     clearTimeout(ACTION_TIMER);
     SCHEDULED_STEP = step;
+    if (step.phase === 'match-chain') primeOrbChain(step.snapshot?.effective || effectiveChain(step.chain));
     ACTION_TIMER = setTimeout(() => {
       if (runId !== RUN_ID || S.over || !ownsRunSlot()) return;
       SCHEDULED_STEP = null; ACTION_TIMER = null;
@@ -4007,7 +4168,7 @@
     if (!S || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
-    const snapshot = chainSnapshot(chain), { committed, rune, skulls, effective } = snapshot;
+    const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
     if (!committed && !rune.length) { clearChain(); return; }
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
@@ -4021,10 +4182,6 @@
     }
     S.selected = []; S.chainType = null;
     renderSelection(); renderChainLine(); renderChainTip();
-    for (const idx of committed ? effective : []) {
-      const node = qs(`.cell[data-idx="${idx}"]`);
-      if (node && S.board[idx].type !== 'skull') node.classList.add('pop');
-    }
     scheduleRunStep({ phase: 'match-chain', snapshot }, 420);
   }
 
@@ -5416,7 +5573,7 @@
     if (!board) return;
 
     board.addEventListener('pointerdown', e => {
-      if (activeDrag || e.isPrimary === false || e.button > 0) return;
+      if (activeDrag || e.isPrimary === false || e.button > 0 || [...ORB_VIEWS.values()].some(view => view.motion)) return;
       if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
@@ -5753,6 +5910,9 @@
   // --- init -----------------------------------------------------------------
   function init() {
     initRaidAppearance();
+    window.addEventListener?.('resize', finishOrbAnimations);
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', finishOrbAnimations);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
     initInput();

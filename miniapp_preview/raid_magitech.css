@@ -911,9 +911,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .chain-tip { border-radius: 4px; background: #08211df5; border-color: #bca870; color: #e5e4be; font-size: 11px; padding: 6px 9px; }
 .board-foot { background: transparent; border: 0; padding: 2px 0; color: #adc5aa; font-size: 9px; letter-spacing: .04em; }
 .board-wrap {
-  /* Preserve real space for both field and caption. A square field gives
-     touch cells their full width; on a short screen the shell scrolls. */
-  display: flex; flex-direction: column; align-items: center;
+  /* Reserve the square field + caption in normal flow. Do not grow/recenter
+     this wrapper: a new log line below the HUD must not move a falling orb's
+     destination after its FLIP geometry was captured. Short screens scroll. */
+  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center;
   justify-content: center; margin-bottom: 9px;
 }
 #board, .telegram-preview #board {
@@ -1069,5 +1070,100 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 #hud-xp .hud-label > span:first-child::before { content: '+'; margin-right: 5px; color: #c3d69d; }
 #hud-gold .hud-label > span:first-child::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid #c7ae6d; margin-right: 5px; }
 @media (max-width: 720px) { .raid-intro h1 { font-size: clamp(25px,7.8vw,31px); } }
+/* Alchemy glass marbles — discovery.css (technical branch 37a857da / PR87).
+   The socket remains fixed for hit testing; only its identity-keyed orb moves.
+   Six material textures are cosmetic, not six new combat statuses. */
+#board { overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 50% 0%,#173938 0%,#0a2024 50%,#081b21 100%); }
+#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.frozen,
+#board .cell.burned, #board .cell.cripple-target {
+  border: 0 !important; border-radius: 50%; background: transparent;
+  box-shadow: none !important; overflow: visible; opacity: 1;
+  transform: none; transition: none; filter: none; animation: none;
+}
+#board .cell::before { content: ''; position: absolute; inset: 6%; border: 1px solid #8ab8a61c; border-radius: 50%; background: #03151c35; pointer-events: none; }
+#board .cell.empty::before { opacity: .4; }
+.raid-orb {
+  position: absolute; inset: 2%; display: grid; place-items: center;
+  container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
+  border: 1px solid rgb(var(--orb-rgb) / .6);
+  background: radial-gradient(circle at 36% 23%,var(--orb-light) 0%,var(--orb-mid) 35%,var(--orb-dark) 82%);
+  box-shadow: inset 0 1px 2px #fffa,inset -4px -6px 10px #040d20b3,0 3px 6px #0008,0 0 7px rgb(var(--orb-rgb) / .15);
+  pointer-events: none; backface-visibility: hidden;
+}
+.raid-orb::before {
+  content: ''; position: absolute; z-index: 4; left: 17%; top: 8%; width: 38%; height: 14%;
+  border-radius: 50%; transform: rotate(-28deg); background: linear-gradient(100deg,#fffceee0,#ffffff0a);
+  filter: blur(.3px); pointer-events: none;
+}
+.raid-orb::after {
+  content: ''; position: absolute; z-index: 4; right: 10%; bottom: 15%; width: 14%; height: 24%;
+  border-right: 1.5px solid #ffffff6b; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
+}
+.orb-material { position: absolute; inset: -16%; z-index: 0; border-radius: 50%; opacity: .48; mix-blend-mode: screen; pointer-events: none; }
+.orb-material::before, .orb-material::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
+.state-fire .orb-material { background: conic-gradient(from 0deg,#ff803c88,#f33b1e22,#ffcf786e,#ff5a286e,#ff803c88); animation: orb-fx-spin 1.6s linear infinite; }
+.state-fire .orb-material::before { background: radial-gradient(ellipse at 50% 85%,#ffd494c4,transparent 58%); animation: orb-fx-flicker .9s ease-in-out infinite; }
+.state-gas .orb-material { background: radial-gradient(ellipse at 25% 25%,rgb(var(--orb-rgb) / .8),transparent 55%),radial-gradient(ellipse at 75% 75%,#d8ecff80,transparent 55%); animation: orb-fx-mist 3s ease-in-out infinite; }
+.state-gas .orb-material::before { background: conic-gradient(transparent,rgb(var(--orb-rgb) / .5),transparent 70%); animation: orb-fx-spin 4.5s linear infinite; }
+.state-liquid .orb-material { background: conic-gradient(rgb(var(--orb-rgb) / .8),transparent 40%,rgb(var(--orb-rgb) / .6),transparent 90%); animation: orb-fx-spin 3.2s linear infinite; }
+.state-liquid .orb-material::before { inset: 28% -10% -10%; border-top: 2px solid rgb(var(--orb-rgb) / .7); background: radial-gradient(ellipse at 50% 100%,rgb(var(--orb-rgb) / .8),transparent 65%); animation: orb-fx-wave 2s ease-in-out infinite; }
+.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .8) .8px,transparent 1.6px); background-size: 6px 7px; animation: orb-fx-sand 4s linear infinite; }
+.state-sand .orb-material::before { background: conic-gradient(transparent,rgb(var(--orb-rgb) / .35),transparent 75%); animation: orb-fx-spin 8s linear infinite; }
+.state-solid .orb-material { background: conic-gradient(from 30deg,transparent 0 15%,rgb(var(--orb-rgb) / .55) 16% 25%,#e3f4ff66 26% 38%,transparent 39% 55%,rgb(var(--orb-rgb) / .5) 56% 70%,transparent 71%); animation: orb-fx-spin 6s linear infinite; }
+.state-solid .orb-material::before { background: linear-gradient(125deg,transparent 30%,#efffff99 47%,transparent 60%); animation: orb-fx-shimmer 2.6s ease-in-out infinite; }
+.state-organic .orb-material { background: radial-gradient(ellipse at 45% 50%,rgb(var(--orb-rgb) / .9),transparent 60%); animation: orb-fx-organic 2.2s ease-in-out infinite; }
+.state-organic .orb-material::before { background: repeating-radial-gradient(ellipse at 60% 70%,transparent 0 6px,rgb(var(--orb-rgb) / .4) 7px 8px,transparent 9px 15px); animation: orb-fx-spin 12s linear infinite; }
+.orb-material, .orb-material::before { animation-delay: var(--orb-phase,0ms) !important; }
+.orb-core { position: absolute; inset: 13% 12%; z-index: 2; display: grid; place-items: center; }
+.raid-orb .orb-core > .ic { width: 100%; height: 100%; filter: drop-shadow(0 2px 2px #071323b3); }
+.raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
+#board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
+.orb-sigil { position: absolute; z-index: 5; top: 8%; right: 7%; width: 27%; height: 27%; padding: 2px; border: 1px solid rgb(var(--orb-rgb) / .7); border-radius: 50%; background: #0d2028d9; fill: rgb(var(--orb-rgb) / .3); stroke: var(--orb-light); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#board .skull-badge { bottom: 8%; width: 83%; padding: 1px 0; border: 0; border-radius: 9px; text-align: center; background: #071722de; color: #fff3d6; font-size: var(--badge-font,19cqw); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; z-index: 8; text-shadow: 0 1px 2px #000; }
+.orb-countdown, .orb-charge { position: absolute; z-index: 8; display: grid; place-items: center; left: 38%; top: 3%; width: 24%; height: 24%; border-radius: 50%; background: #081c29e8; border: 1px solid #e8cea0a8; color: #fff2ca; font: 700 19cqw/1 system-ui,sans-serif; font-variant-numeric: tabular-nums; }
+.orb-charge { top: auto; bottom: 7%; }
+.raid-orb.special { border: 2px solid #efce8d; box-shadow: inset 0 0 0 1px #614726,0 0 7px #e8ba5450; }
+.raid-orb.boss { border: 2px solid #ffc5a0; box-shadow: inset 0 0 0 2px #722f3d,0 0 9px #e8ab6350; }
+.raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; transform: none; }
+#board .cell.selected .raid-orb { outline: 2px solid #ffebaa; outline-offset: -1px; box-shadow: 0 0 12px #fae2a566,inset 0 0 7px #f3e3a38c; }
+#board .cell.rune-inside { outline: 0; }
+#board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
+#board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
+#board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
+#board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
+.raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
+.raid-orb.primed .orb-material { opacity: .85; }
+.orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
+.orb-ice svg { width: 100%; height: 100%; }
+.raid-orb.frozen .orb-ice { opacity: 1; }
+.raid-orb.frozen .orb-material, .raid-orb.frozen .orb-material::before { animation-play-state: paused; }
+.raid-orb.frozen .orb-core { filter: saturate(.6) brightness(1.15); }
+.orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
+.raid-orb.broken .orb-crack { opacity: .9; }
+#board .cell.broken .ic, .raid-orb.broken .ic { opacity: .45; filter: grayscale(.8); }
+.raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
+.raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac 0%,#ff6b3780 30%,transparent 65%); animation: orb-fx-flicker .7s ease-in-out infinite; }
+.raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
+.raid-orb.phylactery .orb-core { transform: scale(.8); filter: hue-rotate(35deg) brightness(.8); }
+.raid-orb[data-motion] { will-change: transform; }
+#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.orb-burst { position: absolute; pointer-events: none; }
+.orb-burst .orb-ghost { inset: 0; width: 100%; height: 100%; }
+.orb-burst-ring { position: absolute; inset: 5%; border: 2px solid rgb(var(--orb-rgb) / .9); border-radius: 50%; box-shadow: 0 0 8px rgb(var(--orb-rgb) / .8); animation: orb-burst-ring .36s ease-out both; }
+.orb-shard { position: absolute; left: 47%; top: 47%; width: 8%; height: 8%; background: rgb(var(--orb-rgb)); box-shadow: 0 0 5px rgb(var(--orb-rgb)); animation: orb-shard .34s ease-out both; }
+@keyframes orb-fx-spin { to { transform: rotate(360deg); } }
+@keyframes orb-fx-flicker { 0%,100% { opacity: .6; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes orb-fx-mist { 0%,100% { transform: translate(-2%,2%); opacity: .35; } 50% { transform: translate(3%,-3%); opacity: .65; } }
+@keyframes orb-fx-wave { 0%,100% { transform: rotate(-8deg) translateY(3%); } 50% { transform: rotate(8deg) translateY(-3%); } }
+@keyframes orb-fx-sand { to { background-position: 6px 14px; } }
+@keyframes orb-fx-shimmer { 0%,100% { opacity: .35; } 50% { opacity: .8; } }
+@keyframes orb-fx-organic { 0%,100% { opacity: .4; transform: scale(.95); } 50% { opacity: .8; transform: scale(1.08); } }
+@keyframes orb-prime { 0%,100% { transform: scale(1); } 45% { transform: scale(1.12); filter: brightness(1.35); } }
+@keyframes orb-burst-ring { from { opacity: .9; transform: scale(.5); } to { opacity: 0; transform: scale(1.65); } }
+@keyframes orb-shard { from { opacity: 1; transform: translate(0,0) scale(.5) rotate(0); } to { opacity: 0; transform: translate(var(--dx),var(--dy)) scale(.2) rotate(120deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .raid-orb, .raid-orb *, .raid-orb::before, .raid-orb::after, .orb-material::before, .orb-material::after, .orb-burst * { animation: none !important; transition: none !important; }
+}
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
