@@ -945,9 +945,9 @@
     if (!skull.special) return family[0];
     const key = `${region}_special_${String(skull.type).padStart(2, '0')}`;
     if (RAID_MONSTER_ART[key]) return key;
-    // WORK IN PROGRESS: some special types still need unique silhouettes.
-    // Keep unfinished types in this element, but do NOT call the 31-type set
-    // done. Exact coverage is in RAID_MONSTER_CATALOG and raid_monsters.json.
+    // Defensive fallback for missing/corrupt assets, not a normal catalogue
+    // path: all 31 inherited special types now have their own four palettes.
+    // Exact coverage is in RAID_MONSTER_CATALOG and raid_monsters.json.
     return family[1 + Math.abs(skull.type || 0) % 2];
   }
   function raidPortrait(skull) { return RAID_MONSTER_ART[raidPortraitKey(skull)] || SKULL_ART[skull.art] || ''; }
