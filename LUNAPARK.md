@@ -1190,8 +1190,10 @@
   source/CSS/template/builder/art/HTML, bot/admission/package/SDK tests, fork-builder/
   portraits/scenes неизменны. Classic **`63b4ca81a10e` /795638B**, SHA256
   `7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`.
-  **Доставка:** PR/merge/Pages/прочитанный публичный build фиксировать после факта;
-  локальный артефакт пока не публикация. Standalone для приёмки после доставки:
+  **Выпуск — [PR #124](https://github.com/boozygrimm/Expertbot/pull/124)**,
+  feature commit **`acf92b8`**. Результат merge/Pages/прочитанный публичный build
+  фиксировать release-комментарием в этом PR только после факта; локальный PASS
+  не публикация. Standalone для приёмки после доставки:
   https://boozygrimm.github.io/Expertbot/lunapark-raid-magitech.html?build=fc1f9368f3cb .
   **Далее:** приёмка владельцем спокойствия/направления клинка; финальный магазинный
   каталог согласуется отдельно. Коэффициенты/новые способности/грейды/веса врагов
