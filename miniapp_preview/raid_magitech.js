@@ -1,7 +1,7 @@
 // miniapp_preview/raid_magitech.js
 // Separate RAID design prototype, forked from classic build 63b4ca81a10e.
-// Combat remains classical: no unapproved elemental coefficients or abilities.
-// Appearance is cosmetic; the classic URL, source and profiles are not migrated.
+// Approved elemental combat for NEW runs only; released v1 Continue stays classic.
+// Separate element RNG/save-v2; classic URL, source, art and profiles stay untouched.
 'use strict';
 (function () {
   // A local namespace, NOT authentication. The public Pages client never
@@ -929,11 +929,17 @@
   function raidAchievementAvailable(id) { return ![45, 70, 71, 76, 77].includes(id); }
 
   let RAID_REGION = 'earth'; // Preference / preview for the NEXT run.
-  let RUN_REGION = null; // Cosmetic snapshot, never part of combat state/RNG.
+  let RUN_REGION = null; // Pinned location; v1 uses it only for appearance.
+  const RAID_ELEMENTS = ['fire', 'air', 'earth', 'water'];
+  const ELEMENTAL_RULES = 'elements-v1';
+  // Null means a released v1 run: Continue must NEVER enable new combat in it.
+  // Gameplay metadata lives beside state in v2, separate from all six old RNGs.
+  let ELEMENTAL_COMBAT = null;
   function raidPortraitKey(skull) {
-    // Every ordinary enemy uses ONE common skin of the pinned run location,
-    // never a UID-selected element. This is appearance, not combat assignment.
-    const region = RUN_REGION || RAID_REGION, family = RAID_PORTRAITS[region];
+    // New runs show the assigned combat element, not an independent art roll.
+    // Ordinary spawns are local and share ONE common skin; legacy runs stay local.
+    const region = ELEMENTAL_COMBAT && RAID_ELEMENTS.includes(skull.element) ? skull.element : RUN_REGION || RAID_REGION;
+    const family = RAID_PORTRAITS[region];
     if (skull.boss) return family[3];
     if (!skull.special) return family[0];
     const key = `${region}_special_${String(skull.type).padStart(2, '0')}`;
@@ -1032,6 +1038,40 @@
     return Math.floor(Math.fround(lo + Math.fround(span * random(stream))));
   }
   function chance(p, stream = 5) { return random(stream) < p; }
+  // Independent Mulberry32 stream. No element decision may call random/randInt,
+  // Math.random, render, or the cosmetic palette hash. State is saved verbatim.
+  function elementRandom() {
+    let word = ELEMENTAL_COMBAT.rng = (ELEMENTAL_COMBAT.rng + 0x6d2b79f5) >>> 0;
+    word = Math.imul(word ^ word >>> 15, word | 1);
+    word ^= word + Math.imul(word ^ word >>> 7, word | 61);
+    return ((word ^ word >>> 14) >>> 0) / 4294967296;
+  }
+  function withWeaponElement(tile, source) {
+    if (ELEMENTAL_COMBAT && ['sword', 'arrow'].includes(tile.type)) {
+      // An existing weapon keeps its element through sword/arrow conversions.
+      // A genuinely new weapon (including a converted coin/enemy) rolls once.
+      tile.element = source && ['sword', 'arrow'].includes(source.type) && RAID_ELEMENTS.includes(source.element)
+        ? source.element : RAID_ELEMENTS[Math.floor(elementRandom() * 4)];
+    }
+    return tile;
+  }
+  function withSkullElement(skull, source) {
+    if (!ELEMENTAL_COMBAT) return skull;
+    const local = RUN_REGION || RAID_REGION, index = RAID_ELEMENTS.indexOf(local);
+    if (source && RAID_ELEMENTS.includes(source.element)) skull.element = source.element;
+    else if (!skull.special || skull.boss) skull.element = local;
+    else {
+      const roll = Math.floor(elementRandom() * 10);
+      skull.element = roll < 7 ? local : RAID_ELEMENTS[(index + 1 + roll - 7) % 4];
+    }
+    if (skull.boss) skull.secondaryElement = source?.secondaryElement
+      || RAID_ELEMENTS[(RAID_ELEMENTS.indexOf(skull.element) + 1 + Math.floor(elementRandom() * 3)) % 4];
+    return skull;
+  }
+  function combatElementLabel(skull) {
+    const primary = RAID_REGIONS[skull.element]?.element || '';
+    return primary + (skull.boss && skull.secondaryElement ? ' + ' + RAID_REGIONS[skull.secondaryElement].element : '');
+  }
   function isAdjacent(i, j) {
     const r1 = Math.floor(i / COLS), c1 = i % COLS;
     const r2 = Math.floor(j / COLS), c2 = j % COLS;
@@ -1225,19 +1265,27 @@
     saveCheck(!(value.scroll && value.scrollBlocked));
     return value;
   }
-  function readSavedCell(cell) {
-    saveObject(cell, ['type', 'skull', 'broken', 'mana', 'acid', 'explosive', 'magicSword', 'arrow', 'frozen', 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'matched', 'appearance'], ['type']);
+  function readSavedCell(cell, elemental) {
+    saveObject(cell, ['type', 'skull', 'broken', 'mana', 'acid', 'explosive', 'magicSword', 'arrow', 'frozen', 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'matched', 'appearance', ...(elemental ? ['element'] : [])], ['type']);
+    const weapon = ['sword', 'arrow'].includes(cell.type);
+    if (elemental && weapon) saveCheck(typeof cell.element === 'string' && RAID_ELEMENTS.includes(cell.element));
+    else saveCheck(!Object.hasOwn(cell, 'element'));
     saveCheck(['potion', 'skull', 'coin', 'shield', 'sword', 'arrow', 'chain', 'trophy'].includes(cell.type));
     for (const [key, value] of Object.entries(cell)) {
-      if (key === 'type' || key === 'skull') continue;
+      if (key === 'type' || key === 'skull' || key === 'element') continue;
       if (key === 'frozenTurn') saveNumber(value, -1, 1e12, true);
       else if (key === 'burn' && typeof value === 'number' || ['fireDamage', 'appearance'].includes(key)) saveNumber(value);
       else saveBool(value);
     }
     if (cell.type !== 'skull') { saveCheck(!Object.hasOwn(cell, 'skull')); return cell; }
     const skull = cell.skull;
-    const required = ['boss', 'special', 'type', 'countdown', 'uid', 'art', 'atk', 'def', 'hp', 'maxHp', 'promotionInterval', 'enteredTurn', 'poison'];
-    saveObject(skull, [...required, 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'phylactery', 'lichDelay', 'promotedByBigGame'], required);
+    const required = ['boss', 'special', 'type', 'countdown', 'uid', 'art', 'atk', 'def', 'hp', 'maxHp', 'promotionInterval', 'enteredTurn', 'poison', ...(elemental ? ['element'] : [])];
+    saveObject(skull, [...required, 'burn', 'fireDamage', 'fireSafe', 'stunned', 'frozenTurn', 'phylactery', 'lichDelay', 'promotedByBigGame', ...(elemental ? ['secondaryElement'] : [])], required);
+    if (elemental) {
+      saveCheck(typeof skull.element === 'string' && RAID_ELEMENTS.includes(skull.element));
+      if (skull.boss) saveCheck(typeof skull.secondaryElement === 'string' && RAID_ELEMENTS.includes(skull.secondaryElement) && skull.secondaryElement !== skull.element);
+      else saveCheck(!Object.hasOwn(skull, 'secondaryElement'));
+    }
     for (const key of ['boss', 'special', 'fireSafe', 'stunned', 'phylactery', 'lichDelay', 'promotedByBigGame']) if (Object.hasOwn(skull, key)) saveBool(skull[key]);
     for (const key of ['atk', 'def', 'maxHp', 'fireDamage']) if (Object.hasOwn(skull, key)) saveNumber(skull[key]);
     saveNumber(skull.hp, 1); saveNumber(skull.uid, 1, 1e12, true); saveNumber(skull.type, 0, 32, true);
@@ -1268,7 +1316,7 @@
     saveCheck(new Set(menu.picked).size === menu.picked.length);
     return menu;
   }
-  function readSavedState(data, legacyId) {
+  function readSavedState(data, legacyId, elemental) {
     const state = newGameState(), keys = Object.keys(state).filter(key => !RUN_SAVE_SKIP.has(key));
     saveCheck(data && typeof data === 'object' && !Array.isArray(data));
     // Compatible extension of released v1: keep the run and RNG; never invent
@@ -1299,7 +1347,7 @@
     saveCheck(state.hero.hp <= state.hero.maxHp && state.hero.armor <= state.hero.maxArmor && state.hero.maxHp > 0);
     saveMap(state.hero.stats, Object.keys(newGameState().hero.stats));
     saveCheck(Object.keys(state.hero.stats).length === 7);
-    saveArray(state.board, CELL_COUNT, CELL_COUNT).forEach(readSavedCell);
+    saveArray(state.board, CELL_COUNT, CELL_COUNT).forEach(cell => readSavedCell(cell, elemental));
     const uids = state.board.filter(cell => cell.type === 'skull').map(cell => cell.skull.uid);
     saveCheck(new Set(uids).size === uids.length);
     saveArray(state.equipment, ITEM_SLOTS.length, ITEM_SLOTS.length).forEach(item => readSavedItem(item));
@@ -1330,20 +1378,26 @@
   function decodeRunSave(raw) {
     saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
-    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && data.version === 1);
+    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2].includes(data.version));
     if (data.status === 'finished') {
       saveObject(data, ['format', 'version', 'status', 'record'], ['format', 'version', 'status']);
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
       readHistoryRecord(data.record); return { status: 'finished', record: data.record };
     }
     const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
-    saveObject(data, [...keys, 'orbElements', 'region'], keys);
+    const elemental = data.version === 2;
+    saveObject(data, [...keys, 'orbElements', 'region', ...(elemental ? ['combat'] : [])], [...keys, ...(elemental ? ['region', 'combat'] : [])]);
+    if (elemental) {
+      saveObject(data.combat, ['rules', 'rng']);
+      saveCheck(data.combat.rules === ELEMENTAL_RULES);
+      saveNumber(data.combat.rng, 0, 0xffffffff, true);
+    }
     if (Object.hasOwn(data, 'region')) saveCheck(typeof data.region === 'string' && Object.hasOwn(RAID_REGIONS, data.region));
     if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
     saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
-    data.state = readSavedState(data.state, data.state && Object.hasOwn(data.state, 'historyId') ? null : legacyHistoryId(raw, data.savedAt));
+    data.state = readSavedState(data.state, data.state && Object.hasOwn(data.state, 'historyId') ? null : legacyHistoryId(raw, data.savedAt), elemental);
     saveArray(data.rng, 6, 6).forEach(n => saveNumber(n, 0, 0xffffffff, true));
     saveNumber(data.skullUid, 1, 1e12, true);
     saveCheck(data.state.board.every(cell => cell.type !== 'skull' || cell.skull.uid < data.skullUid));
@@ -1415,7 +1469,7 @@
     const label = S.scrollLeechLabel;
     const leechFadeMs = SCROLL_LABEL_TIMER !== null ? Math.max(0, Math.min(200, SCROLL_LABEL_DEADLINE - Date.now()))
       : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
-    return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: 1, status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
+    return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: ELEMENTAL_COMBAT ? 2 : 1, ...(ELEMENTAL_COMBAT ? { combat: { ...ELEMENTAL_COMBAT } } : {}), status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
       build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
       menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex), region: RUN_REGION || RAID_REGION });
   }
@@ -1480,7 +1534,7 @@
     try {
       if (!S.over && S.equipment.some(item => ITEM_KEYS.filter(key => itemValue(item, key) !== 0).length >= 8)) queueAchievement(72);
       if (S.over && !FINISHED_RECORD) FINISHED_RECORD = makeHistoryRecord();
-      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-magitech-run', version: 1, status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
+      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-magitech-run', version: ELEMENTAL_COMBAT ? 2 : 1, status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
       decoded = decodeRunSave(raw);
     } catch (e) {
       saveStatus('invalid', 'Текущая точка не записана: состояние не прошло проверку. Предыдущее корректное сохранение не изменено.');
@@ -1510,7 +1564,7 @@
     if (!SAVED_RUN) return null;
     const { state, savedAt } = SAVED_RUN;
     return { classId: state.classId, mode: state.mode, difficulty: state.difficulty, turn: state.turn, hp: state.hero.hp, level: state.hero.level,
-      pendingModal: SAVED_RUN.menu?.kind || null, savedAt };
+      pendingModal: SAVED_RUN.menu?.kind || null, combatRules: SAVED_RUN.combat?.rules || 'classic-v1', savedAt };
   }
   function restoreMenuChoices(menu) {
     const skill = value => ({ ...SKILL_BY_ID[value.id], skill: SKILL_BY_ID[value.id],
@@ -1534,11 +1588,12 @@
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeRunHistory();
     S = data.state;
+    ELEMENTAL_COMBAT = data.combat ? { ...data.combat } : null;
     // Released v1 checkpoints without region use the profile's appearance once;
     // all subsequent checkpoints pin it independently from next-run preferences.
     RUN_REGION = data.region ?? RAID_REGION;
     applyRaidRegion(RAID_REGION);
-    if (data.orbElements) S.board.forEach((cell, idx) => ORB_ELEMENTS.set(cell, data.orbElements[idx]));
+    if (!ELEMENTAL_COMBAT && data.orbElements) S.board.forEach((cell, idx) => ORB_ELEMENTS.set(cell, data.orbElements[idx]));
     syncClassAchievements();
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
@@ -2006,9 +2061,9 @@
       return { type: 'potion', mana: true };
     }
     if (t === 'sword' && hasPerk('Agile') && randInt(1, 100, 1) < 6) {
-      return { type: 'arrow' };
+      return withWeaponElement({ type: 'arrow' });
     }
-    return { type: t };
+    return withWeaponElement({ type: t });
   }
 
   function createTile() {
@@ -2026,7 +2081,7 @@
     return type;
   }
 
-  function makeSkull(boss, special, typeId) {
+  function makeSkull(boss, special, typeId, elementsFrom) {
 
     const effType = boss ? 1 : special ? (typeId != null ? typeId : randSpecialType()) : 0;
     boss = effType === 1;
@@ -2111,7 +2166,7 @@
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
     if (S.oneHealthSkulls > 0) hp = 1;
-    return {
+    return withSkullElement({
       boss: !!boss,
       special: !!special,
       type: effType,
@@ -2126,7 +2181,7 @@
       promotionInterval,
       enteredTurn: (S && S.turn != null) ? S.turn : 0,
       poison: [0, 0, 0],
-    };
+    }, elementsFrom);
   }
 
   // Compact the board bottom-up (skulls pack with tiles) and refill empty
@@ -2168,7 +2223,7 @@
       for (let j = 0; j < CELL_COUNT; j++) {
         const cell = S.board[j];
         if (!cell || cell.type === 'skull' || cell.type === 'trophy') continue;
-        S.board[j] = { type: randomTileType() };
+        S.board[j] = withWeaponElement({ type: randomTileType() }, cell);
       }
     }
   }
@@ -2445,8 +2500,8 @@
 
   // Alchemy reference: discovery.css/js on arena/771875a3-expertbot
   // (37a857da), consolidated in PR87. Six resource/enemy materials plus the
-  // weapon selection haze are cosmetic; they never assign a combat multiplier.
-  const ORB_ELEMENT_ORDER = ['fire', 'air', 'earth', 'water'];
+  // weapon selection haze display assignments; legacy v1 palettes stay cosmetic.
+  const ORB_ELEMENT_ORDER = RAID_ELEMENTS;
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
     { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },
@@ -2460,6 +2515,13 @@
   const ORB_ANIMATIONS = new Map();
 
   function orbElementIndex(cell, idx) {
+    if (ELEMENTAL_COMBAT && (cell?.type === 'skull' || ['sword', 'arrow'].includes(cell?.type))) {
+      const element = ORB_ELEMENT_ORDER.indexOf(cell.type === 'skull' ? cell.skull.element : cell.element);
+      // Only mirror gameplay into the presentation cache (also read by SFX).
+      // Rendering/saving cannot assign or reroll a gameplay element.
+      ORB_ELEMENTS.set(cell, Math.max(0, element));
+      return Math.max(0, element);
+    }
     if (cell?.type === 'skull') return ORB_ELEMENT_ORDER.indexOf(RUN_REGION || RAID_REGION);
     if (!cell || !['sword', 'arrow'].includes(cell.type)) return 0;
     if (!ORB_ELEMENTS.has(cell)) {
@@ -2621,10 +2683,10 @@
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
         + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '')
-        + ' · ' + RAID_REGIONS[element].element + ' (внешность локации; бой классический)';
+        + ' · ' + (ELEMENTAL_COMBAT ? combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : RAID_REGIONS[element].element + ' (внешность локации; бой классический)');
     } else {
       label = { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
-      if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + ' (оформление; урон классический)';
+      if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + (ELEMENTAL_COMBAT ? ' (×1,25 / ×1 / ×0,75 по цели)' : ' (оформление; урон классический)');
       if (cell.magicSword) label += ', сила 5 мечей';
       if (cell.explosive) label += ', взрывное';
       if (cell.broken) label += ', сломано: без награды';
@@ -2784,8 +2846,10 @@
     const swordCount = effective.reduce((sum, idx) => sum + (S.board[idx].broken ? 0 : swordWeight(S.board[idx])), 0);
     const damage = damageBlockedEarly() ? 0
       : (skulls.length ? baseDamage() : 0) + S.hero.weaponDamage * swordCount * (S.swordBoost > 0 ? 2 : 1);
-    for (const target of skulls) target.damage = chainDamageFor(target.idx, chain, damage);
-    const lethals = skulls.filter(target => target.skull.type !== 32 && target.damage >= target.skull.hp + target.skull.def);
+    for (const target of skulls) target.damage = primaryChainDamage(target.idx, chain, effective, damage);
+    // Fractional elemental sums round ONCE in damageSkull, not per sword.
+    // Keep legacy previews unchanged, including their old fractional boundary.
+    const lethals = skulls.filter(target => target.skull.type !== 32 && (ELEMENTAL_COMBAT ? Math.round(target.damage) : target.damage) >= target.skull.hp + target.skull.def);
     const interior = S.runeActive ? interiorCells(chain) : [];
     // Base-resource projection only: no RNG, no menu selection assumptions.
     // Extra tokens, special rewards and new Corrosive spawns are not predicted.
@@ -2839,7 +2903,7 @@
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
-    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
+    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
     if (res.goldGained) parts.push(`+${res.goldGained} золота`);
@@ -2928,6 +2992,10 @@
   }
 
   function renderHUD() {
+    for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID / ПРЕЖНИЙ БОЙ';
+    for (const node of qsa('[data-raid-combat-note]')) node.textContent = ELEMENTAL_COMBAT
+      ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.'
+      : 'Прежний забег · классический бой без стихийных множителей. Новый старт включает стихии.';
     const h = S.hero;
     const hpPct = Math.max(0, h.hp / h.maxHp * 100);
     const armorPct = Math.max(0, h.armor / h.maxArmor * 100);
@@ -2945,7 +3013,8 @@
     if (damageLabel) {
       const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDamage())}`;
-      damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`;
+      damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`
+        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.');
     }
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
@@ -3043,6 +3112,7 @@
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
+    ELEMENTAL_COMBAT = { rules: ELEMENTAL_RULES, rng: (runSeed ^ 0x454c454d) >>> 0 };
     RUN_REGION = RAID_REGION;
     applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
@@ -3462,7 +3532,7 @@
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
         if (c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss) {
-          S.board[i] = { type: 'sword' };
+          S.board[i] = withWeaponElement({ type: 'sword' });
           n++;
         }
       }
@@ -3472,7 +3542,7 @@
       // Original ConvertTiles: skipping special tiles only; coins are not special.
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
-        if (c && c.type === 'coin') { S.board[i] = { type: 'sword' }; n++; }
+        if (c && c.type === 'coin') { S.board[i] = withWeaponElement({ type: 'sword' }); n++; }
       }
       flash('✦ Слепота: монет → мечей ' + n);
     } else if (id === 'boostdmg') {
@@ -3495,6 +3565,8 @@
       s.special = false;
       s.type = 0;
       s.boss = false;
+      // Same enemy keeps its primary assignment; only a boss has two elements.
+      if (ELEMENTAL_COMBAT) delete s.secondaryElement;
       s.maxHp = Math.max(1, s.maxHp);
       flash('✝ Изгнание: особый череп стал обычным');
     } else if (id === 'banish') {
@@ -3513,7 +3585,8 @@
       const i = idxs[randInt(0, idxs.length - 1, 5)];
       const cell = S.board[i];
       const old = cell.skull;
-      const fresh = makeSkull(false, true);
+      // Promotion changes stats/type, not an already assigned primary element.
+      const fresh = makeSkull(false, true, undefined, old);
       fresh.promotedByBigGame = true;
       fresh.hp = Math.min(fresh.hp, old ? old.hp : fresh.hp);
       fresh.maxHp = fresh.hp;
@@ -3589,7 +3662,7 @@
           if (S.board[i] && S.board[i].type !== 'skull') idxs.push(i);
         }
         flash('🪓 Взлом: столбец ' + (col + 1) + ' → мечи');
-        idxs.forEach(i => { S.board[i] = { type: 'sword' }; });
+        idxs.forEach(i => { S.board[i] = withWeaponElement({ type: 'sword' }, S.board[i]); });
         return;
       }
       collectIndices(idxs, { skipAcid: true });
@@ -3699,7 +3772,7 @@
       let converted = 0;
       for (let i = 0; i < CELL_COUNT; i++) {
         const cell = S.board[i];
-        if (cell && cell.type === 'sword') { S.board[i] = { type: 'arrow' }; converted++; }
+        if (cell && cell.type === 'sword') { S.board[i] = withWeaponElement({ type: 'arrow' }, cell); converted++; }
       }
       flash('🏹 Воллей: ' + converted + ' мечей → стрелы');
     } else if (id === 'charge') {
@@ -4257,6 +4330,31 @@
     return skull.type === 30 || !hasMortalEnemy(30) ? damage : 0;
   }
 
+  function primaryChainDamage(idx, chain, effective, neutralDamage) {
+    let damage = neutralDamage;
+    if (ELEMENTAL_COMBAT) {
+      const skull = S.board[idx].skull;
+      const multiplier = (weapon, target) => {
+        const from = RAID_ELEMENTS.indexOf(weapon), to = RAID_ELEMENTS.indexOf(target);
+        if (from < 0 || to < 0) return 1; // Invalid debug fixtures never roll from rendering/combat.
+        return (from + 1) % 4 === to ? 1.25 : (to + 1) % 4 === from ? .75 : 1;
+      };
+      let delta = 0;
+      for (const slot of effective) {
+        const cell = S.board[slot], weight = cell.broken ? 0 : swordWeight(cell);
+        if (!weight) continue;
+        const primary = multiplier(cell.element, skull.element);
+        const k = skull.boss ? (primary + multiplier(cell.element, skull.secondaryElement)) / 2 : primary;
+        delta += weight * (k - 1);
+      }
+      // B is already in D0 and stays neutral. q/Boost apply ONLY to weapons.
+      damage += S.hero.weaponDamage * (S.swordBoost > 0 ? 2 : 1) * delta;
+    }
+    // Preserve Confused -> Armoured exit -> Uppercut +unboosted W -> Dwarf/
+    // Chaotic -> Meat Shield gate priority, then damageSkull's round/armour.
+    return chainDamageFor(idx, chain, damage);
+  }
+
   // Compatibility/debug entrypoint; real collections use physical cells so
   // nested blasts, Rune and broken tiles cannot duplicate or lose rewards.
   function applyChainEffects(swordCount, shieldCount, coinCount, potionCount, skullIdxs, snapshot) {
@@ -4266,7 +4364,7 @@
       const hasSkull = snapshot?.hasSkull ?? skullIdxs.some(idx => S.board[idx] && S.board[idx].skull && !S.board[idx].skull.phylactery);
       const damage = snapshot?.damage ?? ((hasSkull ? baseDamage() : 0) + S.hero.weaponDamage * swordCount * (S.swordBoost > 0 ? 2 : 1));
       const spiky = snapshot?.spiky ?? skullIdxs.some(idx => S.board[idx] && S.board[idx].skull && S.board[idx].skull.type === 2);
-      const targetDamage = snapshot?.targetDamage || new Map(skullIdxs.map(idx => [idx, chainDamageFor(idx, chain, damage)]));
+      const targetDamage = snapshot?.targetDamage || new Map(skullIdxs.map(idx => [idx, primaryChainDamage(idx, chain, effective, damage)]));
       const burning = snapshot?.burning ?? effective.reduce((sum, idx) => {
         const cell = S.board[idx];
         if (!cell) return sum;
@@ -4336,7 +4434,7 @@
     const damage = (skulls.length ? baseDamage() : 0) + S.hero.weaponDamage * swords * (S.swordBoost > 0 ? 2 : 1);
     return { chain, effective, rune, committed, skulls, swords, hasSkull: skulls.length > 0, damage,
       spiky: skulls.some(idx => S.board[idx].skull.type === 2),
-      targetDamage: new Map(skulls.map(idx => [idx, chainDamageFor(idx, chain, damage)])),
+      targetDamage: new Map(skulls.map(idx => [idx, primaryChainDamage(idx, chain, effective, damage)])),
       uppercuts: skulls.filter(idx => isChainUppercut(idx, chain)),
       burning: effective.reduce((sum, idx) => {
         const cell = S.board[idx], target = cell.type === 'skull' ? cell.skull : cell;
@@ -4762,13 +4860,19 @@
     const cd = skull.countdown > 0 ? ` · ⏱ ${skull.countdown}` : '';
     stats.innerHTML = `<b>Атака ${skull.atk}</b> · <b>Броня ${skull.def}</b> · <b>HP ${skull.hp}</b>${cd}`;
     body.appendChild(stats);
+    if (ELEMENTAL_COMBAT) {
+      const elements = document.createElement('p');
+      elements.className = 'save-note';
+      elements.textContent = 'Стихия: ' + combatElementLabel(skull) + (boss ? '. Множитель каждого меча — среднее по двум стихиям.' : '. Вклад каждого меча/стрелы: ×1,25 / ×1 / ×0,75.');
+      body.appendChild(elements);
+    }
 
     const feats = document.createElement('div');
     feats.className = 'skull-feat-list';
     const items = boss
       ? ['Усиленная элитность — как оригинальный Boss (×3 ⚔ / ×3 🛡 / ×6 ❤️).',
          'Броня не ниже 1, HP ограничен бонусом Громкого (+5% HP).',
-         'Исходный Boss; этот портрет пока не назначает ему стихию или новую способность.']
+         ELEMENTAL_COMBAT ? 'Исходный Boss: прежние способности и параметры, без новых эффектов.' : 'Исходный Boss; этот портрет пока не назначает ему стихию или новую способность.']
       : (skull.type && ENEMY_FEATS[skull.type] ? ENEMY_FEATS[skull.type].feats : ['Особенность спец-черепа.', 'Броня не ниже 1.', 'Убивая спец-черепа, копим трофей.']);
     items.forEach(text => {
       const li = document.createElement('div');
@@ -5681,7 +5785,7 @@
         if (s.lichDelay) {
           s.lichDelay = false;
         } else {
-          const fresh = makeSkull(false, true, 32);
+          const fresh = makeSkull(false, true, 32, s); // Stats-only revival, never reroll this Lich's element.
           s.atk = fresh.atk; s.def = fresh.def; s.hp = fresh.hp; s.maxHp = fresh.hp;
           s.phylactery = false; s.countdown = 0;
           s.poison = [0, 0, 0];
@@ -5933,7 +6037,7 @@
     if (resume) {
       resume.hidden = !(S && !S.over || info);
       resume.textContent = S && !S.over ? 'Вернуться в забег'
-        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn}` : 'Продолжить';
+        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${info.combatRules === ELEMENTAL_RULES ? 'стихии' : 'прежние правила'}` : 'Продолжить';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;

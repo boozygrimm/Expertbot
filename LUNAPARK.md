@@ -23,7 +23,28 @@
 > алхимии — тогда этот файл главный. Остальные `LUNAPARK_*.md` частично
 > устарели.**
 
-**Текущий проверенный шаг после PR128:** **`arena/63ef5f1c-expertbot`** от
+**Текущий этап после PR129 — первый стихийный бой реализован и проверен локально:**
+активная **`arena/a15dfcf2-expertbot`** от
+**`1d4adf918098e2d78c78ae2cf3f9cf0d10c82792`**. Владелец отложил визуал и принял
+все условия: нейтральная B/индивидуальные1.25/1/.75; классические вторичные эффекты;
+weapon25each/ordinary местные/special70/10/10/10/boss местная+иная; **новые правила
+только новым забегам, старые Continue без смены боя**, отдельный persisted RNG.
+Новый магитех-build **`038f5dfdb93f` /3112880B**, SHA256
+**`242fb8f890a4bad437ffbc47811b99df1c0f877014e37d475f9e6c138e39d225`**.
+Новые забеги — строгий v2 `combat.rules=elements-v1`/`combat.rng`, назначенные
+`element`/`secondaryElement`; v1 читатель/бой/запись сохранены без миграции.
+Палитры/готовые портреты показывают реальные назначения, не роллы из hash.
+Свежие **686npm PASS /0fail /0skip**, **104Python PASS +48subtests**,
+**Chromium153:12 текущих cases+12 exact-release layout controls+2 настоящих v1
+Continue**;72 покупки/12 upgrades/12 новых Continue,6mouse+6touch отмен/сборов.
+Это controlled web/SDK-stub QA, не физический Telegram/приёмка баланса/звука.
+Классика/арт/CSS/бот не правились; каталог честно20/31/11missing. Только7 прежних
+файлов, без новых проектных файлов/зависимостей. Доставка — [PR130](https://github.com/boozygrimm/Expertbot/pull/130)
+и [release-протокол](https://github.com/boozygrimm/Expertbot/pull/130#issuecomment-7109000581).
+Эта запись сделана перед merge: фактические SHA/Pages/status смотреть в протоколе,
+не подменять local PASS. Рассылки/второго polling нет. Подробности — §2/§4/верх §7.
+
+**Предыдущий выпущенный шаг PR129 (предыдущая ветка):** **`arena/63ef5f1c-expertbot`** от
 **`1d1ac62d112e69eb1ae37fe07e6f2e0e48a1ced3`**. Владелец прямо поручил попробовать
 закончить каталог и **при любом результате слить проверенное в `main`**; неполный
 арт больше не блокирует объявления/отписку и готовые скины. Новый каталог пока
@@ -107,6 +128,54 @@ auto-main для существующего бота; Pages не доказыв�
 Если владелец сам не сказал «пиши код» — значит код не пишем.
 
 ## 2. Где мы сейчас (короткая сводка)
+
+- **Первый стихийный бой реализован/проверен; доставка — PR130 и release-протокол:**
+  - Активная `arena/a15dfcf2-expertbot` от merge PR129
+    `1d4adf918098e2d78c78ae2cf3f9cf0d10c82792`. Визуал позже;20/31/11missing
+    остаются фактом. Новых image calls/артовых payloads/локаций/первого экрана нет.
+  - Все ответы приняты: `keep_classic_secondary`, `accept_initial_distribution`,
+    `new_runs_keep_legacy`. B нейтральна, ×1.25/×1/×0.75 каждого меча/стрелы,
+    смешанная сумма, среднее двух стихий босса; прежние gates и одна стадия
+    round/armor. Сок/одно отражение/внешний Желе-Щит и общий swordsHits от одного
+    D0; Uppercut +W без отдельного Boost/k; яд/горение/навыки без новых множителей.
+  - Свежие мечи/стрелы25% каждой; ordinary местные; specials70% местные+по10%
+    остальные; boss местная+иная поровну. Это пробные веса, не итоговый баланс.
+    HP/броня/частоты типов/способности прежние. Уже назначенная первичная стихия
+    сохраняется и при Exorcise/Big Game/Lich revival; при новом dual-boss вторая
+    отличается именно от его primary, в том числе после nonlocal-преобразования.
+  - Новый старт пишет v2: root `combat` (`rules=elements-v1`, uint32 Mulberry32),
+    weapon `element`, enemy `element`, boss `secondaryElement`. v1 Continue
+    сохраняет прежний бой/запись-v1, без сброса/миграции. Отдельный RNG не тратит
+    6 прежних потоков. Падение/перестановка/Continue/sword→arrow/magic/preview/
+    purchase/upgrade не перебрасывают существующее назначение. В новом v2
+    `orbElements` не может переопределить gameplay; в legacy это косметика.
+  - Свежий полный **686npm PASS /0fail /0skip /137889.660084ms**: старые
+    контракты +53 elemental tests +3 broader transform/secondary tests +6 новых
+    built-DOM. В них16 пар/432 mixed dual-boss расчёта,10000 generation-pairs,
+    42 skills/31 ability paths,19 rejected metadata,5 checkpoint phases,
+    real timed commit/neutral secondary/rounded lethality, new+legacy Continue.
+    Legacy equality:42 skills/300 turns/60 restores сохранены явно под v1.
+  - **104Python +48subtests PASS /18.34s**, только6 целевых модулей, не весь
+    репозиторий; **ESLint no-undef0errors /13 прежних unused warnings**, совпадает
+    с baseline. В `/tmp` использованы совместимые aiogram3.22.0/pydantic2.11.10;
+    версии/зависимости проекта не менялись. Детали окружения/границы — верх §7.
+  - **Chromium153:**12 current browser/SDK-touch cases,12 точных release geometry
+    controls,2 сейва, созданных действительно выпущенным `6d4b5abca254`, затем
+    продолженных новым кодом.72 покупки всех6 моделей,12 upgrade/Continue,
+    6mouse+6touch отмен и сборов; frozen/reduced-motion, keyed image identity,
+    no render/purchase RNG, классические профили не тронуты. Геометрия без дрейфа
+    >1px; короткий экран/landscape сохраняют честную прокрутку. Не real Telegram.
+  - Build **`038f5dfdb93f` /3112880B**, SHA256
+    `242fb8f890a4bad437ffbc47811b99df1c0f877014e37d475f9e6c138e39d225`;
+    повторная сборка byte-identical, preview Host+HTTP bytes/inline source/syntax/
+    diff-check PASS. Classic **`63b4ca81a10e` /795638B** и16 guarded inputs прежние.
+    Всего7 прежних файлов, без новых файлов проекта/зависимостей. Продуктовый
+    commit `909826731b3dc0cca416473182dcf84aa6d00ca1`. Доставка —
+    [PR130](https://github.com/boozygrimm/Expertbot/pull/130) и [протокол фактов](https://github.com/boozygrimm/Expertbot/pull/130#issuecomment-7109000581).
+    Файл записан перед merge; SHA/Pages/итог смотреть в обновляемом протоколе,
+    не выводить из local PASS. Render auto-main подтверждён владельцем;
+    физическая Telegram-приёмка/ревизия Render отдельно не проверены.
+    Второй polling/`main.py`/реальная рассылка не запускались.
 
 - **Проверенный шаг после PR128 — объявления/отписка и частичный каталог20/31:**
   - Ветка `arena/63ef5f1c-expertbot`, base merge PR128
@@ -729,6 +798,59 @@ auto-main для существующего бота; Pages не доказыв�
 не бухгалтерией: игрок всегда видит цель, стоимость действия и что получит.
 
 ## 4. Принятые решения и открытые вопросы
+
+**После PR129 — визуальные правки позже, нейтральные вторичные эффекты приняты:**
+
+- Владелец дословно: **«Так, в целом неплохо. Визуал потом будем править.
+  Продолжаем работу»**. Текущая графика — рабочая база, не финальная приёмка и
+  не признание20/31 полным каталогом. Сейчас нового art/polish прохода нет;
+  ТЗ локаций/первого экрана ждём от владельца,11 пропущенных основ остаются WIP.
+- В `ask_user` на вопрос о вторичных эффектах выбран **«Да, пока как в классике»**
+  (`keep_classic_secondary`). **Это теперь принято, не открытый вопрос:**
+  стихии первого этапа меняют прямые вклады мечей/стрел. Для вторичных эффектов
+  не вводить новые множители: один нейтральный D0 для Сока/отражения Острого/
+  внешнего Желе-Щита и swordsHits; Uppercut добавляет исходный W без отдельного
+  Boost/стихийного k; яд/горение/эффекты навыков идут по прежним формулам и
+  правилам. Сохранить ранние gates/порядок и leech/I1-label; не подменять Сок
+  суммой фактических HP-потерь по целям и не повторять его/отражение за каждую цель.
+- Нейтральная B/индивидуальные1.25/1/.75 прямого удара тоже уже приняты.
+  Ни назначения/распределения, ни save/RNG больше не открытые вопросы: следующие
+  два ответа ниже приняты. Косметический `orbElements` не становится gameplay
+  автоматически; бойцы/грейды/новые навыки не разрешены. Runtime первого шага
+  реализуется отдельно только для новых забегов с проверкой legacy Continue.
+- **Распределения приняты:** на следующий `ask_user` выбран вариант
+  **«Да, пробуем этот набор»** (`accept_initial_distribution`). Для первого теста:
+  мечи и стрелы25/25/25/25; обычные враги100% стихии локации (один common skin);
+  особые70% местной и по10% каждой оставшейся; boss основная местная,
+  дополнительная равновероятно одна из3 других, фиксируется при появлении.
+  Прежние HP/броню/число и частоты типов врагов/способности не менять.
+  Это теперь выбранный стартовый набор, не доказательство итогового баланса.
+- **Переход принят:** в `ask_user` выбран вариант **«Да, старые забеги не трогаем»**
+  (`new_runs_keep_legacy`). Новые стихийные правила только новым забегам;
+  старый Continue — по прежнему набору правил без сброса. Отдельный RNG стихий
+  не потребляет6 исходных потоков. Уже появившиеся стихии сохраняются при
+  падении/перемешивании/Continue; sword→arrow/magic наследует прежнюю,
+  preview/покупка/upgrade не перебрасывают клетки. Save/правила версионируются
+  с чтением прежнего формата; личные профили/локальный прогресс не стираются и
+  не импортируются из классики. Это закрывает последнее указанное условие
+  перед подключением принятого первого стихийного боя, не разрешает новые
+  способности/грейды/переработку локаций или визуальную полировку.
+- **Технический контракт реализации первого шага:** v1 остаётся отдельной ветвью
+  reader/combat/writer без `combat`/`element`; только явный новый старт создаёт
+  v2 `combat.rules=elements-v1`, `combat.rng` uint32 Mulberry32. Начальное состояние
+  отдельного потока `(runSeed ^ 0x454c454d) >>> 0`; не тратить исходные6 потоков
+  на назначения. `cell.element` обязателен только оружию, `skull.element` —
+  врагам, `secondaryElement` — только boss и отличный от primary. Unknown rules,
+  отсутствующие/лишние поля или плохой RNG не мигрируются/не исправляются молча.
+  Существующие поля личного профиля/истории не переименовываются/не очищаются.
+- **Стабильность преобразований:** новый предмет из монеты/врага — новое оружие
+  с одним назначением; у существующего меча при Hack/Volley/magic стихия прежняя.
+  Новый обычный враг получает local; Exorcise/Big Game/Lich revival сохраняют
+  primary уже появившегося врага. Если promotion действительно создаёт boss,
+  вторая случайна из3 иных именно относительно его primary, не обязательно
+  текущей local. Это сохранение назначений, не новая способность/частота типов.
+  Падение/перестановка/финиш анимации не назначают элементы. Косметический
+  `orbElements`/hash никогда не является источником игрового `element`.
 
 **После PR128 — прямой Telegram-тест, объявления и читаемые монстры:**
 
@@ -1470,6 +1592,196 @@ auto-main для существующего бота; Pages не доказыв�
   `ALCHEMY_MINI_APP_PLAN.md` и `FREE_CAPACITY_OPTIONS.md` (оценки от 12.11).
 
 ## 7. Журнал работы (дописывать сверху, новые записи выше старых)
+
+### Первый elemental runtime готов;686npm/104Python/Chromium QA PASS; доставка PR130
+
+- Полный preread AGENTS/LUNA выполнен до runtime. Приняты все ответы владельца,
+  §4/intro/§2 синхронизированы; старые pending-записи ниже — история. Визуал
+  отложен по прямому ответу. Новый код только магитеху, классика не заменена.
+- **Бой:** `D_raw=B+W×Boost×Σ(q×k)`, нейтральная B; k1.25/1/.75, смешанные
+  мечи/arrow, q0broken/1normal/5magic. У boss арифметическое среднее двух k.
+  `primaryChainDamage` общий для preview/snapshot/commit, старый gate-order
+  сохранён; одна стадия round/armour в прежнем `damageSkull`. Lethal preview
+  новых дробных ударов использует тот же итоговый round; legacy preview прежний.
+  Neutral D0 для Сока/одноразового Spiky/внешнего30/common shown/swordsHits,
+  +W Uppercut без отдельного Boost/k, яд/горение/скиллы не домножены.
+- **Назначения и совместимость:** v2 `combat`/Mulberry32/`element`/boss-secondary;
+  веса25each/local/70+10+10+10/local+uniform-other. Строгий v1 и запись-v1 остаются
+  для старых Continue; newGame единственный вход в новый набор правил. Пересадки/
+  shuffle/Hack/Volley/magic/equip/upgrade/Continue сохраняют назначения. Дозаполнены
+  raw dead-board/new-weapon paths; Lich stats-only/Exorcise/Big Game не перебрасывают
+  primary. У boss после nonlocal promotion secondary отличается от actual primary.
+  Ни render/cache/hash/`orbElements`, ни покупка не являются боевым роллом.
+- **UI/документы:** уже существующие оттенки и портреты смотрят на боевое назначение;
+  обе стихии босса видны в aria/title/деталях. Новый/прежний бой подписаны в HUD/
+  меню/Continue; справка и `COMMANDS.md` объясняют правила/тест, без редизайна.
+  Все6 worn-models/shop offer≠worn/in-place purchase/upgrade/Continue сохранены.
+- **Автотесты:** в прежнем `test.mjs`6 neutral contract tests,53 elemental tests,
+  3 более широких skills/abilities/transform checks; legacy-v1 equality42 skills/
+  300 turns/60 restores сохранена, а не объявлена равенством нового боя классике.
+  Новый direct coverage:16 направленных стихийных пар,432 mixed/boss/magic/broken/
+  arrow/Boost/armour cases,10000 paired generation sequences со всеми6 old RNG,
+  42 skills и31 special ability path с валидным v2 roundtrip,19 bad-metadata rejects,
+  5 checkpoint phases. В built-DOM6 новых end-to-end tests: browser и SDK Close
+  посреди удара, neutral вторичные ровно один раз; v1→Continue→confirmed new start,
+  оба boss-элемента/mean, fractional lethal highlight. Остальные визуальные
+  fixtures явно получили тестовые combat assignments, не implicit migration.
+- Полный **`npm test --prefix miniapp_preview` →686PASS /0fail /0skip,
+  137889.660084ms**, лог `/tmp/raid-elemental-npm-full.log`. Отдельно до общего
+  прогона source540PASS и magitech-DOM47PASS; их ранние цифры не финальная сумма.
+- **Python:**6 targeted modules `test_miniapp_{backend,crafting,isolated_store,
+  production,sessions}.py` + `test_owner_control_panel.py` →**104PASS +48subtests
+  /18.34s**, `/tmp/raid-elemental-python.log`. Не весь Python-репозиторий/не Mongo
+  production. В disposable venv aiogram3.34.0/pydantic2.14.4 упали на импорте
+  `FailFast` в Python3.11.2; для QA использованы aiogram3.22.0/pydantic2.11.10,
+  без изменения requirements. Pytest оставил предупреждение unset loop_scope.
+- **Chromium153.0.8010.0:**12 current cases (320×480/362×646/390×844/768×1024/
+  844×390/1280×800 × browser mouse/SDK touch),12 точных released-geometry controls,
+  2 настоящих v1 checkpoints, созданных `git show HEAD:lunapark-raid-magitech.html`
+  build6d4b5abca254, не только вручную downgraded fixtures. Сохранены сборы/отмены
+  6mouse+6touch,72 покупки6моделей,12 upgrades,12 новых Continue, frozen/
+  reduced-motion/keyed orb+IMG identity. Дрейф основных rect≤1px, overflow-x нет;
+  на коротком landscape/320px честная прокрутка, не обещание всех HUD в viewport.
+  Report `/tmp/raid-elemental-native-report.json`; matrix log
+  `/tmp/raid-elemental-native.log`, final genuine-v1 log
+  `/tmp/raid-elemental-native-legacy.log`. No page errors/external game requests.
+  Исправлены лишь QA-предположения: классический I1-label намеренно обновляется
+  при preview/cancel; уход со старой страницы сам делает checkpoint/revision;
+  `score` — derived HUD cache, сравнивался после released reader. Продукт не
+  менялся ради этих ожиданий; матрица12+12 уже была PASS, два legacy cases
+  дозапущены из сохранённого report того же038f-build.
+- **Static/artifact:** targeted ESLint9 `no-undef:error` и `no-unused-vars:warn`
+  (args:none/caughtErrors:none) →0errors/13 baseline warnings, tests0; все
+  diagnostics равны HEAD. Node syntax/Python AST/diff-check/inline-source identity,
+  deterministic repeat-build и preview Host+HTTP byte cmp PASS. Ранний recommended
+  lint показывал4 прежних regex diagnostics; это не новые ошибки/не lint-fix шаг.
+- **Build:** `038f5dfdb93f` /3112880B, SHA256
+  `242fb8f890a4bad437ffbc47811b99df1c0f877014e37d475f9e6c138e39d225`.
+  Classic `63b4ca81a10e` /795638B, SHA256
+  `7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`.
+  16 explicit byte guards: classic inputs/art/CSS/builders/bot/profiles/package и
+  4 scenes неизменны. Только7 существующих файлов; новых файлов проекта/
+  зависимостей/образов нет. Инструменты/скриншоты/логи только `/tmp`.
+- **Выпуск/границы:** по прежнему разрешению выпускать проверенные RAID-шаги
+  создан продуктовый commit `909826731b3dc0cca416473182dcf84aa6d00ca1`, push только
+  в текущую `arena/a15dfcf2-expertbot` и [PR130](https://github.com/boozygrimm/Expertbot/pull/130).
+  PR до merge OPEN/MERGEABLE/clean; statusCheckRollup[] означает отсутствие
+  PR CI, не зелёные проверки. [Release-протокол7109000581](https://github.com/boozygrimm/Expertbot/pull/130#issuecomment-7109000581)
+  содержит фактический исход merge/Pages, SHA/build и границы Render и обновляется
+  после выполнения. Эта запись коммитится до merge; не объявлять доставку по ней
+  или local PASS. Физический Telegram, фактическая Render revision, баланс и звук
+  не подтверждены headless/SDK-stub. Текущий Render auto-main подтверждён
+  владельцем; `main.py`/второй polling/реальная рассылка не запускались. Для
+  стихий в ТГ после rollout нужен свежий `/raid_test`, новый подтверждённый забег
+  и build038f5dfdb93f; старый Continue намеренно останется прежним. Каталог всё
+  ещё20/31,11missing; остальное art/location/first-screen/polish ждёт отдельного ТЗ.
+
+### После PR129 — все условия первого стихийного боя выбраны, интеграция начата
+
+- `ask_user(raid_elemental_save_rng_policy)` → **«Да, старые забеги не трогаем»**
+  (`new_runs_keep_legacy`). Приняты новый бой только новым забегам, legacy Continue
+  без сброса/смены механики, отдельный RNG и сохранение назначенных стихий при
+  move/Continue/sword→arrow/magic/equip/upgrade. §4/intro обновлены.
+- Вместе с ранее принятыми1.25/1/.75, нейтральными вторичными эффектами,
+  weapons25each/ordinary местными/specials70/10/10/10/boss местная+иная это
+  разрешает начать первый runtime-шаг. Веса — тестовый старт, не доказанный баланс.
+- Начата реализация на той же `arena/a15dfcf2-expertbot`. Старый прогресс,
+  классический пробник, UI-геометрию/арт/6RNG/тайминги/очереди наград не заменять.
+  Текущая запись — начало, **не** завершённый новый QA или опубликованный build;
+  итог/границы дописываются после фактических проверок. Последний source487PASS
+  относится к предшествующим6 contract-tests, не к ещё не написанному runtime.
+
+### После PR129 — распределения стихий приняты, осталось выбрать переход save/RNG
+
+- **Ответ:** `ask_user(raid_element_distribution)` → **«Да, пробуем этот набор»**
+  (`accept_initial_distribution`). Приняты weapon/arrow25% каждой; ordinary100%
+  местной; special70% местной +по10% остальных; boss местная+одна из3 иных
+  равновероятно с фиксацией при появлении. Это тестовый старт, не доказанный
+  финальный баланс. Никаких изменений HP/брони/спавн-частот типов/способностей.
+- Решение внесено в §4/intro/§2. Следующее предложение — новые стихийные правила
+  только новым забегам, legacy Continue по прежним; отдельный element RNG,
+  сохранение назначенных стихий при move/Continue/weapon transforms, отсутствие
+  reroll при preview/equip/upgrade. Save/version/profile policy ещё **ожидает**
+  выбора; не считать утверждённой и не превращать `orbElements` в игровые роллы.
+- Только запись решения в прежнем LUNA; новые тесты/QA после этого ответа не
+  запускались. Последний фактический source/VM результат **487PASS**,6 новых
+  neutral-secondary regressions — предыдущая запись. Продукт/HTML/build
+  **`6d4b5abca254`** прежние. Ветка `arena/a15dfcf2-expertbot`, всё ещё2 изменённых
+  существующих файла (LUNA/test.mjs), без commit/push/PR/merge/deploy/рассылки.
+
+### После PR129 — принят нейтральный вторичный расчёт, добавлены6 защитных регрессий
+
+- **Ответ владельца:** `ask_user` → **«Да, пока как в классике»**
+  (`keep_classic_secondary`). Решение внесено в §4, intro/§2 обновлены. Для первого
+  стихийного шага вторичные эффекты остаются нейтральными/исходными; уже принятую
+  формулу прямого удара1.25/1/.75 не спрашиваем заново. Визуал по-прежнему позже.
+- **Код тестов, не новая механика:** в существующий `miniapp_preview/test.mjs`
+  добавлены6 tests и локальный fixture. Использован **прежний** snapshot hook
+  `applyChainEffects`: primary targets получают10.5/7.5 при neutral D0=9. Это
+  controlled input для проверки разделения расчётов, не введённые элементы/
+  шансы/сейв-поля и не доказательство end-to-end стихийного боя.
+  Проверено: Сок один от D0 (не суммы raw/HP), показ/swordsHits тот же D0;
+  два Spiky отражают D0 один раз мимо брони; off-chain30 получает D0 при нулевых
+  прямых попаданиях; Uppercut +W без Boost обходит outside30 по старому порядку;
+  weapon poison2/immune9/тик сквозь броню; stored burn4+2 и исключение fireSafe99.
+- **Свежие проверки:** focused **6PASS/0fail/0skip/161.514881ms**,
+  `/tmp/raid-neutral-secondary-focused.log`; затем весь source/VM
+  `node --test miniapp_preview/test.mjs` → **487PASS/0fail/0skip/19629.370149ms**,
+  `/tmp/raid-neutral-secondary-full.log` (до правок baseline481PASS).
+  `node --check`, `git diff --check` и byte guards PASS: runtime JS/обе HTML/
+  builder/JSON art прежние, новых файлов/зависимостей нет. Полный npm/native/
+  Python/real Telegram не запускались; прежние618/32/104 относятся к PR129.
+- **Следующий вопрос, не ответ:** стартовые распределения из §4
+  (weapons25each; ordinary местные; specials70/10/10/10; boss местная+иная).
+  Это предлагаемая гипотеза, не молча выбранные веса. После ответа ещё выбрать
+  save/RNG-контракт, затем подключать/проверять/выпускать механизм. Новые бойцы/
+  грейды/способности/первый экран/новые локации не трогаем.
+- **Состояние:** та же `arena/a15dfcf2-expertbot` от `1d4adf9…`;2 существующих
+  файла изменены (LUNA/test.mjs), runtime не менялся. Magitech
+  **`6d4b5abca254` /3102363B /SHA256 `17f630072dcd3b94c8f874a1f542f31720972111dcc8788f344b03582901e059`**,
+  classic SHA256 `7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`
+  прежние. Нет нового commit/push/PR/merge/deploy/real broadcast/второго polling.
+
+### После PR129 — визуал отложен, исходная механика перепроверена (исторически до ответа о вторичных эффектах)
+
+- **Ветка/основание:** новая активная `arena/a15dfcf2-expertbot` от merge PR129
+  `1d4adf918098e2d78c78ae2cf3f9cf0d10c82792`, на старте чистая. AGENTS и ранее
+  полностью прочитанный LUNA учтены, актуальные решения/сводка/последний журнал
+  перечитаны. GitHub подтвердил PR129 MERGED и итоговый release-протокол
+  [7107293129](https://github.com/boozygrimm/Expertbot/pull/129#issuecomment-7107293129).
+  Это подтверждение предыдущего выпуска, не новый deploy текущей ветки.
+- **Новый ответ:** «Так, в целом неплохо. Визуал потом будем править.
+  Продолжаем работу». Записано в §4: текущая графика рабочая, art/polish сейчас
+  не переделываем;20/31 bases/80 variants/96 portraits и11 missing остаются
+  честным состоянием, не полной приёмкой. Новых image calls/локаций/первого
+  экрана/анимаций нет. Уже принятый ±25% не пересогласовываем.
+- **Аудит следующего механического узла (код не менялся):**
+  `chainPreview`/`chainSnapshot` формируют нейтральный общий D0;
+  `chainDamageFor` применяет Confused/27/Uppercut/14/30 в старом порядке.
+  `applyChainEffects` использует тот же D0 для leech (один float32 floor, не
+  сумма снятых HP), одного отражения Spiky, внешнего Желе-Щита и swordsHits.
+  `updateScrollLeechPreview` заново считает нейтральный D0 и связан с I1-label
+  историей; нельзя случайно менять его семантику ради отображения.
+  Яд/горение/шипы/механики навыков идут прежними путями; Fireball/Руна —
+  collection, а не обычный элементный hit. Из косметических палитр никаких
+  enemy.element/спавн-весов/новых RNG не выводилось.
+- **Предложение для первого ответа (не утверждено):** сохранить все вторичные
+  формулы нейтральными/классическими, стихии сначала только в прямом вкладе
+  каждого меча/стрелы. Детали D0/Uppercut выше в §2/§4. Сначала получить ответ,
+  затем отдельно выбрать назначения/распределения/save-RNG; не считать общее
+  «продолжаем» выбором этих конкретных правил или разрешением включить runtime.
+- **Свежая проверка baseline:** `node --test miniapp_preview/test.mjs` →
+  **481 PASS /0fail /0skip /18717.744088ms**, `/tmp/raid-mechanics-baseline.log`.
+  Существующие source/VM contracts/byte-parity/combat/6RNG/save и унаследованные
+  варианты прошли. Полный npm618/браузер/Python/real Telegram не перезапускались;
+  их прежние числа относятся к PR129, не новому прогону. Зависимости не ставились.
+- **Изменения/границы:** только этот существующий `LUNAPARK.md` (intro/§2/§4/эта
+  запись); новых проектных файлов/механик нет. Classic SHA256
+  `7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f`, magitech
+  `17f630072dcd3b94c8f874a1f542f31720972111dcc8788f344b03582901e059` /
+  **`6d4b5abca254` /3102363B** прежние. Коммита/PR/merge/deploy/реальной рассылки
+  этого шага нет, второй polling/`main.py` не запускались. Вопрос вторичных
+  эффектов остаётся открытым до ответа владельца.
 
 ### Продолжение после PR128 — ещё10 основ (20/31), проверенный частичный выпуск в main по прямому поручению
 

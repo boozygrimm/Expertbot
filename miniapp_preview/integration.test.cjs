@@ -202,7 +202,9 @@ async function openRaid({ saved = {}, start = true, setup, url = 'https://raid.t
   if (start) {
     dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
     raid.newGame(0);
-    raid.state.board = Array.from({ length: 36 }, () => ({ type: 'sword' }));
+    // Explicit deterministic weapon assignments for the injected magitech-v2
+    // board; classic fixtures keep their original released shape.
+    raid.state.board = Array.from({ length: 36 }, (_, idx) => ({ type: 'sword', ...(variant === 'magitech' ? { element: ['fire','air','earth','water'][idx % 4] } : {}) }));
   }
   return { dom, raid, errors };
 }
@@ -1791,6 +1793,17 @@ test('built raid tester profiles: account changes stop writes; other account sto
 const magitechKey = key => `raid:magitech:${key.slice(5)}`;
 const magitechAccountKey = (id, key) => `raid:magitech:tg:${id}:${key.slice(5)}`;
 const openMagitech = options => openRaid({ ...options, variant: 'magitech' });
+const magitechElements = ['fire', 'air', 'earth', 'water'];
+// Explicit RELEASED-v1 fixture, only in tests. Production never downgrades a v2
+// save or imports a classic one. Remove ALL new gameplay metadata, not just v2.
+function releasedMagitechCheckpoint(value) {
+  const data = JSON.parse(JSON.stringify(value)); data.version = 1; delete data.combat;
+  for (const cell of data.state.board) {
+    delete cell.element;
+    if (cell.skull) { delete cell.skull.element; delete cell.skull.secondaryElement; }
+  }
+  return data;
+}
 
 async function reopenMagitech(previous, options = {}) {
   previous.dom.window.dispatchEvent(new previous.dom.window.Event('pagehide'));
@@ -1956,7 +1969,10 @@ test('magitech fork: only endless mode and the three identically named original 
         a.raid.state.turn = b.raid.state.turn = turn;
         for (const type of [0,1,5,17,27,32]) {
           const x = a.raid.makeSkull(type === 1, type > 1, type), y = b.raid.makeSkull(type === 1, type > 1, type);
-          assert.deepEqual(JSON.parse(JSON.stringify(y)), JSON.parse(JSON.stringify(x)), `${difficulty}/${turn}/${type}`);
+          assert.ok(magitechElements.includes(y.element));
+          if (type === 1) assert.ok(magitechElements.includes(y.secondaryElement) && y.secondaryElement !== y.element);
+          const neutral = JSON.parse(JSON.stringify(y)); delete neutral.element; delete neutral.secondaryElement;
+          assert.deepEqual(neutral, JSON.parse(JSON.stringify(x)), `${difficulty}/${turn}/${type}`);
         }
       }
       assert.deepEqual([...b.raid.state.rngSeeds], [...a.raid.state.rngSeeds]);
@@ -1984,7 +2000,7 @@ test('magitech fork: partial level choice resumes explicitly without rerolling o
   } finally { b.dom.window.close(); }
 });
 
-test('magitech fork: new portraits retain the same UID node and a theme does not invent combat elements or coefficients', async () => {
+test('magitech fork: assigned portraits retain the same UID node and next-run preview cannot change combat elements', async () => {
   const b = await openMagitech({ start: false });
   try {
     const doc = b.dom.window.document;
@@ -1999,9 +2015,9 @@ test('magitech fork: new portraits retain the same UID node and a theme does not
     const before = JSON.stringify(b.raid.state);
     doc.querySelector('button[data-raid-region="fire"]').click();
     assert.equal(cell.querySelector('img'), img); assert.equal(JSON.stringify(b.raid.state), before);
-    for (const enemy of b.raid.state.board.filter(c => c.type === 'skull')) assert.equal(enemy.skull.element, undefined);
+    for (const enemy of b.raid.state.board.filter(c => c.type === 'skull')) assert.equal(enemy.skull.element, 'earth');
     assert.equal(b.raid.baseDamage(), 3); assert.equal(b.raid.swordDamage(3), 9);
-    assert.match(doc.querySelector('#raid-prototype-note').textContent, /не включены/);
+    assert.match(doc.querySelector('#raid-prototype-note').textContent, /Стихийный бой — в новых забегах/);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -2105,13 +2121,13 @@ test('magitech fork: transforming an enemy updates the portrait on its existing 
     b.raid.state.board[0] = { type: 'skull', skull };
     b.raid.state.skills = ['exorcise']; b.raid.state.skillCooldowns = { exorcise: 0 }; b.raid.state.skillLevels = { exorcise: 1 };
     b.raid.endEnemyTurn();
-    const uid = skull.uid, image = doc.querySelector('.cell[data-idx="0"] img'), portrait = image.dataset.portrait;
+    const uid = skull.uid, element = skull.element, image = doc.querySelector('.cell[data-idx="0"] img'), portrait = image.dataset.portrait;
     b.raid.activateSkill('exorcise');
     await until(() => !b.raid.state.resolving);
     assert.equal(skull.type, 0); assert.equal(skull.uid, uid);
     assert.equal(doc.querySelector('.cell[data-idx="0"] img'), image);
     assert.notEqual(image.dataset.portrait, portrait);
-    assert.equal(skull.element, undefined); assert.deepEqual(b.errors, []);
+    assert.equal(skull.element, element); assert.equal(image.closest('.raid-orb').dataset.element, element); assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
@@ -2233,7 +2249,13 @@ async function orbFixture(options = {}) {
   return b;
 }
 function showOrbFixture(b, fill) {
-  b.raid.state.board = Array.from({ length: 36 }, (_, idx) => fill(idx));
+  // Deterministic explicit gameplay assignments for these injected DOM fixtures,
+  // NOT palette-hash inference/production generation. Tests may override them.
+  b.raid.state.board = Array.from({ length: 36 }, (_, idx) => {
+    const cell = fill(idx);
+    if (['sword', 'arrow'].includes(cell.type) && !Object.hasOwn(cell, 'element')) cell.element = magitechElements[idx % 4];
+    return cell;
+  });
   b.raid.state.forceCoins = 1;
   assert.equal(b.raid.saveRun(), true); assert.equal(b.raid.resumeSavedRun(), true);
 }
@@ -2565,7 +2587,7 @@ test('magitech weapon fog: selection-only water/air keep their two-thirds geomet
   try {
     showOrbFixture(b, idx => ({ type: idx === 35 ? 'arrow' : 'sword', ...(idx < 4 ? { frozen: true } : {}) }));
     const key = magitechKey('raid:activeRun'), checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key));
-    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4);
+    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => (idx + 2) % 4); // Deliberately disagrees with assigned elements.
     b.dom.window.localStorage.setItem(key, JSON.stringify(checkpoint)); assert.equal(b.raid.resumeSavedRun(), true);
     const doc = b.dom.window.document, orbs = [...doc.querySelectorAll('.cell > .raid-orb')], before = JSON.stringify(b.raid.state);
     assert.deepEqual([...new Set(orbs.map(n => n.dataset.element))].sort(), ['air','earth','fire','water']);
@@ -2792,7 +2814,7 @@ for (const sdk of [false, true]) test(`magitech location: ${sdk ? 'SDK Close' : 
     assert.equal(doc.documentElement.dataset.raidRegion, 'water');
     assert.equal(doc.querySelector('.brand [data-raid-region-title]').textContent, 'Затопленный храм');
     const restored = JSON.parse(b.dom.window.localStorage.getItem(key('activeRun')));
-    for (const name of ['state', 'rng', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[name], checkpoint[name], name);
+    for (const name of ['state', 'rng', 'combat', 'menu', 'results', 'arrivals', 'next', 'orbElements']) assert.deepEqual(restored[name], checkpoint[name], name);
     assert.equal(b.raid.state.pendingModal, 'level'); assert.deepEqual([...b.raid.state.levelDraft], [1]);
     assert.equal(b.raid.state.over, false);
     for (const [name, value] of Object.entries(sentinel)) assert.equal(b.dom.window.localStorage.getItem(name), value);
@@ -2805,7 +2827,7 @@ test('magitech location: a released v1 fallback survives a different preview and
   try {
     let doc = b.dom.window.document;
     doc.querySelector('button[data-raid-region="water"]').click(); doc.querySelector('.picker-card-btn:not(.locked)').click();
-    b.raid.saveRun(); const saved = raidStorage(b.dom.window), old = JSON.parse(saved[magitechKey('raid:activeRun')]);
+    b.raid.saveRun(); const saved = raidStorage(b.dom.window), old = releasedMagitechCheckpoint(JSON.parse(saved[magitechKey('raid:activeRun')]));
     delete old.region; saved[magitechKey('raid:activeRun')] = JSON.stringify(old);
     b.dom.window.close(); b = await openMagitech({ saved, start: false }); doc = b.dom.window.document;
     doc.querySelector('button[data-raid-region="fire"]').click(); b.raid.savedRunInfo(); b.raid.savedRunInfo();
@@ -2863,13 +2885,13 @@ test('magitech clear tiles: every idle category is transparent; only the selecte
   } finally { b.dom.window.close(); }
 });
 
-test('magitech clear weapons: four cosmetic metal colours and pixel relief preserve item/element identity through selection, purchase and Continue', async () => {
+test('magitech clear weapons: assigned metal colours ignore cosmetic overrides and preserve item/element identity through selection, purchase and Continue', async () => {
   let b = await orbFixture();
   try {
     let r = b.raid, doc = b.dom.window.document;
     showOrbFixture(b, () => ({ type: 'sword' }));
     const key = magitechKey('raid:activeRun'), checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key));
-    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4);
+    checkpoint.orbElements = Array.from({ length: 36 }, (_, idx) => (idx + 2) % 4); // Deliberately disagrees with assigned elements.
     b.dom.window.localStorage.setItem(key, JSON.stringify(checkpoint)); assert.equal(r.resumeSavedRun(), true);
     const style = node => b.dom.window.getComputedStyle(node);
     const nodes = [...doc.querySelectorAll('.cell > .raid-orb')], images = nodes.map(n => n.querySelector('.weapon-texture'));
@@ -2903,7 +2925,7 @@ test('magitech clear weapons: four cosmetic metal colours and pixel relief prese
     }
     assert.equal(JSON.stringify(r.state.rngSeeds), purchaseRng); assert.equal(JSON.stringify(r.state.board), board);
     assert.equal(r.state.turn, 0); assert.equal(r.state.chainCount, 0);
-    assert.equal(r.state.board.some(cell => Object.hasOwn(cell, 'element')), false, 'tint is not an implicit combat/save migration');
+    assert.ok(r.state.board.every((cell, idx) => cell.element === magitechElements[idx % 4]), 'purchase changes model, never the assigned gameplay element');
     b = await reopenMagitech(b); r = b.raid; doc = b.dom.window.document; doc.querySelector('#picker-resume').click();
     const restored = [...doc.querySelectorAll('.cell > .raid-orb')];
     restored.forEach((orb, idx) => {
@@ -2919,7 +2941,7 @@ test('magitech clear weapons: four cosmetic metal colours and pixel relief prese
 });
 
 
-for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster readability: ${region} uses one ordinary skin regardless of UID; all roles stay in the pinned location through preview and Continue`, async () => {
+for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster readability: ${region} ordinary skin is shared; special/boss portraits show stable assigned elements through preview and Continue`, async () => {
   let b = await orbFixture({ region });
   const names = { fire: 'fire_spark', air: 'air_spirit', earth: 'earth_golem', water: 'water_elemental' };
   try {
@@ -2934,20 +2956,25 @@ for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster r
     assert.equal(new Set(r.state.board.slice(0, 4).map(c => (c.skull.uid - 1) % 4)).size, 4, 'exercise all old UID-based elemental families');
     assert.deepEqual(portraits.slice(0, 4), Array(4).fill(names[region]));
     assert.equal(new Set(sources.slice(0, 4)).size, 1, 'ordinary means ONE identical skin, not four related ones');
-    for (const orb of doc.querySelectorAll('.cell > .raid-orb')) assert.equal(orb.dataset.element, region);
-    assert.ok(portraits.every(key => key.startsWith(region + '_')));
+    for (const [idx, orb] of [...doc.querySelectorAll('.cell > .raid-orb')].entries()) {
+      assert.equal(orb.dataset.element, r.state.board[idx].skull.element);
+      assert.ok(portraits[idx].startsWith(r.state.board[idx].skull.element + '_'));
+    }
+    const elements = Array.from(r.state.board, cell => [cell.skull.element, cell.skull.secondaryElement]);
+    assert.ok(new Set(elements.map(pair => pair[0])).size > 1, 'fixture exercises nonlocal specials, not only local skins');
+    assert.equal(elements[4][0], region); assert.ok(elements[4][1] && elements[4][1] !== region);
     for (const idx of Array.from({ length: 32 }, (_, i) => i + 4)) assert.notEqual(sources[idx], sources[0], 'boss/special is visibly different from ordinary');
     const catalog = b.dom.window.RAID_MONSTER_CATALOG;
     const readyPortraits = [];
     for (const type of catalog.ready_types) {
-      const idx = type + 3, expected = `${region}_special_${String(type).padStart(2, '0')}`;
+      const idx = type + 3, expected = `${r.state.board[idx].skull.element}_special_${String(type).padStart(2, '0')}`;
       assert.equal(portraits[idx], expected); readyPortraits.push(sources[idx]);
       assert.notEqual(sources[idx], sources[4], 'boss is not reused as a ready special skin');
     }
     assert.equal(new Set(readyPortraits).size, catalog.ready_types.length);
     assert.equal(catalog.complete, catalog.expected_types.every(type => catalog.ready_types.includes(type)));
     assert.equal(JSON.stringify(r.state), before); assert.equal(JSON.stringify(r.state.rngSeeds), beforeRng);
-    assert.ok(r.state.board.every(c => !Object.hasOwn(c.skull, 'element')), 'appearance does not assign an unapproved combat element');
+    assert.ok(r.state.board.every(c => magitechElements.includes(c.skull.element)), 'gameplay assigned elements exist before rendering');
     // All 31 inherited special types are on this board, including those still
     // waiting for unique art. This fixture does NOT pretend those are complete.
     doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
@@ -2959,16 +2986,19 @@ for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster r
     assert.equal(JSON.stringify(r.state), before);
     doc.querySelector('#picker-resume').click();
     const key = magitechKey('raid:activeRun'), saved = JSON.parse(b.dom.window.localStorage.getItem(key));
-    saved.orbElements = Array.from({ length: 36 }, (_, idx) => idx % 4); // Old UID-derived cosmetic data, NOT combat state.
+    saved.orbElements = Array.from({ length: 36 }, (_, idx) => (idx + 2) % 4); // NOT combat state.
     b.dom.window.localStorage.setItem(key, JSON.stringify(saved));
-    b = await reopenMagitech(b, { setup: orbAnimationHarness }); r = b.raid; doc = b.dom.window.document;
+    const storage = raidStorage(b.dom.window); b.dom.window.close(); // No pagehide rewrite of the deliberate mismatch.
+    b = await openMagitech({ saved: storage, start: false, setup: orbAnimationHarness }); r = b.raid; doc = b.dom.window.document;
     doc.querySelector('#picker-resume').click();
     assert.equal(doc.documentElement.dataset.raidRegion, region);
     assert.deepEqual([...doc.querySelectorAll('.skull-art')].map(n => n.dataset.portrait), portraits);
     assert.deepEqual([...doc.querySelectorAll('.skull-art')].map(n => n.src), sources);
-    for (const orb of doc.querySelectorAll('.cell > .raid-orb')) assert.equal(orb.dataset.element, region);
+    for (const [idx, orb] of [...doc.querySelectorAll('.cell > .raid-orb')].entries()) assert.equal(orb.dataset.element, elements[idx][0]);
     assert.equal(JSON.stringify(r.state.rngSeeds), beforeRng);
-    for (const c of r.state.board) { assert.equal(c.skull.element, undefined); assert.equal(c.skull.hp, 50); }
+    assert.deepEqual(Array.from(r.state.board, c => [c.skull.element, c.skull.secondaryElement]), elements);
+    assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, saved.combat);
+    for (const c of r.state.board) assert.equal(c.skull.hp, 50);
     assert.equal(r.baseDamage(), 3); assert.equal(r.swordDamage(3), 9);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
@@ -2991,6 +3021,131 @@ test('magitech monster readability: falling survivors retain the same UID orb/im
     await until(() => r.state.turn === 1 && !r.state.resolving);
     assert.equal(survivor.querySelector('img'), image); assert.equal(image.src, source);
     assert.equal(r.state.hero.gold, 6); assert.equal(r.state.chainCount, 1);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// New combat is exercised on the GENERATED page, with explicit assigned
+// elements. Legacy tests below use a complete v1 shape, never a partial downgrade.
+for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Close' : 'browser reload'} during a mixed-target hit restores v2 elements/RNG and commits neutral secondaries exactly once`, async () => {
+  const stub = raidTelegramStub();
+  const setup = w => { orbAnimationHarness(w); if (sdk) w.Telegram = { WebApp: stub.tg }; };
+  const key = sdk ? magitechAccountKey(701, 'raid:activeRun') : magitechKey('raid:activeRun');
+  let b = await openMagitech({ start: false, setup, ...(sdk ? { url: telegramRaidUrl } : {}) });
+  try {
+    let doc = b.dom.window.document;
+    doc.querySelector('.picker-card-btn:not(.locked)').click(); b.raid.newGame(2718);
+    let r = b.raid;
+    const a = Object.assign(r.makeSkull(false), { hp: 100, maxHp: 100, def: 4, atk: 0, enteredTurn: 9, element: 'fire' });
+    const z = Object.assign(r.makeSkull(false), { hp: 100, maxHp: 100, def: 4, atk: 0, enteredTurn: 9, element: 'earth' });
+    r.state.turn = 10; r.state.hero.hp = 10; r.state.leech = .2; r.state.pierce = 0;
+    showOrbFixture(b, idx => idx < 3 ? { type: 'sword', element: 'water' } : idx < 5 ? { type: 'skull', skull: idx === 3 ? a : z } : { type: 'shield' });
+    assert.equal(doc.querySelector('[data-raid-combat-title]').textContent, 'RAID / СТИХИИ');
+    assert.match(doc.querySelector('[data-raid-combat-note]').textContent, /Стихийный бой/);
+    [0,1,2,3,4].forEach(idx => r.tryExtendChain(idx));
+    assert.deepEqual(Array.from(r.chainPreview().skulls, t => t.damage), [10.5,7.5]);
+    assert.match(doc.querySelector('#chain-tip').textContent, /Урон 9 \(нейтр\.\)/);
+    const rng = JSON.parse(b.dom.window.localStorage.getItem(key)).combat;
+    r.resolveChain();
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).next.phase, 'match-chain');
+    if (sdk) { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click(); assert.equal(stub.calls.filter(c => c === 'close').length, 1); }
+    b = await reopenMagitech(b, { setup, ...(sdk ? { url: telegramRaidUrl } : {}) }); r = b.raid; doc = b.dom.window.document;
+    assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-v1');
+    assert.match(doc.querySelector('#picker-resume').textContent, /стихии/);
+    doc.querySelector('#picker-resume').click();
+    assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, rng);
+    assert.deepEqual(Array.from(r.state.board.slice(0,3), c => c.element), ['water','water','water']);
+    assert.deepEqual(Array.from(doc.querySelectorAll('.cell > .raid-orb')).slice(0,5).map(n => n.dataset.element), ['water','water','water','fire','earth']);
+    await until(() => r.state.swordsHits === 9);
+    assert.deepEqual([a.uid,z.uid].map(uid => r.state.board.find(c => c.skull?.uid === uid).skull.hp), [93,96]);
+    assert.equal(r.state.hero.hp, 11); assert.equal(r.state.scrollLeechLabel.number, 1);
+    const before = orbGameplay(b); b.dom.window.__orbTest.finish(); assert.equal(orbGameplay(b), before, 'animation completion never repeats a hit');
+    await until(() => r.state.turn === 11 && !r.state.resolving);
+    assert.equal(r.state.chainCount, 1); assert.equal(r.state.swordsHits, 9); assert.equal(r.state.hero.hp, 11);
+    assert.equal(r.saveRun(), true); assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, rng);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK' : 'browser'} released-v1 Continue keeps old damage/copy/profile; only confirmed new start enables elements`, async () => {
+  const stub = raidTelegramStub(), setup = w => { orbAnimationHarness(w); if (sdk) w.Telegram = { WebApp: stub.tg }; };
+  const key = sdk ? magitechAccountKey(701, 'raid:activeRun') : magitechKey('raid:activeRun');
+  let b = await openMagitech({ setup, ...(sdk ? { url: telegramRaidUrl } : {}) });
+  try {
+    let r = b.raid;
+    r.unlockClass('ranger'); r.levelUpClass('ranger');
+    const skull = Object.assign(r.makeSkull(false), { hp: 100, maxHp: 100, def: 4, atk: 0, enteredTurn: 9 });
+    r.state.turn = 10; r.state.hero.hp = 10; r.state.leech = .2; r.state.pierce = 0;
+    showOrbFixture(b, idx => idx < 3 ? { type: 'sword', element: 'water' } : idx === 3 ? { type: 'skull', skull } : { type: 'shield' });
+    const saved = raidStorage(b.dom.window), old = releasedMagitechCheckpoint(JSON.parse(saved[key]));
+    old.orbElements = Array(36).fill(3); saved[key] = JSON.stringify(old);
+    b.dom.window.close();
+    b = await openMagitech({ saved, start: false, setup, ...(sdk ? { url: telegramRaidUrl } : {}) }); r = b.raid;
+    const doc = b.dom.window.document;
+    assert.equal(r.state, null); assert.equal(r.classLevelOf('ranger'), 2); assert.equal(r.savedRunInfo().combatRules, 'classic-v1');
+    assert.equal(b.dom.window.localStorage.getItem(key), saved[key], 'reading an old save neither migrates nor rewrites it');
+    assert.match(doc.querySelector('#picker-resume').textContent, /прежние правила/);
+    doc.querySelector('#picker-resume').click();
+    assert.equal(doc.querySelector('[data-raid-combat-title]').textContent, 'RAID / ПРЕЖНИЙ БОЙ');
+    assert.match(doc.querySelector('[data-raid-combat-note]').textContent, /без стихийных множителей/);
+    assert.ok(r.state.board.every(c => !Object.hasOwn(c, 'element') && (!c.skull || !Object.hasOwn(c.skull, 'element'))));
+    assert.match(doc.querySelector('.cell[data-idx="0"]').getAttribute('aria-label'), /урон классический/);
+    [0,1,2,3].forEach(idx => r.tryExtendChain(idx)); assert.equal(r.chainPreview().skulls[0].damage, 9);
+    r.resolveChain(); await until(() => r.state.swordsHits === 9);
+    assert.equal(r.state.board.find(c => c.skull?.uid === skull.uid).skull.hp, 95);
+    assert.equal(r.state.hero.hp, 11); await until(() => r.state.turn === 11 && !r.state.resolving);
+    assert.equal(r.saveRun(), true); const checkpoint = JSON.parse(b.dom.window.localStorage.getItem(key));
+    assert.equal(checkpoint.version, 1); assert.equal(checkpoint.combat, undefined); assert.equal(r.makeSkull(true).element, undefined);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), true);
+    assert.equal(r.savedRunInfo().combatRules, 'classic-v1'); doc.querySelector('#restart-cancel').click();
+    assert.equal(r.state.turn, 11); assert.equal(r.savedRunInfo().combatRules, 'classic-v1');
+    doc.querySelector('.picker-card-btn:not(.locked)').click(); doc.querySelector('#restart-confirm').click();
+    assert.equal(r.state.turn, 0); assert.equal(r.classLevelOf('ranger'), 2);
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).version, 2); assert.equal(r.savedRunInfo().combatRules, 'elements-v1');
+    assert.equal(doc.querySelector('[data-raid-combat-title]').textContent, 'RAID / СТИХИИ');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech elemental built: dual boss shows both fixed elements in accessible name/details and uses their mean, without a render/popup RNG draw', async () => {
+  const b = await orbFixture({ region: 'air' });
+  try {
+    const r = b.raid, doc = b.dom.window.document;
+    const boss = Object.assign(r.makeSkull(true), { hp: 100, maxHp: 100, def: 4, atk: 0, element: 'air', secondaryElement: 'earth' });
+    showOrbFixture(b, idx => idx < 3 ? { type: 'sword', element: 'fire' } : idx === 3 ? { type: 'skull', skull: boss } : { type: 'shield' });
+    const before = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).combat;
+    const cell = doc.querySelector('.cell[data-idx="3"]'), orb = orbAt(b, 3), image = orb.querySelector('img');
+    assert.equal(orb.dataset.element, 'air'); assert.match(image.dataset.portrait, /^air_/);
+    assert.match(cell.getAttribute('aria-label'), /Воздух \+ Земля.*среднее двух/);
+    [0,1,2,3].forEach(idx => r.tryExtendChain(idx));
+    assert.equal(r.chainPreview().damage, 9); assert.equal(r.chainPreview().skulls[0].damage, 9.75);
+    r.state.selected = []; r.state.chainType = null;
+    r.showSkullModal(r.state.board[3].skull);
+    const text = doc.querySelector('#modal-body').textContent;
+    assert.match(text, /Воздух \+ Земля/); assert.match(text, /среднее по двум стихиям/);
+    assert.doesNotMatch(text, /не назначает.*стихию/);
+    doc.querySelector('#modal-body > .btn').click();
+    assert.equal(orbAt(b, 3), orb); assert.equal(orb.querySelector('img'), image);
+    assert.equal(r.saveRun(), true); assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).combat, before);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech elemental built: rounded target lethality is truthful in the selected DOM while the displayed common damage stays neutral', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid, doc = b.dom.window.document;
+    const skull = Object.assign(r.makeSkull(false), { hp: 7, maxHp: 7, def: 4, atk: 0, element: 'fire' });
+    r.state.pierce = 0;
+    showOrbFixture(b, idx => idx < 3 ? { type: 'sword', element: 'water' } : idx === 3 ? { type: 'skull', skull } : { type: 'shield' });
+    [0,1,2,3].forEach(idx => r.tryExtendChain(idx));
+    assert.equal(r.chainPreview().skulls[0].damage, 10.5);
+    assert.equal(doc.querySelector('.cell[data-idx="3"]').classList.contains('lethal'), true);
+    assert.match(doc.querySelector('#chain-tip').textContent, /Урон 9 \(нейтр\.\).*Убито 1\/1/);
+    r.resolveChain(); await until(() => r.state.skullsKilled === 1);
+    assert.equal(r.state.swordsHits, 9); assert.equal(r.state.board.some(c => c.skull?.uid === skull.uid), false);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
