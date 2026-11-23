@@ -4636,3 +4636,72 @@ test('magitech source: 300 paired controlled turns and 60 explicit checkpoint re
   }
   assert.equal(turns, 300); assert.equal(restores, 60);
 });
+
+const MAGITECH_RUN_KEY = 'raid:magitech:activeRun';
+const magitechSave = browser => JSON.parse(browser.storage.get(MAGITECH_RUN_KEY));
+
+test('magitech orbs: four sword palettes are cosmetic save metadata, never board fields or gameplay RNG draws', () => {
+  const b = raidBrowser({ variant: 'magitech', seed: 2718 });
+  raidBoard(b.raid, 'sword');
+  const before = raidJSON(b.raid.state);
+  assert.equal(b.raid.saveRun(), true);
+  const saved = magitechSave(b);
+  assert.equal(saved.version, 1); assert.equal(saved.orbElements.length, 36);
+  assert.deepEqual([...new Set(saved.orbElements)].sort(), [0, 1, 2, 3]);
+  assert.deepEqual(raidJSON(b.raid.state), before, 'render/save metadata cannot mutate gameplay state');
+  assert.deepEqual(saved.state.board, before.board);
+  assert.deepEqual(saved.rng, before.rngSeeds);
+  for (const cell of b.raid.state.board) assert.deepEqual(Object.keys(cell), ['type']);
+  assert.equal(b.raid.swordDamage(3), 9);
+});
+
+test('magitech orbs: indistinguishable swords retain their own palette through two-hole gravity and explicit Continue', () => {
+  let b = raidBrowser({ variant: 'magitech', seed: 2718 });
+  const r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
+  r.saveRun(); const original = [...r.state.board], elements = magitechSave(b).orbElements;
+  r.state.board[24] = { type: 'empty' }; r.state.board[30] = { type: 'empty' }; r.state.board[31] = { type: 'empty' };
+  r.placeNewTiles({}); const beforeSave = raidJSON(r.state); r.saveRun();
+  assert.equal(r.state.board[12], original[0]); assert.equal(r.state.board[7], original[1]);
+  const checkpoint = magitechSave(b);
+  assert.equal(checkpoint.orbElements[12], elements[0]); assert.equal(checkpoint.orbElements[7], elements[1]);
+  assert.deepEqual(raidJSON(r.state), beforeSave);
+  b = raidReload(b, { variant: 'magitech' });
+  assert.deepEqual(magitechSave(b).orbElements, checkpoint.orbElements);
+  assert.deepEqual(raidJSON(b.raid.state.board), checkpoint.state.board);
+  assert.deepEqual(raidJSON(b.raid.state.rngSeeds), checkpoint.rng);
+});
+
+test('magitech orbs: released v1 without palette metadata resumes its actual run and six streams without rerolling', () => {
+  const b = raidBrowser({ variant: 'magitech', seed: 991 });
+  const previous = magitechSave(b); delete previous.orbElements;
+  b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(previous));
+  const next = raidBrowser({ variant: 'magitech', start: false, saved: b.storage });
+  assert.equal(next.raid.state, null); assert.equal(next.raid.resumeSavedRun(), true);
+  const now = magitechSave(next);
+  assert.equal(now.version, 1); assert.equal(now.orbElements.length, 36);
+  assert.deepEqual(now.state.board, previous.state.board); assert.deepEqual(now.rng, previous.rng);
+  assert.deepEqual(now.menu, previous.menu); assert.deepEqual(now.arrivals, previous.arrivals); assert.deepEqual(now.next, previous.next);
+});
+
+test('magitech orbs: malformed optional palette data is rejected without overwriting the checkpoint', () => {
+  const b = raidBrowser({ variant: 'magitech' }), valid = magitechSave(b);
+  for (const value of [null, {}, [], Array(35).fill(0), Array(37).fill(0), Array(36).fill(-1), Array(36).fill(4), Array(36).fill(.5), Array(36).fill('fire')]) {
+    const raw = JSON.stringify({ ...valid, orbElements: value });
+    const next = raidBrowser({ variant: 'magitech', start: false, saved: { [MAGITECH_RUN_KEY]: raw } });
+    assert.equal(next.raid.resumeSavedRun(), false); assert.equal(next.raid.state, null);
+    assert.equal(next.raid.saveStatus.state, 'invalid'); assert.equal(next.storage.get(MAGITECH_RUN_KEY), raw);
+  }
+});
+
+test('magitech orbs: a checkpoint in the original anticipation window still matches once at 420ms and attacks once at 550ms', () => {
+  let b = raidBrowser({ variant: 'magitech', menus: true, seed: 42 });
+  raidBoard(b.raid, 'coin'); b.raid.state.forceCoins = 1;
+  raidSelect(b.raid, [24, 30, 31]); b.raid.resolveChain(); b.advance(200);
+  const saved = magitechSave(b); assert.equal(saved.next.phase, 'match-chain');
+  b = raidReload(b, { variant: 'magitech' }); b.advance(419);
+  assert.equal(b.raid.state.hero.gold, 0); assert.equal(b.raid.state.turn, 0);
+  b.advance(1); assert.equal(b.raid.state.hero.gold, 6); assert.equal(b.raid.state.turn, 0);
+  b.advance(549); assert.equal(b.raid.state.turn, 0);
+  b.advance(1); assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.hero.gold, 6);
+  b.advance(3000); assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.chainCount, 1);
+});

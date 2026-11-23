@@ -2169,3 +2169,237 @@ test('magitech fork: changing a valid SDK account blocks writes rather than over
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
+
+// Geometry + manually completed Web Animations for the GENERATED standalone.
+// Real pixel/trajectory/touch checks additionally run in Chromium; jsdom does
+// not lay out a grid or provide Element.animate by itself.
+function orbAnimationHarness(window, { reduced = false, webAnimations = true } = {}) {
+  const created = [], listeners = new Set();
+  const media = { get matches() { return reduced; }, addEventListener(kind, fn) { listeners.add(fn); } };
+  window.matchMedia = () => media;
+  const nativeRect = window.Element.prototype.getBoundingClientRect;
+  const rect = (x, y, width, height) => ({ x, y, left: x, top: y, right: x + width, bottom: y + height, width, height, toJSON() { return { x, y, width, height }; } });
+  window.Element.prototype.getBoundingClientRect = function () {
+    if (this.id === 'board' || this.id === 'board-fx') return rect(10, 10, 360, 360);
+    const cell = this.matches('.cell') ? this : this.closest('.cell');
+    if (cell) {
+      const idx = Number(cell.dataset.idx), inset = this === cell ? 0 : 1.2;
+      return rect(10 + idx % 6 * 60 + inset, 10 + Math.floor(idx / 6) * 60 + inset, 60 - inset * 2, 60 - inset * 2);
+    }
+    return nativeRect.call(this);
+  };
+  if (webAnimations) window.Element.prototype.animate = function (frames, options) {
+    const animation = {
+      target: this, frames: JSON.parse(JSON.stringify(frames)), options: { ...options }, playState: 'running',
+      cancel() { if (this.playState === 'idle') return; this.playState = 'idle'; this.oncancel?.(); },
+      finish() { if (this.playState !== 'running') return; this.playState = 'finished'; this.onfinish?.(); },
+    };
+    created.push(animation); return animation;
+  };
+  window.__orbTest = {
+    created, finish() { for (const animation of [...created]) animation.finish(); },
+    reduce(value) { reduced = value; for (const fn of listeners) fn({ matches: value }); },
+  };
+}
+async function orbFixture(options = {}) {
+  const b = await openMagitech({ start: false, setup(w) { orbAnimationHarness(w, options); } });
+  b.dom.window.document.querySelector('.picker-card-btn:not(.locked)').click();
+  b.raid.newGame(2718);
+  return b;
+}
+function showOrbFixture(b, fill) {
+  b.raid.state.board = Array.from({ length: 36 }, (_, idx) => fill(idx));
+  b.raid.state.forceCoins = 1;
+  assert.equal(b.raid.saveRun(), true); assert.equal(b.raid.resumeSavedRun(), true);
+}
+const orbAt = (b, slot) => b.dom.window.document.querySelector(`.cell[data-idx="${slot}"] > .raid-orb`);
+const orbGameplay = b => JSON.stringify([b.raid.state.board, b.raid.state.hero, b.raid.state.rngSeeds, b.raid.state.arrivals, b.raid.state.rewardMenus, b.raid.state.menuCandidates, b.raid.state.turn, b.raid.state.chainCount]);
+
+// No text labels are burnt into tiles. Accessible names/details are retained.
+test('magitech orbs: every category is a circular animated glass orb; enemies show only numeric stats and countdown', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid, doc = b.dom.window.document;
+    const skull = Object.assign(r.makeSkull(false, true, 3), { atk: 0, hp: 24, maxHp: 24, countdown: 5 });
+    showOrbFixture(b, idx => idx === 0 ? { type: 'skull', skull } : { type: ['sword', 'shield', 'potion', 'coin', 'arrow', 'chain', 'trophy'][idx % 7], ...(idx === 2 ? { mana: true } : {}) });
+    const orbs = [...doc.querySelectorAll('.cell > .raid-orb')]; assert.equal(orbs.length, 36);
+    assert.equal(b.dom.window.getComputedStyle(doc.querySelector('.board-wrap')).flexGrow, '0', 'log growth below the HUD must not recenter a falling board');
+    for (const orb of orbs) {
+      assert.equal(b.dom.window.getComputedStyle(orb).borderRadius, '50%');
+      assert.ok(orb.querySelector('.orb-material')); assert.ok(orb.querySelector('.orb-ice svg'));
+      assert.match(orb.dataset.state, /^(fire|gas|liquid|sand|solid|organic)$/);
+      assert.doesNotMatch(orb.textContent, /[a-zа-яё]/iu, 'no Б/HP/type labels on the orb');
+      assert.ok(orb.parentElement.getAttribute('aria-label'));
+    }
+    assert.equal(orbAt(b, 0).querySelector('.skull-badge').textContent, `0·${skull.def}·24`);
+    assert.equal(orbAt(b, 0).querySelector('.orb-countdown').textContent, '5');
+    assert.ok(doc.querySelector('.type-sword .orb-sigil path')); assert.ok(doc.querySelector('.type-arrow .orb-sigil path'));
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: the real chain drops the SAME identical-looking nodes down actual vacancies, refilling only from above', async () => {
+  const b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: [24, 30, 31].includes(idx) ? 'coin' : 'sword', ...(idx === 0 ? { broken: true, frozen: true } : {}) }));
+    const r = b.raid, original = [orbAt(b, 0), orbAt(b, 6), orbAt(b, 1)], elements = original.map(n => n.dataset.element);
+    const victims = [24, 30, 31].map(idx => orbAt(b, idx).dataset.orbId);
+    [24, 30, 31].forEach(idx => r.tryExtendChain(idx)); r.resolveChain();
+    assert.equal(b.dom.window.document.querySelectorAll('.primed').length, 3);
+    assert.equal(r.state.hero.gold, 0, 'anticipation does not pay rewards');
+    await until(() => r.state.hero.gold === 6);
+    assert.equal(orbAt(b, 12), original[0]); assert.equal(orbAt(b, 18), original[1]); assert.equal(orbAt(b, 7), original[2]);
+    assert.deepEqual([orbAt(b, 12), orbAt(b, 18), orbAt(b, 7)].map(n => n.dataset.element), elements);
+    assert.ok(orbAt(b, 12).classList.contains('frozen')); assert.ok(orbAt(b, 12).classList.contains('broken'));
+    const fall = b.dom.window.__orbTest.created.find(a => a.target === original[0]);
+    assert.match(fall.frames[0].transform, /^translate\(0px,/);
+    assert.ok(Math.abs(parseFloat(fall.frames[0].transform.split(',')[1]) + 120) < .001, 'preserve subpixel geometry, not an integer-only string');
+    assert.equal(fall.frames.at(-1).transform, 'translate(0,0) scale(1)');
+    const refill = b.dom.window.__orbTest.created.find(a => a.target === orbAt(b, 0));
+    assert.equal(refill.frames[0].transform, 'translate(0px,-120px)'); assert.equal(orbAt(b, 0).dataset.motion, 'refill');
+    for (const id of victims) assert.ok(b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${id}"]`));
+    const before = orbGameplay(b); b.dom.window.__orbTest.finish();
+    assert.equal(orbGameplay(b), before, 'finishing all effects cannot pay a second reward or advance a turn');
+    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion],.cell.pop').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: a lethal Kamikaze and its unselected blast victims burst; a surviving enemy keeps its UID image', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid;
+    const bomb = Object.assign(r.makeSkull(false, true, 10), { hp: 1, maxHp: 1, atk: 0, def: 0, enteredTurn: -1 });
+    const survivor = Object.assign(r.makeSkull(false, false, 0), { hp: 99, maxHp: 99, atk: 0, def: 99, enteredTurn: -1 });
+    showOrbFixture(b, idx => idx === 2 ? { type: 'skull', skull: bomb } : idx === 10 ? { type: 'skull', skull: survivor } : { type: idx < 2 ? 'sword' : 'potion' });
+    const alive = orbAt(b, 10), img = alive.querySelector('img'), dying = orbAt(b, 2), dyingImg = dying.querySelector('img');
+    const victims = [2, 3, 7, 8, 9].map(idx => orbAt(b, idx).dataset.orbId);
+    [0, 1, 2].forEach(idx => r.tryExtendChain(idx)); r.resolveChain();
+    await until(() => r.state.skullsKilled === 1);
+    for (const id of victims) assert.ok(b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${id}"]`), `burst ${id}`);
+    assert.ok(alive.isConnected); assert.equal(alive.querySelector('img'), img);
+    assert.equal(b.dom.window.getComputedStyle(dyingImg).width, '100%', 'a dying portrait must not revert to its intrinsic atlas size outside the hit socket');
+    assert.equal(b.dom.window.getComputedStyle(dying.querySelector('.orb-core')).inset, '3% 2% 16%');
+    assert.equal(b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${alive.dataset.orbId}"]`), null);
+    assert.equal(r.state.hero.hp, 50, 'on-kill blast is not the timeout HP penalty');
+    b.dom.window.__orbTest.finish(); assert.equal(b.dom.window.document.querySelectorAll('.cell > .raid-orb').length, 36);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: the existing Freeze and thaw animate ice on the same UID, without changing their gameplay rules', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid, skull = Object.assign(r.makeSkull(false, false, 0), { hp: 50, maxHp: 50, atk: 0, enteredTurn: -1 });
+    showOrbFixture(b, idx => idx === 8 ? { type: 'skull', skull } : { type: 'coin' });
+    const orb = orbAt(b, 8), img = orb.querySelector('img');
+    r.activateSkill('freeze'); assert.equal(orbAt(b, 8), orb); assert.ok(orb.classList.contains('frozen'));
+    const freeze = b.dom.window.__orbTest.created.find(a => a.target === orb.querySelector('.orb-ice'));
+    assert.equal(freeze.frames[0].opacity, 0); assert.equal(freeze.frames.at(-1).opacity, 1);
+    r.tryExtendChain(8); assert.deepEqual(Array.from(r.state.selected), [8], 'frozen enemies remain chainable');
+    r.state.selected = []; r.state.chainType = null;
+    b.dom.window.__orbTest.finish(); r.endEnemyTurn();
+    assert.equal(orbAt(b, 8), orb); assert.equal(orb.querySelector('img'), img); assert.equal(orb.classList.contains('frozen'), false);
+    const thaw = b.dom.window.__orbTest.created.filter(a => a.target === orb.querySelector('.orb-ice')).at(-1);
+    assert.equal(thaw.frames[0].opacity, 1); assert.equal(thaw.frames.at(-1).opacity, 0);
+    const before = orbGameplay(b); b.dom.window.__orbTest.finish(); assert.equal(orbGameplay(b), before);
+    assert.equal(r.state.turn, 1); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: frozen resources remain unselectable, and Continue restores ice without replaying a freeze or changing sword palettes', async () => {
+  let b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: idx === 0 ? 'coin' : 'sword', ...(idx === 0 ? { frozen: true } : {}) }));
+    b.raid.tryExtendChain(0); assert.equal(b.raid.state.selected.length, 0);
+    const looks = [...b.dom.window.document.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element || null), before = orbGameplay(b);
+    b.raid.saveRun(); b = await reopenMagitech(b, { setup: orbAnimationHarness }); b.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(orbGameplay(b), before); assert.ok(orbAt(b, 0).classList.contains('frozen'));
+    assert.deepEqual([...b.dom.window.document.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element || null), looks);
+    assert.equal(b.dom.window.__orbTest.created.length, 0, 'restore a settled picture, not old visual callbacks');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: resize, reduced-motion changes and restart cancel visual work, never game continuations or new-run nodes', async () => {
+  const b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: [24, 30, 31].includes(idx) ? 'coin' : 'sword' }));
+    b.raid.activateSkill('treasure');
+    assert.ok(b.dom.window.document.querySelector('[data-motion]'));
+    const before = orbGameplay(b); b.dom.window.dispatchEvent(new b.dom.window.Event('resize'));
+    assert.equal(orbGameplay(b), before); assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion]').length, 0);
+    assert.ok(b.dom.window.__orbTest.created.every(a => a.playState === 'idle'));
+    b.dom.window.__orbTest.reduce(true); assert.equal(orbGameplay(b), before);
+    b.dom.window.__orbTest.reduce(false);
+    // The next fixture creates a second wave of effects while there is a run.
+    b.raid.activateSkill('teleport'); const stale = [...b.dom.window.__orbTest.created].filter(a => a.playState === 'running');
+    assert.ok(stale.length); b.raid.newGame(991);
+    const fresh = orbAt(b, 0), state = orbGameplay(b);
+    for (const animation of stale) animation.finish();
+    assert.equal(orbAt(b, 0), fresh); assert.ok(fresh.isConnected); assert.equal(orbGameplay(b), state);
+    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion]').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const mode of ['reduced motion', 'no Web Animations']) test(`magitech orbs: ${mode} has no transient debris or invisible survivors and keeps normal reward/turn timing`, async () => {
+  const b = await orbFixture({ reduced: mode === 'reduced motion', webAnimations: mode !== 'no Web Animations' });
+  try {
+    showOrbFixture(b, idx => ({ type: [24, 30, 31].includes(idx) ? 'coin' : 'sword' }));
+    const survivor = orbAt(b, 0);
+    [24, 30, 31].forEach(idx => b.raid.tryExtendChain(idx)); b.raid.resolveChain();
+    await until(() => b.raid.state.turn === 1 && !b.raid.state.resolving);
+    assert.equal(orbAt(b, 12), survivor); assert.equal(b.raid.state.hero.gold, 6); assert.equal(b.raid.state.chainCount, 1);
+    assert.equal(b.dom.window.__orbTest.created.length, 0);
+    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion],.cell.pop').length, 0);
+    assert.equal(b.dom.window.document.querySelectorAll('.cell > .raid-orb').length, 36);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech orbs: Continue during a fall preserves final positions/palettes and runs the pending enemy phase exactly once', async () => {
+  let b = await orbFixture();
+  try {
+    showOrbFixture(b, idx => ({ type: [24, 30, 31].includes(idx) ? 'coin' : 'sword' }));
+    [24, 30, 31].forEach(idx => b.raid.tryExtendChain(idx)); b.raid.resolveChain();
+    await until(() => b.raid.state.hero.gold === 6);
+    assert.ok(b.dom.window.document.querySelector('[data-motion]'));
+    const before = orbGameplay(b), looks = [...b.dom.window.document.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element || null);
+    assert.equal(b.raid.saveRun(), true);
+    b = await reopenMagitech(b, { setup: orbAnimationHarness });
+    assert.equal(b.raid.state, null); b.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(orbGameplay(b), before);
+    assert.deepEqual([...b.dom.window.document.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element || null), looks);
+    assert.equal(b.dom.window.__orbTest.created.length, 0);
+    await until(() => b.raid.state.turn === 1 && !b.raid.state.resolving);
+    assert.equal(b.raid.state.hero.gold, 6); assert.equal(b.raid.state.chainCount, 1);
+    assert.equal(b.dom.window.document.querySelectorAll('.cell > .raid-orb').length, 36);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+test('magitech orbs: shuffle and an interrupted second move preserve every orb; stale callbacks cannot clear a newer motion', async () => {
+  const b = await orbFixture();
+  try {
+    showOrbFixture(b, () => ({ type: 'sword' }));
+    const r = b.raid, identities = new Map(r.state.board.map((cell, idx) => [cell, orbAt(b, idx)]));
+    r.activateSkill('earthquake');
+    r.state.board.forEach((cell, idx) => assert.equal(orbAt(b, idx), identities.get(cell)));
+    const first = b.dom.window.__orbTest.created.filter(a => a.options.fill === 'both');
+    assert.ok(first.length > 20); assert.ok(first.some(a => a.target.dataset.motion === 'shift'));
+    const staleCallbacks = new Map(first.map(a => [a, a.onfinish]));
+    r.state.skillCooldowns.earthquake = 0; r.activateSkill('earthquake');
+    r.state.board.forEach((cell, idx) => assert.equal(orbAt(b, idx), identities.get(cell)));
+    const newer = b.dom.window.__orbTest.created.filter(a => a.options.fill === 'both' && !first.includes(a));
+    const next = newer.find(a => first.some(old => old.target === a.target));
+    assert.ok(next); assert.equal(next.playState, 'running');
+    const old = first.find(a => a.target === next.target); assert.equal(old.playState, 'idle');
+    staleCallbacks.get(old)();
+    assert.equal(next.playState, 'running'); assert.ok(next.target.dataset.motion); assert.ok(next.target.isConnected);
+    const state = orbGameplay(b); b.dom.window.__orbTest.finish(); assert.equal(orbGameplay(b), state);
+    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion]').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="230bd3a3b682">
+<meta name="raid-build" content="b7107e41434e">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -920,9 +920,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .chain-tip { border-radius: 4px; background: #08211df5; border-color: #bca870; color: #e5e4be; font-size: 11px; padding: 6px 9px; }
 .board-foot { background: transparent; border: 0; padding: 2px 0; color: #adc5aa; font-size: 9px; letter-spacing: .04em; }
 .board-wrap {
-  /* Preserve real space for both field and caption. A square field gives
-     touch cells their full width; on a short screen the shell scrolls. */
-  display: flex; flex-direction: column; align-items: center;
+  /* Reserve the square field + caption in normal flow. Do not grow/recenter
+     this wrapper: a new log line below the HUD must not move a falling orb's
+     destination after its FLIP geometry was captured. Short screens scroll. */
+  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center;
   justify-content: center; margin-bottom: 9px;
 }
 #board, .telegram-preview #board {
@@ -1078,6 +1079,101 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 #hud-xp .hud-label > span:first-child::before { content: '+'; margin-right: 5px; color: #c3d69d; }
 #hud-gold .hud-label > span:first-child::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid #c7ae6d; margin-right: 5px; }
 @media (max-width: 720px) { .raid-intro h1 { font-size: clamp(25px,7.8vw,31px); } }
+/* Alchemy glass marbles — discovery.css (technical branch 37a857da / PR87).
+   The socket remains fixed for hit testing; only its identity-keyed orb moves.
+   Six material textures are cosmetic, not six new combat statuses. */
+#board { overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 50% 0%,#173938 0%,#0a2024 50%,#081b21 100%); }
+#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.frozen,
+#board .cell.burned, #board .cell.cripple-target {
+  border: 0 !important; border-radius: 50%; background: transparent;
+  box-shadow: none !important; overflow: visible; opacity: 1;
+  transform: none; transition: none; filter: none; animation: none;
+}
+#board .cell::before { content: ''; position: absolute; inset: 6%; border: 1px solid #8ab8a61c; border-radius: 50%; background: #03151c35; pointer-events: none; }
+#board .cell.empty::before { opacity: .4; }
+.raid-orb {
+  position: absolute; inset: 2%; display: grid; place-items: center;
+  container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
+  border: 1px solid rgb(var(--orb-rgb) / .6);
+  background: radial-gradient(circle at 36% 23%,var(--orb-light) 0%,var(--orb-mid) 35%,var(--orb-dark) 82%);
+  box-shadow: inset 0 1px 2px #fffa,inset -4px -6px 10px #040d20b3,0 3px 6px #0008,0 0 7px rgb(var(--orb-rgb) / .15);
+  pointer-events: none; backface-visibility: hidden;
+}
+.raid-orb::before {
+  content: ''; position: absolute; z-index: 4; left: 17%; top: 8%; width: 38%; height: 14%;
+  border-radius: 50%; transform: rotate(-28deg); background: linear-gradient(100deg,#fffceee0,#ffffff0a);
+  filter: blur(.3px); pointer-events: none;
+}
+.raid-orb::after {
+  content: ''; position: absolute; z-index: 4; right: 10%; bottom: 15%; width: 14%; height: 24%;
+  border-right: 1.5px solid #ffffff6b; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
+}
+.orb-material { position: absolute; inset: -16%; z-index: 0; border-radius: 50%; opacity: .48; mix-blend-mode: screen; pointer-events: none; }
+.orb-material::before, .orb-material::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
+.state-fire .orb-material { background: conic-gradient(from 0deg,#ff803c88,#f33b1e22,#ffcf786e,#ff5a286e,#ff803c88); animation: orb-fx-spin 1.6s linear infinite; }
+.state-fire .orb-material::before { background: radial-gradient(ellipse at 50% 85%,#ffd494c4,transparent 58%); animation: orb-fx-flicker .9s ease-in-out infinite; }
+.state-gas .orb-material { background: radial-gradient(ellipse at 25% 25%,rgb(var(--orb-rgb) / .8),transparent 55%),radial-gradient(ellipse at 75% 75%,#d8ecff80,transparent 55%); animation: orb-fx-mist 3s ease-in-out infinite; }
+.state-gas .orb-material::before { background: conic-gradient(transparent,rgb(var(--orb-rgb) / .5),transparent 70%); animation: orb-fx-spin 4.5s linear infinite; }
+.state-liquid .orb-material { background: conic-gradient(rgb(var(--orb-rgb) / .8),transparent 40%,rgb(var(--orb-rgb) / .6),transparent 90%); animation: orb-fx-spin 3.2s linear infinite; }
+.state-liquid .orb-material::before { inset: 28% -10% -10%; border-top: 2px solid rgb(var(--orb-rgb) / .7); background: radial-gradient(ellipse at 50% 100%,rgb(var(--orb-rgb) / .8),transparent 65%); animation: orb-fx-wave 2s ease-in-out infinite; }
+.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .8) .8px,transparent 1.6px); background-size: 6px 7px; animation: orb-fx-sand 4s linear infinite; }
+.state-sand .orb-material::before { background: conic-gradient(transparent,rgb(var(--orb-rgb) / .35),transparent 75%); animation: orb-fx-spin 8s linear infinite; }
+.state-solid .orb-material { background: conic-gradient(from 30deg,transparent 0 15%,rgb(var(--orb-rgb) / .55) 16% 25%,#e3f4ff66 26% 38%,transparent 39% 55%,rgb(var(--orb-rgb) / .5) 56% 70%,transparent 71%); animation: orb-fx-spin 6s linear infinite; }
+.state-solid .orb-material::before { background: linear-gradient(125deg,transparent 30%,#efffff99 47%,transparent 60%); animation: orb-fx-shimmer 2.6s ease-in-out infinite; }
+.state-organic .orb-material { background: radial-gradient(ellipse at 45% 50%,rgb(var(--orb-rgb) / .9),transparent 60%); animation: orb-fx-organic 2.2s ease-in-out infinite; }
+.state-organic .orb-material::before { background: repeating-radial-gradient(ellipse at 60% 70%,transparent 0 6px,rgb(var(--orb-rgb) / .4) 7px 8px,transparent 9px 15px); animation: orb-fx-spin 12s linear infinite; }
+.orb-material, .orb-material::before { animation-delay: var(--orb-phase,0ms) !important; }
+.orb-core { position: absolute; inset: 13% 12%; z-index: 2; display: grid; place-items: center; }
+.raid-orb .orb-core > .ic { width: 100%; height: 100%; filter: drop-shadow(0 2px 2px #071323b3); }
+.raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
+#board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
+.orb-sigil { position: absolute; z-index: 5; top: 8%; right: 7%; width: 27%; height: 27%; padding: 2px; border: 1px solid rgb(var(--orb-rgb) / .7); border-radius: 50%; background: #0d2028d9; fill: rgb(var(--orb-rgb) / .3); stroke: var(--orb-light); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#board .skull-badge { bottom: 8%; width: 83%; padding: 1px 0; border: 0; border-radius: 9px; text-align: center; background: #071722de; color: #fff3d6; font-size: var(--badge-font,19cqw); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; z-index: 8; text-shadow: 0 1px 2px #000; }
+.orb-countdown, .orb-charge { position: absolute; z-index: 8; display: grid; place-items: center; left: 38%; top: 3%; width: 24%; height: 24%; border-radius: 50%; background: #081c29e8; border: 1px solid #e8cea0a8; color: #fff2ca; font: 700 19cqw/1 system-ui,sans-serif; font-variant-numeric: tabular-nums; }
+.orb-charge { top: auto; bottom: 7%; }
+.raid-orb.special { border: 2px solid #efce8d; box-shadow: inset 0 0 0 1px #614726,0 0 7px #e8ba5450; }
+.raid-orb.boss { border: 2px solid #ffc5a0; box-shadow: inset 0 0 0 2px #722f3d,0 0 9px #e8ab6350; }
+.raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; transform: none; }
+#board .cell.selected .raid-orb { outline: 2px solid #ffebaa; outline-offset: -1px; box-shadow: 0 0 12px #fae2a566,inset 0 0 7px #f3e3a38c; }
+#board .cell.rune-inside { outline: 0; }
+#board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
+#board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
+#board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
+#board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
+.raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
+.raid-orb.primed .orb-material { opacity: .85; }
+.orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
+.orb-ice svg { width: 100%; height: 100%; }
+.raid-orb.frozen .orb-ice { opacity: 1; }
+.raid-orb.frozen .orb-material, .raid-orb.frozen .orb-material::before { animation-play-state: paused; }
+.raid-orb.frozen .orb-core { filter: saturate(.6) brightness(1.15); }
+.orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
+.raid-orb.broken .orb-crack { opacity: .9; }
+#board .cell.broken .ic, .raid-orb.broken .ic { opacity: .45; filter: grayscale(.8); }
+.raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
+.raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac 0%,#ff6b3780 30%,transparent 65%); animation: orb-fx-flicker .7s ease-in-out infinite; }
+.raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
+.raid-orb.phylactery .orb-core { transform: scale(.8); filter: hue-rotate(35deg) brightness(.8); }
+.raid-orb[data-motion] { will-change: transform; }
+#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.orb-burst { position: absolute; pointer-events: none; }
+.orb-burst .orb-ghost { inset: 0; width: 100%; height: 100%; }
+.orb-burst-ring { position: absolute; inset: 5%; border: 2px solid rgb(var(--orb-rgb) / .9); border-radius: 50%; box-shadow: 0 0 8px rgb(var(--orb-rgb) / .8); animation: orb-burst-ring .36s ease-out both; }
+.orb-shard { position: absolute; left: 47%; top: 47%; width: 8%; height: 8%; background: rgb(var(--orb-rgb)); box-shadow: 0 0 5px rgb(var(--orb-rgb)); animation: orb-shard .34s ease-out both; }
+@keyframes orb-fx-spin { to { transform: rotate(360deg); } }
+@keyframes orb-fx-flicker { 0%,100% { opacity: .6; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes orb-fx-mist { 0%,100% { transform: translate(-2%,2%); opacity: .35; } 50% { transform: translate(3%,-3%); opacity: .65; } }
+@keyframes orb-fx-wave { 0%,100% { transform: rotate(-8deg) translateY(3%); } 50% { transform: rotate(8deg) translateY(-3%); } }
+@keyframes orb-fx-sand { to { background-position: 6px 14px; } }
+@keyframes orb-fx-shimmer { 0%,100% { opacity: .35; } 50% { opacity: .8; } }
+@keyframes orb-fx-organic { 0%,100% { opacity: .4; transform: scale(.95); } 50% { opacity: .8; transform: scale(1.08); } }
+@keyframes orb-prime { 0%,100% { transform: scale(1); } 45% { transform: scale(1.12); filter: brightness(1.35); } }
+@keyframes orb-burst-ring { from { opacity: .9; transform: scale(.5); } to { opacity: 0; transform: scale(1.65); } }
+@keyframes orb-shard { from { opacity: 1; transform: translate(0,0) scale(.5) rotate(0); } to { opacity: 0; transform: translate(var(--dx),var(--dy)) scale(.2) rotate(120deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .raid-orb, .raid-orb *, .raid-orb::before, .raid-orb::after, .orb-material::before, .orb-material::after, .orb-burst * { animation: none !important; transition: none !important; }
+}
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
 
@@ -1088,7 +1184,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
   <div class="picker-card" id="picker-card">
     <aside class="raid-intro" aria-label="Мир RAID">
-      <div class="raid-wordmark"><span class="raid-sigil"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></span><span>RAID<small>МАГИЯ СТАЛИ</small></span><span class="raid-edition">ПРОТОТИП / 01</span></div>
+      <div class="raid-wordmark"><span class="raid-sigil"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></span><span>RAID<small>МАГИЯ СТАЛИ</small></span><span class="raid-edition">ПРОТОТИП / 02</span></div>
       <div class="raid-intro-copy">
         <span class="raid-eyebrow">ФЭНТЕЗИ × МАГИТЕХ</span>
         <h1>Магия стали.<br><em>Искусство<br> выжить.</em></h1>
@@ -1108,11 +1204,11 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка 230bd3a3b682</p>
+    <p class="build-label">Сборка b7107e41434e</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Боевой комплект определяет способности. Выбери доступный мех — или продолжи свой рейд.</p>
-    <p class="raid-prototype-note" id="raid-prototype-note"><b>Первая сборка редизайна.</b> Бой пока классический. Стихийные множители и грейды бойцов не включены.</p>
+    <p class="raid-prototype-note" id="raid-prototype-note"><b>Сферы алхимии · этап 02.</b> Четыре оформления мечей, живые материалы, падение и лёд. Бой классический: стихийные множители и грейды бойцов не включены.</p>
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <div class="picker-tools"><button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
@@ -1234,7 +1330,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
             <button type="button" data-raid-region="earth" aria-pressed="true"><span class="region-symbol">◇</span><span>Земля</span><small>03</small></button>
             <button type="button" data-raid-region="water" aria-pressed="false"><span class="region-symbol">◡</span><span>Вода</span><small>04</small></button></div>
     <p class="raid-theme-hint">Только фон и цвет интерфейса. На бой не влияет.</p>
-    <p class="build-label">Сборка 230bd3a3b682</p>
+    <p class="build-label">Сборка b7107e41434e</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1297,8 +1393,8 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 <div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
   <div class="help-card">
     <h3>RAID / Как играть</h3>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 230bd3a3b682.</p>
-    <p><b>Этап 01 — оформление.</b> Мехи используют способности соответствующих исходных классов, бойцы — исходных рас. Новые грейды, стихии мечей/врагов и их коэффициенты ещё <b>не включены в бой</b>. Цвета портретов — пока только внешний вид. Пропорции стихий врагов, двойная стихия босса, задания и музыка ждут согласования. Четыре темы меняют фон и оформление, не характеристики или генерацию.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка b7107e41434e.</p>
+    <p><b>Этап 02 — сферы алхимии.</b> Все клетки — стеклянные сферы с анимацией материала. У мечей четыре цвета и знака: пламя — Огонь, ветер — Воздух, горы — Земля, капля — Вода. Любые мечи соединяются вместе и дают одинаковый исходный базовый вклад; стихийные коэффициенты ещё <b>не включены в бой</b>. Материал сферы — оформление, не новый эффект. Мехи/бойцы пока наследуют исходные классы/расы; грейды, распределение стихий врагов, двойная стихия босса, задания и музыка ждут согласования. Четыре темы меняют фон и оформление, не характеристики или генерацию.</p>
     <ul>
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
       <li>Урон — исходная база плюс урон оружия за каждый меч. Boost удваивает только вклад мечей. Сначала защита цели поглощает удар, затем теряется HP; броски разрушения брони идут после этого. Предпросмотр не тратит случайность и не обещает случайные награды.</li>
@@ -1306,10 +1402,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
       <li>Старые незамороженные враги атакуют общим залпом. HP=0 заканчивает забег. В этой копии один бесконечный режим и исходные формулы Easy/Normal/Hard, без новых порогов открытия. Sprint, Pretzel и Harder остаются в классическом тесте.</li>
       <li>100 XP → уровень, 100 золота → замена вещи, 100 UP → улучшение надетой вещи. На уровне выбери 2 из 4, снимай и меняй отметки до отдельного «Подтвердить». До подтверждения награды и ход врагов ждут. Магазин может предложить обмен −1/+2; обычное улучшение не снижает другие параметры вещи.</li>
       <li>Мехи и их развитие пока повторяют исходные классы: трофеи открывают мех или повышают его уровень до 10. Пары пассив/изъян открываются на уровнях меха 3/7/9, независимый выбор бойца — с 5, замены навыков — на чётных уровнях. Доноры сохраняют исходные пороги. Уровень меха — не XP-уровень героя. Настройки не меняют начатый рейд.</li>
-      <li>Навыки и 31 особый тип врагов сохраняют исходные эффекты. Под портретом — атака · броня · HP; число в скобках — отсчёт способности. Тап по особому или боссу показывает текущие параметры и способности. Выбор портрета не добавляет ему новую механику. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
+      <li>Навыки и 31 особый тип врагов сохраняют исходные эффекты. Под портретом только числа: атака · броня · HP; число сверху — отсчёт способности. Лёд останавливает анимацию материала и показывает уже существующую заморозку, не меняя её правил. Тап по особому или боссу показывает текущие параметры и способности. Выбор портрета не добавляет ему новую механику. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
       <li>Урон, лечение и ресурсы всплывают у реального получателя, не в центре экрана. Подробности вещей и сводка персонажа ничего не покупают, не перебрасывают предложения и не применяют награду.</li>
       <li>Свиток при покупке разово применяет навык, не занимая слот. Сохранена модель классического ошибочного фильтра I1: занятость слотов, счётчики и история надписи лечения, не правило «ещё не выучен». Неинициализированные слова свежей страницы — нули по политике совместимости, а не доказанный факт памяти оригинала. «Продолжить» восстанавливает историю сохранённого рейда.</li>
-      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: доска, герой, шесть потоков случайности, предложения и отметки наград восстанавливаются без переброса. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
+      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: доска, оформление каждого меча, герой, шесть потоков случайности, предложения и отметки наград восстанавливаются без переброса. Анимации не управляют наградами; при уменьшении движения в настройках устройства эффекты и падение выключены. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
       <li>Рекорды и статистика локальные, без общей телеметрии, лаборатории, серверной игровой базы, облачной синхронизации и наград парка. Наследованный каталог достижений ещё не адаптирован целиком: условия Sprint/Pretzel/Harder в этом режиме недоступны, их не заменяли придуманными. «Я всё вижу» также остаётся неподтверждённым.</li>
       <li>Этот URL не подключён к кнопке бота. Команда /raid_test по-прежнему открывает классический тест. Если копию открыть в SDK-оболочке с telegram=1, профиль выбирается отдельно по ID, не авторизуется сервером и не читает legacy-профиль владельца. При неизвестном/сменившемся ID запись отключена. «Закрыть Mini App» сохраняет продолжение, а не заканчивает рейд; при ошибке записи нужен явный выбор. Отдельное добровольное завершение ещё не реализовано.</li>
       <li>Иконки временно вырезаны из присланных скриншотов, не из исходного атласа. Фоны созданы для этого визуального прототипа; названия мест рабочие. Финальные стихии бойцов, грейды, баланс и полная замена всех текстур — следующие согласуемые шаги.</li>
@@ -2218,7 +2314,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   let RAID_REGION = 'earth';
   function raidPortraitKey(skull) {
     // Deterministic visual assignment only. No element is added to the enemy
-    // or sword; no distribution, damage, status, loot or RNG draw changes.
+    // in combat; no distribution, damage, status, loot or RNG draw changes.
     const family = Math.abs((skull.uid || 1) - 1) % 4;
     const role = skull.boss ? 3 : skull.special ? 1 + Math.abs(skull.type || 0) % 2 : 0;
     return RAID_PORTRAITS[family][role];
@@ -2601,7 +2697,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
       readHistoryRecord(data.record); return { status: 'finished', record: data.record };
     }
-    saveObject(data, ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs']);
+    const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
+    saveObject(data, [...keys, 'orbElements'], keys);
+    if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
     saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
@@ -2679,7 +2777,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
     return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: 1, status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
       build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
-      menu, results, arrivals, next, leechFadeMs });
+      menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex) });
   }
   function saveStatus(state, message) {
     RUN_SAVE_STATUS = { state, message };
@@ -2783,6 +2881,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    resetOrbPresentation();
     clearFloatEffects();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
@@ -2791,6 +2890,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeRunHistory();
     S = data.state;
+    if (data.orbElements) S.board.forEach((cell, idx) => ORB_ELEMENTS.set(cell, data.orbElements[idx]));
     syncClassAchievements();
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
@@ -3679,7 +3779,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function tileSymbol(cell) {
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '<\/svg>';
-    if (cell.type === 'sword') return start + '<path d="m28 5 12-2-2 12-16 17-6-6Z" fill="#d8ebe5" stroke="#698e89" stroke-width="1.2"/><path d="m34 9-15 19" stroke="#75e5cb" stroke-width="2"/><path d="m12 24 13 13-4 4L8 28Z" fill="#b79859" stroke="#ebce8b"/><path d="m12 33 4 4-7 8-5-5Z" fill="#526e68"/><circle cx="14" cy="34" r="2" fill="#9cf5d9"/>' + end;
+    if (cell.type === 'sword') return start + '<path d="m28 5 12-2-2 12-16 17-6-6Z" fill="#d8ebe5" stroke="#698e89" stroke-width="1.2"/><path d="m34 9-15 19" stroke="var(--orb-light)" stroke-width="2"/><path d="m12 24 13 13-4 4L8 28Z" fill="#b79859" stroke="#ebce8b"/><path d="m12 33 4 4-7 8-5-5Z" fill="#526e68"/><circle cx="14" cy="34" r="2" fill="var(--orb-light)"/>' + end;
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="#d5e9e4"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="#7fe5d2" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return start + '<path d="M24 3 42 11v14c0 10-10 17-18 21C16 42 6 35 6 25V11Z" fill="#a58d57" stroke="#dec692" stroke-width="1.5"/><path d="m24 8 13 6v11c0 7-6 12-13 16-7-4-13-9-13-16V14Z" fill="#2b5c69" stroke="#92cbd4"/><path d="M24 11v27m-10-21 20 13m0-13L14 30" stroke="#6cb0ba" stroke-width="1.2"/><path d="m24 17 7 7-7 9-7-9Z" fill="#b4f1e9"/>' + end;
     if (cell.type === 'coin') return start + '<path d="m21 3 6 0 2 4 5-1 4 5-1 5 5 3v9l-5 2 1 5-5 4-5-1-3 5h-6l-2-4-5 1-4-5 1-5-5-3v-7l5-2-1-5 5-4 5 1Z" fill="#b58c46" stroke="#ebce84"/><circle cx="24" cy="24" r="14" fill="#dfbb63" stroke="#f8dfa1"/><circle cx="24" cy="24" r="10" fill="#a97c37" stroke="#f3d58d"/><path d="m24 15 7 9-7 9-7-9Z" fill="#f9dda0"/><path d="M21 21h6v6h-6Z" fill="#b78a47"/>' + end;
@@ -3692,80 +3792,203 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     return start + '<circle cx="24" cy="24" r="17" fill="#607c73"/><path d="m14 19 7 2-3 7-6-2m22-7-7 2 3 7 6-2M20 34h8" stroke="#142826" stroke-width="3" fill="none"/>' + end;
   }
 
-  function renderCell(cell, idx) {
+  // Alchemy reference: discovery.css/js on arena/771875a3-expertbot
+  // (37a857da), consolidated in PR87. Glass, tint and the same six material
+  // motions are presentation only; they never assign a combat multiplier.
+  const ORB_ELEMENT_ORDER = ['fire', 'air', 'earth', 'water'];
+  const ORB_ELEMENT_LOOKS = [
+    { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
+    { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },
+    { state: 'sand', rgb: '171 197 111', light: '#e2e9ad', mid: '#63733b', dark: '#1c3028' },
+    { state: 'liquid', rgb: '71 185 232', light: '#b2eeff', mid: '#266c99', dark: '#112b44' },
+  ];
+  const ORB_SIGILS = [
+    '<path d="M17 3c2 7 10 10 7 17-4 9-18 6-17-3 3 3 5 0 5-2 0-5 2-8 5-12Z"/>',
+    '<path d="M4 12h16c9 0 8-10 2-8M6 18h17c8 0 7 10 1 9M3 23h11" fill="none"/>',
+    '<path d="m3 23 9-16 6 9 3-6 8 13ZM12 7l-1 10 7-1" fill="none"/>',
+    '<path d="M16 3C13 10 6 14 6 20a10 10 0 0 0 20 0c0-6-7-10-10-17Z"/><path d="M11 19q-2 5 4 6" fill="none"/>',
+  ];
+  const ORB_ICE = '<svg viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="m11 31 16-20 24 5L69 9l20 23-5 22 7 17-24 19-18-7-22 7-16-22 8-19Z" fill="#c5f5ff" fill-opacity=".16" stroke="#dcfbff" stroke-opacity=".8" stroke-width="1.4"/><path d="m27 11 9 24-17 14m32-33-5 22 20 5L89 32M11 68l25-9 13 24m18 7-1-24 18-12M36 35l10 3-10 21 16-7 14 14m-20-28 6 14 14-9" stroke="#ebfcff" stroke-opacity=".7" stroke-width="1.1"/><path d="M52 29v36M36 38l32 18M36 56l32-18m-22-2 6 5 6-5m-12 22 6-5 6 5" stroke="#f1feff" stroke-width="1.7" stroke-linecap="round"/><\/svg>';
+  let ORB_ELEMENTS = new WeakMap();
+  let ORB_VIEWS = new Map(); // resource object / enemy UID -> one movable DOM orb
+  let ORB_VIEW_UID = 0;
+  const ORB_ANIMATIONS = new Map();
+
+  function orbElementIndex(cell, idx) {
+    if (cell?.type === 'skull') return Math.abs((cell.skull.uid || 1) - 1) % 4;
+    if (!cell || !['sword', 'arrow'].includes(cell.type)) return 0;
+    if (!ORB_ELEMENTS.has(cell)) {
+      // Stable cosmetic hash, not any of the six gameplay streams. Cache by
+      // object, not slot: gravity cannot recolour a sword. The optional save
+      // array preserves that palette through explicit Continue, even mid-drop.
+      let word = (S.seed ^ Math.imul(S.turn + 1, 0x9e3779b1) ^ Math.imul(idx + 1, 0x85ebca6b)) >>> 0;
+      word = Math.imul(word ^ word >>> 16, 0x45d9f3b);
+      ORB_ELEMENTS.set(cell, (word ^ word >>> 16) & 3);
+    }
+    return ORB_ELEMENTS.get(cell);
+  }
+  function orbIdentity(cell) { return cell.type === 'skull' ? 'skull:' + cell.skull.uid : cell; }
+  function orbReducedMotion() { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
+  function animateOrb(node, frames, options, cleanup) {
+    if (!node || orbReducedMotion() || typeof node.animate !== 'function') { cleanup?.(); return null; }
+    let animation;
+    try { animation = node.animate(frames, options); }
+    catch (ignored) { cleanup?.(); return null; }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true; ORB_ANIMATIONS.delete(animation); cleanup?.();
+      animation.onfinish = animation.oncancel = null;
+      animation.cancel(); // no retained fill/opacity/transform on a surviving orb
+    };
+    ORB_ANIMATIONS.set(animation, finish);
+    animation.onfinish = animation.oncancel = finish;
+    return animation;
+  }
+  function finishOrbAnimations() {
+    for (const finish of [...ORB_ANIMATIONS.values()]) finish();
+    // Also clear anticipation; cancellation never runs a gameplay continuation.
+    for (const view of ORB_VIEWS.values()) {
+      view.motion = null; delete view.node.dataset.motion;
+      view.node.classList.remove('primed');
+    }
+    el('board-fx')?.replaceChildren();
+  }
+  function resetOrbPresentation() {
+    finishOrbAnimations();
+    ORB_VIEWS.clear(); ORB_ELEMENTS = new WeakMap(); ORB_VIEW_UID = 0;
+  }
+  function orbLook(cell, idx) {
+    const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
+    if (['sword', 'arrow', 'skull'].includes(cell.type)) {
+      if (cell.type === 'skull' && index === 2) return { ...elemental, state: /ent|worm/.test(raidPortraitKey(cell.skull)) ? 'organic' : 'solid' };
+      return elemental;
+    }
+    if (cell.type === 'coin' || cell.type === 'trophy') return { state: cell.type === 'coin' ? 'sand' : 'solid', rgb: '228 190 94', light: '#ffeab0', mid: '#907331', dark: '#352c20' };
+    if (cell.type === 'shield') return { state: 'solid', rgb: '117 192 195', light: '#d0ece7', mid: '#3b666c', dark: '#152e38' };
+    if (cell.type === 'chain') return { state: 'gas', rgb: '183 151 235', light: '#e7d8ff', mid: '#6a548d', dark: '#29223e' };
+    if (cell.acid) return { state: 'liquid', rgb: '167 218 84', light: '#e7fca7', mid: '#5b7930', dark: '#253627' };
+    if (cell.mana) return { ...ORB_ELEMENT_LOOKS[3], light: '#e0d6ff', mid: '#4e65a7' };
+    return { state: 'liquid', rgb: '237 128 153', light: '#ffdade', mid: '#9b4e68', dark: '#3e2438' };
+  }
+  function primeOrbChain(indices) {
+    for (const idx of indices) {
+      const cell = S.board[idx];
+      if (cell && cell.type !== 'empty') ORB_VIEWS.get(orbIdentity(cell))?.node.classList.add('primed');
+    }
+  }
+  function burstOrb(view, rect, boardRect) {
+    view.motion?.cancel(); view.node.classList.remove('primed');
+    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+    const board = el('board');
+    let layer = el('board-fx');
+    if (!layer) {
+      layer = document.createElement('div'); layer.id = 'board-fx';
+      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
+    }
+    const burst = document.createElement('div'); burst.className = 'orb-burst';
+    burst.dataset.orbId = view.node.dataset.orbId;
+    burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')}`;
+    const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
+    for (let i = 0; i < 4; i++) {
+      const shard = document.createElement('i'); shard.className = 'orb-shard';
+      shard.style.setProperty('--dx', (i % 2 ? .68 : -.68) * rect.width + 'px');
+      shard.style.setProperty('--dy', (i < 2 ? -.6 : .6) * rect.height + 'px');
+      burst.appendChild(shard);
+    }
+    view.node.classList.add('orb-ghost'); burst.appendChild(view.node); layer.appendChild(burst);
+    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration: 240, easing: 'ease-out', fill: 'forwards' }, () => view.node.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360 }, () => burst.remove());
+  }
+  function moveOrb(view, dx, dy, incoming, delay) {
+    if (Math.abs(dx) + Math.abs(dy) < 1) return;
+    view.motion?.cancel();
+    view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
+    const falling = Math.abs(dx) < 1 && dy < 0;
+    const duration = falling ? Math.min(390, 245 + Math.sqrt(Math.abs(dy)) * 7) : 300;
+    let animation;
+    animation = animateOrb(view.node, [
+      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .35 : 1, offset: 0, easing: 'cubic-bezier(.42,0,.76,.42)' },
+      { transform: 'translate(0,0)', opacity: 1, offset: .8 },
+      { transform: falling ? 'translateY(1px) scale(1.035,.965)' : 'translate(0,0)', opacity: 1, offset: .89 },
+      { transform: 'translate(0,0) scale(1)', opacity: 1 },
+    ], { duration, delay, fill: 'both' }, () => {
+      if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
+    });
+    view.motion = animation;
+    if (!animation) delete view.node.dataset.motion;
+  }
+
+  function renderCell(cell, idx, view) {
     const cellEl = qs(`.cell[data-idx="${idx}"]`);
     if (!cellEl) return;
-    const isSkull = !!(cell && cell.type === 'skull');
-    // state key: render the cell fresh only when its content identity changes —
-    // skull cells reuse their <img> and badge across turns; only the numbers move
-    const key = !cell || cell.type === 'empty'
-      ? 'empty'
-      : isSkull
-        ? `skull:${cell.skull.uid}`
-        : `tile:${cell.type}:${cell.broken ? 'b' : ''}${cell.acid ? 'a' : ''}${cell.mana ? 'm' : ''}${cell.burn ? 'f' : ''}${cell.frozen ? 'z' : ''}`;
+    if (!view) {
+      cellEl.className = 'cell empty'; cellEl.replaceChildren();
+      cellEl.title = ''; cellEl.removeAttribute('aria-label'); return;
+    }
+    const orb = view.node, isSkull = cell.type === 'skull', s = cell.skull;
+    const frozen = !!cell.frozen || !!(isSkull ? s.stunned : cell.stunned);
+    const burned = !!(isSkull ? s.burn : cell.burn), boss = !!s?.boss, special = !!s?.special && !boss;
+    const look = orbLook(cell, idx), element = ORB_ELEMENT_ORDER[orbElementIndex(cell, idx)];
+    const status = (cell.broken ? ' broken' : '') + (cell.acid ? ' acid' : '') + (cell.mana ? ' mana' : '')
+      + (burned ? ' burned' : '') + (frozen ? ' frozen' : '') + (boss ? ' boss' : special ? ' special' : '')
+      + (cell.explosive ? ' explosive' : '') + (cell.magicSword ? ' magic-sword' : '') + (s?.phylactery ? ' phylactery' : '');
+    cellEl.className = 'cell tile type-' + cell.type + status;
+    orb.className = 'raid-orb fx state-' + look.state + status;
+    orb.dataset.type = cell.type; orb.dataset.state = look.state;
+    if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
+    else delete orb.dataset.element;
+    orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
+    orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
+    const key = `${cell.type}:${!!cell.acid}:${!!cell.mana}:${!!cell.magicSword}:${isSkull ? s.uid : ''}`;
+    if (view.key !== key) {
+      orb.innerHTML = '<span class="orb-material" aria-hidden="true"><\/span><span class="orb-core"><\/span>'
+        + (['sword', 'arrow'].includes(cell.type) ? `<svg class="orb-sigil" viewBox="0 0 32 32" aria-hidden="true">${ORB_SIGILS[orbElementIndex(cell, idx)]}<\/svg>` : '')
+        + (isSkull ? '<div class="skull-badge"><\/div><span class="orb-countdown"><\/span>' : cell.magicSword ? '<span class="orb-charge">5<\/span>' : '')
+        + '<span class="orb-ice">' + ORB_ICE + '<\/span><span class="orb-crack" aria-hidden="true"><\/span>';
+      view.key = key;
+      const core = orb.querySelector('.orb-core');
+      if (isSkull) {
+        let img = SKULL_IMAGES.get(s.uid);
+        if (!img) { img = document.createElement('img'); SKULL_IMAGES.set(s.uid, img); }
+        img.className = 'skull-art'; img.alt = ''; img.draggable = false;
+        core.appendChild(img);
+      } else core.innerHTML = tileSymbol(cell);
+    }
+    let label;
     if (isSkull) {
-      const s = cell.skull;
-      const boss = !!s.boss;
-      const special = !!s.special && !boss;
-      let img = SKULL_IMAGES.get(s.uid);
-      if (!img) {
-        img = document.createElement('img');
-        SKULL_IMAGES.set(s.uid, img);
-      }
-      const portrait = raidPortraitKey(s);
+      const img = orb.querySelector('img'), portrait = raidPortraitKey(s);
       if (img.dataset.portrait !== portrait) { img.src = raidPortrait(s); img.dataset.portrait = portrait; }
-      img.className = 'skull-art' + (boss ? ' boss' : special ? ' special' : '');
-      img.alt = boss ? 'Босс' : special ? 'Спец-череп' : 'Череп';
-      const keyChanged = cellEl._renderKey !== key;
-      if (keyChanged) {
-        // cell is now showing a different skull (or a skull replacing a tile) —
-        // drop stale tile art and any other skull's art; keep a badge element if any
-        Array.from(cellEl.children).forEach(child => {
-          if (child === img) return;
-          if (child.classList && (child.classList.contains('skull-art') || child.classList.contains('skull-badge'))) {
-            if (child.classList.contains('skull-art')) child.remove(); // different skull's art — keep only this uid's img
-            return;
-          }
-          child.remove(); // stale tile svg
-        });
-        cellEl.className = 'cell tile type-skull' + (boss ? ' boss' : special ? ' special' : '');
-        cellEl._renderKey = key;
-      }
-      // the art is one <img> per skull (uid-keyed) — appending moves it, no re-creation
-      cellEl.classList.toggle('frozen', !!cell.frozen || !!s.stunned);
-      const crippleTarget = clsRace() === 'Werewolf' && isCrippleTarget(s);
-      cellEl.classList.toggle('cripple-target', !!crippleTarget);
-      cellEl.title = crippleTarget
-        ? `🐺 Калечение: HP ${s.hp} < собственная защита ${s.def}; будет собран в конце хода с наградой опытом.`
-        : '';
-      if (img.parentNode !== cellEl) cellEl.appendChild(img);
-      // badge: reuse the same element — only the numbers change in place
-      let badge = cellEl.querySelector('.skull-badge');
-      if (!badge) {
-        badge = document.createElement('div');
-        cellEl.appendChild(badge);
-      }
+      const badge = orb.querySelector('.skull-badge');
       badge.className = 'skull-badge' + (boss ? ' boss' : special ? ' special' : '');
-      const text = (boss ? 'Б ' : special ? '◆ ' : '') + `${s.atk}·${s.def}·${s.hp}` + (s.countdown > 0 ? ` [${s.countdown}]` : '');
+      const text = `${s.atk}·${s.def}·${s.hp}`;
       if (badge.textContent !== text) badge.textContent = text;
-      return;
+      badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
+      const countdown = orb.querySelector('.orb-countdown');
+      countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
+      const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
+      cellEl.classList.toggle('cripple-target', cripple);
+      label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
+        + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '');
+    } else {
+      label = { sword: 'Меч', arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
+      if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + ' (оформление; урон классический)';
+      if (cell.magicSword) label += ', сила 5 мечей';
+      if (cell.explosive) label += ', взрывное';
+      if (cell.broken) label += ', сломано: без награды';
     }
-    if (cellEl._renderKey === key) return;
-    cellEl._renderKey = key;
-    cellEl.className = 'cell';
-    cellEl.innerHTML = '';
-    if (!cell || cell.type === 'empty') {
-      cellEl.className = 'cell empty';
-      return;
+    if (frozen) label += ', заморожено';
+    if (burned) label += ', горит';
+    cellEl.title = label; cellEl.setAttribute('aria-label', label);
+    if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
+    // Remove an orb vacating this socket, never rebuild the incoming object.
+    for (const child of [...cellEl.children]) if (child !== orb) child.remove();
+    if (view.initialized && view.frozen !== frozen) {
+      animateOrb(orb.querySelector('.orb-ice'), frozen
+        ? [{ transform: 'scale(.15) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.06)', opacity: 1, offset: .75 }, { transform: 'scale(1)', opacity: 1 }]
+        : [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.15)', opacity: 0 }], { duration: frozen ? 380 : 260, easing: 'ease-out' });
     }
-    cellEl.className = 'cell tile type-' + cell.type
-      + (cell.broken ? ' broken' : '')
-      + (cell.acid ? ' acid' : '')
-      + (cell.mana ? ' mana' : '')
-      + (cell.burn ? ' burned' : '')
-      + (cell.frozen ? ' frozen' : '');
-    cellEl.innerHTML = tileSymbol(cell);
-    cellEl.title = cell.type === 'trophy' ? (cell.frozen ? '🏆 Трофей заморожен — сначала разморозь' : '🏆 Нажми: рост или открытие меха, без хода врагов') : '';
+    view.frozen = frozen; view.initialized = true;
   }
 
   function renderBoard() {
@@ -3774,25 +3997,57 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!board.dataset.cellsReady) {
       board.innerHTML = '';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('id', 'chain-line');
-      svg.setAttribute('aria-hidden', 'true');
-      board.appendChild(svg);
+      svg.setAttribute('id', 'chain-line'); svg.setAttribute('aria-hidden', 'true'); board.appendChild(svg);
       for (let i = 0; i < CELL_COUNT; i++) {
-        const cellEl = document.createElement('div');
-        cellEl.className = 'cell';
-        cellEl.dataset.idx = String(i);
-        board.appendChild(cellEl);
+        const cellEl = document.createElement('div'); cellEl.className = 'cell'; cellEl.dataset.idx = String(i); board.appendChild(cellEl);
       }
       board.dataset.cellsReady = '1';
     }
-    // transient pop animation: only for cleared cells on the tiles — drop the class
-    // at the start of every render so surviving skulls never stay faded/invisible
-    qsa('.cell').forEach(c => c.classList.remove('pop'));
-    for (let i = 0; i < CELL_COUNT; i++) {
-      renderCell(S.board[i], i);
+    const previous = ORB_VIEWS, next = new Map(), rects = new Map(), boardRect = board.getBoundingClientRect();
+    const keys = S.board.map(cell => cell && cell.type !== 'empty' ? orbIdentity(cell) : null);
+    // FIRST: capture the actual, possibly interrupted on-screen positions before
+    // touching the DOM. A same-type neighbour is NOT the same orb.
+    for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
+    for (const [key, view] of previous) if (!keys.includes(key)) {
+      burstOrb(view, rects.get(key), boardRect);
+      if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
-    renderSelection();
-    renderChainLine();
+    const incoming = Array(COLS).fill(0);
+    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+      const key = keys[r * COLS + c];
+      if (!key || previous.has(key)) break;
+      incoming[c]++;
+    }
+    // LAST: reparent the same nodes into the final fixed hit sockets, then
+    // invert that displacement for Web Animations. Physics/refill/RNG have
+    // already resolved in their original order; no animation settles rewards.
+    for (let idx = 0; idx < CELL_COUNT; idx++) {
+      const key = keys[idx]; let view = key && previous.get(key);
+      if (key && !view) {
+        const node = document.createElement('div'); node.dataset.orbId = String(++ORB_VIEW_UID);
+        node.style.setProperty('--orb-phase', -(ORB_VIEW_UID * 137 % 3100) + 'ms');
+        view = { node, slot: idx, initialized: false, motion: null };
+      }
+      renderCell(S.board[idx], idx, view);
+      if (!view) continue;
+      next.set(key, view);
+      const old = rects.get(key), moved = previous.has(key) && view.slot !== idx;
+      if (moved) view.motion?.cancel();
+      const rect = view.node.getBoundingClientRect();
+      if (rect.width && !orbReducedMotion() && previous.size) {
+        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, 65);
+        else if (!old) {
+          const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
+          if (row < count) {
+            const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - qs('.cell[data-idx="0"]').getBoundingClientRect().top;
+            moveOrb(view, 0, -pitch * count, true, 65);
+          } else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260 });
+        }
+      }
+      view.slot = idx;
+    }
+    ORB_VIEWS = next;
+    renderSelection(); renderChainLine();
   }
 
   // Rune uses row parity at CHAIN NODES, not an arbitrary polygon fill. Only
@@ -4115,6 +4370,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
+    resetOrbPresentation();
     clearFloatEffects();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
@@ -4921,6 +5177,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const runId = RUN_ID;
     clearTimeout(ACTION_TIMER);
     SCHEDULED_STEP = step;
+    if (step.phase === 'match-chain') primeOrbChain(step.snapshot?.effective || effectiveChain(step.chain));
     ACTION_TIMER = setTimeout(() => {
       if (runId !== RUN_ID || S.over || !ownsRunSlot()) return;
       SCHEDULED_STEP = null; ACTION_TIMER = null;
@@ -5329,7 +5586,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!S || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
-    const snapshot = chainSnapshot(chain), { committed, rune, skulls, effective } = snapshot;
+    const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
     if (!committed && !rune.length) { clearChain(); return; }
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
@@ -5343,10 +5600,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     }
     S.selected = []; S.chainType = null;
     renderSelection(); renderChainLine(); renderChainTip();
-    for (const idx of committed ? effective : []) {
-      const node = qs(`.cell[data-idx="${idx}"]`);
-      if (node && S.board[idx].type !== 'skull') node.classList.add('pop');
-    }
     scheduleRunStep({ phase: 'match-chain', snapshot }, 420);
   }
 
@@ -6738,7 +6991,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!board) return;
 
     board.addEventListener('pointerdown', e => {
-      if (activeDrag || e.isPrimary === false || e.button > 0) return;
+      if (activeDrag || e.isPrimary === false || e.button > 0 || [...ORB_VIEWS.values()].some(view => view.motion)) return;
       if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
@@ -7075,6 +7328,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   // --- init -----------------------------------------------------------------
   function init() {
     initRaidAppearance();
+    window.addEventListener?.('resize', finishOrbAnimations);
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', finishOrbAnimations);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
     initInput();
