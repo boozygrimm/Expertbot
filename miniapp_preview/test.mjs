@@ -4724,3 +4724,31 @@ test('magitech quiet motion: six low-contrast material loops have no rotation, f
   const explosive = css.match(/\.raid-orb\.explosive:not\(\.frozen\) \.orb-material::after\s*\{([^}]+)\}/)?.[1];
   assert.ok(explosive); assert.doesNotMatch(explosive, /animation:/, 'explosive item is marked statically, not with a .7s idle flash');
 });
+
+test('magitech weapon fog: the two-thirds gas layer stays quiet, frozen/reduced-motion safe and separate from item-aware artwork', () => {
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const haze = css.match(/\.orb-material\.orb-fog\s*\{([^}]+)\}/)?.[1];
+  assert.ok(haze); assert.match(haze, /height:\s*66\.6667%/); assert.match(haze, /inset:\s*auto 0 0/);
+  assert.match(haze, /overflow:\s*hidden/); assert.match(haze, /animation:\s*none/);
+  assert.match(haze, /mask-image:\s*linear-gradient/);
+  const fogFrames = css.slice(css.indexOf('@keyframes orb-fog-drift'), css.indexOf('@keyframes orb-prime'));
+  assert.ok(fogFrames.includes('@keyframes orb-fog-return'));
+  assert.doesNotMatch(fogFrames, /\b(?:rotate|scale)\(|\b(?:opacity|filter)\s*:/);
+  assert.match(css, /animation:\s*orb-fog-drift 24s ease-in-out infinite/);
+  assert.match(css, /animation:\s*orb-fog-return 30s ease-in-out infinite/);
+  assert.match(css, /\.raid-orb\.frozen \.orb-fog-wisp\s*\{\s*animation-play-state:\s*paused/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.raid-orb \*[^}]*animation:\s*none !important/);
+  assert.doesNotMatch(js, /ORB_SIGILS|class="orb-sigil"/);
+  const art = js.match(/const RAID_WEAPON_ART = \[([^]*?)^  \];/m)?.[1];
+  const textures = [...art.matchAll(/id: '(techno-[a-z-]+-v2)', src: '(data:image\/webp;base64,[^']+)'/g)];
+  assert.deepEqual(textures.map(m => m[1]), ['rusted-blade','sabre','mace','hammer','axe','guard-blade'].map(id => 'techno-' + id + '-v2'));
+  assert.equal(new Set(textures.map(m => m[2])).size, 6);
+  const resolver = js.match(/^  function raidWeaponVisual\([^]*?^  }/m)?.[0];
+  assert.ok(resolver); assert.match(resolver, /item\.suffixIndex/); assert.match(resolver, /item\.appearance/);
+  assert.doesNotMatch(resolver, /\b(?:random|randInt)\(|Math\.random|localStorage|profileStorage|\.mods\b/);
+  const sync = js.match(/^  function syncRaidWeaponTexture\([^]*?^  }/m)?.[0];
+  assert.ok(sync); assert.match(sync, /setAttribute\('src', art\.src\)/);
+  assert.doesNotMatch(sync, /innerHTML|replaceChildren|createElement|\.remove\(/, 'purchasing a new weapon must update, not replace, a surviving image/orb');
+  assert.match(js, /raidItemIcon\(item\.slot, item\)/); assert.match(js, /raidItemIcon\(opt\.slot, item\)/);
+});
