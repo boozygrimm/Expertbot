@@ -39,8 +39,10 @@
 модулей), **Chromium153:32 current +32 exact PR130 geometry controls +2 genuine
 released-v1 Continue/new-start**, errors[]. ESLint0errors/13 прежних warnings,
 art/alpha/palettes/provenance/repeat/inline/HTTP-Host/classic guards PASS.
-**Это локальная проверка, не уже доказанный rollout.** Фактический PR/merge/Pages
-записать в верхнем §7/протоколе после операций. Предыдущий PR130 уже выпущен:
+**Доставка — [PR131](https://github.com/boozygrimm/Expertbot/pull/131) и
+[release-протокол](https://github.com/boozygrimm/Expertbot/pull/131#issuecomment-7110337088).**
+Эта Git-запись сделана до merge: фактические merge SHA/Pages/public-build
+смотреть в протоколе, а не выводить из local PASS. Предыдущий PR130 уже выпущен:
 [его протокол](https://github.com/boozygrimm/Expertbot/pull/130#issuecomment-7109000581).
 §5 содержит4 направления развития стихий, рекомендацию A и честный design-review
 против оригинала — **не разрешение на новые механики**. **Интеграция RAID в
@@ -189,8 +191,9 @@ auto-main для существующего бота; Pages не доказыв�
   - **Интеграция в Луна-парк ещё не начиналась**. Boss-идея записана **НЕ сейчас**.
     Локации/первый экран ждут ТЗ, classic63b4ca81a10e/бот/допуск/рассылка/зависимости
     не изменены.8 прежних tracked files, новых project files нет. Реальной рассылки/
-    второго poller нет. Выпуск этого шага и physical Telegram/Render доказывать
-    отдельно; фактические операции/PR/Pages — верх §7/протокол, не этот local PASS.
+    второго poller нет. Доставка — [PR131](https://github.com/boozygrimm/Expertbot/pull/131),
+    фактические merge/Pages/public-build — [протокол](https://github.com/boozygrimm/Expertbot/pull/131#issuecomment-7110337088).
+    Этот Git-блок записан до merge, не заменяет протокол или physical Telegram/Render.
 
 - **Исторически: первый стихийный бой PR130 уже выпущен, прежняя проверка:**
   - Историческая ветка `arena/a15dfcf2-expertbot` от merge PR129
@@ -1829,11 +1832,17 @@ auto-main для существующего бота; Pages не доказыв�
   **b16c35922657ce2c5c877d45d15475569a4ae8ed3fa4900d2aef9b8e3be40d99**;
   classic **63b4ca81a10e/795638B**, SHA256
   **7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f** неизменен.
-  На момент этой локальной записи commit/PR/merge/Pages ещё предстоят; после
-  реальных операций добавить ссылку на проверочный протокол, не выдавать local
-  QA за rollout. Render auto-main подтверждён владельцем раньше, live revision
-  и физический Telegram не проверены. Статический preview0.0.0.0:8080 — отдельный
-  read-only сервер, не bot/второй poller; настоящие объявления не отправлялись.
+  Продуктовый commit **`999a6ee14b7ca2b573637a7da4e9103eb3c9dbad`** на текущей
+  ветке отправлен, [PR131](https://github.com/boozygrimm/Expertbot/pull/131) открыт.
+  Фактические merged head/main SHA/Pages/deployment/public-build — в
+  **[release-протоколе](https://github.com/boozygrimm/Expertbot/pull/131#issuecomment-7110337088)**,
+  который дополняется после операций без post-merge commit. На момент этого
+  docs-commit PR OPEN/MERGEABLE/CLEAN, `statusCheckRollup=[]` — CI до merge нет,
+  его не выдаём за зелёный. Эта Git-запись pre-merge, local PASS не доказывает
+  rollout. Только push своей ветки/merge явного номера, без смены ветки/push main.
+  Render auto-main подтверждён владельцем раньше, live revision и физический
+  Telegram не проверены. Статический preview0.0.0.0:8080 — отдельный read-only
+  сервер, не bot/второй poller; настоящие объявления не отправлялись.
 - **Далее:** закончить Лича32/4палитры следующей разрешённой art-попыткой, получить
   телефонную/визуальную обратную связь, выбрать (не автоматически внедрить) A/B/C.
   Boss D — только после отдельного возвращения владельца к идее. Новое ТЗ первого
