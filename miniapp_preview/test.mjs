@@ -4706,9 +4706,9 @@ test('magitech orbs: a checkpoint in the original anticipation window still matc
   b.advance(3000); assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.chainCount, 1);
 });
 
-test('magitech quiet motion: six low-contrast material loops have no rotation, fast flicker or sphere pulsing', () => {
+test('magitech quiet motion: six selection-only material loops have no rotation, fast flicker or sphere pulsing', () => {
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
-  const material = css.slice(css.indexOf('/* Quiet idle motion:'), css.indexOf('.orb-core {', css.indexOf('/* Quiet idle motion:')));
+  const material = css.slice(css.indexOf('/* Quiet selection material:'), css.indexOf('.orb-core {', css.indexOf('/* Quiet selection material:')));
   assert.ok(material.length > 1000);
   assert.doesNotMatch(material, /conic-gradient|\b(?:rotate|scale)\(/);
   assert.doesNotMatch(css, /orb-fx-spin|orb-fx-flicker/);
@@ -4718,14 +4718,15 @@ test('magitech quiet motion: six low-contrast material loops have no rotation, f
   for (const [, name, seconds] of loops) assert.ok(Number(seconds) >= 14, `${name} must be an unobtrusive slow drift, not a spinner`);
   const frames = css.slice(css.indexOf('@keyframes orb-fx-heat'), css.indexOf('/* Content-only 3D rotation'));
   assert.doesNotMatch(frames, /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, 'material loops cannot spin, resize or blink the spheres; only the requested item itself may turn');
-  assert.match(css, /\.orb-material\s*\{[^}]*opacity:\s*\.18/);
+  assert.match(css, /\.orb-material\s*\{[^}]*opacity:\s*0/);
+  assert.match(css, /#board \.cell\.selected \.orb-material\s*\{\s*opacity:\s*\.18/);
   assert.match(css, /\.raid-orb\.frozen \.orb-material[^}]*animation-play-state:\s*paused/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.orb-material::after[^}]*animation:\s*none !important/);
   const explosive = css.match(/\.raid-orb\.explosive:not\(\.frozen\) \.orb-material::after\s*\{([^}]+)\}/)?.[1];
   assert.ok(explosive); assert.doesNotMatch(explosive, /animation:/, 'explosive item is marked statically, not with a .7s idle flash');
 });
 
-test('magitech weapon fog: the two-thirds elemental body stays quiet, frozen/reduced-motion safe and separate from item-aware artwork', () => {
+test('magitech weapon fog: the selection-only two-thirds body stays quiet, frozen/reduced-motion safe and separate from item-aware artwork', () => {
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const haze = css.match(/\.orb-material\.orb-fog\s*\{([^}]+)\}/)?.[1];
@@ -5009,4 +5010,32 @@ test('magitech location: malformed optional region cannot replace a live run or 
     assert.deepEqual(raidJSON(state), before); assert.equal(b.raid.saveStatus.state, 'invalid');
     assert.equal(b.storage.get(MAGITECH_RUN_KEY), raw);
   }
+});
+
+
+test('magitech clear tiles: idle shells have no fill; four metal tones and opposing pixel bevels replace the permanent haze', () => {
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const shell = css.match(/^\.raid-orb \{([^]*?)^\}/m)?.[1];
+  assert.ok(shell); assert.match(shell, /background:\s*none/);
+  assert.doesNotMatch(shell, /radial-gradient|var\(--orb-(?:light|mid|dark)\)/);
+  const socket = css.match(/^#board \.cell::before \{([^}]+)\}/m)?.[1];
+  assert.ok(socket); assert.match(socket, /background:\s*none/);
+  assert.match(css, /#board \.cell\.selected \.raid-orb \{[^}]*background:\s*rgb\(var\(--orb-rgb\) \/ \.12\)/);
+  assert.match(css, /#board \.cell\.selected \.orb-material\.orb-fog \{\s*opacity:\s*\.26/);
+  assert.match(css, /\.raid-orb \.orb-material, \.raid-orb \.orb-material::before,\s*\.raid-orb \.orb-material::after, \.raid-orb \.orb-fog-wisp \{\s*animation-play-state:\s*paused/);
+  assert.match(css, /#board \.cell\.selected \.raid-orb:not\(\.frozen\) \.orb-fog-wisp \{\s*animation-play-state:\s*running/);
+  const metal = css.match(/^\.weapon-texture, \.raid-orb \.orb-core > \.weapon-texture \{([^]*?)^\}/m)?.[1];
+  assert.ok(metal); assert.match(metal, /var\(--weapon-tone/); assert.match(metal, /var\(--weapon-finish/);
+  assert.match(metal, /drop-shadow\(-\.65px -\.65px 0 var\(--weapon-edge/);
+  assert.match(metal, /drop-shadow\(1px 1px 0 #020b11\)/);
+  const tones = ['fire','air','earth','water'].map(element => {
+    const block = css.match(new RegExp('^\\.raid-orb\\[data-element="' + element + '"\\] \\{([^]*?)^\\}', 'm'))?.[1];
+    assert.ok(block, element); assert.doesNotMatch(block, /animation|background:/);
+    assert.match(block, /--weapon-edge:\s*#[0-9a-f]{6}/); assert.match(block, /--weapon-colour:\s*#[0-9a-f]{6}/);
+    return block.match(/--weapon-tone:\s*([^;]+);/)[1];
+  });
+  assert.equal(new Set(tones).size, 4);
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  assert.match(html, /Постоянная заливка убрана/); assert.match(html, /Стихийная основа ±25% согласована/);
+  assert.match(html, /но множители и грейды бойцов ещё не включены в бой/);
 });

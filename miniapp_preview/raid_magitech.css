@@ -1087,35 +1087,35 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   box-shadow: none !important; overflow: visible; opacity: 1;
   transform: none; transition: none; filter: none; animation: none;
 }
-#board .cell::before { content: ''; position: absolute; inset: 6%; border: 1px solid #8ab8a61c; border-radius: 50%; background: #03151c35; pointer-events: none; }
+#board .cell::before { content: ''; position: absolute; inset: 6%; border: 0; border-radius: 50%; background: none; pointer-events: none; }
 #board .cell.empty::before { opacity: .4; }
 .raid-orb {
   position: absolute; inset: 2%; display: grid; place-items: center;
   container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
-  border: 1px solid rgb(var(--orb-rgb) / .6);
-  background: radial-gradient(circle at 36% 23%,var(--orb-light) 0%,var(--orb-mid) 35%,var(--orb-dark) 82%);
-  box-shadow: inset 0 1px 2px #fffa,inset -4px -6px 10px #040d20b3,0 3px 6px #0008,0 0 7px rgb(var(--orb-rgb) / .15);
+  /* Readability pass: no permanent coloured fill or milky glass highlight. */
+  border: 1px solid #9ab5b54d; background: none;
+  box-shadow: inset 0 1px 0 #e7f4ed1a,0 1px 2px #0004;
   pointer-events: none; backface-visibility: hidden;
 }
 .raid-orb::before {
   content: ''; position: absolute; z-index: 4; left: 17%; top: 8%; width: 38%; height: 14%;
-  border-radius: 50%; transform: rotate(-28deg); background: linear-gradient(100deg,#fffceee0,#ffffff0a);
-  filter: blur(.3px); pointer-events: none;
+  border-radius: 50%; transform: rotate(-28deg); background: none;
+  border-top: 1px solid #e9f7f22e; pointer-events: none;
 }
 .raid-orb::after {
   content: ''; position: absolute; z-index: 4; right: 10%; bottom: 15%; width: 14%; height: 24%;
-  border-right: 1.5px solid #ffffff6b; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
+  border-right: 1px solid #ffffff26; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
 }
-/* Quiet idle motion: no spinning conic bands, blinking highlights or orb
-   pulsing. Only low-contrast material drifts at most 1–2% over 14–32 seconds. */
-.orb-material { position: absolute; inset: -12%; z-index: 0; border-radius: 50%; opacity: .18; mix-blend-mode: screen; pointer-events: none; }
+/* Quiet selection material: hidden/paused at rest, not a filled tile.
+   No spinning conic bands, blinking highlights or orb pulsing. */
+.orb-material { position: absolute; inset: -12%; z-index: 0; border-radius: 50%; opacity: 0; mix-blend-mode: screen; pointer-events: none; }
 .orb-material::before, .orb-material::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
 .state-fire .orb-material { background: radial-gradient(ellipse at 40% 80%,#ffd49780,transparent 56%),radial-gradient(ellipse at 64% 72%,#fa693c80,transparent 65%); animation: orb-fx-heat 14s ease-in-out infinite; }
 .state-fire .orb-material::before { background: radial-gradient(ellipse at 50% 90%,#f4b67360,transparent 65%); }
 .state-gas .orb-material { background: radial-gradient(ellipse at 28% 32%,rgb(var(--orb-rgb) / .6),transparent 57%),radial-gradient(ellipse at 70% 65%,#d8ecff55,transparent 57%); animation: orb-fx-mist 22s ease-in-out infinite; }
 .state-liquid .orb-material { background: radial-gradient(ellipse at 35% 72%,rgb(var(--orb-rgb) / .7),transparent 66%); animation: orb-fx-flow 18s ease-in-out infinite; }
 .state-liquid .orb-material::before { inset: 35% -10% -10%; border-top: 1px solid rgb(var(--orb-rgb) / .28); border-radius: 45%; background: linear-gradient(transparent,rgb(var(--orb-rgb) / .3)); }
-.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .5) .6px,transparent 1.25px); background-size: 8px 10px; opacity: .14; animation: orb-fx-grain 32s linear infinite; }
+.state-sand .orb-material { background-image: radial-gradient(circle,rgb(var(--orb-rgb) / .5) .6px,transparent 1.25px); background-size: 8px 10px; animation: orb-fx-grain 32s linear infinite; }
 .state-solid .orb-material { background: linear-gradient(130deg,transparent 25%,rgb(var(--orb-rgb) / .4) 26% 36%,transparent 37% 60%,#dbe8e333 61% 70%,transparent 71%); }
 .state-solid .orb-material::before { background: radial-gradient(ellipse at 35% 28%,#e2eeeb55,transparent 60%); animation: orb-fx-sheen 28s ease-in-out infinite; }
 .state-organic .orb-material { background: radial-gradient(ellipse at 45% 60%,rgb(var(--orb-rgb) / .6),transparent 64%); animation: orb-fx-sap 24s ease-in-out infinite; }
@@ -1123,17 +1123,43 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .orb-material, .orb-material::before { animation-delay: var(--orb-phase,0ms) !important; }
 .orb-core { position: absolute; inset: 13% 12%; z-index: 2; display: grid; place-items: center; }
 .raid-orb .orb-core > .ic { width: 100%; height: 100%; filter: drop-shadow(0 2px 2px #071323b3); }
-.weapon-texture { display: block; object-fit: contain; filter: var(--weapon-finish,none); }
+/* The same item image/finish is used in the shop and on the board. Only
+   the board inherits a cosmetic elemental metal tone, NOT a new item stat.
+   Opposing zero-blur subpixel/1px edges read as a bevel, never a neon halo. */
+.weapon-texture, .raid-orb .orb-core > .weapon-texture {
+  display: block; object-fit: contain;
+  filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1))
+    drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd))
+    drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
+}
+.raid-orb[data-element="fire"] {
+  --weapon-tone: sepia(1) saturate(3) hue-rotate(336deg) contrast(1.12) brightness(1.2);
+  --weapon-edge: #ffe2b5; --weapon-colour: #fa9b4a;
+}
+.raid-orb[data-element="air"] {
+  --weapon-tone: grayscale(.96) contrast(1.12) brightness(1.46);
+  --weapon-edge: #f1fcff; --weapon-colour: #e3f5f6;
+}
+.raid-orb[data-element="earth"] {
+  --weapon-tone: sepia(1) saturate(2) hue-rotate(45deg) contrast(1.18) brightness(1.14);
+  --weapon-edge: #e1f3b0; --weapon-colour: #b1cb69;
+}
+.raid-orb[data-element="water"] {
+  --weapon-tone: grayscale(1) sepia(1) saturate(3.2) hue-rotate(180deg) contrast(1.12) brightness(1.25);
+  --weapon-edge: #c5efff; --weapon-colour: #62bce9;
+}
+.raid-orb[data-type="arrow"] .orb-core > .ic {
+  filter: drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd)) drop-shadow(1px 1px 0 #020b11);
+}
 .raid-orb[data-type="sword"] .orb-core { inset: 7%; }
-.raid-orb .orb-core > .weapon-texture { filter: var(--weapon-finish,none) drop-shadow(0 1px 1px #031119b3); }
 .raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
 #board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
-/* Element = a quiet coloured body in two thirds of neutral weapon glass.
-   Air is above, water below; inventory image/finish is independent of it. */
-.raid-orb:is([data-type="sword"],[data-type="arrow"]) { border-color: #9db6c080; }
+/* Element is readable on the weapon itself. The earlier two-thirds body
+   is retained only as a quiet SELECTION treatment: air above, water below. */
+.raid-orb:is([data-type="sword"],[data-type="arrow"]) { border-color: #9ab5b54d; }
 .orb-material.orb-fog {
   inset: auto 0 0; height: 66.6667%; border-radius: 0; overflow: hidden;
-  opacity: .72; background: none; animation: none; mix-blend-mode: screen;
+  opacity: 0; background: none; animation: none; mix-blend-mode: screen;
   -webkit-mask-image: linear-gradient(to bottom,transparent,#000 26%);
   mask-image: linear-gradient(to bottom,transparent,#000 26%);
 }
@@ -1197,7 +1223,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb[data-element="air"] .orb-fog-wisp { animation-duration: 14s; }
 .raid-orb[data-element="air"] .orb-fog-back { animation-duration: 19s; }
 .raid-orb[data-element="water"] .orb-fog {
-  -webkit-mask-image: none; mask-image: none; opacity: .66;
+  -webkit-mask-image: none; mask-image: none;
 }
 .raid-orb[data-element="water"] .orb-fog-wisp {
   inset: 0 -24% -10%; filter: none;
@@ -1207,6 +1233,14 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   animation-name: orb-water-slosh; animation-duration: 8s;
 }
 .raid-orb[data-element="water"] .orb-fog-wisp.orb-fog-back { inset: 4% -24% -12%; opacity: .44; animation-name: orb-water-return; animation-duration: 11s; }
+/* Invisible material layers do not run idle animations. Frozen and
+   reduced-motion still win; content-only coin/weapon turns are independent. */
+.raid-orb .orb-material, .raid-orb .orb-material::before,
+.raid-orb .orb-material::after, .raid-orb .orb-fog-wisp { animation-play-state: paused; }
+#board .cell.selected .raid-orb:not(.frozen) .orb-material,
+#board .cell.selected .raid-orb:not(.frozen) .orb-material::before,
+#board .cell.selected .raid-orb:not(.frozen) .orb-material::after,
+#board .cell.selected .raid-orb:not(.frozen) .orb-fog-wisp { animation-play-state: running; }
 .sound-control { position: relative; }
 .sound-control input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; clip-path: inset(50%); overflow: hidden; }
 .sound-control:focus-within { outline: 2px solid #f5dfa0; outline-offset: 3px; }
@@ -1219,14 +1253,22 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb.special { border: 2px solid #efce8d; box-shadow: inset 0 0 0 1px #614726,0 0 7px #e8ba5450; }
 .raid-orb.boss { border: 2px solid #ffc5a0; box-shadow: inset 0 0 0 2px #722f3d,0 0 9px #e8ab6350; }
 .raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; transform: none; }
-#board .cell.selected .raid-orb { outline: 2px solid #ffebaa; outline-offset: -1px; box-shadow: 0 0 12px #fae2a566,inset 0 0 7px #f3e3a38c; }
+/* A selected path gets a restrained fill; undo/cancel removes it via the
+   existing selected class. No animation callback controls damage/rewards. */
+#board .cell.selected .raid-orb {
+  outline: 2px solid #ffebaa; outline-offset: -1px;
+  background: rgb(var(--orb-rgb) / .12);
+  box-shadow: inset 0 0 0 1px #0c191e,0 0 5px #fae2a52e;
+}
+#board .cell.selected .orb-material { opacity: .18; }
+#board .cell.selected .orb-material.orb-fog { opacity: .26; }
 #board .cell.rune-inside { outline: 0; }
 #board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
 #board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
 #board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
-.raid-orb.primed .orb-material { opacity: .85; }
+.raid-orb.primed .orb-material { opacity: .18; }
 .orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
 .orb-ice svg { width: 100%; height: 100%; }
 .raid-orb.frozen .orb-ice { opacity: 1; }
@@ -1235,7 +1277,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
 .raid-orb.broken .orb-crack { opacity: .9; }
 #board .cell.broken .ic, .raid-orb.broken .ic { opacity: .45; filter: grayscale(.8); }
-#board .cell.broken .weapon-texture, .raid-orb.broken .weapon-texture { filter: var(--weapon-finish,none) grayscale(.8) drop-shadow(0 1px 1px #031119b3); }
+#board .cell.broken .weapon-texture, .raid-orb.broken .weapon-texture {
+  filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1)) grayscale(.8)
+    drop-shadow(-.65px -.65px 0 #b3c5be) drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
+}
 .raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
