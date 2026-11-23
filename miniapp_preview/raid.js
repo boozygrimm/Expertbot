@@ -1292,6 +1292,7 @@
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    clearFloatEffects();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -1866,6 +1867,7 @@
     if (special && effType !== 3 && effType !== 30) atk = Math.max(1, atk); // Golden (3): A=0; Meat Shield (30): trunc(A/2)
     // Orc's mortal enemy (Corrosive): its appearance drops the hero's armour to 0.
     if (special && effType === 12 && clsRace() === 'Orc' && S && S.hero) {
+      floatOn(-S.hero.armor, 'armor', '#hud-armor', 'брони');
       S.hero.armor = 0;
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
@@ -2586,6 +2588,7 @@
         const empty = document.createElement('button');
         empty.type = 'button';
         empty.className = 'skill empty';
+        empty.dataset.slot = String(i);
         empty.disabled = true;
         empty.innerHTML = '<span class="skill-icon">＋</span><span class="skill-name">пусто</span>';
         empty.title = 'Слот навыка откроется на уровне 2';
@@ -2597,6 +2600,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
+      btn.dataset.slot = String(i);
       btn.innerHTML = `<span class="skill-icon">${skill.icon}</span><span class="skill-name">${skill.name}</span>${left > 0 ? `<span class="cd">${left}</span>` : (level > 1 ? `<span class="cd">ур.${level}</span>` : '')}`;
       const duration = skillDuration(skillId);
       btn.title = skill.desc + (duration > 0 ? ' · готовность: ' + (duration - left) + '/' + duration : ' · одноразовый') + (level > 1 ? ', уровень ' + level : '');
@@ -2618,6 +2622,7 @@
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
+    clearFloatEffects();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -2868,8 +2873,10 @@
       const skull = cell.skull;
       if (skull.phylactery) return false;
       if (opts.direct && S.stealActive > 0) queueResource('coin');
+      const defence = skull.def;
       const dmg = damageSkull(skull, amount, opts);
-      if (dmg > 0) floatOn('💥 ' + dmg, 'hurt');
+      flashOn(idx, -dmg, 'hurt', 'HP');
+      flashOn(idx, skull.def - defence, 'armor', 'брони');
       if (skull.hp > 0) return false;
       if (skull.type === 32) {
         // AttackSkull transforms Lich; collection/poison are different paths.
@@ -2967,6 +2974,8 @@
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
         if (c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss) {
+          flashOn(i, -c.skull.def, 'armor', 'брони');
+          flashOn(i, Math.min(c.skull.atk, 1) - c.skull.atk, 'buff', '⚔');
           c.skull.def = 0;
           c.skull.atk = Math.min(c.skull.atk, 1);
           n++;
@@ -3445,7 +3454,10 @@
     if (clsRace(state) !== 'Faun') return 0;
     const before = state.hero.hp;
     state.hero.hp = Math.max(before, Math.floor(state.hero.maxHp * .25));
-    if (state === S && state.hero.hp > before) queueAchievement(50, 5);
+    if (state === S && state.hero.hp > before) {
+      queueAchievement(50, 5);
+      floatOn(state.hero.hp - before, 'heal', '#hud-hp', 'HP');
+    }
     return state.hero.hp - before;
   }
 
@@ -3531,13 +3543,16 @@
         const before = state.skillCooldowns[skillId] || 0;
         state.skillCooldowns[skillId] = Math.max(0, before - 1);
         result.manaCollected = before - state.skillCooldowns[skillId];
+        if (state === S) floatOn(-result.manaCollected, 'mana', `.skill[data-slot="${token.skillSlot}"]`, 'КД');
         return result;
       }
       const amount = HEAL_PER_POTION + hero.stats.luck;
       if (token.variant === 2) {
         const rawHp = hero.hp - amount;
         if (state === S && rawHp < 0) queueAchievement(37);
+        const before = hero.hp;
         hero.hp = Math.max(0, rawHp);
+        if (state === S) floatOn(hero.hp - before, 'hurt', '#hud-hp', 'HP');
         if (state === S && hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
       } else {
         const before = hero.hp;
@@ -3569,6 +3584,13 @@
       }
       if (crossed && state === S) requestRewardMenu(token.type === 'xp' ? 'level' : token.type === 'coin' ? 'gold' : 'armor');
     }
+    if (state === S) {
+      if (token.type === 'potion') floatOn(result.healGained, 'heal', '#hud-hp', 'HP');
+      floatOn(result.armorGained, 'armor', '#hud-armor', 'брони');
+      floatOn(result.xpGained, 'xp', '#hud-xp', 'XP');
+      floatOn(result.goldGained, 'gold', '#hud-gold', 'золота');
+      floatOn(result.upGained, 'upgrade', '#hud-upgrade', 'UP');
+    }
     return result;
   }
 
@@ -3581,13 +3603,13 @@
   function heal(amount) {
     const before = S.hero.hp;
     S.hero.hp = Math.min(S.hero.maxHp, S.hero.hp + amount);
-    if (S.hero.hp !== before) floatOn('+' + Math.round(S.hero.hp - before), 'heal');
+    floatOn(S.hero.hp - before, 'heal', '#hud-hp', 'HP');
   }
 
   function repair(amount) {
     const before = S.hero.armor;
     S.hero.armor = Math.min(S.hero.maxArmor, S.hero.armor + amount);
-    if (S.hero.armor !== before) floatOn('+' + Math.round(S.hero.armor - before), 'armor');
+    floatOn(S.hero.armor - before, 'armor', '#hud-armor', 'брони');
   }
 
   function flash(msg) {
@@ -3603,14 +3625,73 @@
 
   function flashHint(msg) { flash(msg); }
 
-  function floatOn(text, kind) {
-    const board = qs('#board');
-    if (!board) return;
-    const node = document.createElement('div');
-    node.className = 'float-fx ' + kind;
-    node.textContent = text;
-    board.appendChild(node);
-    setTimeout(() => node.remove(), 900);
+  // Decorations are not state/RNG, save data, arrival events or continuations.
+  // One short burst per recipient/sign/kind is summed rather than overprinted.
+  // A selector survives renderSkills/board redraw; no center-screen fallback.
+  const FLOAT_EFFECTS = new Set();
+  let FLOAT_FRAME = 0;
+  function clearFloatEffects() {
+    if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
+    FLOAT_FRAME = 0;
+    for (const effect of FLOAT_EFFECTS) effect.node.remove();
+    FLOAT_EFFECTS.clear();
+  }
+  function renderFloatEffects() {
+    FLOAT_FRAME = 0;
+    const now = Date.now(), shell = qs('.shell')?.getBoundingClientRect();
+    const top = Math.max(0, shell?.top || 0), left = Math.max(0, shell?.left || 0);
+    const right = Math.min(window.innerWidth, shell?.right || window.innerWidth);
+    const bottom = Math.min(window.innerHeight, shell?.bottom || window.innerHeight);
+    const expired = [], positions = [];
+    // Read all geometry before writing styles: a board-wide hit must not cause
+    // a separate forced layout for every label on every Android frame.
+    for (const effect of FLOAT_EFFECTS) {
+      const anchor = qs(effect.target);
+      if (now >= effect.until || !anchor) { expired.push(effect); continue; }
+      const rect = anchor.getBoundingClientRect();
+      // Offscreen HP in a short landscape stays offscreen, never jumps to the
+      // board. No auto-scroll can interrupt the player's current touch chain.
+      const hidden = !rect.width || !rect.height || rect.bottom <= top || rect.top >= bottom
+        || rect.right <= left || rect.left >= right;
+      const half = Math.min((effect.node.offsetWidth || effect.node.textContent.length * 9) / 2 + 4, (right - left) / 2);
+      const x = Math.max(left + half, Math.min(right - half, rect.left + rect.width / 2));
+      const y = Math.max(top + 36, Math.min(bottom - 10, rect.top + rect.height / 2 - effect.lane * 18));
+      positions.push({ node: effect.node, hidden, x: x + 'px', y: y + 'px' });
+    }
+    for (const effect of expired) { effect.node.remove(); FLOAT_EFFECTS.delete(effect); }
+    for (const { node, hidden, x, y } of positions) {
+      if (node.hidden !== hidden) node.hidden = hidden;
+      if (node.style.left !== x) node.style.left = x;
+      if (node.style.top !== y) node.style.top = y;
+    }
+    if (FLOAT_EFFECTS.size) FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+  }
+  function floatOn(amount, kind, target, label) {
+    if (!Number.isFinite(amount) || !amount) return;
+    const layer = el('raid-effects');
+    if (!layer || !qs(target)) return;
+    const now = Date.now();
+    let effect = [...FLOAT_EFFECTS].find(old => old.target === target && old.kind === kind && old.label === label
+      && Math.sign(old.amount) === Math.sign(amount) && now - old.started < 100);
+    if (effect) effect.amount += amount;
+    else {
+      // Bounded even for synthetic board-wide repeated effects.
+      if (FLOAT_EFFECTS.size >= 64) {
+        const oldest = FLOAT_EFFECTS.values().next().value;
+        oldest.node.remove(); FLOAT_EFFECTS.delete(oldest);
+      }
+      const node = document.createElement('div');
+      node.className = 'float-fx ' + kind; node.dataset.target = target;
+      const lane = [...FLOAT_EFFECTS].filter(old => old.target === target).length % 3;
+      effect = { node, target, kind, label, amount, lane, started: now, until: now + 900 };
+      FLOAT_EFFECTS.add(effect); layer.appendChild(node);
+    }
+    const value = Number(Math.abs(effect.amount).toFixed(2));
+    effect.node.textContent = (effect.amount < 0 ? '−' : '+') + value + (label ? ' ' + label : '');
+    if (!FLOAT_FRAME) renderFloatEffects();
+  }
+  function flashOn(idx, amount, kind, label) {
+    floatOn(amount, kind, `.cell[data-idx="${idx}"]`, label);
   }
 
   // --- audio ----------------------------------------------------------------
@@ -3853,6 +3934,7 @@
     let armourLoss = 0;
     for (let n = 0; n < blocked; n++) if (defiler || randInt(0, 100, 5) < threshold) armourLoss++;
     S.hero.armor -= armourLoss;
+    floatOn(-armourLoss, 'armor', '#hud-armor', 'брони');
     return { attack, blocked, damage: Math.max(0, attack - armour), armourLoss, hadArmour: armour > 0 };
   }
 
@@ -3899,9 +3981,10 @@
         for (const idx of columnSlots()) {
           const cell = S.board[idx];
           if (!cell || cell.type !== 'skull' || cell.matched || cell.skull.type !== 20) continue;
-          const skull = cell.skull, hp = skull.hp + enemyGetAttack(skull);
+          const skull = cell.skull, before = skull.hp, hp = skull.hp + enemyGetAttack(skull);
           if (clsRace() === 'Werewolf') { skull.hp = hp; skull.maxHp = Math.max(hp, skull.maxHp); }
           else skull.hp = Math.min(skull.maxHp, hp);
+          flashOn(idx, skull.hp - before, 'heal', 'HP');
         }
         damageHero(volley.damage, false, true);
       } else audioEnemy();
@@ -3951,14 +4034,14 @@
               hitSkullAt(idx, amount, { direct: false, ignoreDefence: true });
               if (clsRace() === 'Dragonkin') queueAchievement(54, 2);
             }
-            else target.hp -= amount;
+            else { target.hp -= amount; flashOn(idx, -amount, 'hurt', 'HP'); }
           }
         }
       }
       if (S.regen > 0) heal(S.regen);
       if (S.poison > 0) {
         damageHero(S.poison, false, true, 36);
-        flash('☠ Яд: −' + S.poison + ' HP');
+        log('☠ Яд: −' + S.poison + ' HP');
       }
       if (enemyPhaseDeathCheck()) return;
       // Enemy poison is direct collection on a lethal tick: no kill counter,
@@ -3969,6 +4052,7 @@
         const skull = cell.skull, poison = skull.poison || [0, 0, 0];
         skull.poison = [poison[1], poison[2], 0];
         if (poison[0] > 0) {
+          flashOn(idx, -poison[0], 'hurt', 'HP');
           if (skull.hp <= poison[0]) { matchCell(idx); if (clsRace() === 'Elf') queueAchievement(47, 2); }
           else skull.hp -= poison[0];
         }
@@ -4014,7 +4098,7 @@
       const rawHp = S.hero.hp - damage;
       if (rawHp < 0 && [34, 35, 36].includes(cause)) queueAchievement(cause);
       S.hero.hp = Math.max(0, rawHp);
-      floatOn('-' + Math.round(damage), 'hurt');
+      floatOn(-damage, 'hurt', '#hud-hp', 'HP');
     }
     audioEnemy();
     return damage;
@@ -4026,7 +4110,9 @@
     if (S.hero.hp <= 0 && clsRace() !== 'Human' && hasMortalEnemy(MORTAL_BY_RACE[clsRace()])) queueAchievement(40);
     if (S.lastStand > 0 && S.hero.hp <= 0) {
       queueAchievement(61);
+      const before = S.hero.hp;
       S.hero.hp = S.hero.maxHp;
+      floatOn(S.hero.hp - before, 'heal', '#hud-hp', 'HP');
       S.lastStand = S.nextTurnFlags.lastStand = 0;
       flash('🛡 Последний рубеж: полное лечение!');
       return true;
@@ -4035,6 +4121,11 @@
   }
 
   // --- modals ---------------------------------------------------------------
+  function resetModalScroll() {
+    const card = qs('#modal .modal-card'), body = el('modal-body');
+    if (card) card.scrollTop = 0;
+    if (body) body.scrollTop = 0;
+  }
   function openModal(kind, restoredChoices = null) {
     const runId = RUN_ID;
     S.pendingModal = kind;
@@ -4043,6 +4134,7 @@
     const title = el('modal-title');
     const body = el('modal-body');
     if (!wrap || !body) return;
+    resetModalScroll();
     wrap.className = 'modal show';
     title.className = 'modal-title';
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
@@ -4053,7 +4145,7 @@
 
     if (kind === 'level') {
       title.textContent = '⬆ УРОВЕНЬ!';
-      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений и подтверди. Повторный тап по выбранной карточке снимает выбор.</p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 и подтверди. Повторный тап снимает выбор.</p>';
       const options = restoredChoices || chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
@@ -4062,7 +4154,7 @@
       renderEquipChoices(body, restoredChoices);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
-      body.innerHTML = '<p class="modal-hint">Добавь бонус одной из 4 надетых вещей. Остальные её параметры не меняются.</p>';
+      body.innerHTML = '<p class="modal-hint">Добавь бонус к надетой вещи. Остальное не меняется; полное сравнение — «Подробнее».</p>';
       renderUpgradeChoices(body, restoredChoices);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
@@ -4144,6 +4236,7 @@
     S.pendingModal = 'skull';
     const boss = !!skull.boss;
     wrap.classList.remove('level', 'shop', 'armor', 'trophy', 'gameover', 'skull');
+    resetModalScroll();
     wrap.className = 'modal show skull';
     title.className = 'modal-title skull';
     title.textContent = boss ? '👑 БОСС-ЧЕРЕП' : ('◆ ' + specialTypeName(skull).toUpperCase() + ' ЧЕРЕП');
@@ -4547,9 +4640,23 @@
     const summaryBtn = document.createElement('button');
     summaryBtn.type = 'button';
     summaryBtn.className = 'btn secondary shop-summary-toggle';
-    summaryBtn.textContent = '📊 Персонаж и экипировка';
+    summaryBtn.textContent = '📊 Персонаж';
     summaryBtn.setAttribute('aria-controls', 'equipment-summary');
     summaryBtn.setAttribute('aria-expanded', 'false');
+    const detailsBtn = document.createElement('button');
+    detailsBtn.type = 'button'; detailsBtn.className = 'btn secondary reward-details-toggle';
+    detailsBtn.textContent = 'Подробнее'; detailsBtn.setAttribute('aria-label', 'Полные параметры до и после');
+    detailsBtn.setAttribute('aria-controls', 'equipment-choices'); detailsBtn.setAttribute('aria-expanded', 'false');
+    grid.id = 'equipment-choices';
+    detailsBtn.addEventListener('click', () => {
+      const show = detailsBtn.getAttribute('aria-expanded') !== 'true';
+      grid.querySelectorAll('.item-state').forEach(node => { node.hidden = !show; });
+      detailsBtn.setAttribute('aria-expanded', String(show));
+      detailsBtn.setAttribute('aria-label', show ? 'Свернуть полное сравнение' : 'Полные параметры до и после');
+      detailsBtn.textContent = show ? 'Свернуть' : 'Подробнее';
+    });
+    const toolbar = document.createElement('div'); toolbar.className = 'reward-toolbar';
+    toolbar.appendChild(summaryBtn); toolbar.appendChild(detailsBtn);
     const summary = document.createElement('div');
     summary.id = 'equipment-summary';
     summary.className = 'character-summary';
@@ -4559,10 +4666,11 @@
       const show = summary.hidden;
       summary.hidden = !show;
       grid.hidden = show;
+      detailsBtn.hidden = show;
       summaryBtn.setAttribute('aria-expanded', String(show));
-      summaryBtn.textContent = show ? '↩ К выбору предмета' : '📊 Персонаж и экипировка';
+      summaryBtn.textContent = show ? '↩ К выбору' : '📊 Персонаж';
     });
-    body.appendChild(summaryBtn);
+    body.appendChild(toolbar);
     body.appendChild(grid);
     body.appendChild(summary);
   }
@@ -4584,15 +4692,17 @@
       btn.dataset.slot = item.slot;
       btn.innerHTML = `<span class="shop-icon">${item.icon}</span><span class="shop-body">
         <span class="shop-slot">${item.slotName} · замена</span><span class="shop-name">${item.name}</span>
-        <span class="item-state item-before"><span class="item-state-title">Заменяет: ${equipped.name}</span><span class="item-mods">${itemModsText(equipped)}</span></span>
-        <span class="item-state item-after"><span class="item-state-title">После замены:</span><span class="item-mods">${itemModsText(item)}</span></span>
-        <span class="shop-preview">Разница в этом слоте:</span>${changes}${scroll}</span>`;
+        <span class="shop-current">Вместо: ${equipped.name}</span>
+        <span class="item-state item-before" hidden><span class="item-state-title">Сейчас: ${equipped.name}</span><span class="item-mods">${itemModsText(equipped)}</span></span>
+        <span class="item-state item-after" hidden><span class="item-state-title">После замены:</span><span class="item-mods">${itemModsText(item)}</span></span>
+        ${changes}${scroll}</span>`;
       btn.addEventListener('click', () => { if (S.menuCandidates === options) purchaseShopItem(index); });
       grid.appendChild(btn);
     });
     // Three equipment choices; the fourth is always inert, never a stat scroll.
     const empty = document.createElement('div');
     empty.className = 'shop-item shop-empty';
+    empty.hidden = true; // Keep the inert fourth slot, not its decorative height.
     empty.setAttribute('aria-hidden', 'true');
     grid.appendChild(empty);
     appendEquipmentChoices(body, grid);
@@ -4615,8 +4725,8 @@
       btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}</span>
         <span class="lv-body">
           <span class="lv-name">${opt.slotName} · ${item.name}</span>
-          <span class="item-state item-before"><span class="item-state-title">Сейчас на предмете:</span><span class="item-mods">${itemModsText(item)}</span></span>
-          <span class="item-state item-after"><span class="item-state-title">После улучшения:</span><span class="item-mods">${itemModsText(upgraded)}</span></span>
+          <span class="item-state item-before" hidden><span class="item-state-title">Сейчас на предмете:</span><span class="item-mods">${itemModsText(item)}</span></span>
+          <span class="item-state item-after" hidden><span class="item-state-title">После улучшения:</span><span class="item-mods">${itemModsText(upgraded)}</span></span>
           <span class="lv-effs"><span class="lv-line item-change better">${opt.name}: ${opt.comparison} (+${itemNumber(opt.key, opt.value)})</span><span class="lv-line">${opt.desc}</span></span>
         </span>`;
       btn.addEventListener('click', () => {
@@ -4664,17 +4774,6 @@
     setTimeout(() => { if (runId === RUN_ID) openModal('gameover'); }, 600);
   }
 
-  function flashOn(idx, text) {
-    const cellEl = qs(`.cell[data-idx="${idx}"]`);
-    if (!cellEl) return;
-    const node = document.createElement('div');
-    node.className = 'float-fx';
-    node.textContent = text;
-    cellEl.appendChild(node);
-    setTimeout(() => node.remove(), 900);
-  }
-
-
   // --- special-ability helpers -------------------------------------------------
   // Match adjacent non-skulls in column order. matchCell's shared seen-set
   // terminates potion recursion and prevents overlaps from awarding twice.
@@ -4698,8 +4797,10 @@
       if (hurtHero) resetCollectionCounts();
       matchCell(idx, { reward: !hurtHero });
       if (hurtHero) {
+        const before = S.hero.hp;
         S.hero.hp = Math.max(1, Math.floor(S.hero.hp / 2));
-        flash('💠 КА-МИ-КАЗЕ: пол-HP → ' + S.hero.hp);
+        floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+        log('💠 КА-МИ-КАЗЕ: пол-HP → ' + S.hero.hp);
       }
       audioKill();
     });
@@ -4776,16 +4877,17 @@
         if (wounded.length > 0) {
           shuffle(wounded).slice(0, 2).forEach(wi => {
             const wc = S.board[wi];
+            const before = wc.skull.hp;
             wc.skull.hp = wc.skull.maxHp;
+            flashOn(wi, wc.skull.hp - before, 'heal', 'HP');
           });
-          flash('💚 Исцеление: черепы исцелены');
         } else {
           const all = [];
           for (let j = 0; j < CELL_COUNT; j++) {
             const ac = S.board[j];
             if (ac && ac.type === 'skull' && ac.skull.uid !== s.uid) all.push(j);
           }
-          shuffle(all).slice(0, 2).forEach(ai => { S.board[ai].skull.atk += 1; });
+          shuffle(all).slice(0, 2).forEach(ai => { S.board[ai].skull.atk += 1; flashOn(ai, 1, 'buff', '⚔'); });
         }
       } else if (t === 6) { // Acidic — превращает случайное зелье в кислое
         const potions = [];
@@ -4865,14 +4967,23 @@
           // смертного врага (Sauren): 2× атака Вора.
           let hpLoss = 0;
           if (clsRace() === 'Sauren') hpLoss = stolen * enemyGetAttack(s) * 2;
-          if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+          if (hpLoss > 0) {
+            const before = S.hero.hp;
+            S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+            floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+          }
           log('🏴‍☠️ Вор украл ' + stolen + ' монет' + (hpLoss > 0 ? ': −' + hpLoss + ' HP' : ''));
         } else {
           const stolen = Math.min(2, S.hero.gold);
           S.hero.gold -= stolen;
+          floatOn(-stolen, 'gold', '#hud-gold', 'золота');
           if (stolen > 0) {
             const hpLoss = clsRace() === 'Sauren' ? stolen * enemyGetAttack(s) * 2 : 0;
-            if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+            if (hpLoss > 0) {
+              const before = S.hero.hp;
+              S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+              floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+            }
             log('🏴‍☠️ Вор украл золото: −' + stolen + (hpLoss > 0 ? ', HP −' + hpLoss : ''));
           }
         }
@@ -5034,9 +5145,10 @@
           const pick = ordinary[randInt(0, ordinary.length - 1, 5)];
           const hp = S.board[pick].skull.hp;
           S.board[pick] = { type: 'empty' };
+          const before = S.hero.hp;
           S.hero.hp = Math.max(0, S.hero.hp - hp);
-          floatOn('💥 -' + hp, 'hurt');
-          flash('🪓 Брутал: −' + hp + ' HP');
+          floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+          log('🪓 Брутал: −' + hp + ' HP');
         }
       } else if (t === 28) { // Devourer — таймер → уничтожать апгрейд
         s.countdown = (s.countdown || 0) - 1;

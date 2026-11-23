@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#140e22">
-<meta name="raid-build" content="e8894dda6bf6">
+<meta name="raid-build" content="c8d1949e95b6">
 <title>Lunapark · Рейд</title>
 <style>
 /* miniapp_preview/raid.css — пробник Рейда */
@@ -294,20 +294,27 @@ body { display: flex; align-items: stretch; justify-content: center; }
 }
 .log-wrap div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* float fx */
+/* Applied numbers are anchored in viewport coordinates, outside clipped tiles.
+   JS only positions these decorations; it never scrolls or changes the run. */
+.effect-layer { position: fixed; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
 .float-fx {
-  position: absolute; left: 50%; top: 34%; transform: translateX(-50%);
-  font-size: 18px; font-weight: 900; color: #ffe2a9;
-  text-shadow: 0 2px 6px rgba(0,0,0,0.8); pointer-events: none; z-index: 20;
+  position: absolute; transform: translate(-50%, -50%);
+  font-size: 15px; font-weight: 900; line-height: 1.25; color: #ffe2a9;
+  white-space: nowrap; padding: 1px 4px; border-radius: 5px;
+  background: rgba(12, 7, 20, .72);
+  text-shadow: 0 1px 3px #000, 0 0 6px #000; pointer-events: none;
   animation: floatAway 0.9s ease-out forwards;
 }
 .float-fx.heal { color: #8fffb0; }
 .float-fx.hurt { color: #ff8a7a; }
-.float-fx.armor { color: #8ec8ff; }
+.float-fx.armor, .float-fx.mana { color: #8ec8ff; }
+.float-fx.xp { color: #b8ff70; }
+.float-fx.gold { color: #ffe27a; }
+.float-fx.upgrade { color: #dab8ff; }
 @keyframes floatAway {
-  0% { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.7); }
-  20% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.15); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-38px) scale(0.9); }
+  0% { opacity: 0; transform: translate(-50%, -20%) scale(.85); }
+  18%, 60% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 32px)) scale(.95); }
 }
 
 /* modal */
@@ -319,35 +326,38 @@ body { display: flex; align-items: stretch; justify-content: center; }
 }
 .modal.show { opacity: 1; pointer-events: auto; }
 .modal-card {
-  width: min(100%, 460px); min-width: 0; max-height: 86dvh; overflow: auto;
+  width: min(100%, 460px); min-width: 0; max-height: 86dvh;
+  display: flex; flex-direction: column; overflow: hidden;
   background: linear-gradient(160deg, #241a3a 0%, #160d26 100%);
   border: 1px solid #6a5a8a; border-radius: 16px;
-  padding: 14px 16px 14px;
+  padding: 10px 12px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 0 1px rgba(138,95,176,0.3);
 }
+#modal-body { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 2px 2px 4px; scroll-padding-block: 4px 70px; }
+.modal-card > .modal-title { flex: none; }
+.modal-card .btn { min-height: 44px; }
 .modal-title {
   font: 700 22px Georgia, serif; color: #ffe2a9; margin: 0 0 4px;
   text-align: center; letter-spacing: 0.02em;
 }
-.modal-hint { text-align: center; font-size: 11px; color: #cdb8d0; margin: 8px 0; line-height: 1.45; }
+.modal-hint { text-align: center; font-size: 11.5px; color: #cdb8d0; margin: 4px 0; line-height: 1.35; }
 /* --- LEVEL UP / SHOP / UPGRADE modals (classic parity) --- */
-.lv-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
+.lv-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 6px 0 4px; }
 .lv-status { text-align: center; font-size: 13px; font-weight: 800; color: #b9f0a8; margin: 6px 0 8px; }
 .lv-actions {
-  position: sticky; bottom: -14px; z-index: 2;
+  position: sticky; bottom: 0; z-index: 2;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: #1d142e; border-top: 1px solid #665078;
-  padding: 10px 2px; margin-top: 8px; box-shadow: 0 -6px 12px rgba(15,8,24,.6);
+  padding: 6px 2px; margin-top: 6px; box-shadow: 0 -6px 12px rgba(15,8,24,.6);
 }
 .lv-actions .lv-status { margin: 0; text-align: left; font-size: 12px; }
 .lv-confirm { flex: none; margin-top: 0; min-height: 44px; }
 .lv-confirm:disabled { opacity: .45; cursor: default; }
 .lv-confirm:disabled:active { transform: none; }
-.modal.level .modal-card { scroll-padding-block: 12px 84px; }
 .lv-card {
-  display: flex; align-items: center; gap: 12px; text-align: left;
+  display: flex; align-items: center; gap: 8px; text-align: left; min-height: 44px;
   border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
-  border-radius: 12px; padding: 9px 11px; cursor: pointer; color: #f2e9ff;
+  border-radius: 10px; padding: 7px 8px; cursor: pointer; color: #f2e9ff;
   transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
   width: 100%;
 }
@@ -359,7 +369,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .lv-card:disabled:active { transform: none; }
 .lv-card:focus-visible, .lv-confirm:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .lv-icon-box {
-  position: relative; width: 64px; height: 58px; flex-shrink: 0;
+  position: relative; width: 40px; height: 36px; flex-shrink: 0;
   display: grid; place-items: center;
   background: linear-gradient(160deg, #241231 0%, #170c26 100%);
   border: 2px solid #ffd23f; border-radius: 10px;
@@ -372,33 +382,33 @@ body { display: flex; align-items: stretch; justify-content: center; }
 }
 .lv-icon-box::before { top: 2px; }
 .lv-icon-box::after { bottom: 2px; }
-.lv-icon { font-size: 27px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6)); }
+.lv-icon { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6)); }
 .lv-corner {
   position: absolute; right: 3px; bottom: 3px; z-index: 2;
-  font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  font-size: 10px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 2px #000, 0 0 4px #000;
 }
 .lv-chip {
-  width: 64px; height: 58px; flex-shrink: 0; display: grid; place-items: center;
+  width: 40px; height: 36px; flex-shrink: 0; display: grid; place-items: center;
   background: linear-gradient(160deg, #241231 0%, #170c26 100%);
   border: 1.5px solid #5a4a86; border-radius: 10px;
-  font-size: 17px; font-weight: 900; letter-spacing: 0.02em;
+  font-size: 12px; font-weight: 900; letter-spacing: 0.02em;
   text-shadow: 0 1px 2px #000;
 }
 .lv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-left: 2px; }
-.lv-name { font: 700 15px Georgia, serif; color: #ffffff; letter-spacing: 0.02em; }
-.lv-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.lv-cool { font: 400 12px Georgia, serif; color: #b8aed0; white-space: nowrap; }
+.lv-name { font: 700 13.5px Georgia, serif; color: #ffffff; line-height: 1.25; overflow-wrap: anywhere; }
+.lv-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 8px; }
+.lv-cool { font: 400 11px Georgia, serif; color: #b8aed0; white-space: nowrap; }
 .lv-desc { font-size: 11.5px; color: #c9c2d8; line-height: 1.35; }
 .lv-effs { display: flex; flex-direction: column; gap: 1px; }
 .lv-line { font-size: 11.5px; color: #cfc8de; line-height: 1.4; letter-spacing: 0.01em; }
 .lv-line strong { color: #ffffff; }
 
 /* shop (item shop) */
-.shop-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 10px 0 4px; }
+.shop-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 6px 0 4px; }
 .shop-item {
-  display: flex; align-items: center; gap: 13px; text-align: left;
+  display: flex; align-items: center; gap: 8px; text-align: left; min-height: 44px;
   border: 1px solid #4a3a68; background: linear-gradient(160deg, #241a3d 0%, #1a1230 100%);
-  border-radius: 12px; padding: 9px 12px; cursor: pointer; color: #f2e9ff;
+  border-radius: 10px; padding: 7px 8px; cursor: pointer; color: #f2e9ff;
   transition: transform 0.12s ease, border-color 0.12s ease;
   width: 100%;
 }
@@ -407,13 +417,13 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .shop-item.shop-empty { cursor: default; opacity: 0.55; border-style: dashed; }
 .shop-item.shop-empty:hover { border-color: #4a3a68; }
 .shop-icon {
-  width: 60px; height: 60px; flex-shrink: 0; display: grid; place-items: center;
+  width: 40px; height: 36px; flex-shrink: 0; display: grid; place-items: center;
   background: linear-gradient(160deg, #2a1e48 0%, #1b1431 100%);
   border: 1.5px solid #5a4a86; border-radius: 10px;
   box-shadow: inset 0 0 12px rgba(0,0,0,0.45);
-  font-size: 26px; line-height: 1;
+  font-size: 22px; line-height: 1;
 }
-.shop-name { font: 700 14.5px Georgia, serif; color: #ffffff; line-height: 1.2; display: block; }
+.shop-name { font: 700 13.5px Georgia, serif; color: #ffffff; line-height: 1.2; display: block; overflow-wrap: anywhere; }
 .item-state { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #62516e; padding: 3px 0 3px 7px; margin-top: 3px; overflow-wrap: anywhere; }
 .item-state-title { font-size: 10.5px; color: #bdaecb; line-height: 1.35; }
 .item-mods { font-size: 11.5px; color: #ece2f4; line-height: 1.4; }
@@ -421,11 +431,11 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .build-label, .help-card .build-label { margin: 2px 0; color: #ad9abc; font-size: 10px; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
 
 /* titles */
-.modal-title.level { color: #5bf24a; font-size: 30px; text-shadow: 0 0 2px #053d0a, 0 2px 2px #000, 0 0 18px rgba(91,242,74,0.45); }
-.modal-title.shop { color: #ffe14d; font-size: 28px; text-shadow: 0 1px 2px #3d2b00, 0 0 16px rgba(255,225,77,0.4); }
-.modal-title.armor { color: #c9a8ff; font-size: 24px; }
-.modal.level .modal-hint, .modal.armor .modal-hint { color: #b8ff7a; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000; }
-.modal.shop .modal-hint { color: #ffd97a; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+.modal-title.level { color: #5bf24a; font-size: 22px; text-shadow: 0 0 2px #053d0a, 0 2px 2px #000, 0 0 18px rgba(91,242,74,0.45); }
+.modal-title.shop { color: #ffe14d; font-size: 22px; text-shadow: 0 1px 2px #3d2b00, 0 0 16px rgba(255,225,77,0.4); }
+.modal-title.armor { color: #c9a8ff; font-size: 20px; }
+.modal.level .modal-hint, .modal.armor .modal-hint { color: #b8ff7a; font-size: 11.5px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+.modal.shop .modal-hint { color: #ffd97a; font-size: 11.5px; font-weight: 700; text-shadow: 0 1px 2px #000; }
 .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 12px 0; }
 .stats-grid > div {
   border: 1px solid #4d3058; border-radius: 12px; padding: 10px 8px; text-align: center;
@@ -452,12 +462,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .help-card {
   width: min(100%, 430px); min-width: 0; max-height: 82dvh; overflow: auto;
   background: linear-gradient(160deg, #2c1b40, #161028);
-  border: 1px solid #8a5fb0; border-radius: 16px; padding: 18px;
+  border: 1px solid #8a5fb0; border-radius: 16px; padding: 12px;
 }
 .help-card h3 { font: 700 20px Georgia, serif; color: #ffe2a9; margin: 0 0 8px; }
-.help-card p, .help-card li { font-size: 12px; line-height: 1.55; color: #d9c8dc; }
+.help-card p, .help-card li { font-size: 12px; line-height: 1.45; color: #d9c8dc; }
 .help-card ul { padding-left: 18px; margin: 4px 0 10px; }
-.help-card .btn { display: block; width: 100%; }
+.help-card .btn { display: block; width: 100%; min-height: 44px; }
 
 /* responsive */
 @media (max-height: 720px) {
@@ -540,12 +550,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
 }
 .skull-badge.special { color: #ffd97a; border-color: rgba(255, 217, 122, 0.5); }
 /* skull features modal (tap on a special/boss skull) */
-.modal.skull .modal-title.skull { color: #ffd97a; font-size: 24px; text-shadow: 0 2px 2px #000, 0 0 18px rgba(255, 217, 122, 0.35); }
-.skull-feat-art { width: 96px; height: 96px; max-height: 140px; object-fit: contain; display: block; margin: 6px auto 4px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.7)); }
-.skull-feat-stats { text-align: center; font-size: 19px; color: #efe6da; margin: 2px 0 8px; letter-spacing: 0.03em; }
-.skull-feat-stats b { color: #ffe2a9; font-size: 20px; }
-.skull-feat-list { display: flex; flex-direction: column; gap: 6px; margin: 0 auto 10px; max-width: 380px; }
-.skull-feat-line { font-size: 12.5px; line-height: 1.45; color: #d9c8dc; background: rgba(30, 20, 44, 0.6); border: 1px solid #4a3a68; border-radius: 10px; padding: 7px 10px; }
+.modal.skull .modal-title.skull { color: #ffd97a; font-size: 20px; text-shadow: 0 2px 2px #000, 0 0 18px rgba(255, 217, 122, 0.35); }
+.skull-feat-art { width: 64px; height: 64px; max-height: 64px; object-fit: contain; display: block; margin: 6px auto 4px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.7)); }
+.skull-feat-stats { text-align: center; font-size: 16px; color: #efe6da; margin: 2px 0 8px; letter-spacing: 0.03em; }
+.skull-feat-stats b { color: #ffe2a9; font-size: 17px; }
+.skull-feat-list { display: flex; flex-direction: column; gap: 4px; margin: 0 auto 10px; max-width: 380px; }
+.skull-feat-line { font-size: 12px; line-height: 1.4; color: #d9c8dc; background: rgba(30, 20, 44, 0.6); border: 1px solid #4a3a68; border-radius: 8px; padding: 5px 7px; }
 .skull-feat-line::before { content: '◆ '; color: #ffd97a; }
 .modal.skull .btn { display: block; width: 100%; }
 /* special skull images (other appearances for specials) */
@@ -566,8 +576,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
 /* Detailed effects and full character sheet inside shop choices. */
 .shop-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .shop-preview { display: block; color: #cfc8de; font-size: 10.5px; line-height: 1.35; }
-.shop-summary-toggle { display: block; width: 100%; margin: 6px 0 8px; }
-.character-summary { max-height: 58vh; overflow-y: auto; border: 1px solid #4a3a68; border-radius: 12px; padding: 10px; background: rgba(20,13,33,.72); }
+.reward-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 4px 0 6px; }
+.reward-toolbar .btn { min-width: 0; min-height: 44px; padding: 7px 5px; margin: 0; font-size: 11.5px; letter-spacing: 0; }
+.shop-current, .shop-slot { font-size: 11px; line-height: 1.3; color: #bdaecb; }
+.character-summary { max-height: none; overflow-y: visible; border: 1px solid #4a3a68; border-radius: 12px; padding: 10px; background: rgba(20,13,33,.72); }
 .summary-hint { color: #cdb8d0; font-size: 11px; line-height: 1.4; margin: 0 0 8px; text-align: center; }
 .character-summary-list { display: flex; flex-direction: column; gap: 4px; }
 .character-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid rgba(106,90,138,.35); padding: 4px 1px; font-size: 11px; line-height: 1.35; }
@@ -750,6 +762,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   max-height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px);
   overflow-y: auto;
 }
+.telegram-preview .modal-card { overflow: hidden; }
 .telegram-preview .picker-card.editor-open { height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px); overflow: hidden; }
 .telegram-preview .achievement-notice { top: calc(12px + var(--raid-inset-top)); }
 
@@ -764,7 +777,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="picker-card" id="picker-card">
     <div class="picker-main" id="class-picker-main">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="build-label">Сборка e8894dda6bf6</p>
+    <p class="build-label">Сборка c8d1949e95b6</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Продолжи сохранённый забег или начни новый с карточки класса. Настройки под карточкой действуют только на следующие забеги.</p>
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
@@ -848,21 +861,21 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <!-- HUD -->
   <section class="hud" aria-label="Статус героя">
     <div class="hud-row">
-      <div class="hud-cell">
+      <div class="hud-cell" id="hud-hp">
         <div class="hud-label"><span>❤️ HP</span><span id="hp-text">50 / 50</span></div>
         <div class="bar"><i id="hp-bar" class="fill-hp"></i></div>
       </div>
-      <div class="hud-cell">
+      <div class="hud-cell" id="hud-armor">
         <div class="hud-label"><span>🛡 Броня</span><span id="armor-text">4 / 4</span></div>
         <div class="bar"><i id="armor-bar" class="fill-armor"></i></div>
       </div>
     </div>
     <div class="hud-row">
-      <div class="hud-cell">
+      <div class="hud-cell" id="hud-xp">
         <div class="hud-label"><span>⭐ Опыт</span><span id="xp-text">Ур. 1 · 0 / 100</span></div>
         <div class="bar xp"><i id="xp-bar" class="fill-xp"></i></div>
       </div>
-      <div class="hud-cell">
+      <div class="hud-cell" id="hud-gold">
         <div class="hud-label"><span>💰 Золото</span><span id="gold-text">0 / 100</span></div>
         <div class="bar"><i id="gold-bar" class="fill-gold"></i></div>
       </div>
@@ -873,7 +886,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <span class="dmg" id="trophy-text" style="color:#ffd97a">🏆 через 1</span>
       <span class="dmg" id="upgrade-text" style="color:#c9a8ff">⬆ 0 / 100</span>
     </div>
-    <div class="bar xp" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
+    <div class="bar xp" id="hud-upgrade" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
   </section>
 
   <div class="log-wrap" id="log" aria-live="polite"></div>
@@ -882,11 +895,15 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <p class="achievement-notice" id="achievement-notice" role="status" aria-live="polite" hidden></p>
 </div>
 
+<!-- Presentation only: outside cells so rerender/overflow cannot erase a hit.
+     Viewport coordinates follow the actual recipient; never receives input. -->
+<div class="effect-layer" id="raid-effects" aria-hidden="true"></div>
+
 <!-- run menu -->
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
     <h3>⚔ Меню рейда</h3>
-    <p class="build-label">Сборка e8894dda6bf6</p>
+    <p class="build-label">Сборка c8d1949e95b6</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
     <button class="btn" id="menu-resume" type="button">Продолжить</button>
@@ -949,7 +966,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="help-card">
     <h3>⚔ Как играть</h3>
     <p><b>Пробник классического Рейда</b> на своих графике и коде.</p>
-    <p class="build-label">Сборка e8894dda6bf6</p>
+    <p class="build-label">Сборка c8d1949e95b6</p>
     <ul>
       <li>Смахни по 3+ клеток одной категории (меч/щит/монета/зелье).</li>
       <li>Череп идёт в цепочку с мечом/стрелой и сам может начинать её.</li>
@@ -957,6 +974,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>При наборе цепочки окошко покажет базовый расчёт без случайных бонусов и наград особых; если удар убивает монстра — он подсветится и перечеркнётся. Возврат к выбранной клетке убирает весь хвост после неё.</li>
       <li>Каждый щит либо чинит броню, либо даёт 2 UP: при полной броне или Коррозии на поле. Излишек ремонта этого щита пропадает; следующий щит проверяется заново. Монеты → золото, обычные зелья → лечение.</li>
       <li>Старые незамороженные черепа атакуют общим залпом: весь запас брони поглощает урон до её износа. Пробившийся залп с Отравленным накладывает яд; в конце хода сначала регенерация, затем яд. HP=0 → конец забега.</li>
+      <li>Числа у врага появляются на его клетке. Лечение и урон героя — у HP, броня, опыт, золото и UP — у своих шкал; мана — у получившего заряд навыка. Несколько одновременных прибавок одного типа складываются в одну надпись. Это показ уже применённого эффекта, не новый бросок.</li>
       <li>Ассасин / Вервольф — «Калечение»: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты и даёт опыт. Твоя броня и возраст черепа не влияют; особые и боссы не затрагиваются.</li>
       <li>100 опыта → уровень (2 из 4); 100 золота → магазин; 100 UP → улучшение снаряжения. На уровне отметь два варианта и нажми «Подтвердить»: до этого повторный тап снимает отметку, а награды ещё не применяются. Пока выбор не подтверждён, следующие награды и ход врагов ждут; остаток шкалы сохраняется.</li>
       <li>Руна: активируй навык и проведи контур из 4+ узлов с соседними концами. Подсвеченный интерьер собирается до основной цепочки: обычные черепа — без проверки HP/защиты, с опытом, но без счётчика убийств. Особые и боссы остаются (пунктирная подсветка).</li>
@@ -964,7 +982,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>Каждый забег начинается без навыков. У остальных классов первый уникальный навык предложат на уровне героя 2 (кроме Желания в Спринте); брать его необязательно. Авантюрист выбирает из всех открытых навыков. В Спринте новые навыки сразу уровня 5, но выжить нужно 100 ходов.</li>
       <li>Настройка класса — под его карточкой или через «Меню → Классы и настройки». Уровень класса растёт от трофеев, отдельно от уровня героя. На 3/7/9 открываются пары пассивов и изъянов, с 5 можно сменить расу, на чётных уровнях — заменить 2/4/6/8/10 навыков пула. Расы других классов открываются на их уровне 5, уникальные навыки — на 10. Основная пара и первый навык фиксированы; Авантюрист не настраивается. Изменения сохраняются в этом браузере и действуют только на следующие забеги.</li>
       <li>Трофей остаётся клеткой 🏆 на месте особого. Тапни по нему: откроется случайный закрытый класс или вырастет текущий (потолок 10). Подбор не тратит ход; замороженный трофей сначала нужно разморозить. На лёгком трофеев нет, в Спринте счётчик уменьшается с шансом 50/101; максимум 3 появления за забег, даже если трофеи не забрать.</li>
-      <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Бывают и обмены: −1 к одному параметру ради двойного прироста другого, например +2 к урону оружия. Карточка показывает обе вещи, улучшения зелёным и ухудшения красным.</li>
+      <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Бывают и обмены: −1 к одному параметру ради двойного прироста другого, например +2 к урону оружия. На компактной карточке сразу видны все изменения: улучшения зелёным, ухудшения красным. «Подробнее» раскрывает полные параметры обеих вещей, ничего не покупая и не перебрасывая.</li>
       <li>Апгрейд только добавляет бонус конкретной надетой вещи: остальные её параметры не уменьшаются. Это не вечная прибавка персонажу. При следующей покупке учитываются все параметры надетой вещи; если их нет у замены — бонус исчезнет. В обоих меню можно посмотреть всю экипировку. «Ускорение навыков» не складывается с другим таким же предметом.</li>
       <li>📜 Свиток прилагается к одному из предметов и разово применяет указанный навык при покупке: не занимает слот и не меняет заряд такого же навыка. Воспроизводится ошибка классического фильтра (I1): он читает занятые слоты, счётчики и историю надписи лечения «Сок», а не список выученных навыков. 10%-е исключения обходят этот фильтр. Для воспроизводимости неинициализированная память считается нулевой при открытии страницы; история надписи сохраняется между забегами в этой вкладке. «Продолжить» после перезагрузки восстанавливает историю именно сохранённого забега; без продолжения новая страница начинает её заново. Это модель совместимости, не точная копия памяти и таймингов оригинала. Если данных недостаточно или кандидатов нет, пропускается только свиток, не покупка.</li>
       <li>Тест в Telegram открывается кнопкой «Рейд · тест» в личке владельца бота (/raid_test). Рабочая база и серверные награды не подключаются; сам URL пробника публичный. Сохранения Telegram могут быть отдельными от обычного браузера. Оболочка разворачивает окно и отключает сворачивание вертикальным свайпом, если версия клиента позволяет. Во вложенных окнах «Назад» возвращает к игре, не отменяя обязательных наград. На основном экране остаётся штатная кнопка закрытия Telegram. «Меню → Закрыть Mini App» сохраняет текущий момент и отправляет команду выхода; если запись не удалась, можно остаться или явно подтвердить закрытие с риском потери последних действий. После повторного входа нужно нажать «Продолжить», в том числе для ожидающих наград. В обычном браузере «Закрыть меню» только возвращает в игру. Прерванный системой жест отменяется без хода. Если SDK недоступен, это явно показано: такой запуск не подтверждает работу оболочки Telegram.</li>
@@ -2276,6 +2294,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    clearFloatEffects();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -2850,6 +2869,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (special && effType !== 3 && effType !== 30) atk = Math.max(1, atk); // Golden (3): A=0; Meat Shield (30): trunc(A/2)
     // Orc's mortal enemy (Corrosive): its appearance drops the hero's armour to 0.
     if (special && effType === 12 && clsRace() === 'Orc' && S && S.hero) {
+      floatOn(-S.hero.armor, 'armor', '#hud-armor', 'брони');
       S.hero.armor = 0;
       log('☣️ Коррозия появилась: броня героя обнулена!');
     }
@@ -3570,6 +3590,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const empty = document.createElement('button');
         empty.type = 'button';
         empty.className = 'skill empty';
+        empty.dataset.slot = String(i);
         empty.disabled = true;
         empty.innerHTML = '<span class="skill-icon">＋<\/span><span class="skill-name">пусто<\/span>';
         empty.title = 'Слот навыка откроется на уровне 2';
@@ -3581,6 +3602,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
+      btn.dataset.slot = String(i);
       btn.innerHTML = `<span class="skill-icon">${skill.icon}<\/span><span class="skill-name">${skill.name}<\/span>${left > 0 ? `<span class="cd">${left}<\/span>` : (level > 1 ? `<span class="cd">ур.${level}<\/span>` : '')}`;
       const duration = skillDuration(skillId);
       btn.title = skill.desc + (duration > 0 ? ' · готовность: ' + (duration - left) + '/' + duration : ' · одноразовый') + (level > 1 ? ', уровень ' + level : '');
@@ -3602,6 +3624,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
+    clearFloatEffects();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -3852,8 +3875,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const skull = cell.skull;
       if (skull.phylactery) return false;
       if (opts.direct && S.stealActive > 0) queueResource('coin');
+      const defence = skull.def;
       const dmg = damageSkull(skull, amount, opts);
-      if (dmg > 0) floatOn('💥 ' + dmg, 'hurt');
+      flashOn(idx, -dmg, 'hurt', 'HP');
+      flashOn(idx, skull.def - defence, 'armor', 'брони');
       if (skull.hp > 0) return false;
       if (skull.type === 32) {
         // AttackSkull transforms Lich; collection/poison are different paths.
@@ -3951,6 +3976,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       for (let i = 0; i < CELL_COUNT; i++) {
         const c = S.board[i];
         if (c && c.type === 'skull' && c.skull && !c.skull.special && !c.skull.boss) {
+          flashOn(i, -c.skull.def, 'armor', 'брони');
+          flashOn(i, Math.min(c.skull.atk, 1) - c.skull.atk, 'buff', '⚔');
           c.skull.def = 0;
           c.skull.atk = Math.min(c.skull.atk, 1);
           n++;
@@ -4429,7 +4456,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (clsRace(state) !== 'Faun') return 0;
     const before = state.hero.hp;
     state.hero.hp = Math.max(before, Math.floor(state.hero.maxHp * .25));
-    if (state === S && state.hero.hp > before) queueAchievement(50, 5);
+    if (state === S && state.hero.hp > before) {
+      queueAchievement(50, 5);
+      floatOn(state.hero.hp - before, 'heal', '#hud-hp', 'HP');
+    }
     return state.hero.hp - before;
   }
 
@@ -4515,13 +4545,16 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const before = state.skillCooldowns[skillId] || 0;
         state.skillCooldowns[skillId] = Math.max(0, before - 1);
         result.manaCollected = before - state.skillCooldowns[skillId];
+        if (state === S) floatOn(-result.manaCollected, 'mana', `.skill[data-slot="${token.skillSlot}"]`, 'КД');
         return result;
       }
       const amount = HEAL_PER_POTION + hero.stats.luck;
       if (token.variant === 2) {
         const rawHp = hero.hp - amount;
         if (state === S && rawHp < 0) queueAchievement(37);
+        const before = hero.hp;
         hero.hp = Math.max(0, rawHp);
+        if (state === S) floatOn(hero.hp - before, 'hurt', '#hud-hp', 'HP');
         if (state === S && hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
       } else {
         const before = hero.hp;
@@ -4553,6 +4586,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       }
       if (crossed && state === S) requestRewardMenu(token.type === 'xp' ? 'level' : token.type === 'coin' ? 'gold' : 'armor');
     }
+    if (state === S) {
+      if (token.type === 'potion') floatOn(result.healGained, 'heal', '#hud-hp', 'HP');
+      floatOn(result.armorGained, 'armor', '#hud-armor', 'брони');
+      floatOn(result.xpGained, 'xp', '#hud-xp', 'XP');
+      floatOn(result.goldGained, 'gold', '#hud-gold', 'золота');
+      floatOn(result.upGained, 'upgrade', '#hud-upgrade', 'UP');
+    }
     return result;
   }
 
@@ -4565,13 +4605,13 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function heal(amount) {
     const before = S.hero.hp;
     S.hero.hp = Math.min(S.hero.maxHp, S.hero.hp + amount);
-    if (S.hero.hp !== before) floatOn('+' + Math.round(S.hero.hp - before), 'heal');
+    floatOn(S.hero.hp - before, 'heal', '#hud-hp', 'HP');
   }
 
   function repair(amount) {
     const before = S.hero.armor;
     S.hero.armor = Math.min(S.hero.maxArmor, S.hero.armor + amount);
-    if (S.hero.armor !== before) floatOn('+' + Math.round(S.hero.armor - before), 'armor');
+    floatOn(S.hero.armor - before, 'armor', '#hud-armor', 'брони');
   }
 
   function flash(msg) {
@@ -4587,14 +4627,73 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
   function flashHint(msg) { flash(msg); }
 
-  function floatOn(text, kind) {
-    const board = qs('#board');
-    if (!board) return;
-    const node = document.createElement('div');
-    node.className = 'float-fx ' + kind;
-    node.textContent = text;
-    board.appendChild(node);
-    setTimeout(() => node.remove(), 900);
+  // Decorations are not state/RNG, save data, arrival events or continuations.
+  // One short burst per recipient/sign/kind is summed rather than overprinted.
+  // A selector survives renderSkills/board redraw; no center-screen fallback.
+  const FLOAT_EFFECTS = new Set();
+  let FLOAT_FRAME = 0;
+  function clearFloatEffects() {
+    if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
+    FLOAT_FRAME = 0;
+    for (const effect of FLOAT_EFFECTS) effect.node.remove();
+    FLOAT_EFFECTS.clear();
+  }
+  function renderFloatEffects() {
+    FLOAT_FRAME = 0;
+    const now = Date.now(), shell = qs('.shell')?.getBoundingClientRect();
+    const top = Math.max(0, shell?.top || 0), left = Math.max(0, shell?.left || 0);
+    const right = Math.min(window.innerWidth, shell?.right || window.innerWidth);
+    const bottom = Math.min(window.innerHeight, shell?.bottom || window.innerHeight);
+    const expired = [], positions = [];
+    // Read all geometry before writing styles: a board-wide hit must not cause
+    // a separate forced layout for every label on every Android frame.
+    for (const effect of FLOAT_EFFECTS) {
+      const anchor = qs(effect.target);
+      if (now >= effect.until || !anchor) { expired.push(effect); continue; }
+      const rect = anchor.getBoundingClientRect();
+      // Offscreen HP in a short landscape stays offscreen, never jumps to the
+      // board. No auto-scroll can interrupt the player's current touch chain.
+      const hidden = !rect.width || !rect.height || rect.bottom <= top || rect.top >= bottom
+        || rect.right <= left || rect.left >= right;
+      const half = Math.min((effect.node.offsetWidth || effect.node.textContent.length * 9) / 2 + 4, (right - left) / 2);
+      const x = Math.max(left + half, Math.min(right - half, rect.left + rect.width / 2));
+      const y = Math.max(top + 36, Math.min(bottom - 10, rect.top + rect.height / 2 - effect.lane * 18));
+      positions.push({ node: effect.node, hidden, x: x + 'px', y: y + 'px' });
+    }
+    for (const effect of expired) { effect.node.remove(); FLOAT_EFFECTS.delete(effect); }
+    for (const { node, hidden, x, y } of positions) {
+      if (node.hidden !== hidden) node.hidden = hidden;
+      if (node.style.left !== x) node.style.left = x;
+      if (node.style.top !== y) node.style.top = y;
+    }
+    if (FLOAT_EFFECTS.size) FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+  }
+  function floatOn(amount, kind, target, label) {
+    if (!Number.isFinite(amount) || !amount) return;
+    const layer = el('raid-effects');
+    if (!layer || !qs(target)) return;
+    const now = Date.now();
+    let effect = [...FLOAT_EFFECTS].find(old => old.target === target && old.kind === kind && old.label === label
+      && Math.sign(old.amount) === Math.sign(amount) && now - old.started < 100);
+    if (effect) effect.amount += amount;
+    else {
+      // Bounded even for synthetic board-wide repeated effects.
+      if (FLOAT_EFFECTS.size >= 64) {
+        const oldest = FLOAT_EFFECTS.values().next().value;
+        oldest.node.remove(); FLOAT_EFFECTS.delete(oldest);
+      }
+      const node = document.createElement('div');
+      node.className = 'float-fx ' + kind; node.dataset.target = target;
+      const lane = [...FLOAT_EFFECTS].filter(old => old.target === target).length % 3;
+      effect = { node, target, kind, label, amount, lane, started: now, until: now + 900 };
+      FLOAT_EFFECTS.add(effect); layer.appendChild(node);
+    }
+    const value = Number(Math.abs(effect.amount).toFixed(2));
+    effect.node.textContent = (effect.amount < 0 ? '−' : '+') + value + (label ? ' ' + label : '');
+    if (!FLOAT_FRAME) renderFloatEffects();
+  }
+  function flashOn(idx, amount, kind, label) {
+    floatOn(amount, kind, `.cell[data-idx="${idx}"]`, label);
   }
 
   // --- audio ----------------------------------------------------------------
@@ -4837,6 +4936,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     let armourLoss = 0;
     for (let n = 0; n < blocked; n++) if (defiler || randInt(0, 100, 5) < threshold) armourLoss++;
     S.hero.armor -= armourLoss;
+    floatOn(-armourLoss, 'armor', '#hud-armor', 'брони');
     return { attack, blocked, damage: Math.max(0, attack - armour), armourLoss, hadArmour: armour > 0 };
   }
 
@@ -4883,9 +4983,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         for (const idx of columnSlots()) {
           const cell = S.board[idx];
           if (!cell || cell.type !== 'skull' || cell.matched || cell.skull.type !== 20) continue;
-          const skull = cell.skull, hp = skull.hp + enemyGetAttack(skull);
+          const skull = cell.skull, before = skull.hp, hp = skull.hp + enemyGetAttack(skull);
           if (clsRace() === 'Werewolf') { skull.hp = hp; skull.maxHp = Math.max(hp, skull.maxHp); }
           else skull.hp = Math.min(skull.maxHp, hp);
+          flashOn(idx, skull.hp - before, 'heal', 'HP');
         }
         damageHero(volley.damage, false, true);
       } else audioEnemy();
@@ -4935,14 +5036,14 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
               hitSkullAt(idx, amount, { direct: false, ignoreDefence: true });
               if (clsRace() === 'Dragonkin') queueAchievement(54, 2);
             }
-            else target.hp -= amount;
+            else { target.hp -= amount; flashOn(idx, -amount, 'hurt', 'HP'); }
           }
         }
       }
       if (S.regen > 0) heal(S.regen);
       if (S.poison > 0) {
         damageHero(S.poison, false, true, 36);
-        flash('☠ Яд: −' + S.poison + ' HP');
+        log('☠ Яд: −' + S.poison + ' HP');
       }
       if (enemyPhaseDeathCheck()) return;
       // Enemy poison is direct collection on a lethal tick: no kill counter,
@@ -4953,6 +5054,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         const skull = cell.skull, poison = skull.poison || [0, 0, 0];
         skull.poison = [poison[1], poison[2], 0];
         if (poison[0] > 0) {
+          flashOn(idx, -poison[0], 'hurt', 'HP');
           if (skull.hp <= poison[0]) { matchCell(idx); if (clsRace() === 'Elf') queueAchievement(47, 2); }
           else skull.hp -= poison[0];
         }
@@ -4998,7 +5100,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const rawHp = S.hero.hp - damage;
       if (rawHp < 0 && [34, 35, 36].includes(cause)) queueAchievement(cause);
       S.hero.hp = Math.max(0, rawHp);
-      floatOn('-' + Math.round(damage), 'hurt');
+      floatOn(-damage, 'hurt', '#hud-hp', 'HP');
     }
     audioEnemy();
     return damage;
@@ -5010,7 +5112,9 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (S.hero.hp <= 0 && clsRace() !== 'Human' && hasMortalEnemy(MORTAL_BY_RACE[clsRace()])) queueAchievement(40);
     if (S.lastStand > 0 && S.hero.hp <= 0) {
       queueAchievement(61);
+      const before = S.hero.hp;
       S.hero.hp = S.hero.maxHp;
+      floatOn(S.hero.hp - before, 'heal', '#hud-hp', 'HP');
       S.lastStand = S.nextTurnFlags.lastStand = 0;
       flash('🛡 Последний рубеж: полное лечение!');
       return true;
@@ -5019,6 +5123,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   }
 
   // --- modals ---------------------------------------------------------------
+  function resetModalScroll() {
+    const card = qs('#modal .modal-card'), body = el('modal-body');
+    if (card) card.scrollTop = 0;
+    if (body) body.scrollTop = 0;
+  }
   function openModal(kind, restoredChoices = null) {
     const runId = RUN_ID;
     S.pendingModal = kind;
@@ -5027,6 +5136,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const title = el('modal-title');
     const body = el('modal-body');
     if (!wrap || !body) return;
+    resetModalScroll();
     wrap.className = 'modal show';
     title.className = 'modal-title';
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
@@ -5037,7 +5147,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
     if (kind === 'level') {
       title.textContent = '⬆ УРОВЕНЬ!';
-      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 улучшений и подтверди. Повторный тап по выбранной карточке снимает выбор.<\/p>';
+      body.innerHTML = '<p class="modal-hint">Выбери 2 из 4 и подтверди. Повторный тап снимает выбор.<\/p>';
       const options = restoredChoices || chooseLevelOptions();
       renderLevelChoices(options, body);
     } else if (kind === 'gold') {
@@ -5046,7 +5156,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       renderEquipChoices(body, restoredChoices);
     } else if (kind === 'armor') {
       title.textContent = '🛡 АПГРЕЙД!';
-      body.innerHTML = '<p class="modal-hint">Добавь бонус одной из 4 надетых вещей. Остальные её параметры не меняются.<\/p>';
+      body.innerHTML = '<p class="modal-hint">Добавь бонус к надетой вещи. Остальное не меняется; полное сравнение — «Подробнее».<\/p>';
       renderUpgradeChoices(body, restoredChoices);
     } else if (kind === 'stats') {
       title.textContent = '📊 СВОЙСТВА';
@@ -5128,6 +5238,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     S.pendingModal = 'skull';
     const boss = !!skull.boss;
     wrap.classList.remove('level', 'shop', 'armor', 'trophy', 'gameover', 'skull');
+    resetModalScroll();
     wrap.className = 'modal show skull';
     title.className = 'modal-title skull';
     title.textContent = boss ? '👑 БОСС-ЧЕРЕП' : ('◆ ' + specialTypeName(skull).toUpperCase() + ' ЧЕРЕП');
@@ -5531,9 +5642,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     const summaryBtn = document.createElement('button');
     summaryBtn.type = 'button';
     summaryBtn.className = 'btn secondary shop-summary-toggle';
-    summaryBtn.textContent = '📊 Персонаж и экипировка';
+    summaryBtn.textContent = '📊 Персонаж';
     summaryBtn.setAttribute('aria-controls', 'equipment-summary');
     summaryBtn.setAttribute('aria-expanded', 'false');
+    const detailsBtn = document.createElement('button');
+    detailsBtn.type = 'button'; detailsBtn.className = 'btn secondary reward-details-toggle';
+    detailsBtn.textContent = 'Подробнее'; detailsBtn.setAttribute('aria-label', 'Полные параметры до и после');
+    detailsBtn.setAttribute('aria-controls', 'equipment-choices'); detailsBtn.setAttribute('aria-expanded', 'false');
+    grid.id = 'equipment-choices';
+    detailsBtn.addEventListener('click', () => {
+      const show = detailsBtn.getAttribute('aria-expanded') !== 'true';
+      grid.querySelectorAll('.item-state').forEach(node => { node.hidden = !show; });
+      detailsBtn.setAttribute('aria-expanded', String(show));
+      detailsBtn.setAttribute('aria-label', show ? 'Свернуть полное сравнение' : 'Полные параметры до и после');
+      detailsBtn.textContent = show ? 'Свернуть' : 'Подробнее';
+    });
+    const toolbar = document.createElement('div'); toolbar.className = 'reward-toolbar';
+    toolbar.appendChild(summaryBtn); toolbar.appendChild(detailsBtn);
     const summary = document.createElement('div');
     summary.id = 'equipment-summary';
     summary.className = 'character-summary';
@@ -5543,10 +5668,11 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       const show = summary.hidden;
       summary.hidden = !show;
       grid.hidden = show;
+      detailsBtn.hidden = show;
       summaryBtn.setAttribute('aria-expanded', String(show));
-      summaryBtn.textContent = show ? '↩ К выбору предмета' : '📊 Персонаж и экипировка';
+      summaryBtn.textContent = show ? '↩ К выбору' : '📊 Персонаж';
     });
-    body.appendChild(summaryBtn);
+    body.appendChild(toolbar);
     body.appendChild(grid);
     body.appendChild(summary);
   }
@@ -5568,15 +5694,17 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       btn.dataset.slot = item.slot;
       btn.innerHTML = `<span class="shop-icon">${item.icon}<\/span><span class="shop-body">
         <span class="shop-slot">${item.slotName} · замена<\/span><span class="shop-name">${item.name}<\/span>
-        <span class="item-state item-before"><span class="item-state-title">Заменяет: ${equipped.name}<\/span><span class="item-mods">${itemModsText(equipped)}<\/span><\/span>
-        <span class="item-state item-after"><span class="item-state-title">После замены:<\/span><span class="item-mods">${itemModsText(item)}<\/span><\/span>
-        <span class="shop-preview">Разница в этом слоте:<\/span>${changes}${scroll}<\/span>`;
+        <span class="shop-current">Вместо: ${equipped.name}<\/span>
+        <span class="item-state item-before" hidden><span class="item-state-title">Сейчас: ${equipped.name}<\/span><span class="item-mods">${itemModsText(equipped)}<\/span><\/span>
+        <span class="item-state item-after" hidden><span class="item-state-title">После замены:<\/span><span class="item-mods">${itemModsText(item)}<\/span><\/span>
+        ${changes}${scroll}<\/span>`;
       btn.addEventListener('click', () => { if (S.menuCandidates === options) purchaseShopItem(index); });
       grid.appendChild(btn);
     });
     // Three equipment choices; the fourth is always inert, never a stat scroll.
     const empty = document.createElement('div');
     empty.className = 'shop-item shop-empty';
+    empty.hidden = true; // Keep the inert fourth slot, not its decorative height.
     empty.setAttribute('aria-hidden', 'true');
     grid.appendChild(empty);
     appendEquipmentChoices(body, grid);
@@ -5599,8 +5727,8 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       btn.innerHTML = `<span class="lv-chip" style="color:#d9a8ff">${opt.icon}<\/span>
         <span class="lv-body">
           <span class="lv-name">${opt.slotName} · ${item.name}<\/span>
-          <span class="item-state item-before"><span class="item-state-title">Сейчас на предмете:<\/span><span class="item-mods">${itemModsText(item)}<\/span><\/span>
-          <span class="item-state item-after"><span class="item-state-title">После улучшения:<\/span><span class="item-mods">${itemModsText(upgraded)}<\/span><\/span>
+          <span class="item-state item-before" hidden><span class="item-state-title">Сейчас на предмете:<\/span><span class="item-mods">${itemModsText(item)}<\/span><\/span>
+          <span class="item-state item-after" hidden><span class="item-state-title">После улучшения:<\/span><span class="item-mods">${itemModsText(upgraded)}<\/span><\/span>
           <span class="lv-effs"><span class="lv-line item-change better">${opt.name}: ${opt.comparison} (+${itemNumber(opt.key, opt.value)})<\/span><span class="lv-line">${opt.desc}<\/span><\/span>
         <\/span>`;
       btn.addEventListener('click', () => {
@@ -5648,17 +5776,6 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     setTimeout(() => { if (runId === RUN_ID) openModal('gameover'); }, 600);
   }
 
-  function flashOn(idx, text) {
-    const cellEl = qs(`.cell[data-idx="${idx}"]`);
-    if (!cellEl) return;
-    const node = document.createElement('div');
-    node.className = 'float-fx';
-    node.textContent = text;
-    cellEl.appendChild(node);
-    setTimeout(() => node.remove(), 900);
-  }
-
-
   // --- special-ability helpers -------------------------------------------------
   // Match adjacent non-skulls in column order. matchCell's shared seen-set
   // terminates potion recursion and prevents overlaps from awarding twice.
@@ -5682,8 +5799,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       if (hurtHero) resetCollectionCounts();
       matchCell(idx, { reward: !hurtHero });
       if (hurtHero) {
+        const before = S.hero.hp;
         S.hero.hp = Math.max(1, Math.floor(S.hero.hp / 2));
-        flash('💠 КА-МИ-КАЗЕ: пол-HP → ' + S.hero.hp);
+        floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+        log('💠 КА-МИ-КАЗЕ: пол-HP → ' + S.hero.hp);
       }
       audioKill();
     });
@@ -5760,16 +5879,17 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         if (wounded.length > 0) {
           shuffle(wounded).slice(0, 2).forEach(wi => {
             const wc = S.board[wi];
+            const before = wc.skull.hp;
             wc.skull.hp = wc.skull.maxHp;
+            flashOn(wi, wc.skull.hp - before, 'heal', 'HP');
           });
-          flash('💚 Исцеление: черепы исцелены');
         } else {
           const all = [];
           for (let j = 0; j < CELL_COUNT; j++) {
             const ac = S.board[j];
             if (ac && ac.type === 'skull' && ac.skull.uid !== s.uid) all.push(j);
           }
-          shuffle(all).slice(0, 2).forEach(ai => { S.board[ai].skull.atk += 1; });
+          shuffle(all).slice(0, 2).forEach(ai => { S.board[ai].skull.atk += 1; flashOn(ai, 1, 'buff', '⚔'); });
         }
       } else if (t === 6) { // Acidic — превращает случайное зелье в кислое
         const potions = [];
@@ -5849,14 +5969,23 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           // смертного врага (Sauren): 2× атака Вора.
           let hpLoss = 0;
           if (clsRace() === 'Sauren') hpLoss = stolen * enemyGetAttack(s) * 2;
-          if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+          if (hpLoss > 0) {
+            const before = S.hero.hp;
+            S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+            floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+          }
           log('🏴‍☠️ Вор украл ' + stolen + ' монет' + (hpLoss > 0 ? ': −' + hpLoss + ' HP' : ''));
         } else {
           const stolen = Math.min(2, S.hero.gold);
           S.hero.gold -= stolen;
+          floatOn(-stolen, 'gold', '#hud-gold', 'золота');
           if (stolen > 0) {
             const hpLoss = clsRace() === 'Sauren' ? stolen * enemyGetAttack(s) * 2 : 0;
-            if (hpLoss > 0) S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+            if (hpLoss > 0) {
+              const before = S.hero.hp;
+              S.hero.hp = Math.max(0, S.hero.hp - hpLoss);
+              floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+            }
             log('🏴‍☠️ Вор украл золото: −' + stolen + (hpLoss > 0 ? ', HP −' + hpLoss : ''));
           }
         }
@@ -6018,9 +6147,10 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
           const pick = ordinary[randInt(0, ordinary.length - 1, 5)];
           const hp = S.board[pick].skull.hp;
           S.board[pick] = { type: 'empty' };
+          const before = S.hero.hp;
           S.hero.hp = Math.max(0, S.hero.hp - hp);
-          floatOn('💥 -' + hp, 'hurt');
-          flash('🪓 Брутал: −' + hp + ' HP');
+          floatOn(S.hero.hp - before, 'hurt', '#hud-hp', 'HP');
+          log('🪓 Брутал: −' + hp + ' HP');
         }
       } else if (t === 28) { // Devourer — таймер → уничтожать апгрейд
         s.countdown = (s.countdown || 0) - 1;

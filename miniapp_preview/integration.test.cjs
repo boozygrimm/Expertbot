@@ -1423,3 +1423,234 @@ test('built raid Close preserves a reversible reward draft, then reopen→Contin
     assert.equal(b.raid.state.turn, 0); assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
+
+// Phone feedback: compact choices retain every trade-off; duplicated full
+// modifiers are an optional view, never another reward roll or an extra pick.
+for (const kind of ['gold', 'armor']) test(`built raid compact reward ${kind}: details are optional, accessible and pure`, async () => {
+  let b = await openRaid();
+  try {
+    const { raid } = b, s = raid.state, doc = b.dom.window.document;
+    if (kind === 'gold') { s.hero.gold = 100; raid.checkGoldBox(); }
+    else { s.upgradeBar = 100; raid.checkUpgradeBar(); }
+    const grid = doc.querySelector('#equipment-choices');
+    const details = doc.querySelector('.reward-details-toggle');
+    assert.ok(grid && details, 'separate details control, not nested inside a purchase button');
+    assert.equal(details.getAttribute('aria-controls'), grid.id);
+    assert.equal(details.getAttribute('aria-expanded'), 'false');
+    const states = [...grid.querySelectorAll('.item-state')];
+    assert.equal(states.length, kind === 'gold' ? 6 : 8);
+    assert.ok(states.every(n => n.hidden && b.dom.window.getComputedStyle(n).display === 'none'));
+    assert.ok([...grid.querySelectorAll('.item-change')].every(n => !n.hidden));
+    assert.ok([...grid.querySelectorAll('button')].every(n => !n.querySelector('button, summary, input')));
+    const expected = JSON.stringify([s.hero, s.equipment, s.menuCandidates, s.rngSeeds, s.turn]);
+    for (let n = 0; n < 2; n++) {
+      details.focus(); details.click();
+      assert.equal(details.getAttribute('aria-expanded'), 'true');
+      assert.ok(states.every(n => !n.hidden && b.dom.window.getComputedStyle(n).display !== 'none'));
+      assert.ok(states.every(n => n.textContent.trim()), 'full before/after remain available');
+      doc.querySelector('.shop-summary-toggle').click();
+      assert.equal(details.hidden, true, 'do not offer a details action for the hidden choice list');
+      doc.querySelector('.shop-summary-toggle').click();
+      assert.equal(details.hidden, false);
+      details.click();
+      assert.equal(details.getAttribute('aria-expanded'), 'false');
+    }
+    assert.equal(JSON.stringify([s.hero, s.equipment, s.menuCandidates, s.rngSeeds, s.turn]), expected);
+    raid.saveRun(); const saved = raidStorage(b.dom.window); b.dom.window.close();
+    b = await openRaid({ start: false, saved });
+    assert.equal(b.raid.state, null);
+    b.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(b.raid.state.pendingModal, kind);
+    assert.deepEqual(JSON.parse(JSON.stringify([b.raid.state.hero, b.raid.state.equipment, b.raid.state.menuCandidates, b.raid.state.rngSeeds, b.raid.state.turn])), JSON.parse(expected));
+    assert.equal(b.dom.window.document.querySelector('.reward-details-toggle').getAttribute('aria-expanded'), 'false');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid compact reward frame: stable title, scrolling body, small art and usable touch actions', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document, style = sel => b.dom.window.getComputedStyle(doc.querySelector(sel));
+    b.raid.state.hero.xp = 100; b.raid.checkLevelUp();
+    assert.equal(style('.modal-card').display, 'flex');
+    assert.equal(style('#modal-body').overflowY, 'auto');
+    assert.ok(parseFloat(style('.lv-chip').height) <= 40);
+    assert.ok(parseFloat(style('.lv-icon-box').width) <= 40);
+    assert.ok(parseFloat(style('.lv-card').minHeight) >= 44);
+    assert.ok(parseFloat(style('.lv-confirm').minHeight) >= 44);
+    assert.ok(parseFloat(style('.help-card .btn').minHeight) >= 44);
+    assert.ok(parseFloat(style('.lv-name').fontSize) >= 13);
+    assert.ok(parseFloat(style('.lv-line').fontSize) >= 11);
+    assert.equal(style('.lv-actions').bottom, '0px');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid compact reward openings reset both old outer and inner scroll without rerolling a draft', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document;
+    const card = doc.querySelector('.modal-card'), body = doc.querySelector('#modal-body');
+    card.scrollTop = 500; body.scrollTop = 500;
+    b.raid.state.upgradeBar = 100; b.raid.checkUpgradeBar();
+    assert.deepEqual([card.scrollTop, body.scrollTop], [0, 0]);
+    card.scrollTop = 500; body.scrollTop = 500;
+    doc.querySelector('.lv-card').click();
+    b.raid.state.hero.gold = 100; b.raid.checkGoldBox();
+    assert.deepEqual([card.scrollTop, body.scrollTop], [0, 0]);
+    doc.querySelector('button.shop-item').click();
+    card.scrollTop = 500; body.scrollTop = 500;
+    b.raid.showSkullModal(b.raid.makeSkull(false, true, 4));
+    assert.deepEqual([card.scrollTop, body.scrollTop], [0, 0]);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// jsdom cannot lay out the board; supply explicit viewport-relative rectangles.
+// Chromium acceptance separately exercises real geometry, scroll and touch.
+function feedbackGeometry(b) {
+  const { window } = b.dom, doc = window.document;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 393 });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: 700 });
+  const offset = { x: 0, y: 0 };
+  const rect = (x, y, width, height) => ({ x, y, left: x, top: y, width, height, right: x + width, bottom: y + height });
+  const rows = { 'hud-hp': [15, 550, 180, 34], 'hud-armor': [200, 550, 178, 34], 'hud-xp': [15, 590, 180, 34], 'hud-gold': [200, 590, 178, 34], 'hud-upgrade': [15, 660, 363, 6] };
+  for (const [id, values] of Object.entries(rows)) {
+    const node = doc.getElementById(id); assert.ok(node, id + ' is an explicit stable effect target');
+    node.getBoundingClientRect = () => rect(...values);
+  }
+  for (const node of doc.querySelectorAll('.cell')) {
+    const index = Number(node.dataset.idx);
+    node.getBoundingClientRect = () => rect(20 + index % 6 * 58 + offset.x, 155 + Math.floor(index / 6) * 58 + offset.y, 54, 54);
+  }
+  doc.querySelector('.shell').getBoundingClientRect = () => rect(0, 0, 393, 700);
+  return offset;
+}
+function feedbackNodes(doc, target, kind = '') {
+  return [...doc.querySelectorAll('#raid-effects .float-fx')].filter(n => n.dataset.target === target && (!kind || n.classList.contains(kind)));
+}
+
+test('built raid localized feedback: enemy HP/armor at the hit cell and hero damage at HP, surviving rerender', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document; feedbackGeometry(b);
+    const s = b.raid.state;
+    s.board[0] = { type: 'skull', skull: Object.assign(b.raid.makeSkull(false, false), { hp: 30, maxHp: 30, def: 2, atk: 0 }) };
+    s.pierce = 1;
+    b.raid.hitSkullAt(0, 5, { direct: true });
+    b.raid.damageHero(4, false, true);
+    await until(() => feedbackNodes(doc, '.cell[data-idx="0"]', 'hurt').length === 1);
+    assert.match(feedbackNodes(doc, '.cell[data-idx="0"]', 'hurt')[0].textContent, /−3.*HP/);
+    assert.match(feedbackNodes(doc, '.cell[data-idx="0"]', 'armor')[0].textContent, /−2/);
+    assert.match(feedbackNodes(doc, '#hud-hp', 'hurt')[0].textContent, /−4.*HP/);
+    assert.equal(doc.querySelectorAll('#board .float-fx').length, 0, 'cell art/innerHTML must not own ephemeral numbers');
+    assert.equal(doc.querySelector('#raid-effects').getAttribute('aria-hidden'), 'true');
+    const popup = feedbackNodes(doc, '.cell[data-idx="0"]', 'hurt')[0];
+    b.raid.endEnemyTurn();
+    assert.equal(popup.isConnected, true, 'clearing/reusing the cell art cannot erase the hit');
+    const expected = JSON.stringify(s);
+    await new Promise(r => setTimeout(r, 75));
+    assert.equal(JSON.stringify(s), expected, 'repositioning/animation does not mutate gameplay or RNG');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid localized feedback: potion/armor/XP/gold/UP and mana use their actual recipient, previews stay silent', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document; feedbackGeometry(b); const s = b.raid.state;
+    s.hero.hp = 20; s.hero.armor = 1;
+    for (let n = 0; n < 3; n++) b.raid.addResource({ type: 'potion' });
+    s.hero.armor = s.hero.maxArmor - 0.25;
+    b.raid.addResource({ type: 'shield' });
+    b.raid.addResource({ type: 'xp' }); b.raid.addResource({ type: 'coin' });
+    s.hero.armor = s.hero.maxArmor; b.raid.addResource({ type: 'shield' });
+    b.raid.installSkillOption(b.raid.prepareSkillOption('heal')); s.skillCooldowns.heal = 5;
+    // A normal render rebuilds the four skills; use the live UI to show them.
+    doc.querySelector('#stats-btn').click(); doc.querySelector('#modal-body .btn').click();
+    b.raid.addResource({ type: 'potion', variant: 1, skillSlot: 0 });
+    assert.match(feedbackNodes(doc, '#hud-hp', 'heal')[0].textContent, /\+6.*HP/);
+    assert.equal(feedbackNodes(doc, '#hud-hp', 'heal').length, 1, 'one synchronous burst, not three overlapping heal labels');
+    assert.match(feedbackNodes(doc, '#hud-armor', 'armor')[0].textContent, /\+0\.25.*брони/, 'fractional applied gains must not be rounded to +0');
+    assert.match(feedbackNodes(doc, '#hud-xp', 'xp')[0].textContent, /\+2/);
+    assert.match(feedbackNodes(doc, '#hud-gold', 'gold')[0].textContent, /\+2/);
+    assert.match(feedbackNodes(doc, '#hud-upgrade', 'upgrade')[0].textContent, /\+2/);
+    assert.match(feedbackNodes(doc, '.skill[data-slot="0"]', 'mana')[0].textContent, /−1/);
+    const count = doc.querySelectorAll('.float-fx').length, preview = JSON.parse(JSON.stringify(s));
+    b.raid.addResource({ type: 'potion' }, preview); b.raid.addResource({ type: 'coin' }, preview);
+    assert.equal(doc.querySelectorAll('.float-fx').length, count, 'detached chain preview cannot emit applied feedback');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid localized feedback: anchors follow scroll/resize, hide offscreen, expire without animation events and clear on a new run', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document, offset = feedbackGeometry(b);
+    const s = b.raid.state;
+    s.board[8] = { type: 'skull', skull: Object.assign(b.raid.makeSkull(false, false), { hp: 50, maxHp: 50, def: 0, atk: 0 }) };
+    b.raid.hitSkullAt(8, 3, { direct: false });
+    const popup = feedbackNodes(doc, '.cell[data-idx="8"]', 'hurt')[0];
+    await until(() => parseFloat(popup.style.left) > 0);
+    const x = parseFloat(popup.style.left), y = parseFloat(popup.style.top);
+    assert.ok(Math.abs(x - 163) < 2 && Math.abs(y - 240) < 2);
+    offset.x = 15; offset.y = -80;
+    await until(() => Math.abs(parseFloat(popup.style.top) - (y - 80)) < 2);
+    assert.ok(Math.abs(parseFloat(popup.style.left) - (x + 15)) < 2);
+    offset.y = -1000;
+    await until(() => popup.hidden);
+    offset.y = 0;
+    await until(() => !popup.hidden);
+    await until(() => !popup.isConnected, 2000);
+    b.raid.damageHero(1, false, true);
+    assert.equal(feedbackNodes(doc, '#hud-hp').length, 1);
+    b.raid.newGame(1);
+    assert.equal(doc.querySelectorAll('.float-fx').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid localized feedback: enemy healing, fire and poison ticks and blocked hero armor do not fall back to board center', async () => {
+  const b = await openRaid();
+  try {
+    const doc = b.dom.window.document; feedbackGeometry(b); const s = b.raid.state;
+    const skull = (type, fields) => Object.assign(b.raid.makeSkull(false, type > 0, type), { atk: 0, def: 0, enteredTurn: -1 }, fields);
+    s.board[0] = { type: 'skull', skull: skull(4, { hp: 20, maxHp: 20 }) };
+    s.board[7] = { type: 'skull', skull: skull(0, { hp: 3, maxHp: 10 }) };
+    b.raid.applySpecialAbilities();
+    assert.match(feedbackNodes(doc, '.cell[data-idx="7"]', 'heal')[0].textContent, /\+7.*HP/);
+    s.board[0] = { type: 'sword' };
+    Object.assign(s.board[7].skull, { hp: 20, maxHp: 20, burn: true, fireDamage: 2, poison: [3, 0, 0] });
+    b.raid.endEnemyTurn();
+    assert.match(feedbackNodes(doc, '.cell[data-idx="7"]', 'hurt')[0].textContent, /−5.*HP/);
+    s.board[7].skull.atk = 3; s.turn = 5; s.hero.armor = 4; s.durability = 0;
+    b.raid.processEnemyAttack();
+    assert.match(feedbackNodes(doc, '#hud-armor', 'armor')[0].textContent, /−3/);
+    assert.equal(feedbackNodes(doc, '#hud-hp', 'hurt').length, 0, 'absorbed volley did not damage HP');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid localized feedback: board-wide stress is bounded and resume never replays old decorations', async () => {
+  let b = await openRaid();
+  try {
+    const doc = b.dom.window.document; feedbackGeometry(b);
+    const s = b.raid.state;
+    s.pierce = 1;
+    s.board = Array.from({ length: 36 }, () => ({ type: 'skull', skull: Object.assign(b.raid.makeSkull(false, false), { hp: 100, maxHp: 100, atk: 0, def: 1 }) }));
+    for (let i = 0; i < 36; i++) b.raid.hitSkullAt(i, 2, { direct: false });
+    assert.ok(doc.querySelectorAll('.float-fx').length <= 64);
+    assert.ok(doc.querySelectorAll('.float-fx').length >= 36);
+    assert.ok([...doc.querySelectorAll('.float-fx')].every(n => n.parentElement.id === 'raid-effects'));
+    const layerStyle = b.dom.window.getComputedStyle(doc.querySelector('#raid-effects'));
+    assert.equal(layerStyle.pointerEvents, 'none'); assert.equal(layerStyle.position, 'fixed');
+    b.raid.saveRun(); const expected = JSON.parse(JSON.stringify([s.hero, s.board, s.rngSeeds]));
+    const saved = raidStorage(b.dom.window); b.dom.window.close();
+    b = await openRaid({ saved, start: false });
+    assert.equal(b.raid.state, null);
+    b.dom.window.document.querySelector('#picker-resume').click();
+    assert.deepEqual(JSON.parse(JSON.stringify([b.raid.state.hero, b.raid.state.board, b.raid.state.rngSeeds])), expected);
+    assert.equal(b.dom.window.document.querySelectorAll('.float-fx').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
