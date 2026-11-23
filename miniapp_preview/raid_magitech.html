@@ -43,7 +43,9 @@
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <div class="picker-tools"><button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
-    <button class="btn secondary" id="picker-achievements" type="button">◇ Достижения</button></div>
+    <button class="btn secondary" id="picker-achievements" type="button">◇ Достижения</button>
+    <button class="btn secondary" id="picker-updates" type="button">Что нового · история обновлений</button></div>
+    <p class="save-note" id="picker-updates-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-history-status" role="status" aria-live="polite" hidden></p>
     <div class="raid-run-settings">
       <div class="raid-mode-summary"><span>ФОРМАТ РЕЙДА</span><strong>До гибели</strong><small>Без лимита ходов</small></div>
@@ -160,9 +162,47 @@
     <button class="btn secondary" id="menu-classes" type="button">Мехи и настройки</button>
     <button class="btn secondary" id="menu-history" type="button">Рекорды и статистика</button>
     <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
+    <button class="btn secondary" id="menu-updates" type="button">Что нового · история обновлений</button>
+    <p class="save-note" id="menu-updates-status" role="status" aria-live="polite" hidden></p>
     <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
     <button class="btn secondary" id="menu-close" type="button">Закрыть меню</button>
   </div>
+</div>
+
+<!-- Curated release notes: update THIS RELEASE on each product increment.
+     Visibility is keyed by the actual builder fingerprint, not URL parameters.
+     This reader must never start/resume/reset a run or occupy its reward modal. -->
+<div class="menu-modal updates-modal" id="updates-modal" role="dialog" aria-modal="true" aria-labelledby="updates-title" aria-describedby="updates-description" hidden>
+  <section class="menu-card updates-card">
+    <header class="updates-heading">
+      <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
+      <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
+      <p class="build-label" id="updates-build">Сборка __RAID_BUILD__</p>
+    </header>
+    <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
+      <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
+      <h4>В этом обновлении</h4>
+      <ul id="updates-current">
+        <li><b>10 новых образов особых врагов</b> — от Трамплящего до Бегуна, каждый в четырёх стихиях. Готовы <b>30 из 31</b> уникальных типов; Лич пока с временным общим портретом. Это графика, не новые способности или параметры.</li>
+        <li><b>Окно обновлений и краткая история.</b> Показывается при первом входе в новую сборку; снова открыть можно здесь, на подготовке, или в меню рейда — «Что нового».</li>
+        <li><b>Защита от случайного закрытия.</b> Остаточный клик открывающего тапа больше не закрывает подробности врага или это окно на коротком горизонтальном экране.</li>
+      </ul>
+      <p class="updates-important"><b>Важно для проверки:</b> «Продолжить» не сбрасывает рейд. В старых забегах остаётся прежний бой; стихийные множители работают только в новых. Нажатие «Понятно» лишь закрывает это окно.</p>
+      <h4>Краткая история</h4>
+      <ol id="updates-history">
+        <li><b>Стихийный бой.</b> Огонь → Воздух → Земля → Вода → Огонь; вклад оружия ×1,25 / ×1 / ×0,75, база нейтральна. Смешанные цепочки и две стихии босса. Отдельная случайность стихий, совместимость старых сохранений.</li>
+        <li><b>Магитех-оформление.</b> Четыре локации, прозрачные клетки, цвет самого оружия, модель покупки на поле, тихие звуки. Локация закреплена за рейдом; каталог монстров пополняется.</li>
+        <li><b>Локальный прогресс и вход тестеров.</b> Автосохранение, рекорды, статистика, достижения и отдельные профили. Классический пробник и его данные сохранены отдельно.</li>
+        <li><b>Игровая основа.</b> Поле 6×6, цепочки, классы и расы, навыки, особые враги, предметы и награды по мотивам Dungeon Raid. Это своя реализация, не подтверждённая полная копия оригинала.</li>
+      </ol>
+      <p class="updates-boundary" id="updates-boundary"><b>Граница прототипа:</b> интеграция в Луна-парк ещё не начиналась. Лаборатория, общая экономика и награды парка не подключены. Новых стихийных способностей боссов в этом выпуске нет.</p>
+      <p class="save-note" id="updates-storage-note" role="status" hidden>Не удалось прочитать отметку этого профиля. При недоступном хранилище или неопределённом Telegram ID прочтение может не запомниться; рейд это окно не меняет.</p>
+    </div>
+    <footer class="updates-actions">
+      <p>Прочтение запоминается отдельно для твоего профиля на этом устройстве.</p>
+      <button class="btn" id="updates-close" type="button">Понятно, к игре</button>
+    </footer>
+  </section>
 </div>
 
 <!-- Read-only local history, accessible before starting a run. -->
@@ -214,6 +254,7 @@
 <div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
   <div class="help-card">
     <h3>RAID / Как играть</h3>
+    <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
     <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка __RAID_BUILD__.</p>
     <p><b>Прозрачные плитки — проба оформления.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; только золотая монета и надетое оружие медленно поворачиваются, оружие — вокруг продольной оси рукоятки. Заморозка сохраняет лёд и останавливает движение, системное уменьшение движения отключает анимацию. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мехи/бойцы пока наследуют исходные классы/расы; грейды, задания и музыка не добавлены. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
     <ul>

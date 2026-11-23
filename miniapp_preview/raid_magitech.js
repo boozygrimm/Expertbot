@@ -63,6 +63,7 @@
       else if (pickerOpen) showClassPicker();
     }
     profileNotice(`Профиль Telegram ${PROFILE_ID} · свой прогресс на этом устройстве. Между устройствами не синхронизируется.`);
+    maybeShowUpdateNotice();
   }
 
   // ============================================================
@@ -1575,6 +1576,7 @@
       ...(value.scroll ? { scroll: skill(value.scroll) } : {}) }));
   }
   function resumeSavedRun() {
+    if (UPDATES_OPEN) return false;
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
@@ -2440,7 +2442,7 @@
   }
 
   function tryExtendChain(cellIdx) {
-    if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
     const chain = S.selected;
     const repeated = chain.indexOf(cellIdx);
     if (repeated >= 0) {
@@ -3088,6 +3090,7 @@
 
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
+    if (UPDATES_OPEN) return false;
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
@@ -3252,7 +3255,7 @@
   }
 
   function activateSkill(id) {
-    if (!S || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
     const left = S.skillCooldowns[id] || 0;
     if (left > 0) return;
     const skill = SKILL_BY_ID[id];
@@ -4443,7 +4446,7 @@
   }
 
   function resolveChain() {
-    if (!S || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
     const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
@@ -4886,7 +4889,7 @@
     btn.type = 'button';
     btn.className = 'btn';
     btn.textContent = 'Понятно';
-    btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'skull') closeModal(); });
+    bindReadOnlyDismiss(btn, () => { if (runId === RUN_ID && S.pendingModal === 'skull') closeModal(); });
     body.appendChild(btn);
   }
 
@@ -4942,7 +4945,7 @@
     return S.board.flatMap((cell, slot) => cell.type === 'trophy' && !cell.frozen && !cell.matched ? [slot] : []);
   }
   function claimTrophy(slot) {
-    if (!S || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
     const cell = S.board[slot];
     if (!cell || cell.type !== 'trophy' || cell.frozen || cell.matched) return false;
     // Outcome draws happen on the tap, so class state may change between drops.
@@ -5858,7 +5861,7 @@
 
     board.addEventListener('pointerdown', e => {
       if (activeDrag || e.isPrimary === false || e.button > 0 || [...ORB_VIEWS.values()].some(view => view.motion)) return;
-      if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
+      if (!S || UPDATES_OPEN || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
       if (!cell) return;
@@ -6052,6 +6055,7 @@
   }
 
   function requestNewGame(classId = getSelectedClassId()) {
+    if (UPDATES_OPEN) return false;
     if (!isClassUnlocked(classId)) return false;
     if ((!S || S.over) && !savedRunInfo() && !hasPendingProgress()) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
@@ -6088,7 +6092,7 @@
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
-    const back = HISTORY_OPEN || !!classEditor || pickerOpen && live
+    const back = UPDATES_OPEN || HISTORY_OPEN || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
@@ -6124,6 +6128,8 @@
     return false;
   }
   function telegramBack() {
+    // A read-only notice has no gesture/reward to cancel underneath it.
+    if (UPDATES_OPEN) { closeUpdateNotice(); return; }
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
@@ -6177,7 +6183,7 @@
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -6190,6 +6196,113 @@
     sdk.onload = connect;
     sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Без профиля игра не сохраняется, жесты Telegram не защищены.'); };
     document.head.appendChild(sdk);
+  }
+
+  // --- first-entry release notes (local UI metadata, NOT a run checkpoint) ---
+  // The builder fingerprints all game inputs. Compare the CONTENT meta, never
+  // the ?build cache hint. Curated release/history copy lives in the template.
+  const UPDATES_KEY = 'raid:updatesSeenBuild';
+  const UPDATES_BUILD = document.querySelector('meta[name="raid-build"]')?.getAttribute('content') || '';
+  let UPDATES_READY = false, UPDATES_OPEN = false, UPDATES_SESSION = null;
+  const UPDATES_SHOWN = new Set();
+  function updateNoticeStatus(text) {
+    for (const id of ['picker-updates-status', 'menu-updates-status']) {
+      const node = el(id); if (node) { node.textContent = text; node.hidden = !text; }
+    }
+  }
+  function openUpdateNotice(automatic = false, readFailed = false, opener = null) {
+    const wrap = el('updates-modal');
+    if (!wrap || !/^[a-f0-9]{12}$/.test(UPDATES_BUILD) || UPDATES_OPEN) return false;
+    // Startup never restores/starts a run. A manual reader may cover only an
+    // idle view, not a chain/mandatory reward or its asynchronous continuation.
+    if (automatic && S) return false;
+    if (S && (S.resolving || S.pendingModal || S.selected.length)) {
+      flash('Сначала заверши цепочку и выбор наград'); return false;
+    }
+    UPDATES_SESSION = { prefix: PROFILE_PREFIX, focus: opener || document.activeElement, background: [] };
+    UPDATES_OPEN = true; UPDATES_SHOWN.add(`${PROFILE_PREFIX}:${UPDATES_BUILD}`);
+    el('updates-build').textContent = 'Сборка ' + UPDATES_BUILD;
+    el('updates-storage-note').hidden = !(readFailed || PROFILE_PREFIX === null);
+    wrap.hidden = false; wrap.classList.add('show');
+    el('updates-body').scrollTop = 0; el('updates-title').focus();
+    // Preserve, rather than replace, every underlying view/focus/ARIA state.
+    // No S.pendingModal, saveRun, resumeRewards, timers or RNG in this reader.
+    for (const node of document.body.children) if (node !== wrap && node.tagName !== 'SCRIPT') {
+      UPDATES_SESSION.background.push({ node, inert: node.hasAttribute('inert'), aria: node.getAttribute('aria-hidden') });
+      node.setAttribute('inert', ''); node.setAttribute('aria-hidden', 'true');
+    }
+    syncTelegramChrome(); return true;
+  }
+  function maybeShowUpdateNotice() {
+    // The asynchronous SDK must identify its OWN local profile first. Never
+    // read an anonymous/browser acknowledgement on behalf of a Telegram ID.
+    if (!UPDATES_READY || UPDATES_OPEN || S || PROFILE_PREFIX === null
+      || TELEGRAM_PROFILE && telegramProfileId() !== PROFILE_ID
+      || UPDATES_SHOWN.has(`${PROFILE_PREFIX}:${UPDATES_BUILD}`)) return;
+    let readFailed = false;
+    try { if (profileStorage.getItem(UPDATES_KEY) === UPDATES_BUILD) return; }
+    catch (ignored) { readFailed = true; }
+    openUpdateNotice(true, readFailed);
+  }
+  function closeUpdateNotice() {
+    if (!UPDATES_OPEN) return;
+    const session = UPDATES_SESSION;
+    try {
+      if (session.prefix === null || session.prefix !== PROFILE_PREFIX) throw new Error('Release notice profile unavailable');
+      profileStorage.setItem(UPDATES_KEY, UPDATES_BUILD);
+      updateNoticeStatus('');
+    } catch (ignored) {
+      updateNoticeStatus('Не удалось запомнить прочтение. При следующем входе окно может появиться снова. Сохранение рейда это окно не меняет.');
+    }
+    UPDATES_OPEN = false; UPDATES_SESSION = null;
+    const wrap = el('updates-modal'); wrap.classList.remove('show'); wrap.hidden = true;
+    for (const { node, inert, aria } of session.background) {
+      if (!inert) node.removeAttribute('inert');
+      if (aria === null) node.removeAttribute('aria-hidden'); else node.setAttribute('aria-hidden', aria);
+    }
+    const previous = session.focus;
+    if (previous?.isConnected && previous !== document.body && !previous.closest('[inert]')) previous.focus();
+    else (pickerOpen ? el('picker-updates') : el('menu-updates') || el('menu-btn'))?.focus();
+    syncTelegramChrome();
+  }
+  function bindReadOnlyDismiss(button, dismiss, session = () => button) {
+    // Touch synthesizes click AFTER pointerup. If pointerup opened a new
+    // portrait/late-SDK notice under the finger, that OLD gesture must not
+    // immediately press its new close button. Keyboard/AT click (detail 0)
+    // remains valid; a real pointer close must start on this button/session.
+    let armed = null;
+    button.addEventListener('pointerdown', event => {
+      if (event.isPrimary !== false && !(event.button > 0)) armed = session();
+    });
+    button.addEventListener('pointercancel', () => { armed = null; });
+    button.addEventListener('click', event => {
+      const ownGesture = armed !== null && armed === session(); armed = null;
+      if (event.detail > 0 && !ownGesture) return;
+      dismiss();
+    });
+  }
+  function initUpdateNotice() {
+    for (const id of ['picker-updates', 'menu-updates']) el(id)?.addEventListener('click', event => openUpdateNotice(false, false, event.currentTarget));
+    const close = el('updates-close'); if (close) bindReadOnlyDismiss(close, closeUpdateNotice, () => UPDATES_SESSION);
+    el('updates-modal')?.addEventListener('keydown', event => {
+      if (!UPDATES_OPEN) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeUpdateNotice(); }
+      if (event.key !== 'Tab') return;
+      const controls = [...el('updates-modal').querySelectorAll('button:not(:disabled), [href], [tabindex="0"]')].filter(node => !node.hidden);
+      const first = controls[0], last = controls[controls.length - 1], title = el('updates-title');
+      if (controls.length && (document.activeElement === title || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last)) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      }
+    });
+    // inert handles native focus/pointer input; also reject queued/synthetic
+    // background activations without modifying gameplay or a class draft.
+    for (const kind of ['click', 'pointerdown']) document.addEventListener(kind, event => {
+      if (UPDATES_OPEN && !el('updates-modal').contains(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
+    document.addEventListener('focusin', event => {
+      if (UPDATES_OPEN && !el('updates-modal').contains(event.target)) el('updates-title')?.focus();
+    });
+    UPDATES_READY = true; maybeShowUpdateNotice();
   }
 
   // --- init -----------------------------------------------------------------
@@ -6298,6 +6411,7 @@
       el('menu-btn')?.focus();
     });
     showClassPicker();
+    initUpdateNotice();
   }
 
   // expose for testing / debugging
