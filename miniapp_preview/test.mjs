@@ -4705,3 +4705,22 @@ test('magitech orbs: a checkpoint in the original anticipation window still matc
   b.advance(1); assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.hero.gold, 6);
   b.advance(3000); assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.chainCount, 1);
 });
+
+test('magitech quiet motion: six low-contrast material loops have no rotation, fast flicker or sphere pulsing', () => {
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const material = css.slice(css.indexOf('/* Quiet idle motion:'), css.indexOf('.orb-core {', css.indexOf('/* Quiet idle motion:')));
+  assert.ok(material.length > 1000);
+  assert.doesNotMatch(material, /conic-gradient|\b(?:rotate|scale)\(/);
+  assert.doesNotMatch(css, /orb-fx-spin|orb-fx-flicker/);
+  const loops = [...material.matchAll(/animation:\s*(orb-fx-[a-z]+)\s+([\d.]+)s[^;]*infinite/g)];
+  assert.equal(loops.length, 6);
+  assert.equal(new Set(loops.map(m => m[1])).size, 6);
+  for (const [, name, seconds] of loops) assert.ok(Number(seconds) >= 14, `${name} must be an unobtrusive slow drift, not a spinner`);
+  const frames = css.slice(css.indexOf('@keyframes orb-fx-heat'), css.indexOf('@keyframes orb-prime'));
+  assert.doesNotMatch(frames, /\b(?:rotate|scale)\(|\b(?:opacity|filter)\s*:/, 'idle loops cannot spin, resize or blink the spheres');
+  assert.match(css, /\.orb-material\s*\{[^}]*opacity:\s*\.18/);
+  assert.match(css, /\.raid-orb\.frozen \.orb-material[^}]*animation-play-state:\s*paused/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.orb-material::after[^}]*animation:\s*none !important/);
+  const explosive = css.match(/\.raid-orb\.explosive:not\(\.frozen\) \.orb-material::after\s*\{([^}]+)\}/)?.[1];
+  assert.ok(explosive); assert.doesNotMatch(explosive, /animation:/, 'explosive item is marked statically, not with a .7s idle flash');
+});

@@ -2056,7 +2056,9 @@ test('magitech fork: redesigned reward glyphs, details and character view do not
   try {
     const doc = b.dom.window.document;
     b.raid.state.hero.gold = 100; b.raid.checkGoldBox();
-    assert.equal(doc.querySelectorAll('button.shop-item .shop-icon svg').length, 3);
+    const art = [...doc.querySelectorAll('button.shop-item .shop-icon .equipment-glyph')];
+    assert.equal(art.length, 3);
+    for (const node of art) assert.ok(node.tagName.toLowerCase() === 'svg' || (node.tagName === 'IMG' && node.dataset.weaponArt === 'techno-blade-v1'));
     const before = JSON.stringify(b.raid.state), details = doc.querySelector('.reward-details-toggle');
     assert.equal(details.getAttribute('aria-expanded'), 'false');
     details.click(); doc.querySelector('.shop-summary-toggle').click();
@@ -2400,6 +2402,71 @@ test('magitech orbs: shuffle and an interrupted second move preserve every orb; 
     assert.equal(next.playState, 'running'); assert.ok(next.target.dataset.motion); assert.ok(next.target.isConnected);
     const state = orbGameplay(b); b.dom.window.__orbTest.finish(); assert.equal(orbGameplay(b), state);
     assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion]').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// The field and shop must never drift into separate weapon illustrations.
+test('magitech quiet art: board and shop use the same transparent techno-fantasy weapon texture, including after purchase and Continue', async () => {
+  let b = await orbFixture();
+  try {
+    let r = b.raid;
+    showOrbFixture(b, idx => ({ type: 'sword', ...(idx === 1 ? { magicSword: true } : {}) }));
+    const offers = ['weapon', 'helmet', 'shield'].map(slot => r.makeItem(slot));
+    r.state.pendingModal = 'gold'; r.state.menuCandidates = offers;
+    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    let doc = b.dom.window.document;
+    const before = JSON.stringify(r.state), rng = JSON.stringify(r.state.rngSeeds);
+    const orb = orbAt(b, 0), image = orb.querySelector('.weapon-texture');
+    const texture = image.getAttribute('src');
+    assert.match(texture, /^data:image\/webp;base64,/);
+    const bytes = Buffer.from(texture.split(',')[1], 'base64');
+    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF'); assert.equal(bytes.toString('ascii', 8, 12), 'WEBP');
+    assert.equal(bytes.toString('ascii', 12, 16), 'VP8X'); assert.ok(bytes[20] & 0x10, 'real alpha, not a painted checkerboard background');
+    assert.deepEqual([...new Set([...doc.querySelectorAll('.cell > .raid-orb')].map(n => n.dataset.element))].sort(), ['air','earth','fire','water']);
+    for (const blade of doc.querySelectorAll('.type-sword .weapon-texture,.shop-item[data-slot="weapon"] .weapon-texture')) {
+      assert.equal(blade.getAttribute('src'), texture); assert.equal(blade.dataset.weaponArt, 'techno-blade-v1');
+      assert.equal(blade.draggable, false); assert.equal(blade.alt, '');
+    }
+    assert.equal(doc.querySelectorAll('.type-sword .weapon-texture').length, 36);
+    assert.equal(doc.querySelectorAll('.shop-item[data-slot="weapon"] .weapon-texture').length, 1);
+    assert.equal(doc.querySelector('.type-sword svg.ic'), null, 'the rejected short SVG sword is gone');
+    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
+    assert.equal(JSON.stringify(r.state), before, 'reading art and opening details cannot assign weapon stats or elements');
+    const damage = r.state.hero.weaponDamage;
+    doc.querySelector('.shop-item[data-slot="weapon"]').click();
+    await until(() => !r.state.pendingModal && !r.state.resolving);
+    assert.ok(r.state.hero.weaponDamage > damage); assert.equal(JSON.stringify(r.state.rngSeeds), rng, 'art must not add a draw to the real purchase');
+    assert.equal(orbAt(b, 0), orb); assert.equal(orbAt(b, 0).querySelector('.weapon-texture'), image);
+    assert.equal(image.getAttribute('src'), texture);
+    const board = JSON.stringify(r.state.board), gear = JSON.stringify(r.state.equipment), palettes = JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).orbElements;
+    b = await reopenMagitech(b); r = b.raid; doc = b.dom.window.document;
+    doc.querySelector('#picker-resume').click();
+    assert.equal(JSON.stringify(r.state.board), board); assert.equal(JSON.stringify(r.state.equipment), gear);
+    assert.equal(orbAt(b, 0).querySelector('.weapon-texture').getAttribute('src'), texture);
+    assert.equal(JSON.stringify(r.state.rngSeeds), rng);
+    assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'))).orbElements, palettes);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech quiet art: the worn weapon upgrade reuses board art; broken, frozen and magic overlays retain the same texture', async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid;
+    showOrbFixture(b, idx => ({ type: 'sword', ...(idx === 0 ? { broken: true, frozen: true } : idx === 1 ? { magicSword: true } : {}) }));
+    r.state.pendingModal = 'armor'; r.state.menuCandidates = ['weapon','helmet','armour','shield'].map(slot => r.makeUpgradeOffer(slot));
+    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    const doc = b.dom.window.document, texture = orbAt(b, 0).querySelector('.weapon-texture').getAttribute('src');
+    assert.equal(doc.querySelector('.lv-card[data-slot="weapon"] .weapon-texture').getAttribute('src'), texture);
+    assert.equal(orbAt(b, 1).querySelector('.weapon-texture').getAttribute('src'), texture);
+    assert.equal(orbAt(b, 1).querySelector('.orb-charge').textContent, '5');
+    assert.equal(b.dom.window.getComputedStyle(orbAt(b, 0).querySelector('.weapon-texture')).opacity, '0.45');
+    assert.equal(b.dom.window.getComputedStyle(orbAt(b, 0).querySelector('.orb-material')).animationPlayState, 'paused');
+    assert.equal(r.canChainSelect(0), false);
+    const before = orbGameplay(b);
+    doc.querySelector('.reward-details-toggle').click(); doc.querySelector('.shop-summary-toggle').click();
+    assert.equal(orbGameplay(b), before, 'presentation only, no hidden upgrade or damage changes');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
