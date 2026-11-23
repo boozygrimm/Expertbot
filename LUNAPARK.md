@@ -87,7 +87,8 @@
   DOM-сфер вниз по реальным вакансиям/новые сверху, разрушение и лёд/оттаивание.
   Личность и цвет сохраняются при падении/перемешивании/Continue. Анимации не
   выдают наград и не управляют ходом; таймеры420/550ms/очереди наград не менялись.
-  Готовый проверенный артефакт **`b7107e41434e` /1607174B**, **467 source /585 npm PASS**
+  Проверенный артефакт [PR123](https://github.com/boozygrimm/Expertbot/pull/123)
+  **`b7107e41434e` /1607174B**, **467 source /585 npm PASS**
   (добавлено5 source +10 fork built-DOM), Python **87 +279 subtests PASS**.
   Chromium153:320×480/362×646/390×844/844×390/1024×768/1440×900, browser +
   синтетический SDK:132 dialog checks/12 reload→Continue/12 freeze→thaw, плюс2
@@ -1175,9 +1176,10 @@
   source/CSS/template/builder/art/package/SDK tests побайтно прежние. Изменены только
   3 fork-source, fork-artifact,2 существующих test-файла и LUNA (7 файлов); backgrounds,
   portrait JSON, bot/admission, `/raid_test`, классические профили не менялись.
-  **Доставка:** локальный PASS — не публикация. PR/merge/Pages и проверка публичного
-  build будут зафиксированы отдельным release-комментарием этого шага после факта.
-  Целевая ссылка standalone после доставки:
+  **Выпуск — [PR #123](https://github.com/boozygrimm/Expertbot/pull/123)**,
+  feature commit **`dcb627d`**. Локальный PASS — не публикация: результат merge,
+  Pages run и прочитанный публичный build фиксируются отдельным release-комментарием
+  в этом PR **после факта**, не по предположению. Ссылка standalone для приёмки:
   https://boozygrimm.github.io/Expertbot/lunapark-raid-magitech.html?build=b7107e41434e .
   **Далее:** пользовательская приёмка движения/читаемости на телефоне; отдельно
   согласовать коэффициенты/смешанный урон/dual-боссов, затем бойцов/грейды/веса врагов.
