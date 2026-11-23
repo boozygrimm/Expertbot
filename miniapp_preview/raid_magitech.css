@@ -1121,8 +1121,8 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb .orb-core > .weapon-texture { filter: var(--weapon-finish,none) drop-shadow(0 1px 1px #031119b3); }
 .raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
 #board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
-/* Element = a quiet coloured gas body in the lower two thirds of neutral
-   weapon glass. The actual inventory image/finish stays independent of it. */
+/* Element = a quiet coloured body in two thirds of neutral weapon glass.
+   Air is above, water below; inventory image/finish is independent of it. */
 .raid-orb:is([data-type="sword"],[data-type="arrow"]) { border-color: #9db6c080; }
 .orb-material.orb-fog {
   inset: auto 0 0; height: 66.6667%; border-radius: 0; overflow: hidden;
@@ -1142,6 +1142,70 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   animation: orb-fog-return 30s ease-in-out infinite; animation-delay: calc(var(--orb-phase,0ms) - 9000ms);
 }
 .raid-orb.frozen .orb-fog-wisp { animation-play-state: paused; }
+/* The owner's explicit exception: the CONTENT turns, never the glass.
+   Front/back/edge planes give the coin thickness; the weapon turns about
+   its diagonal handle axis. Static shop artwork remains easy to compare. */
+.raid-orb:is([data-type="coin"],[data-type="sword"]) .orb-core { perspective: 260px; }
+.raid-orb .orb-core > .coin-3d {
+  position: relative; display: block; width: 89%; height: 89%; filter: none;
+  transform-style: preserve-3d; animation: coin-axial-turn 16s linear infinite;
+  animation-delay: var(--orb-phase,0ms);
+}
+.coin-face, .coin-edge { position: absolute; inset: 0; border-radius: 50%; }
+.coin-face {
+  display: grid; place-items: center; border: 2px solid #eebc49;
+  background: linear-gradient(135deg,#fff0ad 0%,#ecbb40 22%,#a76610 46%,#ffdb73 69%,#b87b18 100%);
+  box-shadow: inset 0 0 0 1px #fff2be,inset 0 0 0 3px #92520c,inset 0 0 0 4px #f3cd6b,0 1px 3px #24160680;
+  backface-visibility: hidden;
+}
+.coin-face::before { content: ''; position: absolute; inset: 12%; border: 1px dashed #fff0a4c9; border-radius: 50%; }
+.coin-face::after { content: ''; position: absolute; inset: 20%; border: 1px solid #8d500c80; border-radius: 50%; box-shadow: inset 0 1px 2px #6a37034d,0 1px 0 #ffe9a999; }
+.coin-face svg { width: 60%; height: 60%; overflow: visible; filter: drop-shadow(0 1px 0 #fff0b3); }
+.coin-obverse { transform: translateZ(2px); }
+.coin-reverse { transform: rotateY(180deg) translateZ(2px); }
+.coin-edge { background: #c78d24; transform: translateZ(0); backface-visibility: visible; }
+.coin-edge-belt {
+  inset: 0 auto; left: calc(50% - 2px); width: 4px; border-radius: 1px;
+  background: repeating-linear-gradient(to bottom,#ffe192 0 1px,#a16910 1px 2px,#d5a438 2px 3px);
+  transform: rotateY(90deg);
+}
+.raid-orb[data-type="sword"] .weapon-texture {
+  transform-origin: 50% 50%; backface-visibility: visible;
+  animation: weapon-axial-turn 20s linear infinite; animation-delay: var(--orb-phase,0ms);
+}
+/* A restrained metal spine remains visible at the edge-on angle. */
+.raid-orb[data-type="sword"] .orb-core::before {
+  content: ''; position: absolute; inset: 12%; pointer-events: none;
+  background: linear-gradient(135deg,transparent 49.3%,#a8bfc06b 49.6% 50.4%,transparent 50.7%);
+}
+.raid-orb.frozen :is(.weapon-texture,.coin-3d) { animation-play-state: paused; }
+
+/* Air occupies the TOP two thirds. Water is a small translucent body below,
+   with two gently travelling wave surfaces rather than a spinning liquid. */
+.raid-orb[data-element="air"] .orb-fog {
+  inset: 0 0 auto;
+  -webkit-mask-image: linear-gradient(to bottom,#000 70%,transparent);
+  mask-image: linear-gradient(to bottom,#000 70%,transparent);
+}
+.raid-orb[data-element="air"] .orb-fog-wisp { animation-duration: 14s; }
+.raid-orb[data-element="air"] .orb-fog-back { animation-duration: 19s; }
+.raid-orb[data-element="water"] .orb-fog {
+  -webkit-mask-image: none; mask-image: none; opacity: .66;
+}
+.raid-orb[data-element="water"] .orb-fog-wisp {
+  inset: 0 -24% -10%; filter: none;
+  background: linear-gradient(to bottom,#cff7ffb3 0%,rgb(var(--orb-rgb) / .62) 24%,rgb(var(--orb-rgb) / .24) 100%);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 144 100' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0 12Q18 2 36 12T72 12T108 12T144 12V100H0Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 144 100' preserveAspectRatio='none'%3E%3Cpath fill='white' d='M0 12Q18 2 36 12T72 12T108 12T144 12V100H0Z'/%3E%3C/svg%3E");
+  animation-name: orb-water-slosh; animation-duration: 8s;
+}
+.raid-orb[data-element="water"] .orb-fog-wisp.orb-fog-back { inset: 4% -24% -12%; opacity: .44; animation-name: orb-water-return; animation-duration: 11s; }
+.sound-control { position: relative; }
+.sound-control input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; clip-path: inset(50%); overflow: hidden; }
+.sound-control:focus-within { outline: 2px solid #f5dfa0; outline-offset: 3px; }
+.sound-control .sound-mute-line, .sound-control input:not(:checked) ~ svg .sound-waves { display: none; }
+.sound-control input:not(:checked) ~ svg .sound-mute-line { display: block; }
+
 #board .skull-badge { bottom: 8%; width: 83%; padding: 1px 0; border: 0; border-radius: 9px; text-align: center; background: #071722de; color: #fff3d6; font-size: var(--badge-font,19cqw); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; z-index: 8; text-shadow: 0 1px 2px #000; }
 .orb-countdown, .orb-charge { position: absolute; z-index: 8; display: grid; place-items: center; left: 38%; top: 3%; width: 24%; height: 24%; border-radius: 50%; background: #081c29e8; border: 1px solid #e8cea0a8; color: #fff2ca; font: 700 19cqw/1 system-ui,sans-serif; font-variant-numeric: tabular-nums; }
 .orb-charge { top: auto; bottom: 7%; }
@@ -1183,6 +1247,11 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 @keyframes orb-fx-sap { 0%,100% { transform: translateY(.5%); } 50% { transform: translateY(-.5%); } }
 @keyframes orb-fog-drift { 0%,100% { transform: translate(-3%,2%); } 50% { transform: translate(3%,-2%); } }
 @keyframes orb-fog-return { 0%,100% { transform: translate(2%,-2%); } 50% { transform: translate(-2%,2%); } }
+/* Content-only 3D rotation, explicitly requested after PR125. */
+@keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+@keyframes weapon-axial-turn { from { transform: rotate3d(1,-1,0,0deg); } to { transform: rotate3d(1,-1,0,360deg); } }
+@keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
+@keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
 @keyframes orb-prime { 0%,100% { transform: scale(1); } 45% { transform: scale(1.12); filter: brightness(1.35); } }
 @keyframes orb-burst-ring { from { opacity: .9; transform: scale(.5); } to { opacity: 0; transform: scale(1.65); } }
 @keyframes orb-shard { from { opacity: 1; transform: translate(0,0) scale(.5) rotate(0); } to { opacity: 0; transform: translate(var(--dx),var(--dy)) scale(.2) rotate(120deg); } }

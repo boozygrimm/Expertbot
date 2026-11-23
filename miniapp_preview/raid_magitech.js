@@ -1500,6 +1500,7 @@
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     resetOrbPresentation();
     clearFloatEffects();
+    stopMaterialAudio();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -2399,7 +2400,10 @@
     if (cell.type === 'sword') return raidWeaponTexture('ic');
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="#d5e9e4"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="#7fe5d2" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return start + '<path d="M24 3 42 11v14c0 10-10 17-18 21C16 42 6 35 6 25V11Z" fill="#a58d57" stroke="#dec692" stroke-width="1.5"/><path d="m24 8 13 6v11c0 7-6 12-13 16-7-4-13-9-13-16V14Z" fill="#2b5c69" stroke="#92cbd4"/><path d="M24 11v27m-10-21 20 13m0-13L14 30" stroke="#6cb0ba" stroke-width="1.2"/><path d="m24 17 7 7-7 9-7-9Z" fill="#b4f1e9"/>' + end;
-    if (cell.type === 'coin') return start + '<path d="m21 3 6 0 2 4 5-1 4 5-1 5 5 3v9l-5 2 1 5-5 4-5-1-3 5h-6l-2-4-5 1-4-5 1-5-5-3v-7l5-2-1-5 5-4 5 1Z" fill="#b58c46" stroke="#ebce84"/><circle cx="24" cy="24" r="14" fill="#dfbb63" stroke="#f8dfa1"/><circle cx="24" cy="24" r="10" fill="#a97c37" stroke="#f3d58d"/><path d="m24 15 7 9-7 9-7-9Z" fill="#f9dda0"/><path d="M21 21h6v6h-6Z" fill="#b78a47"/>' + end;
+    if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
+      + '<i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>'
+      + '<span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.6"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/><path d="M8 20 5 24l3 4m32-8 3 4-3 4" fill="none" stroke="#8e5710" stroke-width="1.5"/></svg></span>'
+      + '<span class="coin-face coin-reverse"><svg viewBox="0 0 48 48"><path d="m24 8 4 10 11 1-8 7 3 11-10-6-10 6 3-11-8-7 11-1Z" fill="#a36813" stroke="#ffe9a3" stroke-width="1.5"/><path d="m24 17 2 6 6 1-5 4 2 5-5-3-5 3 2-5-5-4 6-1Z" fill="#f5cf65"/></svg></span></span>';
     if (cell.type === 'potion') {
       const liquid = cell.acid ? '#c6e86f' : cell.mana ? '#7cb9f1' : '#e5819c';
       return start + `<path d="M18 4h12v5H18Z" fill="#bb9e66" stroke="#ead8a7"/><path d="M19 9v9L9 31c-5 8 2 13 15 13s20-5 15-13L29 18V9Z" fill="#aacbc9" fill-opacity=".28" stroke="#b6d4cf" stroke-width="1.5"/><path d="M14 29h20l3 6c2 4-4 6-13 6s-15-2-13-6Z" fill="${liquid}"/><path d="M15 30q9-4 18 0" stroke="#fff" stroke-opacity=".5"/><path d="M16 23 13 30" stroke="#fff" stroke-opacity=".7" stroke-width="2" stroke-linecap="round"/>` + (cell.mana ? '<path d="m24 27 3 5-3 5-3-5Z" fill="#fff"/>' : cell.acid ? '<path d="m20 30 4 5 4-5" stroke="#364f27" stroke-width="2" fill="none"/>' : '<path d="M24 30v8m-4-4h8" stroke="#ffe1e7" stroke-width="2"/>') + end;
@@ -2471,8 +2475,8 @@
   }
   function orbLook(cell, idx) {
     const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
-    // Weapon glass is neutral: its element lives in a separate 2/3-height gas
-    // layer, not a fully recoloured shell or a badge over the bought item.
+    // Weapon glass is neutral. Its element is a separate 2/3-height body:
+    // air above, gently sloshing water below, not a recoloured shell/badge.
     if (['sword', 'arrow'].includes(cell.type)) return { ...elemental, state: 'gas', light: '#d9e7ed', mid: '#344957', dark: '#101e2b' };
     if (cell.type === 'skull') {
       if (index === 2) return { ...elemental, state: /ent|worm/.test(raidPortraitKey(cell.skull)) ? 'organic' : 'solid' };
@@ -2989,6 +2993,7 @@
     RUN_ID++;
     resetOrbPresentation();
     clearFloatEffects();
+    stopMaterialAudio();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -4062,37 +4067,144 @@
   }
 
   // --- audio ----------------------------------------------------------------
-  let audioCtx = null;
+  // Quiet, locally synthesized material SFX. No samples, network, timer queue,
+  // music or gameplay RNG. A trusted gesture unlocks the context; suspended
+  // events are dropped, never replayed later over a menu/after unmuting.
+  let audioCtx = null, audioMaster = null, audioNoise = null, audioGesture = false, audioPageActive = true, audioHostActive = true;
+  const AUDIO_VOICES = new Set(), AUDIO_LAST = new Map();
+  const MATERIAL_SOUNDS = {
+    gold: [[1180, 1050, .25, .052], [2360, 2310, .19, .016, .012], [1720, 1680, .32, .018, .035]],
+    water: [[560, 270, .17, .038], [760, 430, .13, .023, .045], [1400, 800, .17, .018, 0, 'noise']],
+    air: [[1250, 1850, .24, .027, 0, 'noise'], [690, 660, .19, .012, .025]],
+    metal: [[820, 740, .19, .036], [1970, 1870, .14, .012, .008], [2300, 1700, .08, .016, 0, 'noise']],
+    armour: [[470, 390, .20, .038], [1130, 1080, .18, .016, .012]],
+    impact: [[190, 85, .20, .055], [950, 380, .12, .026, 0, 'noise']],
+    enemy: [[130, 75, .18, .043], [420, 230, .10, .018, 0, 'noise']],
+    boss: [[105, 68, .43, .048], [310, 180, .28, .018, .025, 'noise']],
+    level: [[740, 735, .30, .038], [1110, 1100, .36, .025, .065], [1480, 1470, .38, .012, .10]],
+    over: [[260, 165, .38, .032], [170, 110, .48, .025, .08]],
+    ui: [[920, 850, .10, .022]],
+  };
+  function audioAllowed() {
+    return audioGesture && audioPageActive && audioHostActive && !!el('sound-on')?.checked && document.visibilityState !== 'hidden';
+  }
   function audio() {
-    if (!audioCtx && window.AudioContext) {
-      try { audioCtx = new AudioContext(); } catch (e) { audioCtx = null; }
+    if (!audioAllowed()) return null;
+    const Constructor = window.AudioContext || window.webkitAudioContext;
+    if (!audioCtx && Constructor) {
+      try {
+        audioCtx = new Constructor({ latencyHint: 'interactive' });
+        audioMaster = audioCtx.createGain(); audioMaster.gain.value = .45;
+        audioMaster.connect(audioCtx.destination);
+      } catch (ignored) { audioCtx = audioMaster = null; }
     }
     return audioCtx;
   }
-  function tone(freq, dur, type, vol) {
-    if (!document.getElementById('sound-on')?.checked) return;
-    const ctx = audio();
-    if (!ctx) return;
-    try {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = type || 'sine';
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(vol || 0.06, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + dur);
-    } catch (e) {}
+  function stopMaterialAudio() {
+    // Silence even delayed sources immediately, not just the next pick.
+    try { audioMaster?.gain.cancelScheduledValues(audioCtx.currentTime); if (audioMaster) audioMaster.gain.value = 0; } catch (ignored) {}
+    for (const voice of [...AUDIO_VOICES]) {
+      voice.source.onended = null;
+      try { voice.source.stop(); } catch (ignored) {}
+      for (const node of voice.nodes) { try { node.disconnect(); } catch (ignored) {} }
+      AUDIO_VOICES.delete(voice);
+    }
+    AUDIO_LAST.clear();
   }
-  function audioPick() { tone(520, 0.08, 'sine', 0.04); }
-  function audioKill() { tone(180, 0.18, 'triangle', 0.08); tone(80, 0.2, 'sine', 0.06); }
-  function audioHeal() { tone(660, 0.12, 'sine', 0.05); tone(880, 0.16, 'sine', 0.04); }
-  function audioArmor() { tone(440, 0.09, 'triangle', 0.05); }
-  function audioGold() { tone(980, 0.06, 'square', 0.03); }
-  function audioLevel() { tone(540, 0.1, 'sine', 0.06); tone(720, 0.14, 'sine', 0.05); tone(960, 0.2, 'sine', 0.04); }
-  function audioGameOver() { tone(220, 0.3, 'triangle', 0.08); tone(140, 0.45, 'sine', 0.06); }
-  function audioEnemy() { tone(110, 0.15, 'sawtooth', 0.05); }
-  function audioBoss() { tone(70, 0.4, 'sawtooth', 0.09); tone(140, 0.5, 'triangle', 0.06); }
+  function unlockMaterialAudio(event) {
+    if (!event.isTrusted) return;
+    audioGesture = true;
+    const ctx = audio();
+    if (ctx?.state === 'suspended') {
+      try { ctx.resume()?.catch?.(() => {}); } catch (ignored) {}
+    }
+  }
+  function materialNoise(ctx) {
+    if (!audioNoise) {
+      audioNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * .6), ctx.sampleRate);
+      const data = audioNoise.getChannelData(0); let seed = 0x51f15e;
+      for (let i = 0; i < data.length; i++) {
+        seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
+        data[i] = (seed >>> 0) / 2147483648 - 1;
+      }
+    }
+    return audioNoise;
+  }
+  function materialVoice(ctx, spec, now) {
+    const [from, to, duration, volume, delay = 0, type = 'sine'] = spec;
+    const nodes = []; let voice;
+    try {
+      const source = type === 'noise' ? ctx.createBufferSource() : ctx.createOscillator(); nodes.push(source);
+      const filter = ctx.createBiquadFilter(); nodes.push(filter);
+      const gain = ctx.createGain(); nodes.push(gain);
+      const start = now + delay;
+      filter.type = type === 'noise' ? 'bandpass' : 'lowpass';
+      filter.Q.value = type === 'noise' ? .65 : .5;
+      if (type === 'noise') source.buffer = materialNoise(ctx);
+      else {
+        source.type = 'sine'; source.frequency.setValueAtTime(from, start);
+        source.frequency.exponentialRampToValueAtTime(to, start + duration);
+      }
+      filter.frequency.setValueAtTime(type === 'noise' ? from : 4200, start);
+      if (type === 'noise') filter.frequency.exponentialRampToValueAtTime(to, start + duration);
+      gain.gain.setValueAtTime(.0001, now);
+      gain.gain.setValueAtTime(.0001, start);
+      gain.gain.exponentialRampToValueAtTime(volume, start + .008);
+      gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+      source.connect(filter); filter.connect(gain); gain.connect(audioMaster);
+      voice = { source, nodes }; AUDIO_VOICES.add(voice);
+      source.onended = () => {
+        for (const node of nodes) { try { node.disconnect(); } catch (ignored) {} }
+        AUDIO_VOICES.delete(voice);
+      };
+      source.start(start); source.stop(start + duration + .015);
+    } catch (ignored) {
+      if (voice) { try { voice.source.stop(); } catch (ignored) {} AUDIO_VOICES.delete(voice); }
+      for (const node of nodes) { try { node.disconnect(); } catch (ignored) {} }
+    }
+  }
+  function materialSound(kind) {
+    if (!audioAllowed()) return;
+    const ctx = audio(), voices = MATERIAL_SOUNDS[kind];
+    if (!ctx || ctx.state !== 'running' || !voices) return;
+    const now = ctx.currentTime;
+    // Dense drags/combat cannot turn a quiet set into a loud wall of notes.
+    if (now - (AUDIO_LAST.get(kind) ?? -1) < .085 || AUDIO_VOICES.size + voices.length > 18) return;
+    AUDIO_LAST.set(kind, now); audioMaster.gain.setValueAtTime(.45, now);
+    for (const spec of voices) materialVoice(ctx, spec, now);
+  }
+  function initMaterialAudio() {
+    document.addEventListener('pointerdown', unlockMaterialAudio, { capture: true, passive: true });
+    document.addEventListener('keydown', unlockMaterialAudio, { capture: true });
+    el('sound-on')?.addEventListener('change', event => {
+      if (!event.target.checked) stopMaterialAudio();
+      // Re-enabling stays silent. The next actual pointer/key gesture may
+      // resume audio; a programmatic checkbox click is not an activation.
+    });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopMaterialAudio(); });
+    window.addEventListener?.('pagehide', () => { audioPageActive = false; stopMaterialAudio(); });
+    window.addEventListener?.('pageshow', () => { audioPageActive = true; });
+  }
+  function audioPick(kind) {
+    if (kind === 'coin') return audioGold();
+    if (kind === 'potion') return audioHeal();
+    if (kind === 'shield') return audioArmor();
+    if (kind === 'sword') {
+      const cell = S.board[S.selected.at(-1)];
+      // Read an already rendered palette; sound must not assign/save colours.
+      const element = cell && ['sword', 'arrow'].includes(cell.type) ? ORB_ELEMENTS.get(cell) : -1;
+      return materialSound(element === 1 ? 'air' : element === 3 ? 'water' : 'metal');
+    }
+    materialSound('ui');
+  }
+  function audioKill() { materialSound('impact'); }
+  function audioHeal() { materialSound('water'); }
+  function audioArmor() { materialSound('armour'); }
+  function audioGold() { materialSound('gold'); }
+  function audioLevel() { materialSound('level'); }
+  function audioGameOver() { materialSound('over'); }
+  function audioEnemy() { materialSound('enemy'); }
+  function audioBoss() { materialSound('boss'); }
 
   function isChainUppercut(idx, chain) {
     const position = chain.indexOf(idx), previous = chain[position - 1], next = chain[position + 1];
@@ -5919,8 +6031,9 @@
       const protectedSwipes = canDisable && telegramCall(tg, 'disableVerticalSwipes');
       telegramCall(tg, 'setHeaderColor', '#140e22'); telegramCall(tg, 'setBackgroundColor', '#140e22');
       viewport();
-      for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged', 'activated']) telegramCall(tg, 'onEvent', event, viewport);
-      telegramCall(tg, 'onEvent', 'deactivated', () => { cancelPointerGesture(); saveRun(); });
+      for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
+      telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { audioHostActive = false; stopMaterialAudio(); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers
@@ -5945,6 +6058,7 @@
   // --- init -----------------------------------------------------------------
   function init() {
     initRaidAppearance();
+    initMaterialAudio();
     window.addEventListener?.('resize', finishOrbAnimations);
     window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
