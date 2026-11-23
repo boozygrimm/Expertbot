@@ -185,12 +185,12 @@ test('server-provided names are treated as text, not executable markup', async (
 
 // Use the GENERATED deliverable, including real CSS. Source-only DOM doubles
 // cannot detect display:grid overriding the browser's built-in [hidden] rule.
-async function openRaid({ saved = {}, start = true, setup } = {}) {
+async function openRaid({ saved = {}, start = true, setup, url = 'https://raid.test/' } = {}) {
   const errors = [], console = new VirtualConsole();
   console.on('jsdomError', error => errors.push(error.message));
   const html = require('node:fs').readFileSync(require('node:path').join(root, 'lunapark-raid.html'), 'utf8');
   const dom = new JSDOM(html, {
-    url: 'https://raid.test/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: console,
+    url, runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: console,
     beforeParse(window) {
       for (const [key, value] of Object.entries(saved)) window.localStorage.setItem(key, value);
       if (setup) setup(window);
@@ -993,6 +993,286 @@ test('built raid achievements: dedicated records/achievements entries open their
     const buttons = [...doc.querySelectorAll('#modal-body button')]; buttons.find(n => n.textContent === 'Достижения').click();
     assert.equal(doc.getElementById('history-section').value, 'achievements'); doc.getElementById('history-close').click();
     buttons.find(n => n.textContent === 'Рекорды и статистика').click(); assert.equal(doc.getElementById('history-section').value, 'records');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+// Raid's small SDK-only shell is separate from the laboratory API stand above.
+// No Telegram API request or signed player profile is used in these tests.
+function raidTelegramStub({ version = '8.0', overrides = {} } = {}) {
+  const calls = [], events = new Map(); let back;
+  const tg = {
+    initData: 'SYNTHETIC_UI_ONLY_NOT_AUTH', platform: 'android', version,
+    viewportStableHeight: 680, viewportHeight: 680,
+    safeAreaInset: { top: 24, bottom: 18, left: 0, right: 0 },
+    contentSafeAreaInset: { top: 8, bottom: 0, left: 0, right: 0 },
+    ready() { calls.push('ready'); }, expand() { calls.push('expand'); },
+    isVersionAtLeast(minimum) { return Number(version) >= Number(minimum); },
+    disableVerticalSwipes() { calls.push('disableVerticalSwipes'); this.isVerticalSwipesEnabled = false; },
+    setHeaderColor(color) { calls.push('header:' + color); },
+    setBackgroundColor(color) { calls.push('background:' + color); },
+    enableClosingConfirmation() { calls.push('enableClosingConfirmation'); this.isClosingConfirmationEnabled = true; },
+    disableClosingConfirmation() { calls.push('disableClosingConfirmation'); this.isClosingConfirmationEnabled = false; },
+    onEvent(name, fn) { assert.equal(events.has(name), false, 'register SDK event once'); events.set(name, fn); },
+    BackButton: {
+      isVisible: false,
+      show() { calls.push('back:show'); this.isVisible = true; },
+      hide() { calls.push('back:hide'); this.isVisible = false; },
+      onClick(fn) { assert.equal(back, undefined); back = fn; },
+    },
+    ...overrides,
+  };
+  for (const name of ['CloudStorage', 'initDataUnsafe']) Object.defineProperty(tg, name, {
+    get() { throw new Error('Raid shell must not read ' + name); },
+  });
+  return { tg, calls, events, fire: (name, payload) => events.get(name)?.(payload), back: () => back?.() };
+}
+const telegramRaidUrl = 'https://raid.test/?telegram=1';
+function raidStorage(window) { return Object.fromEntries(Object.entries(window.localStorage)); }
+function raidPointer(window, target, type, pointerId = 1, extra = {}) {
+  const event = new window.Event(type, { bubbles: true, cancelable: true });
+  for (const [key, value] of Object.entries({ pointerId, isPrimary: true, button: 0, ...extra })) Object.defineProperty(event, key, { value });
+  target.dispatchEvent(event);
+}
+function raidDrag(b, pointerId = 1) {
+  const { window } = b.dom, doc = window.document;
+  const cell = index => doc.querySelector(`.cell[data-idx="${index}"]`);
+  raidPointer(window, cell(0), 'pointerdown', pointerId);
+  for (const index of [1, 2]) {
+    doc.elementFromPoint = () => cell(index);
+    raidPointer(window, window, 'pointermove', pointerId);
+  }
+  assert.deepEqual(Array.from(b.raid.state.selected), [0, 1, 2]);
+}
+
+test('built raid Telegram is opt-in; ordinary browser stays SDK/network-free even with an injected object', async () => {
+  const stub = raidTelegramStub();
+  const { dom, errors } = await openRaid({ start: false, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    assert.deepEqual(stub.calls, []);
+    assert.equal(dom.window.document.documentElement.classList.contains('telegram-preview'), false);
+    assert.equal(dom.window.document.querySelector('script[src]'), null);
+    assert.equal(dom.window.document.querySelector('#picker-telegram-status').hidden, true);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid Telegram calls ready/expand/swipe protection once, without identity, API, cloud or autoplay', async () => {
+  const stub = raidTelegramStub(), requests = [];
+  const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, start: false, setup(window) {
+    window.Telegram = { WebApp: stub.tg };
+    window.fetch = (...args) => { requests.push(args); throw new Error('Raid must stay local'); };
+  } });
+  try {
+    const doc = dom.window.document;
+    assert.equal(raid.state, null);
+    for (const method of ['ready', 'expand', 'disableVerticalSwipes']) assert.equal(stub.calls.filter(c => c === method).length, 1);
+    assert.equal(stub.tg.BackButton.isVisible, false);
+    assert.equal(stub.tg.isClosingConfirmationEnabled, false);
+    assert.match(doc.querySelector('#picker-telegram-status').textContent, /Telegram · android · локальный пробник/);
+    assert.equal(doc.querySelector('#picker-telegram-status').hidden, false);
+    assert.equal(doc.documentElement.style.getPropertyValue('--raid-tg-height'), '680px');
+    assert.equal(doc.documentElement.style.getPropertyValue('--raid-tg-safe-top'), '24px');
+    assert.equal(doc.documentElement.style.getPropertyValue('--raid-tg-content-top'), '8px');
+    assert.equal(doc.querySelector('script[src]'), null, 'reuse loaded SDK');
+    stub.fire('activated'); stub.fire('activated');
+    assert.equal(raid.state, null);
+    assert.deepEqual(requests, []);
+    assert.doesNotMatch(JSON.stringify(raidStorage(dom.window)), /SYNTHETIC_UI_ONLY_NOT_AUTH/);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+for (const mode of ['no-data', 'old-client', 'missing-methods', 'throwing-methods']) test(`built raid Telegram ${mode} degrades visibly without breaking local game`, async () => {
+  const overrides = mode === 'no-data' ? { initData: '' }
+    : mode === 'missing-methods' ? { ready: undefined, expand: undefined, BackButton: undefined, onEvent: undefined, disableVerticalSwipes: undefined }
+      : mode === 'throwing-methods' ? Object.fromEntries(['ready', 'expand', 'disableVerticalSwipes', 'setHeaderColor', 'setBackgroundColor', 'onEvent', 'enableClosingConfirmation', 'disableClosingConfirmation'].map(name => [name, () => { throw new Error('old SDK'); }])) : {};
+  const stub = raidTelegramStub({ version: mode === 'old-client' ? '7.6' : '8.0', overrides });
+  const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    assert.ok(raid.state && raid.state.board.length === 36);
+    assert.match(dom.window.document.querySelector('#picker-telegram-status').textContent,
+      mode === 'no-data' ? /Браузерный режим/ : /свайпы Telegram не отключены/);
+    if (mode === 'no-data' || mode === 'old-client') assert.ok(!stub.calls.includes('disableVerticalSwipes'));
+    dom.window.document.querySelector('#menu-btn').click();
+    assert.equal(dom.window.document.querySelector('#menu-modal').classList.contains('show'), true);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid Telegram SDK loader is async and bounded; errors/timeouts stay playable and late success can connect', async () => {
+  for (const failure of ['error', 'timeout']) {
+    const stub = raidTelegramStub(); let timeout;
+    const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, setup(window) {
+      const original = window.setTimeout.bind(window);
+      window.setTimeout = (fn, delay, ...args) => delay === 8000 ? (timeout = fn, 0) : original(fn, delay, ...args);
+    } });
+    try {
+      const doc = dom.window.document, script = doc.querySelector('script[src]');
+      assert.equal(script.src, 'https://telegram.org/js/telegram-web-app.js'); assert.equal(script.async, true);
+      if (failure === 'error') script.onerror(); else timeout();
+      assert.match(doc.querySelector('#picker-telegram-status').textContent, /жесты Telegram не защищены/);
+      assert.ok(raid.state && raid.state.board.length === 36);
+      const before = JSON.stringify(raid.state);
+      dom.window.Telegram = { WebApp: stub.tg }; script.onload(); script.onload();
+      assert.equal(stub.calls.filter(c => c === 'ready').length, 1);
+      assert.equal(JSON.stringify(raid.state), before);
+      assert.match(doc.querySelector('#menu-telegram-status').textContent, /^Telegram/);
+      assert.deepEqual(errors, []);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('built raid Telegram viewport changes honor stability, safe-area events and finite pixel limits', async () => {
+  const stub = raidTelegramStub();
+  const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const style = dom.window.document.documentElement.style, before = JSON.stringify(raid.state);
+    stub.tg.viewportStableHeight = 340; stub.tg.viewportHeight = 350;
+    stub.fire('viewportChanged', { isStateStable: false });
+    assert.equal(style.getPropertyValue('--raid-tg-height'), '680px');
+    stub.fire('viewportChanged', { isStateStable: true });
+    assert.equal(style.getPropertyValue('--raid-tg-height'), '340px');
+    stub.tg.safeAreaInset = { top: 0, bottom: 21, left: 36, right: 36 };
+    stub.tg.contentSafeAreaInset = { top: 18, bottom: 2, left: 0, right: 0 };
+    stub.fire('safeAreaChanged'); stub.fire('contentSafeAreaChanged');
+    assert.equal(style.getPropertyValue('--raid-tg-safe-left'), '36px');
+    assert.equal(style.getPropertyValue('--raid-tg-content-top'), '18px');
+    for (const invalid of [NaN, Infinity, -1, '700', 'url(https://example.invalid)', 10001]) {
+      stub.tg.viewportStableHeight = invalid; stub.tg.viewportHeight = invalid;
+      stub.tg.safeAreaInset.top = invalid; stub.fire('viewportChanged', { isStateStable: true });
+      assert.equal(style.getPropertyValue('--raid-tg-height'), '340px');
+      assert.equal(style.getPropertyValue('--raid-tg-safe-top'), '0px');
+    }
+    stub.tg.viewportHeight = 580; stub.fire('activated');
+    assert.equal(style.getPropertyValue('--raid-tg-height'), '580px');
+    assert.equal(JSON.stringify(raid.state), before);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid Telegram Back handles startup readers/editor/Escape and live menus without a turn or reward bypass', async () => {
+  const stub = raidTelegramStub();
+  const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, start: false, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  const doc = dom.window.document;
+  try {
+    for (const id of ['picker-history', 'picker-achievements']) {
+      doc.querySelector('#' + id).focus(); doc.querySelector('#' + id).click();
+      await until(() => stub.tg.BackButton.isVisible);
+      stub.back(); await until(() => !stub.tg.BackButton.isVisible);
+      assert.equal(doc.querySelector('#history-modal').hidden, true);
+      assert.equal(doc.activeElement.id, id); assert.equal(raid.state, null);
+    }
+    doc.querySelector('.class-config-btn').click(); await until(() => stub.tg.BackButton.isVisible);
+    doc.querySelector('#class-picker').dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => !stub.tg.BackButton.isVisible);
+    assert.equal(doc.querySelector('#class-editor').hidden, true);
+    doc.querySelector('.class-config-btn').click(); await until(() => stub.tg.BackButton.isVisible);
+    stub.back(); await until(() => !stub.tg.BackButton.isVisible);
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(stub.tg.isClosingConfirmationEnabled, true);
+    const before = JSON.stringify(raid.state);
+    stub.back(); assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), true);
+    stub.back(); assert.equal(doc.querySelector('#menu-modal').classList.contains('show'), false);
+    doc.querySelector('#help').click(); stub.back();
+    assert.equal(doc.querySelector('#help-modal').classList.contains('show'), false);
+    doc.querySelector('#restart').click(); stub.back();
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), false);
+    assert.equal(JSON.stringify(raid.state), before);
+    doc.querySelector('#stats-btn').click(); assert.equal(raid.state.pendingModal, 'stats');
+    stub.back(); await until(() => !raid.state.pendingModal);
+    assert.equal(raid.state.turn, 0);
+    raid.state.hero.xp = 100; raid.checkLevelUp();
+    const menu = JSON.stringify(raid.state.menuCandidates), rng = JSON.stringify(raid.state.rngSeeds);
+    stub.back();
+    assert.equal(raid.state.pendingModal, 'level');
+    assert.equal(JSON.stringify(raid.state.menuCandidates), menu); assert.equal(JSON.stringify(raid.state.rngSeeds), rng);
+    assert.match(doc.querySelector('#flash').textContent, /Сначала заверши ход/);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+for (const cancel of ['pointercancel', 'deactivated', 'pagehide', 'visibilitychange']) test(`built raid ${cancel} discards a 3-cell gesture instead of resolving it, and stray pointerup stays inert`, async () => {
+  const stub = raidTelegramStub();
+  const b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const { window } = b.dom, before = JSON.stringify(b.raid.state);
+    raidDrag(b);
+    if (cancel === 'pointercancel') raidPointer(window, window, cancel);
+    else if (cancel === 'deactivated') stub.fire(cancel);
+    else if (cancel === 'pagehide') window.dispatchEvent(new window.Event(cancel));
+    else { Object.defineProperty(window.document, 'visibilityState', { value: 'hidden' }); window.document.dispatchEvent(new window.Event(cancel)); }
+    assert.equal(JSON.stringify(b.raid.state), before);
+    raidPointer(window, window, 'pointerup');
+    stub.fire('activated'); await new Promise(resolve => setTimeout(resolve, 1100));
+    assert.equal(JSON.stringify(b.raid.state), before);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid gesture is owned by one pointer; other fingers cannot restart, extend or commit it', async () => {
+  const b = await openRaid(); const { window } = b.dom, doc = window.document;
+  try {
+    const cell = index => doc.querySelector(`.cell[data-idx="${index}"]`);
+    raidPointer(window, cell(4), 'pointerdown', 4, { isPrimary: false });
+    raidPointer(window, cell(4), 'pointerdown', 4, { button: 2 });
+    assert.equal(b.raid.state.selected.length, 0);
+    raidPointer(window, cell(0), 'pointerdown', 1);
+    raidPointer(window, cell(1), 'pointerdown', 2);
+    doc.elementFromPoint = () => cell(1);
+    raidPointer(window, window, 'pointermove', 2); raidPointer(window, window, 'pointerup', 2);
+    assert.deepEqual(Array.from(b.raid.state.selected), [0]);
+    raidPointer(window, window, 'pointermove', 1);
+    doc.elementFromPoint = () => cell(2); raidPointer(window, window, 'pointermove', 1);
+    assert.deepEqual(Array.from(b.raid.state.selected), [0, 1, 2]);
+    raidPointer(window, window, 'pointerup', 1);
+    await until(() => !b.raid.state.resolving);
+    assert.equal(b.raid.state.turn, 1); assert.equal(b.raid.state.selected.length, 0);
+    raidPointer(window, window, 'pointercancel', 1); raidPointer(window, window, 'pointerup', 1);
+    assert.equal(b.raid.state.turn, 1);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid Telegram deactivate/reopen requires explicit Continue and preserves level→shop→one enemy turn', async () => {
+  let stub = raidTelegramStub();
+  let b = await openRaid({ url: telegramRaidUrl, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+  try {
+    let { raid } = b, doc = b.dom.window.document, s = raid.state;
+    s.forceCoins = 1; s.hero.hp = 10; s.hero.xp = 99; s.hero.xpLevelCum = 99;
+    s.hero.gold = 99; s.goldEarned = 99;
+    s.board[0] = { type: 'skull', skull: Object.assign(raid.makeSkull(false), { hp: 1, atk: 0 }) };
+    s.board[1] = { type: 'chain' }; s.board[2] = { type: 'coin' };
+    s.board[3] = { type: 'chain' }; s.board[4] = { type: 'potion' };
+    [0, 1, 2, 3, 4].forEach(index => raid.tryExtendChain(index)); raid.resolveChain();
+    await until(() => s.pendingModal === 'level');
+    doc.querySelectorAll('.lv-card')[1].click(); doc.querySelectorAll('.lv-card')[0].click();
+    const menu = JSON.parse(JSON.stringify(s.menuCandidates)), rng = JSON.stringify(s.rngSeeds);
+    stub.back(); assert.equal(s.pendingModal, 'level');
+    stub.fire('deactivated'); const saved = raidStorage(b.dom.window);
+    assert.deepEqual(b.errors, []); b.dom.window.close();
+    stub = raidTelegramStub();
+    b = await openRaid({ url: telegramRaidUrl, start: false, saved, setup(window) { window.Telegram = { WebApp: stub.tg }; } });
+    raid = b.raid; doc = b.dom.window.document;
+    stub.fire('activated'); stub.fire('viewportChanged', { isStateStable: true });
+    assert.equal(raid.state, null, 'SDK lifecycle never autoplays a saved run');
+    assert.equal(stub.tg.isClosingConfirmationEnabled, false);
+    assert.equal(doc.querySelector('#picker-resume').hidden, false);
+    doc.querySelector('#picker-resume').click(); s = raid.state;
+    assert.equal(stub.tg.isClosingConfirmationEnabled, true);
+    assert.equal(s.pendingModal, 'level'); assert.equal(s.turn, 0);
+    assert.deepEqual(Array.from(s.levelDraft), [1, 0]);
+    assert.deepEqual(JSON.parse(JSON.stringify(s.menuCandidates)), menu); assert.equal(JSON.stringify(s.rngSeeds), rng);
+    stub.back(); assert.equal(s.pendingModal, 'level');
+    doc.querySelector('.lv-confirm').click(); await until(() => s.pendingModal === 'gold');
+    const shop = JSON.stringify(s.menuCandidates), shopRng = JSON.stringify(s.rngSeeds);
+    stub.back(); stub.fire('deactivated'); stub.fire('activated');
+    assert.equal(s.pendingModal, 'gold'); assert.equal(JSON.stringify(s.menuCandidates), shop); assert.equal(JSON.stringify(s.rngSeeds), shopRng);
+    const pick = s.menuCandidates.findIndex(item => !item.scroll);
+    doc.querySelectorAll('button.shop-item')[pick].click(); await until(() => !s.resolving);
+    assert.equal(s.turn, 1); assert.equal(s.arrivals.length, 0);
+    assert.equal(s.hero.xp, 1); assert.equal(s.hero.gold, 1);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

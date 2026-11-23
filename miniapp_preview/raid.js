@@ -2570,6 +2570,7 @@
     if (el('upgrade-text')) el('upgrade-text').textContent = `${fmt(S.upgradeBar)} / ${UPGRADE_BAR_MAX}`;
     // skills
     renderSkills();
+    syncTelegramChrome();
   }
 
   function renderSkills() {
@@ -5083,9 +5084,9 @@
   }
 
   // --- pointer input -------------------------------------------------------- --------------------------------------------------------
-  let activeDrag = false;
+  let activeDrag = false, activePointerId = null;
   function onPointerMove(e) {
-    if (!activeDrag) return;
+    if (!activeDrag || activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const cell = el ? el.closest('.cell') : null;
     if (!cell) return;
@@ -5094,10 +5095,23 @@
     tryExtendChain(idx);
   }
 
-  function onPointerEnd() {
+  function cancelPointerGesture() {
     if (!activeDrag) return;
-    activeDrag = false;
+    activeDrag = false; activePointerId = null;
     window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerEnd);
+    window.removeEventListener('pointercancel', onPointerEnd);
+    if (S && !S.resolving && !S.pendingModal) clearChain();
+  }
+
+  function onPointerEnd(event) {
+    if (activePointerId != null && event?.pointerId != null && event.pointerId !== activePointerId) return;
+    if (event?.type === 'pointercancel') { cancelPointerGesture(); return; }
+    if (!activeDrag) return;
+    activeDrag = false; activePointerId = null;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerEnd);
+    window.removeEventListener('pointercancel', onPointerEnd);
     // тап по элитному черепу (без драга) → особенности
     const chain = S.selected.slice();
     if (chain.length === 1) {
@@ -5116,16 +5130,17 @@
     if (!board) return;
 
     board.addEventListener('pointerdown', e => {
+      if (activeDrag || e.isPrimary === false || e.button > 0) return;
       if (!S || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
       if (!cell) return;
       const idx = parseInt(cell.dataset.idx, 10);
       if (isNaN(idx)) return;
-      activeDrag = true;
+      activeDrag = true; activePointerId = e.pointerId;
       window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerEnd, { once: true });
-      window.addEventListener('pointercancel', onPointerEnd, { once: true });
+      window.addEventListener('pointerup', onPointerEnd);
+      window.addEventListener('pointercancel', onPointerEnd);
       tryExtendChain(idx);
     });
   }
@@ -5325,12 +5340,102 @@
     el('restart-modal')?.classList.remove('show'); previous?.focus?.focus();
   }
 
+  // Opt-in Telegram UI bridge. This is NOT authentication: the Pages demo is
+  // public, and only its launcher in the bot is owner-private. Our code never sends or
+  // persists initData/user details; gameplay and storage stay browser-local.
+  let TELEGRAM_APP = null;
+  let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null;
+  function telegramCall(target, method, ...args) {
+    try { if (typeof target?.[method] === 'function') { target[method](...args); return true; } }
+    catch (ignored) { /* Old clients/SDK failures must not break the game. */ }
+    return false;
+  }
+  function telegramNotice(text) {
+    for (const id of ['picker-telegram-status', 'menu-telegram-status']) {
+      const node = el(id); if (node) { node.textContent = text; node.hidden = false; }
+    }
+  }
+  function telegramLayer(id) { return !!el(id)?.classList.contains('show'); }
+  function syncTelegramChrome() {
+    if (!TELEGRAM_APP) return;
+    const live = !!S && !S.over;
+    const back = live || HISTORY_OPEN || !!classEditor || telegramLayer('help-modal') || telegramLayer('restart-modal');
+    if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
+    if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
+  }
+  function telegramBack() {
+    cancelPointerGesture();
+    if (telegramLayer('restart-modal')) cancelNewGame();
+    else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('help')?.focus(); }
+    else if (HISTORY_OPEN) closeRunHistory();
+    else if (classEditor) closeClassEditor();
+    else if (pickerOpen && S && !S.over) resumeFromClassPicker();
+    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+    else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
+    else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
+    else if (S && !S.over) { saveRun(); el('menu-modal')?.classList.add('show'); el('menu-resume')?.focus(); }
+    syncTelegramChrome();
+  }
+  function initTelegramPreview() {
+    if (new URLSearchParams(window.location.search).get('telegram') !== '1') return;
+    telegramNotice('Подключение Telegram… Сохранения здесь могут отличаться от браузерных.');
+    const timeout = setTimeout(() => telegramNotice('Telegram SDK не загрузился. Игра доступна локально, но жесты Telegram не защищены. Открой Mini App заново.'), 8000);
+    function connect() {
+      clearTimeout(timeout);
+      const tg = window.Telegram?.WebApp;
+      // Presence is only a UI hint, never a trusted identity/permission check.
+      if (!tg?.initData) { telegramNotice('Браузерный режим: для проверки Telegram открой Рейд кнопкой в личке бота.'); return; }
+      if (TELEGRAM_APP) return;
+      TELEGRAM_APP = tg;
+      document.documentElement.classList.add('telegram-preview');
+      const root = document.documentElement.style;
+      const validHeight = value => Number.isFinite(value) && value >= 160 && value <= 10000;
+      const inset = value => Number.isFinite(value) && value >= 0 && value <= 160 ? value : 0;
+      function viewport(event) {
+        if (event?.isStateStable === false) return;
+        const height = validHeight(tg.viewportStableHeight) ? tg.viewportStableHeight : tg.viewportHeight;
+        if (validHeight(height)) root.setProperty('--raid-tg-height', height + 'px');
+        for (const side of ['top', 'bottom', 'left', 'right']) {
+          root.setProperty('--raid-tg-safe-' + side, inset(tg.safeAreaInset?.[side]) + 'px');
+          root.setProperty('--raid-tg-content-' + side, inset(tg.contentSafeAreaInset?.[side]) + 'px');
+        }
+      }
+      telegramCall(tg, 'ready'); telegramCall(tg, 'expand');
+      let canDisable = typeof tg.disableVerticalSwipes === 'function';
+      try { if (typeof tg.isVersionAtLeast === 'function') canDisable = canDisable && tg.isVersionAtLeast('7.7'); } catch (ignored) { canDisable = false; }
+      const protectedSwipes = canDisable && telegramCall(tg, 'disableVerticalSwipes');
+      telegramCall(tg, 'setHeaderColor', '#140e22'); telegramCall(tg, 'setBackgroundColor', '#140e22');
+      viewport();
+      for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged', 'activated']) telegramCall(tg, 'onEvent', event, viewport);
+      telegramCall(tg, 'onEvent', 'deactivated', () => { cancelPointerGesture(); saveRun(); });
+      telegramCall(tg.BackButton, 'onClick', telegramBack);
+      document.addEventListener('click', syncTelegramChrome);
+      // Includes Escape and programmatic reader/editor changes, without timers
+      // or touching any gameplay state. Mutations of host chrome are external.
+      if (typeof window.MutationObserver === 'function') {
+        const observer = new window.MutationObserver(syncTelegramChrome);
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'menu-modal', 'modal']) {
+          const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
+        }
+      }
+      syncTelegramChrome();
+      telegramNotice('Telegram · ' + String(tg.platform || 'клиент').slice(0, 24) + ' · локальный пробник' + (protectedSwipes ? '' : ' · свайпы Telegram не отключены: нужен более новый клиент.'));
+    }
+    if (window.Telegram?.WebApp) { connect(); return; }
+    const sdk = document.createElement('script');
+    sdk.src = 'https://telegram.org/js/telegram-web-app.js'; sdk.async = true;
+    sdk.onload = connect;
+    sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Игра работает локально, но жесты Telegram не защищены.'); };
+    document.head.appendChild(sdk);
+  }
+
   // --- init -----------------------------------------------------------------
   function init() {
+    initTelegramPreview();
     readRunSlot(); readRunHistory();
     initInput();
-    window.addEventListener?.('pagehide', () => saveRun());
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveRun(); });
+    window.addEventListener?.('pagehide', () => { cancelPointerGesture(); saveRun(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
       if (event.key === RUN_HISTORY_KEY || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
       if (event.key !== RUN_SAVE_KEY && event.key !== null) return;

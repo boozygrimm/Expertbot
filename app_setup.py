@@ -63,6 +63,10 @@ def configure_dispatcher() -> Dispatcher:
     async def cmd_support(message: types.Message):
         await message.answer("👨‍💻 **Связь с владельцем:**\nПо всем вопросам пишите: @boozygrimm", parse_mode="Markdown")
 
+    # Owner-only Mini App entry must also escape unfinished input forms.
+    from handlers.owner_control_panel import open_raid_test
+    dp.message.register(open_raid_test, Command('raid_test'))
+
     # Сначала ставим наш игровой штаб, чтобы он первым проверял команду /start alcbase
     dp.include_router(alc_base.router)
     dp.include_router(alc_intro.router)
