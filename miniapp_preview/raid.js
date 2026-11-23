@@ -823,6 +823,7 @@
       board: [],
       classId: 'adventurer',       // текущий класс забега (см. CLASSES)
       classConfig: null,           // immutable next-run configuration snapshot
+      historyId: '', pretzelStats: emptyPretzelStats(),
       seed: 0, rngSeeds: [],
       mode: 'classic',             // classic | sprint | pretzel
       difficulty: 1,               // 0 Easy, 1 Normal, 2 Hard, 3 Harder
@@ -923,6 +924,7 @@
     'arrivals', 'rngSeeds', '_runePathSet', '_chainOrder', '_lastChainCells']);
   let RUN_SAVE_BASE;
   let SAVED_RUN = null;
+  let FINISHED_RECORD = null;
   let SAVE_TIMER = null;
   let SAVE_CONFLICT = false;
   let SAVE_REVISION = 0;
@@ -1040,8 +1042,13 @@
     saveCheck(new Set(menu.picked).size === menu.picked.length);
     return menu;
   }
-  function readSavedState(data) {
+  function readSavedState(data, legacyId) {
     const state = newGameState(), keys = Object.keys(state).filter(key => !RUN_SAVE_SKIP.has(key));
+    saveCheck(data && typeof data === 'object' && !Array.isArray(data));
+    // Compatible extension of released v1: keep the run and RNG; never invent
+    // an average for a Pretzel run that already scored before statistics.
+    if (!Object.hasOwn(data, 'historyId')) data.historyId = legacyId;
+    if (!Object.hasOwn(data, 'pretzelStats')) data.pretzelStats = data.mode === 'pretzel' && data.pretzelScore > 0 ? null : emptyPretzelStats();
     saveObject(data, keys);
     for (const key of keys) {
       const value = data[key];
@@ -1053,7 +1060,7 @@
     saveNumber(state.difficulty, 0, 3, true); saveNumber(state.seed, 0, 0xffffffff, true);
     saveNumber(state.turn, 0, 1e12, true); saveNumber(state.trophyRemaining, 0, 30, true);
     saveCheck(!state.over && !state.won && state.scrollPolicy === 'classic-memory-v1');
-    saveConfig(state.classConfig, state.classId);
+    saveConfig(state.classConfig, state.classId); readHistoryId(state.historyId); readPretzelStats(state.pretzelStats);
     const heroKeys = Object.keys(newGameState().hero);
     saveObject(state.hero, heroKeys);
     for (const key of heroKeys.filter(key => key !== 'stats')) saveNumber(state.hero[key]);
@@ -1093,12 +1100,16 @@
     saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
     saveCheck(data && data.format === 'lunapark-raid-run' && data.version === 1);
-    if (data.status === 'finished') { saveObject(data, ['format', 'version', 'status']); return null; }
+    if (data.status === 'finished') {
+      saveObject(data, ['format', 'version', 'status', 'record'], ['format', 'version', 'status']);
+      if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
+      readHistoryRecord(data.record); return { status: 'finished', record: data.record };
+    }
     saveObject(data, ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs']);
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
     saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
-    data.state = readSavedState(data.state);
+    data.state = readSavedState(data.state, data.state && Object.hasOwn(data.state, 'historyId') ? null : legacyHistoryId(raw, data.savedAt));
     saveArray(data.rng, 6, 6).forEach(n => saveNumber(n, 0, 0xffffffff, true));
     saveNumber(data.skullUid, 1, 1e12, true);
     saveCheck(data.state.board.every(cell => cell.type !== 'skull' || cell.skull.uid < data.skullUid));
@@ -1187,7 +1198,9 @@
     catch (e) { saveStatus('unavailable', 'Хранилище браузера недоступно. Продолжить после закрытия страницы не получится.'); return false; }
     RUN_SAVE_BASE = raw;
     try {
-      SAVED_RUN = raw === null ? null : decodeRunSave(raw);
+      const decoded = raw === null ? null : decodeRunSave(raw);
+      SAVED_RUN = decoded?.status === 'active' ? decoded : null;
+      if (decoded?.status === 'finished') recordFinishedRun(decoded.record);
       if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
       saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${SAVED_RUN.state.turn}.` : 'Сохранённого забега пока нет.');
       return true;
@@ -1219,7 +1232,8 @@
     if (!ownsRunSlot()) return false;
     let raw, decoded;
     try {
-      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'finished' }) : encodeRunSave();
+      if (S.over && !FINISHED_RECORD) FINISHED_RECORD = makeHistoryRecord();
+      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-run', version: 1, status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
       decoded = decodeRunSave(raw);
     } catch (e) {
       saveStatus('invalid', 'Текущая точка не записана: состояние не прошло проверку. Предыдущее корректное сохранение не изменено.');
@@ -1227,15 +1241,17 @@
     }
     try {
       localStorage.setItem(RUN_SAVE_KEY, raw);
-      RUN_SAVE_BASE = raw; SAVED_RUN = decoded;
-      if (decoded) SAVE_REVISION = decoded.revision;
-      saveStatus(decoded ? 'saved' : 'empty', decoded ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
+      RUN_SAVE_BASE = raw; SAVED_RUN = decoded?.status === 'active' ? decoded : null;
+      if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
+      saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
+      if (S.over) recordFinishedRun(FINISHED_RECORD);
       return true;
     } catch (e) {
       // Small tombstones/removal usually still work when a large write hits the
       // quota. Never leave a pre-death or pre-trophy checkpoint looking current.
       try { localStorage.removeItem(RUN_SAVE_KEY); RUN_SAVE_BASE = null; SAVED_RUN = null; } catch (ignored) {}
       saveStatus('unavailable', 'Не удалось сохранить забег. Разреши локальное хранилище и освободи место; до успешной записи не закрывай страницу.');
+      if (S.over) recordFinishedRun(FINISHED_RECORD);
       return false;
     }
   }
@@ -1257,11 +1273,12 @@
   function resumeSavedRun() {
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
-    RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null;
+    RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
     SCHEDULED_STEP = AFTER_ARRIVALS = RESOURCE_BATCH = null; DRAINING_ARRIVALS = false;
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
+    closeRunHistory();
     S = data.state;
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
@@ -1280,6 +1297,194 @@
     }
     saveRun();
     return true;
+  }
+
+  // --- local records / class statistics (one atomic profile value) ----------
+  // Gameplay RNG never creates IDs or sorts records. Receipts make retrying the
+  // terminal checkpoint idempotent; they are not a cross-tab transaction/lock.
+  const RUN_HISTORY_KEY = 'raid:history';
+  const RUN_HISTORY_LIMIT = 256 * 1024;
+  const SCORE_TYPES = ['Классика · Лёгкий', 'Классика · Обычный', 'Классика · Сложный', 'Классика · Очень сложный', 'Спринт', 'Крендель'];
+  let HISTORY_NONCE = 0;
+  let HISTORY_PENDING = null;
+  let HISTORY_FOCUS = null;
+  let HISTORY_OPEN = false;
+  let HISTORY_STATUS = { state: 'empty', message: 'Рекордов пока нет. Они появятся после завершённого забега.' };
+
+  function newHistoryId() {
+    return 'run-' + (window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${++HISTORY_NONCE}-${Math.random().toString(36).slice(2)}`);
+  }
+  function legacyHistoryId(raw, savedAt) {
+    let hash = 2166136261;
+    for (let i = 0; i < raw.length; i++) hash = Math.imul(hash ^ raw.charCodeAt(i), 16777619);
+    return `v1-${savedAt.toString(36)}-${(hash >>> 0).toString(36)}`;
+  }
+  function readHistoryId(value) {
+    saveCheck(typeof value === 'string' && /^[a-z0-9-]{6,100}$/.test(value)); return value;
+  }
+  function emptyPretzelStats() { return { scoringChains: 0, avgTimes10: 0, maxCross: 0 }; }
+  function readPretzelStats(value) {
+    if (value === null) return null; // pre-statistics v1 save: the old mean is unknowable
+    saveObject(value, ['scoringChains', 'avgTimes10', 'maxCross']);
+    saveNumber(value.scoringChains, 0, 1e12, true); saveNumber(value.avgTimes10, 0, 360, true); saveNumber(value.maxCross, 0, 36, true);
+    saveCheck(value.scoringChains ? value.avgTimes10 >= 10 && value.avgTimes10 <= value.maxCross * 10 : value.avgTimes10 === 0 && value.maxCross === 0);
+    return value;
+  }
+  function addPretzelStats(crosses) {
+    const stats = S.pretzelStats;
+    if (!stats || crosses <= 0) return;
+    stats.avgTimes10 = Math.trunc((stats.avgTimes10 * stats.scoringChains + 10 * crosses) / (stats.scoringChains + 1));
+    stats.scoringChains++; stats.maxCross = Math.max(stats.maxCross, crosses);
+  }
+  function scoreType() { return S.mode === 'classic' ? S.difficulty : S.mode === 'sprint' ? 4 : 5; }
+  function makeHistoryRecord() {
+    const quarter = value => Math.floor(Math.round(value || 0) / (S.mode === 'sprint' ? 4 : 1));
+    return { id: S.historyId, type: scoreType(), classId: S.classId, difficulty: S.difficulty, turn: S.turn,
+      xp: quarter(S.hero.xpLevelCum), gold: quarter(S.goldEarned), upgrade: quarter(S.upgradeEarned),
+      score: runScore(), kills: S.skullsKilled, won: S.won, finishedAt: Date.now(),
+      skills: S.skills.map(id => ({ id, level: S.skillLevels[id] || 1 })),
+      pretzel: S.mode === 'pretzel' && S.pretzelStats ? { ...S.pretzelStats } : null };
+  }
+  function readHistoryRecord(record) {
+    saveObject(record, ['id', 'type', 'classId', 'difficulty', 'turn', 'xp', 'gold', 'upgrade', 'score', 'kills', 'won', 'finishedAt', 'skills', 'pretzel']);
+    readHistoryId(record.id); saveNumber(record.type, 0, 5, true); saveNumber(record.difficulty, 0, 3, true);
+    saveCheck(!!classDefinition(record.classId) && (record.type > 3 || record.type === record.difficulty));
+    for (const key of ['turn', 'xp', 'gold', 'upgrade', 'score', 'kills']) saveNumber(record[key], 0, Number.MAX_SAFE_INTEGER, true);
+    saveNumber(record.finishedAt, 0, 8640000000000000, true); saveBool(record.won);
+    saveCheck(!record.won || record.type === 4 && record.turn >= 100);
+    saveArray(record.skills, 4).forEach(skill => {
+      saveObject(skill, ['id', 'level']); saveCheck(typeof skill.id === 'string' && Object.hasOwn(SKILL_BY_ID, skill.id)); saveNumber(skill.level, 1, 10, true);
+    });
+    saveCheck(new Set(record.skills.map(skill => skill.id)).size === record.skills.length);
+    readPretzelStats(record.pretzel); saveCheck(record.type === 5 || record.pretzel === null);
+    return record;
+  }
+  function emptyRunHistory() {
+    return { format: 'lunapark-raid-history', version: 1, revision: 0, records: SCORE_TYPES.map(() => []),
+      classes: Object.fromEntries(CLASSES.map(cls => [cls.id, { games: 0, kills: 0, best: [0, 0, 0] }])), completed: [], last: null };
+  }
+  function decodeRunHistory(raw) {
+    saveCheck(typeof raw === 'string' && raw.length <= RUN_HISTORY_LIMIT);
+    const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
+    saveObject(data, ['format', 'version', 'revision', 'records', 'classes', 'completed', 'last']);
+    saveCheck(data.format === 'lunapark-raid-history' && data.version === 1); saveNumber(data.revision, 0, Number.MAX_SAFE_INTEGER, true);
+    const ids = [];
+    saveArray(data.records, 6, 6).forEach((rows, type) => {
+      saveArray(rows, 10).forEach((row, i) => {
+        readHistoryRecord(row); saveCheck(row.type === type && (!i || rows[i - 1].score >= row.score)); ids.push(row.id);
+      });
+    });
+    saveCheck(new Set(ids).size === ids.length);
+    saveObject(data.classes, CLASSES.map(cls => cls.id));
+    Object.values(data.classes).forEach(stats => {
+      saveObject(stats, ['games', 'kills', 'best']);
+      saveNumber(stats.games, 0, Number.MAX_SAFE_INTEGER, true); saveNumber(stats.kills, 0, Number.MAX_SAFE_INTEGER, true);
+      saveArray(stats.best, 3, 3).forEach(n => saveNumber(n, 0, Number.MAX_SAFE_INTEGER, true));
+    });
+    saveArray(data.completed, 512).forEach(readHistoryId); saveCheck(new Set(data.completed).size === data.completed.length);
+    if (data.last !== null) {
+      saveObject(data.last, ['type', 'index', 'id']); saveNumber(data.last.type, 0, 5, true); saveNumber(data.last.index, 0, 9, true); readHistoryId(data.last.id);
+      saveCheck(data.records[data.last.type][data.last.index]?.id === data.last.id);
+    }
+    return data;
+  }
+  function historyStatus(state, message) {
+    HISTORY_STATUS = { state, message };
+    for (const id of ['picker-history-status', 'history-status', 'run-history-status']) {
+      const node = el(id); if (!node) continue;
+      node.textContent = id === 'history-status' && ['saved', 'empty'].includes(state) ? state === 'saved' ? 'История сохранена.' : 'Рекордов пока нет.' : message;
+      if (id === 'picker-history-status') node.hidden = !['invalid', 'unavailable', 'conflict'].includes(state);
+    }
+    const retry = el('history-retry'); if (retry) retry.hidden = !HISTORY_PENDING;
+  }
+  function readRunHistory() {
+    let raw;
+    try { raw = localStorage.getItem(RUN_HISTORY_KEY); }
+    catch (e) { historyStatus('unavailable', 'Рекорды и статистика недоступны: браузер запретил чтение хранилища.'); return null; }
+    try {
+      const data = raw === null ? emptyRunHistory() : decodeRunHistory(raw);
+      if (!HISTORY_PENDING) historyStatus(raw === null ? 'empty' : 'saved', raw === null ? 'Рекордов пока нет. Они появятся после завершённого забега.' : 'Рекорды и статистика хранятся только в этом браузере.');
+      return { raw, data };
+    } catch (e) { historyStatus('invalid', 'История повреждена или несовместима. Она не перезаписана; настройки классов и активный забег не затронуты.'); return null; }
+  }
+  function recordFinishedRun(record) {
+    HISTORY_PENDING = record;
+    if (!ownsRunSlot()) { historyStatus('conflict', 'Результат не записан: сохранение изменилось в другой вкладке. Обнови страницу.'); return false; }
+    const stored = readRunHistory(); if (!stored) return false;
+    const data = stored.data;
+    if (data.completed.includes(record.id) || data.records.some(rows => rows.some(row => row.id === record.id))) {
+      HISTORY_PENDING = null; historyStatus('saved', 'Результат уже записан. Рекорды и статистика не дублируются.'); return true;
+    }
+    try {
+      readHistoryRecord(record);
+      const rows = data.records[record.type];
+      const lower = rows.findIndex(row => row.score < record.score);
+      // Classic quirk: even a new lowest score replaces the tenth entry.
+      const index = Math.min(lower < 0 ? rows.length : lower, 9);
+      rows.splice(index, 0, record); if (rows.length > 10) rows.pop();
+      const stats = data.classes[record.classId]; stats.games++; stats.kills += record.kills;
+      if (record.type >= 1 && record.type <= 3) stats.best[record.type - 1] = Math.max(stats.best[record.type - 1], record.score);
+      data.completed.push(record.id); data.completed = data.completed.slice(-512);
+      data.last = { type: record.type, index, id: record.id }; data.revision++;
+      const raw = JSON.stringify(data); decodeRunHistory(raw);
+      if (localStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
+        historyStatus('conflict', 'История изменилась в другой вкладке. Нажми «Повторить запись», не запускай два забега одновременно.'); return false;
+      }
+      localStorage.setItem(RUN_HISTORY_KEY, raw);
+      HISTORY_PENDING = null; historyStatus('saved', 'Результат записан в локальные рекорды и статистику класса.'); return true;
+    } catch (e) { historyStatus('unavailable', 'Результат пока не записан. Разреши хранилище, освободи место и нажми «Повторить запись» в рекордах.'); return false; }
+  }
+  function retryRunHistory() {
+    if (HISTORY_PENDING) return recordFinishedRun(HISTORY_PENDING);
+    return !!readRunHistory();
+  }
+  function appendHistoryHint(body, title, text) {
+    const hint = document.createElement('details'); hint.className = 'history-hint';
+    const summary = document.createElement('summary'); summary.textContent = title; hint.appendChild(summary);
+    const note = document.createElement('p'); note.textContent = text + ' Старые завершённые забеги до этой сборки восстановить нельзя. Без аккаунта, онлайн-таблицы и наград парка.';
+    hint.appendChild(note); body.appendChild(hint);
+  }
+  function renderRunHistory() {
+    const body = el('history-body'), typeSelect = el('history-type'), section = el('history-section');
+    if (!body || !typeSelect || !section) return;
+    const stored = readRunHistory(); body.innerHTML = '';
+    typeSelect.parentElement.hidden = section.value !== 'records';
+    if (!stored) return;
+    const data = stored.data;
+    if (section.value === 'classes') {
+      appendHistoryHint(body, 'Что считается игрой и убийством', 'Учитываются только завершённые забеги, включая Лёгкий, Спринт и Крендель. Убийства — счётчик атак (AttackSkull), не сбор Руной, ядом или Калечением. Три лучших счёта — только Классика без Лёгкого. Уровни и настройки классов не меняются.');
+      for (const cls of CLASSES) {
+        const stats = data.classes[cls.id], card = document.createElement('article'); card.className = 'history-record'; card.dataset.classId = cls.id;
+        card.innerHTML = `<h4>${cls.icon} ${cls.name}</h4><p>Завершено: <strong>${stats.games}</strong> · Убийств атаками: <strong>${stats.kills}</strong></p><dl class="history-bests">${stats.best.map((best, i) => `<div><dt>${['Обычный', 'Сложный', 'Очень сложный'][i]}</dt><dd>${best}</dd></div>`).join('')}</dl>`;
+        body.appendChild(card);
+      }
+    } else {
+      const type = Math.max(0, Math.min(5, Number(typeSelect.value) || 0)), rows = data.records[type];
+      appendHistoryHint(body, '6 категорий · правила записи', 'Запись при смерти или победе в Спринте; замена незавершённого забега не считается игрой. По 10 результатов в каждой из 6 категорий. Равные очки идут после прежних. Классическое правило: новый минимальный результат всё равно заменяет 10-е место.');
+      if (!rows.length) { const empty = document.createElement('p'); empty.textContent = 'В этой категории пока нет завершённых забегов.'; body.appendChild(empty); }
+      rows.forEach((row, i) => {
+        const card = document.createElement('article'), cls = CLASS_BY_ID[row.classId];
+        card.className = 'history-record' + (data.last?.id === row.id ? ' latest' : ''); card.dataset.recordId = row.id;
+        const stats = row.pretzel;
+        const details = type === 5 ? stats ? `Пересечения: среднее ${(stats.avgTimes10 / 10).toFixed(1).replace('.', ',')} · максимум ${stats.maxCross} · цепочек с очками ${stats.scoringChains}` : 'Статистика пересечений недоступна: забег из сохранения до её добавления.'
+          : `XP ${row.xp} · GP ${row.gold} · UP ${row.upgrade}${type === 4 ? ' (каждый ресурс ÷4)' : ''}`;
+        card.innerHTML = `<h4><span>${i + 1}. ${cls.icon} ${cls.name}</span><strong>${row.score} очк.</strong></h4><p>Ход ${row.turn} · ${row.won ? 'Победа' : 'Поражение'} · ${new Date(row.finishedAt).toLocaleDateString('ru-RU')}${type > 3 ? ' · ' + ['Лёгкий', 'Обычный', 'Сложный', 'Очень сложный'][row.difficulty] : ''}</p><p>${details}</p><p class="history-skills">${row.skills.length ? row.skills.map(skill => `${SKILL_BY_ID[skill.id].icon} ${SKILL_BY_ID[skill.id].name} ур.${skill.level}`).join(' · ') : 'Без навыков'}</p>`;
+        if (data.last?.id === row.id) { const last = document.createElement('p'); last.className = 'history-latest'; last.textContent = 'Последний записанный результат'; card.appendChild(last); }
+        body.appendChild(card);
+      });
+    }
+  }
+  function openRunHistory() {
+    if (HISTORY_OPEN) return true;
+    if (S?.resolving || S?.pendingModal && S.pendingModal !== 'gameover') { flash('Сначала заверши ход и выбор наград'); return false; }
+    const wrap = el('history-modal'); if (!wrap) return false;
+    HISTORY_FOCUS = document.activeElement; HISTORY_OPEN = true;
+    renderRunHistory(); wrap.hidden = false; wrap.classList.add('show'); el('history-title')?.focus(); return true;
+  }
+  function closeRunHistory() {
+    HISTORY_OPEN = false;
+    const wrap = el('history-modal'); if (wrap) { wrap.classList.remove('show'); wrap.hidden = true; }
+    HISTORY_FOCUS?.focus(); HISTORY_FOCUS = null;
   }
 
   // Original TileType order is POTION(0), SKULL(1), COIN(2), SHIELD(3), SWORD(4),
@@ -2156,10 +2361,12 @@
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
+    if (HISTORY_PENDING) retryRunHistory();
     RUN_ID++;
-    SAVE_CONFLICT = false; NEW_RUN_REQUEST = null;
+    SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
     clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
+    closeRunHistory();
     for (const id of ['restart-modal', 'menu-modal', 'help-modal']) el(id)?.classList.remove('show');
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeClassEditor(false);
@@ -2172,7 +2379,7 @@
     const remaining = S ? S.trophyRemaining : readTrophyRemaining();
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
-    S = newGameState();
+    S = newGameState(); S.historyId = newHistoryId();
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
     // starts fresh unless explicitly resuming a saved run (including history).
     if (previousLabel) S.scrollLeechLabel = { ...previousLabel, active: false, inFlight: false };
@@ -3257,7 +3464,10 @@
     S.actionCommitted = committed;
     if (committed) {
       S.chainCount++;
-      if (S.mode === 'pretzel') S.pretzelScore += pretzelPoints(pretzelCrossings(chain)).points;
+      if (S.mode === 'pretzel') {
+        const crosses = pretzelCrossings(chain);
+        S.pretzelScore += pretzelPoints(crosses).points; addPretzelStats(crosses);
+      }
     }
     S.selected = []; S.chainType = null;
     renderSelection(); renderChainLine(); renderChainTip();
@@ -3556,8 +3766,17 @@
       restart.type = 'button';
       restart.className = 'btn secondary';
       restart.textContent = '↻ Ещё раз';
-      restart.addEventListener('click', () => { if (runId === RUN_ID && S.over) { closeModal(); newGame(); } });
-      body.appendChild(restart);
+      restart.addEventListener('click', () => {
+        if (runId !== RUN_ID || !S.over) return;
+        if (HISTORY_PENDING) requestNewGame();
+        else { closeModal(); newGame(); }
+      });
+      const historyNote = document.createElement('p'); historyNote.id = 'run-history-status'; historyNote.className = 'save-note';
+      historyNote.setAttribute('role', 'status'); historyNote.setAttribute('aria-live', 'polite'); historyNote.textContent = HISTORY_STATUS.message;
+      body.appendChild(historyNote);
+      const history = document.createElement('button'); history.type = 'button'; history.className = 'btn secondary'; history.textContent = 'Рекорды и статистика';
+      history.addEventListener('click', () => { if (runId === RUN_ID && S.over) openRunHistory(); });
+      body.appendChild(history); body.appendChild(restart);
     }
     queueRunSave();
   }
@@ -4762,12 +4981,12 @@
 
   function requestNewGame(classId = getSelectedClassId()) {
     if (!isClassUnlocked(classId)) return false;
-    if ((!S || S.over) && !savedRunInfo()) { setSelectedClassId(classId); newGame(); return true; }
+    if ((!S || S.over) && !savedRunInfo() && !HISTORY_PENDING) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
     if (!wrap) return false;
     NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement };
     const text = el('restart-confirm-text');
-    if (text) text.textContent = `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни классов сохранятся.`;
+    if (text) text.textContent = (HISTORY_PENDING ? 'Результат прошлого забега ещё не записан в историю. Новый может удалить его резервную запись. ' : '') + `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни классов сохранятся.`;
     wrap.classList.add('show'); el('restart-cancel')?.focus();
     return false;
   }
@@ -4778,14 +4997,33 @@
 
   // --- init -----------------------------------------------------------------
   function init() {
-    readRunSlot();
+    readRunSlot(); readRunHistory();
     initInput();
     window.addEventListener?.('pagehide', () => saveRun());
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveRun(); });
     window.addEventListener?.('storage', event => {
+      if (event.key === RUN_HISTORY_KEY || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
       if (event.key !== RUN_SAVE_KEY && event.key !== null) return;
-      if (S && !S.over) ownsRunSlot();
+      // Finished pages still own timers/pagehide callbacks: never adopt a new
+      // tab's baseline and then overwrite it with our old terminal checkpoint.
+      if (S) ownsRunSlot();
       else { readRunSlot(); if (pickerOpen && !classEditor) showClassPicker(); }
+    });
+    el('picker-history')?.addEventListener('click', openRunHistory);
+    el('menu-history')?.addEventListener('click', openRunHistory);
+    el('history-close')?.addEventListener('click', closeRunHistory);
+    for (const id of ['history-section', 'history-type']) el(id)?.addEventListener('change', renderRunHistory);
+    el('history-retry')?.addEventListener('click', () => { retryRunHistory(); renderRunHistory(); });
+    el('history-modal')?.addEventListener('keydown', event => {
+      if (!HISTORY_OPEN) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeRunHistory(); }
+      if (event.key === 'Tab') {
+        const controls = [...el('history-modal').querySelectorAll('button, select')].filter(node => !node.hidden && node.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (controls.length && (event.shiftKey && (document.activeElement === first || document.activeElement === el('history-title')) || !event.shiftKey && document.activeElement === last)) {
+          event.preventDefault(); (event.shiftKey ? last : first).focus();
+        }
+      }
     });
     el('restart-cancel')?.addEventListener('click', cancelNewGame);
     el('restart-confirm')?.addEventListener('click', () => {
@@ -4858,6 +5096,11 @@
     resumeSavedRun,
     savedRunInfo,
     get saveStatus() { return { ...RUN_SAVE_STATUS }; },
+    getLocalHistory() { return readRunHistory()?.data || null; },
+    retryRunHistory,
+    openRunHistory,
+    closeRunHistory,
+    get historyStatus() { return { ...HISTORY_STATUS }; },
     tryExtendChain,
     resolveChain,
     activateSkill,
