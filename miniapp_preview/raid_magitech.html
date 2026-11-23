@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ru" data-raid-region="earth">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#091c1c">
+<meta name="raid-build" content="__RAID_BUILD__">
+<title>RAID · Магия стали</title>
+<style>
+/*__STYLE__*/
+</style>
+</head>
+<body>
+<!-- class picker (стартовый экран) -->
+<div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
+  <div class="picker-card" id="picker-card">
+    <aside class="raid-intro" aria-label="Мир RAID">
+      <div class="raid-wordmark"><span class="raid-sigil"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></span><span>RAID<small>МАГИЯ СТАЛИ</small></span><span class="raid-edition">ПРОТОТИП / 01</span></div>
+      <div class="raid-intro-copy">
+        <span class="raid-eyebrow">ФЭНТЕЗИ × МАГИТЕХ</span>
+        <h1>Магия стали.<br><em>Искусство<br> выжить.</em></h1>
+        <p class="raid-lede">Четыре стихии. Один боец.<br>Твой следующий ход решает всё.</p>
+      </div>
+      <div class="raid-world-footer">
+        <div class="raid-location-line"><span class="raid-location-no" data-raid-region-caption>03 / Земля</span><span class="raid-online-dot">●</span></div>
+        <h2 data-raid-region-title>Забытый лес</h2>
+        <div class="raid-region-options" role="group" aria-label="Визуальная тема локации"><button type="button" data-raid-region="fire" aria-pressed="false"><span class="region-symbol">△</span><span>Огонь</span><small>01</small></button>
+            <button type="button" data-raid-region="air" aria-pressed="false"><span class="region-symbol">≋</span><span>Воздух</span><small>02</small></button>
+            <button type="button" data-raid-region="earth" aria-pressed="true"><span class="region-symbol">◇</span><span>Земля</span><small>03</small></button>
+            <button type="button" data-raid-region="water" aria-pressed="false"><span class="region-symbol">◡</span><span>Вода</span><small>04</small></button></div>
+        <p class="raid-theme-hint">Пока меняет только оформление — не параметры и не состав врагов.</p>
+      </div>
+    </aside>
+
+    <div class="picker-main" id="class-picker-main">
+    <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
+    <h3 class="picker-title">Выбери <em>мех.</em></h3>
+    <p class="build-label">Сборка __RAID_BUILD__</p>
+    <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
+    <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
+    <p class="picker-hint">Боевой комплект определяет способности. Выбери доступный мех — или продолжи свой рейд.</p>
+    <p class="raid-prototype-note" id="raid-prototype-note"><b>Первая сборка редизайна.</b> Бой пока классический. Стихийные множители и грейды бойцов не включены.</p>
+    <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
+    <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
+    <div class="picker-tools"><button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
+    <button class="btn secondary" id="picker-achievements" type="button">◇ Достижения</button></div>
+    <p class="save-note" id="picker-history-status" role="status" aria-live="polite" hidden></p>
+    <div class="raid-run-settings">
+      <div class="raid-mode-summary"><span>ФОРМАТ РЕЙДА</span><strong>До гибели</strong><small>Без лимита ходов</small></div>
+      <label class="raid-difficulty">СЛОЖНОСТЬ
+        <select id="difficulty-select"><option value="0">Лёгкий</option><option value="1" selected>Нормальный</option><option value="2">Сложный</option></select>
+      </label>
+      <select id="mode-select" aria-label="Бесконечный рейд" hidden><option value="classic">Бесконечный рейд</option></select>
+    </div>
+    <div class="picker-grid" id="picker-grid"></div>
+    <p class="picker-foot">Мех «Авантюрист» доступен сразу. Другие открываются за трофеи. Настройки действуют на следующий рейд. Прогресс тестовой классики сюда не переносится.</p>
+    </div>
+    <section class="class-editor" id="class-editor" hidden aria-labelledby="class-editor-title">
+      <h3 class="picker-title" id="class-editor-title" tabindex="-1"></h3>
+      <p class="picker-hint" id="class-editor-hint"></p>
+      <div class="class-editor-fields" id="class-editor-fields"></div>
+      <p class="class-editor-status" id="class-editor-status" role="status" aria-live="polite"></p>
+      <div class="class-editor-actions">
+        <button class="btn secondary" id="class-editor-back" type="button">Назад</button>
+        <button class="btn secondary" id="class-editor-reset" type="button">По умолчанию</button>
+        <button class="btn" id="class-editor-save" type="button">Сохранить</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="shell">
+  <!-- top brand -->
+  <header class="brand">
+    <div class="brand-logo">
+      <div class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></div>
+      <div class="brand-text">
+        <small>ЛУНА-ПАРК / МАГИТЕХ</small>
+        <strong>RAID</strong>
+      </div>
+    </div>
+    <div class="brand-actions">
+      <label class="icon-btn" style="cursor:pointer" title="Звук">
+        <input type="checkbox" id="sound-on" checked hidden>
+        <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9Zm12-2a7 7 0 0 1 0 10m3-13a11 11 0 0 1 0 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </label>
+      <button class="icon-btn" id="help" type="button" title="Как играть">?</button>
+      <button class="icon-btn" id="restart" type="button" title="Начать заново">↻</button>
+    </div>
+  </header>
+  <div class="raid-run-heading"><span data-raid-region-title>Забытый лес</span><span class="raid-stage-tag">ДИЗАЙН-ПРОТОТИП</span></div>
+  <p class="raid-combat-note">Классический бой · стихийные множители ещё не включены</p>
+
+  <div class="skills-head">
+    <div class="skills" id="skills" aria-label="Умения"></div>
+    <div class="run-actions">
+      <button class="icon-btn" id="menu-btn" type="button">Меню</button>
+      <button class="icon-btn" id="stats-btn" type="button">Свойства</button>
+    </div>
+  </div>
+
+  <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
+  <p class="save-warning" id="save-status" role="status" aria-live="polite" hidden></p>
+  <p class="save-warning" id="progress-status" role="status" aria-live="polite" hidden></p>
+
+  <!-- board -->
+  <div class="board-wrap">
+    <div id="chain-tip" class="chain-tip" role="status" aria-live="polite"></div>
+    <div id="board" aria-label="Поле рейда 6 на 6"></div>
+    <div class="board-foot"><span id="chain-count">Цепь 0</span><span id="mode-badge">RAID · Нормальный</span></div>
+  </div>
+
+  <!-- HUD -->
+  <section class="hud" aria-label="Статус героя">
+    <div class="hud-row">
+      <div class="hud-cell" id="hud-hp">
+        <div class="hud-label"><span>HP</span><span id="hp-text">50 / 50</span></div>
+        <div class="bar"><i id="hp-bar" class="fill-hp"></i></div>
+      </div>
+      <div class="hud-cell" id="hud-armor">
+        <div class="hud-label"><span>Броня</span><span id="armor-text">4 / 4</span></div>
+        <div class="bar"><i id="armor-bar" class="fill-armor"></i></div>
+      </div>
+    </div>
+    <div class="hud-row">
+      <div class="hud-cell" id="hud-xp">
+        <div class="hud-label"><span>Опыт</span><span id="xp-text">Ур. 1 · 0 / 100</span></div>
+        <div class="bar xp"><i id="xp-bar" class="fill-xp"></i></div>
+      </div>
+      <div class="hud-cell" id="hud-gold">
+        <div class="hud-label"><span>Золото</span><span id="gold-text">0 / 100</span></div>
+        <div class="bar"><i id="gold-bar" class="fill-gold"></i></div>
+      </div>
+    </div>
+    <div class="hud-meta">
+      <span class="turn" id="turn-text">ХОД 0</span>
+      <span class="dmg" id="dmg-text">Меч 2 · база 3</span>
+      <span class="dmg" id="trophy-text" style="color:#dbc893">Трофей через 1</span>
+      <span class="dmg" id="upgrade-text" style="color:#b7c8ae">0 / 100 UP</span>
+    </div>
+    <div class="bar xp" id="hud-upgrade" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
+  </section>
+
+  <div class="log-wrap" id="log" aria-live="polite"></div>
+
+  <div class="flash" id="flash" role="status"></div>
+  <p class="achievement-notice" id="achievement-notice" role="status" aria-live="polite" hidden></p>
+</div>
+
+<!-- Presentation only: outside cells so rerender/overflow cannot erase a hit.
+     Viewport coordinates follow the actual recipient; never receives input. -->
+<div class="effect-layer" id="raid-effects" aria-hidden="true"></div>
+
+<!-- run menu -->
+<div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
+  <div class="menu-card">
+    <h3>Пауза рейда</h3>
+    <p class="raid-menu-theme-title">ОФОРМЛЕНИЕ ЛОКАЦИИ</p>
+    <div class="raid-region-options raid-menu-regions" role="group" aria-label="Визуальная тема"><button type="button" data-raid-region="fire" aria-pressed="false"><span class="region-symbol">△</span><span>Огонь</span><small>01</small></button>
+            <button type="button" data-raid-region="air" aria-pressed="false"><span class="region-symbol">≋</span><span>Воздух</span><small>02</small></button>
+            <button type="button" data-raid-region="earth" aria-pressed="true"><span class="region-symbol">◇</span><span>Земля</span><small>03</small></button>
+            <button type="button" data-raid-region="water" aria-pressed="false"><span class="region-symbol">◡</span><span>Вода</span><small>04</small></button></div>
+    <p class="raid-theme-hint">Только фон и цвет интерфейса. На бой не влияет.</p>
+    <p class="build-label">Сборка __RAID_BUILD__</p>
+    <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
+    <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
+    <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
+    <button class="btn" id="menu-resume" type="button">Продолжить</button>
+    <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
+    <button class="btn secondary" id="menu-classes" type="button">Мехи и настройки</button>
+    <button class="btn secondary" id="menu-history" type="button">Рекорды и статистика</button>
+    <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
+    <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
+    <button class="btn secondary" id="menu-close" type="button">Закрыть меню</button>
+  </div>
+</div>
+
+<!-- Read-only local history, accessible before starting a run. -->
+<div class="menu-modal history-modal" id="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title" aria-describedby="history-description" hidden>
+  <div class="menu-card history-card">
+    <h3 id="history-title" tabindex="-1">Рекорды и статистика</h3>
+    <p class="save-note" id="history-description">Локальная история — только в этом браузере.</p>
+    <div class="history-controls">
+      <label>Раздел<select id="history-section"><option value="records">Рекорды</option><option value="classes">Статистика мехов</option><option value="achievements">Достижения</option></select></label>
+      <label>Категория<select id="history-type"><option value="0">Лёгкий</option><option value="1" selected>Нормальный</option><option value="2">Сложный</option></select></label>
+      <label hidden>Показать<select id="achievement-filter"><option value="all">Все достижения</option><option value="unlocked">Открытые</option><option value="pending">Не завершённые</option><option value="unavailable">Недоступные</option></select></label>
+    </div>
+    <p class="save-note" id="history-status" role="status" aria-live="polite"></p>
+    <button class="btn secondary" id="history-retry" type="button" hidden>Повторить запись</button>
+    <div class="history-body" id="history-body"></div>
+    <button class="btn" id="history-close" type="button">Назад</button>
+  </div>
+</div>
+
+<!-- A new run replaces this local profile slot only after explicit confirmation. -->
+<div class="menu-modal restart-modal" id="restart-modal" role="alertdialog" aria-modal="true" aria-labelledby="restart-confirm-title" aria-describedby="restart-confirm-text">
+  <div class="menu-card">
+    <h3 id="restart-confirm-title">Начать новый забег?</h3>
+    <p class="save-note" id="restart-confirm-text"></p>
+    <button class="btn secondary" id="restart-cancel" type="button">Нет, вернуться</button>
+    <button class="btn" id="restart-confirm" type="button">Да, начать заново</button>
+  </div>
+</div>
+
+<!-- Explicit opt-out only when an exit checkpoint cannot be written. -->
+<div class="menu-modal exit-modal" id="exit-modal" role="alertdialog" aria-modal="true" aria-labelledby="exit-title" aria-describedby="exit-confirm-text" hidden>
+  <div class="menu-card">
+    <h3 id="exit-title">Закрыть без сохранения?</h3>
+    <p class="save-note" id="exit-confirm-text"></p>
+    <button class="btn secondary" id="exit-cancel" type="button">Остаться в игре</button>
+    <button class="btn" id="exit-confirm" type="button">Всё равно закрыть</button>
+  </div>
+</div>
+
+<!-- generic modal (level / gold / armor / gameover) -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <h3 class="modal-title" id="modal-title">УРОВЕНЬ!</h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- help -->
+<div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
+  <div class="help-card">
+    <h3>RAID / Как играть</h3>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка __RAID_BUILD__.</p>
+    <p><b>Этап 01 — оформление.</b> Мехи используют способности соответствующих исходных классов, бойцы — исходных рас. Новые грейды, стихии мечей/врагов и их коэффициенты ещё <b>не включены в бой</b>. Цвета портретов — пока только внешний вид. Пропорции стихий врагов, двойная стихия босса, задания и музыка ждут согласования. Четыре темы меняют фон и оформление, не характеристики или генерацию.</p>
+    <ul>
+      <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
+      <li>Урон — исходная база плюс урон оружия за каждый меч. Boost удваивает только вклад мечей. Сначала защита цели поглощает удар, затем теряется HP; броски разрушения брони идут после этого. Предпросмотр не тратит случайность и не обещает случайные награды.</li>
+      <li>Щит либо чинит броню, либо даёт 2 UP при полной броне или Коррозии. Излишек ремонта этого щита теряется. Монеты дают золото, обычные зелья лечат; кислотные ранят, мана заряжает навык.</li>
+      <li>Старые незамороженные враги атакуют общим залпом. HP=0 заканчивает забег. В этой копии один бесконечный режим и исходные формулы Easy/Normal/Hard, без новых порогов открытия. Sprint, Pretzel и Harder остаются в классическом тесте.</li>
+      <li>100 XP → уровень, 100 золота → замена вещи, 100 UP → улучшение надетой вещи. На уровне выбери 2 из 4, снимай и меняй отметки до отдельного «Подтвердить». До подтверждения награды и ход врагов ждут. Магазин может предложить обмен −1/+2; обычное улучшение не снижает другие параметры вещи.</li>
+      <li>Мехи и их развитие пока повторяют исходные классы: трофеи открывают мех или повышают его уровень до 10. Пары пассив/изъян открываются на уровнях меха 3/7/9, независимый выбор бойца — с 5, замены навыков — на чётных уровнях. Доноры сохраняют исходные пороги. Уровень меха — не XP-уровень героя. Настройки не меняют начатый рейд.</li>
+      <li>Навыки и 31 особый тип врагов сохраняют исходные эффекты. Под портретом — атака · броня · HP; число в скобках — отсчёт способности. Тап по особому или боссу показывает текущие параметры и способности. Выбор портрета не добавляет ему новую механику. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
+      <li>Урон, лечение и ресурсы всплывают у реального получателя, не в центре экрана. Подробности вещей и сводка персонажа ничего не покупают, не перебрасывают предложения и не применяют награду.</li>
+      <li>Свиток при покупке разово применяет навык, не занимая слот. Сохранена модель классического ошибочного фильтра I1: занятость слотов, счётчики и история надписи лечения, не правило «ещё не выучен». Неинициализированные слова свежей страницы — нули по политике совместимости, а не доказанный факт памяти оригинала. «Продолжить» восстанавливает историю сохранённого рейда.</li>
+      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: доска, герой, шесть потоков случайности, предложения и отметки наград восстанавливаются без переброса. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
+      <li>Рекорды и статистика локальные, без общей телеметрии, лаборатории, серверной игровой базы, облачной синхронизации и наград парка. Наследованный каталог достижений ещё не адаптирован целиком: условия Sprint/Pretzel/Harder в этом режиме недоступны, их не заменяли придуманными. «Я всё вижу» также остаётся неподтверждённым.</li>
+      <li>Этот URL не подключён к кнопке бота. Команда /raid_test по-прежнему открывает классический тест. Если копию открыть в SDK-оболочке с telegram=1, профиль выбирается отдельно по ID, не авторизуется сервером и не читает legacy-профиль владельца. При неизвестном/сменившемся ID запись отключена. «Закрыть Mini App» сохраняет продолжение, а не заканчивает рейд; при ошибке записи нужен явный выбор. Отдельное добровольное завершение ещё не реализовано.</li>
+      <li>Иконки временно вырезаны из присланных скриншотов, не из исходного атласа. Фоны созданы для этого визуального прототипа; названия мест рабочие. Финальные стихии бойцов, грейды, баланс и полная замена всех текстур — следующие согласуемые шаги.</li>
+    </ul>
+    <button class="btn" id="help-close" type="button">Понятно</button>
+  </div>
+</div>
+
+<script>
+/*__SCRIPT__*/
+</script>
+</body>
+</html>
