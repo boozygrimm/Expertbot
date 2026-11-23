@@ -825,3 +825,174 @@ test('built raid history: a finished tab keeps stale ownership guards when a new
     assert.deepEqual(b.errors, []);
   } finally { dom.window.close(); }
 });
+
+// Local achievements use the built HTML, its actual buttons, storage and menus.
+function builtBroken(raid, count = 3) {
+  raid.state.board = Array.from({ length: 36 }, (_, slot) => ({ type: 'sword', ...(slot < count ? { broken: true } : {}) }));
+  raid.state.forceCoins = 1; raid.collectIndices(Array.from({ length: count }, (_, slot) => slot)); raid.saveRun();
+}
+function builtAchievementFilter(b, filter) {
+  const node = b.dom.window.document.querySelector('#achievement-filter'); node.value = filter; node.dispatchEvent(new b.dom.window.Event('change'));
+}
+
+test('built raid achievements: picker entry has 77 Russian cards, four filters, explicit unavailable45 and focus return without a run or writes', async () => {
+  const b = await openRaid({ start: false }), doc = b.dom.window.document;
+  try {
+    const before = raidStorageSnapshot(b.dom), opener = doc.querySelector('#picker-achievements'); opener.focus(); opener.click();
+    assert.equal(b.raid.state, null); assert.equal(doc.querySelector('#history-modal').hidden, false); assert.equal(doc.activeElement.id, 'history-title');
+    assert.equal(doc.querySelector('#history-title').textContent, 'Достижения'); assert.equal(doc.querySelectorAll('.achievement-record').length, 77);
+    assert.equal(doc.querySelectorAll('.achievement-record progress').length, 76); assert.equal(doc.querySelectorAll('#achievement-filter option').length, 4);
+    assert.equal(doc.querySelector('#history-type').parentElement.hidden, true); assert.equal(doc.querySelector('#achievement-filter').parentElement.hidden, false);
+    assert.match(doc.querySelector('.achievement-summary').textContent, /0 из 76.*77/); assert.match(doc.querySelector('[data-achievement-id="45"]').textContent, /недоступно|Недоступно/);
+    assert.equal(doc.querySelector('[data-achievement-id="45"] progress'), null);
+    builtAchievementFilter(b, 'unlocked'); assert.equal(doc.querySelectorAll('.achievement-record').length, 0); assert.match(doc.querySelector('#history-body').textContent, /пока нет достижений/);
+    builtAchievementFilter(b, 'unavailable'); assert.equal(doc.querySelectorAll('.achievement-record').length, 1);
+    builtAchievementFilter(b, 'pending'); assert.equal(doc.querySelectorAll('.achievement-record').length, 76);
+    doc.querySelector('#history-close').click(); assert.equal(doc.activeElement, opener); assert.equal(doc.querySelector('#history-modal').hidden, true);
+    assert.deepEqual(raidStorageSnapshot(b.dom), before); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid achievements: menu reader blocks background skills, chains and trophy taps, but preserves the running game and RNG', async () => {
+  const b = await openRaid(), { raid, dom } = b, doc = dom.window.document;
+  try {
+    raid.state.board[35] = { type: 'trophy', appearance: 0 }; raid.saveRun();
+    doc.querySelector('#menu-btn').click(); const before = JSON.stringify(raid.state), saved = raidStorageSnapshot(dom);
+    const open = doc.querySelector('#menu-achievements'); open.focus(); open.click();
+    raid.activateSkill('boostdmg'); raid.tryExtendChain(0); raid.resolveChain(); assert.equal(raid.claimTrophy(35), false);
+    assert.equal(JSON.stringify(raid.state), before); assert.deepEqual(raidStorageSnapshot(dom), saved);
+    doc.querySelector('#history-close').click(); assert.equal(doc.activeElement, open);
+    doc.querySelector('#menu-resume').click(); assert.deepEqual(b.errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid achievements: actual XP milestone notifies without stealing focus; a partial level draft cannot be bypassed by the reader', async () => {
+  const b = await openRaid(), { raid, dom } = b, doc = dom.window.document;
+  try {
+    raid.state.hero.level = 4; raid.state.hero.xp = 98; raid.addResource({ type: 'xp', variant: 0 });
+    await until(() => raid.getLocalAchievements().catalog[28].unlocked);
+    const notice = doc.querySelector('#achievement-notice'); assert.equal(notice.hidden, false); assert.match(notice.textContent, /Достижение: Первые открытия/);
+    assert.equal(raid.state.pendingModal, 'level'); doc.querySelector('.lv-card').click();
+    const before = JSON.stringify([raid.state.hero, raid.state.levelDraft, raid.state.menuCandidates, raid.state.rngSeeds]);
+    doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-achievements').click(); assert.equal(doc.querySelector('#history-modal').hidden, true);
+    assert.equal(JSON.stringify([raid.state.hero, raid.state.levelDraft, raid.state.menuCandidates, raid.state.rngSeeds]), before);
+    doc.querySelector('#menu-resume').click(); doc.querySelectorAll('.lv-card')[1].click(); doc.querySelector('.lv-confirm').click();
+    await until(() => !raid.state.pendingModal); assert.equal(raid.openAchievements(), true);
+    builtAchievementFilter(b, 'unlocked'); assert.equal(doc.querySelectorAll('.achievement-record').length, 1);
+    assert.equal(doc.querySelector('progress').value, 100); assert.match(doc.querySelector('progress').getAttribute('aria-label'), /100%/);
+    assert.deepEqual(b.errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid achievements: profile quota warning is visible during play; explicit retry preserves the checkpoint and adds partial progress once', async () => {
+  const b = await openRaid({ setup(window) {
+    window.blockAchievements = true; const set = window.Storage.prototype.setItem;
+    window.Storage.prototype.setItem = function(key, value) { if (key === 'raid:history' && window.blockAchievements) throw new window.DOMException('quota', 'QuotaExceededError'); return set.call(this, key, value); };
+  } }), { raid, dom } = b, doc = dom.window.document;
+  try {
+    builtBroken(raid); const checkpoint = dom.window.localStorage.getItem('raid:activeRun');
+    assert.equal(doc.querySelector('#progress-status').hidden, false); assert.match(doc.querySelector('#progress-status').textContent, /Достижения пока не записаны/);
+    assert.equal(JSON.parse(checkpoint).state.achievementRun.earned[73], 3);
+    doc.querySelector('#restart').click(); assert.match(doc.querySelector('#restart-confirm-text').textContent, /достижения.*резервную запись/); doc.querySelector('#restart-cancel').click();
+    doc.querySelector('#menu-btn').click(); const retryCheckpoint = dom.window.localStorage.getItem('raid:activeRun');
+    doc.querySelector('#menu-achievements').click(); assert.equal(doc.querySelector('#history-retry').hidden, false);
+    dom.window.blockAchievements = false; doc.querySelector('#history-retry').click();
+    assert.match(doc.querySelector('[data-achievement-id="73"]').textContent, /Прогресс: 3%/); assert.equal(doc.querySelector('#history-retry').hidden, true);
+    assert.equal(doc.querySelector('#progress-status').hidden, true); const raw = dom.window.localStorage.getItem('raid:history');
+    doc.querySelector('#history-retry').click(); assert.equal(dom.window.localStorage.getItem('raid:history'), raw);
+    assert.equal(dom.window.localStorage.getItem('raid:activeRun'), retryCheckpoint); assert.deepEqual(b.errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('built raid achievements: validated active backup reconciles failed profile progress on reload without resuming or replaying a turn', async () => {
+  let b = await openRaid({ setup(window) {
+    const set = window.Storage.prototype.setItem;
+    window.Storage.prototype.setItem = function(key, value) { if (key === 'raid:history') throw new window.DOMException('quota', 'QuotaExceededError'); return set.call(this, key, value); };
+  } });
+  try {
+    builtBroken(b.raid); const rawRun = b.dom.window.localStorage.getItem('raid:activeRun');
+    for (let n = 0; n < 3; n++) {
+      const snapshot = raidStorageSnapshot(b.dom); assert.deepEqual(b.errors, []); b.dom.window.close();
+      b = await openRaid({ start: false, saved: snapshot }); const doc = b.dom.window.document;
+      assert.equal(b.raid.state, null); assert.equal(b.raid.getLocalAchievements().catalog[72].progress, 3);
+      assert.equal(b.dom.window.localStorage.getItem('raid:activeRun'), rawRun); assert.equal(doc.querySelector('#picker-resume').hidden, false);
+      doc.querySelector('#picker-achievements').click(); assert.match(doc.querySelector('[data-achievement-id="73"]').textContent, /3%/);
+      assert.deepEqual(b.errors, []);
+    }
+    b.dom.window.document.querySelector('#history-close').click(); b.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(b.raid.state.turn, 0); assert.equal(b.raid.getLocalAchievements().catalog[72].progress, 3);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid achievements: terminal backup recovers partial and final achievements together with one game and never resurrects the run', async () => {
+  let b = await openRaid({ setup(window) {
+    const set = window.Storage.prototype.setItem;
+    window.Storage.prototype.setItem = function(key, value) { if (key === 'raid:history') throw new window.DOMException('quota', 'QuotaExceededError'); return set.call(this, key, value); };
+  } });
+  try {
+    builtBroken(b.raid); endBuiltRaid(b.raid); await until(() => b.raid.state.pendingModal === 'gameover');
+    const record = JSON.parse(b.dom.window.localStorage.getItem('raid:activeRun')).record;
+    assert.equal(record.achievements[73], 3); assert.equal(record.achievements[36], 100); assert.equal(record.achievements[67], 100);
+    [...b.dom.window.document.querySelectorAll('#modal-body button')].find(node => node.textContent === 'Достижения').click();
+    assert.equal(b.dom.window.document.querySelector('#history-retry').hidden, false);
+    b = await reloadRaid(b); const { raid, dom } = b, doc = dom.window.document;
+    assert.equal(raid.state, null); assert.equal(doc.querySelector('#picker-resume').hidden, true);
+    const profile = raid.getLocalHistory(); assert.equal(profile.classes.adventurer.games, 1); assert.equal(profile.achievements.progress[73], 3);
+    assert.equal(profile.achievements.progress[36], 100); assert.equal(profile.achievements.progress[67], 100);
+    const raw = dom.window.localStorage.getItem('raid:history'); b = await reloadRaid(b);
+    assert.equal(b.dom.window.localStorage.getItem('raid:history'), raw); assert.equal(b.raid.resumeSavedRun(), false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid achievements: damage identity and Last Stand survive a level-menu reload without duplicate special progress or a false finished game', async () => {
+  let b = await openRaid();
+  try {
+    let { raid, dom } = b; raid.state.hero.xp = 98; raid.state.hero.hp = 1; raid.state.lastStand = 1; raid.state.forceCoins = 1;
+    const skull = raid.makeSkull(false, true, 2); Object.assign(skull, { hp: 1, def: 0, atk: 0 }); raid.state.board[2] = { type: 'skull', skull };
+    for (const slot of [0, 1, 2]) raid.tryExtendChain(slot); raid.resolveChain(); await until(() => raid.state.pendingModal === 'level');
+    assert.ok(raid.state.arrivals.some(event => event.cause === 34));
+    b = await reloadRaid(b); ({ raid, dom } = b); const doc = dom.window.document; doc.querySelector('#picker-resume').click();
+    assert.equal(raid.state.pendingModal, 'level'); assert.equal(raid.getLocalAchievements().catalog[45].progress, 1);
+    const cards = doc.querySelectorAll('.lv-card'); cards[0].click(); cards[1].click(); doc.querySelector('.lv-confirm').click();
+    await until(() => !raid.state.resolving && !raid.state.pendingModal);
+    assert.equal(raid.state.over, false); assert.equal(raid.state.turn, 1);
+    const profile = raid.getLocalHistory(); assert.equal(profile.achievements.progress[34], 100); assert.equal(profile.achievements.progress[61], 100);
+    assert.equal(profile.achievements.progress[46], 1); assert.equal(profile.achievements.progress[67] || 0, 0); assert.equal(profile.classes.adventurer.games, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid achievements: incompatible achievement data is visibly rejected and cannot erase or execute alongside valid class settings', async () => {
+  const profile = { format: 'lunapark-raid-history', version: 1, revision: 0, records: Array.from({ length: 6 }, () => []),
+    classes: Object.fromEntries(classIds.map(id => [id, { games: 0, kills: 0, best: [0, 0, 0] }])), completed: [], last: null,
+    achievements: { version: 1, progress: { 45: 100 }, runs: [] } };
+  const raw = JSON.stringify(profile), b = await openRaid({ start: false, saved: { 'raid:history': raw } }), doc = b.dom.window.document;
+  try {
+    doc.querySelector('#picker-achievements').click(); assert.equal(doc.querySelectorAll('.achievement-record').length, 0);
+    assert.match(doc.querySelector('#history-status').textContent, /повреждена|несовместима/);
+    doc.querySelector('#history-close').click(); doc.querySelector('.picker-card-btn:not(.locked)').click(); builtBroken(b.raid);
+    assert.equal(b.dom.window.localStorage.getItem('raid:history'), raw); assert.ok(b.raid.state); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+
+test('built raid achievements: dedicated records/achievements entries open their named section instead of the last visited section', async () => {
+  const b = await openRaid({ start: false }), doc = b.dom.window.document;
+  try {
+    for (const [opener, section] of [['picker-achievements', 'achievements'], ['picker-history', 'records'], ['picker-achievements', 'achievements']]) {
+      doc.getElementById(opener).click(); assert.equal(doc.getElementById('history-section').value, section);
+      assert.equal(doc.querySelectorAll('.achievement-record').length, section === 'achievements' ? 77 : 0);
+      doc.getElementById('history-close').click();
+    }
+    doc.querySelector('.picker-card-btn:not(.locked)').click();
+    for (const [opener, section] of [['menu-achievements', 'achievements'], ['menu-history', 'records']]) {
+      doc.getElementById('menu-btn').click(); doc.getElementById(opener).click();
+      assert.equal(doc.getElementById('history-section').value, section); doc.getElementById('history-close').click(); doc.getElementById('menu-resume').click();
+    }
+    endBuiltRaid(b.raid); await until(() => b.raid.state.pendingModal === 'gameover');
+    const buttons = [...doc.querySelectorAll('#modal-body button')]; buttons.find(n => n.textContent === 'Достижения').click();
+    assert.equal(doc.getElementById('history-section').value, 'achievements'); doc.getElementById('history-close').click();
+    buttons.find(n => n.textContent === 'Рекорды и статистика').click(); assert.equal(doc.getElementById('history-section').value, 'records');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});

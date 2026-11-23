@@ -696,7 +696,18 @@ body { display: flex; align-items: stretch; justify-content: center; }
 #picker-history-status { color: #ffca98; margin-bottom: 10px; }
 .history-card :focus-visible, #picker-history:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 @media (max-width: 380px) { .history-controls { grid-template-columns: 1fr; } }
-@media (max-height: 560px) { .history-card { overflow-y: auto; } .history-body { flex: none; overflow: visible; } }
+@media (max-height: 560px) { .history-card { overflow-y: auto; } }
+
+/* Achievements share the bounded, keyboard-accessible local-history reader. */
+#picker-achievements { margin: 0; min-height: 44px; }
+#picker-achievements:focus-visible, #menu-achievements:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.achievement-summary { margin: 10px 0; color: #ffe2a9; font-size: 13px; line-height: 1.5; }
+.achievement-record.unlocked { border-color: #83b894; }
+.achievement-record.unlocked .achievement-progress { color: #b5edbb; }
+.achievement-record.unavailable { border-style: dashed; }
+.achievement-record .achievement-progress { margin-bottom: 4px; color: #ddcba1; }
+.achievement-record progress { display: block; width: 100%; height: 9px; accent-color: #d0ae61; }
+.achievement-notice { position: fixed; z-index: 150; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; width: fit-content; max-width: min(480px, calc(100% - 24px)); margin: 0 auto; padding: 10px 14px; border: 1px solid #b8a35b; border-radius: 12px; background: #292035; color: #ffe7b4; box-shadow: 0 5px 25px #0009; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
 
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */
 [hidden] { display: none !important; }
