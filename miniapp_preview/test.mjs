@@ -4544,7 +4544,26 @@ test('raid achievements: 64 bounded partial-run receipts coexist with the releas
   assert.ok(b.storage.get(RAID_HISTORY_KEY).length < 262144);
 });
 
-// The standalone redesign must not sneak balance into a visual increment.
+// Released v1 shape, created only INSIDE TESTS. Production never downgrades or
+// imports a classic profile. These fixtures retain the prior combat/6-RNG checks
+// while new starts intentionally use the approved elemental rules.
+function legacyMagitechSave(value) {
+  const data = raidJSON(value); data.version = 1; delete data.combat;
+  for (const cell of data.state.board) {
+    delete cell.element;
+    if (cell.skull) { delete cell.skull.element; delete cell.skull.secondaryElement; }
+  }
+  return data;
+}
+function legacyMagitechBrowser(options = {}) {
+  const b = raidBrowser(Object.assign({}, options, { variant: 'magitech' }));
+  assert.equal(b.raid.saveRun(), true);
+  b.storage.set('raid:magitech:activeRun', JSON.stringify(legacyMagitechSave(JSON.parse(b.storage.get('raid:magitech:activeRun')))));
+  assert.equal(b.raid.resumeSavedRun(), true);
+  assert.equal(b.raid.savedRunInfo().combatRules, 'classic-v1');
+  return b;
+}
+
 // Controlled fixtures, not native replay or naturally played runs.
 const magitechSnapshot = raid => {
   const state = raidJSON(raid.state);
@@ -4564,12 +4583,12 @@ function settleMagitechFixture(browser) {
   throw new Error('Controlled redesign fixture did not settle');
 }
 
-test('magitech source: primary combat/resource/generator functions are byte-identical to the classic control', () => {
+test('magitech source: unchanged combat/resource/generator functions remain byte-identical to the classic control', () => {
   const original = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
   const fork = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
-  const names = ['random', 'randInt', 'createTile', 'createNewTile', 'makeSkull', 'setupBoard',
-    'damageSkull', 'damageHero', 'baseDamage', 'swordDamage', 'chainDamageFor', 'applyChainEffects',
-    'processEnemyAttack', 'endEnemyTurn', 'enemyGetAttack', 'applySpecialAbilities',
+  const names = ['random', 'randInt', 'createTile', 'createNewTile', 'setupBoard',
+    'damageSkull', 'damageHero', 'baseDamage', 'swordDamage', 'chainDamageFor',
+    'processEnemyAttack', 'endEnemyTurn', 'enemyGetAttack',
     'perShield', 'bonusPct', 'addResource', 'makeItem', 'makeUpgradeOffer',
     'applyUpgradeOffer', 'equipItem', 'updateEquipmentStats', 'classicScrollWord',
     'classRules', 'runClassConfig', 'chooseLevelOptions', 'specialSpawnCount'];
@@ -4577,11 +4596,11 @@ test('magitech source: primary combat/resource/generator functions are byte-iden
     const expression = new RegExp(`^  function ${name}\\([^]*?^  }`, 'm');
     const a = original.match(expression)?.[0], b = fork.match(expression)?.[0];
     assert.ok(a && b, name);
-    assert.equal(b, a, `Visual prototype must not rebalance ${name}`);
+    assert.equal(b, a, `Elemental integration must not rebalance ${name}`);
   }
 });
 
-test('magitech source: 42 skill fixtures keep classical state and all six RNG streams', () => {
+test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {
   const source = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
   const skillSection = source.slice(source.indexOf('  const SKILLS = ['), source.indexOf('  // 7 уровней'));
   const uniqueSection = source.slice(source.indexOf('  const UNIQUE_SKILLS = ['), source.indexOf('  const ALL_SKILLS'));
@@ -4589,7 +4608,7 @@ test('magitech source: 42 skill fixtures keep classical state and all six RNG st
   assert.equal(ids.length, 42);
   for (const [index, id] of ids.entries()) {
     const options = { classId: raidClassIds[index % 10], difficulty: index % 3, menus: true, seed: 8801 };
-    const a = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    const a = raidBrowser(options), b = legacyMagitechBrowser(options);
     for (const browser of [a, b]) {
       const r = browser.raid, s = r.state;
       s.turn = 80; s.hero.hp = 900; s.hero.maxHp = 1000; s.hero.armor = 20; s.hero.maxArmor = 30;
@@ -4605,11 +4624,11 @@ test('magitech source: 42 skill fixtures keep classical state and all six RNG st
   }
 });
 
-test('magitech source: 300 paired controlled turns and 60 explicit checkpoint restores retain classical gameplay', () => {
+test('magitech source: legacy Continue retains classical gameplay across 300 paired turns and 60 restores', () => {
   let turns = 0, restores = 0;
   for (const classId of raidClassIds) for (const difficulty of [0, 1, 2]) {
     const options = { classId, difficulty, menus: true, seed: 2718 };
-    let a = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    let a = raidBrowser(options), b = legacyMagitechBrowser(options);
     assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${difficulty}/start`);
     for (let step = 0; step < 10; step++) {
       for (const browser of [a, b]) {
@@ -4640,8 +4659,8 @@ test('magitech source: 300 paired controlled turns and 60 explicit checkpoint re
 const MAGITECH_RUN_KEY = 'raid:magitech:activeRun';
 const magitechSave = browser => JSON.parse(browser.storage.get(MAGITECH_RUN_KEY));
 
-test('magitech orbs: four sword palettes are cosmetic save metadata, never board fields or gameplay RNG draws', () => {
-  const b = raidBrowser({ variant: 'magitech', seed: 2718 });
+test('magitech orbs: legacy v1 sword palettes remain cosmetic, never combat fields or gameplay RNG draws', () => {
+  const b = legacyMagitechBrowser({ seed: 2718 });
   raidBoard(b.raid, 'sword');
   const before = raidJSON(b.raid.state);
   assert.equal(b.raid.saveRun(), true);
@@ -4656,7 +4675,7 @@ test('magitech orbs: four sword palettes are cosmetic save metadata, never board
 });
 
 test('magitech orbs: indistinguishable swords retain their own palette through two-hole gravity and explicit Continue', () => {
-  let b = raidBrowser({ variant: 'magitech', seed: 2718 });
+  let b = legacyMagitechBrowser({ seed: 2718 });
   const r = b.raid; raidBoard(r, 'sword'); r.state.forceCoins = 1;
   r.saveRun(); const original = [...r.state.board], elements = magitechSave(b).orbElements;
   r.state.board[24] = { type: 'empty' }; r.state.board[30] = { type: 'empty' }; r.state.board[31] = { type: 'empty' };
@@ -4672,7 +4691,7 @@ test('magitech orbs: indistinguishable swords retain their own palette through t
 });
 
 test('magitech orbs: released v1 without palette metadata resumes its actual run and six streams without rerolling', () => {
-  const b = raidBrowser({ variant: 'magitech', seed: 991 });
+  const b = legacyMagitechBrowser({ seed: 991 });
   const previous = magitechSave(b); delete previous.orbElements;
   b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(previous));
   const next = raidBrowser({ variant: 'magitech', start: false, saved: b.storage });
@@ -4971,7 +4990,7 @@ test('magitech material SFX: absent/denied/partial APIs fail silent; WebKit fall
 // The run location is presentation metadata, independent from future previews.
 test('magitech location: all four v1 snapshots restore the same rolled reward, board and six RNG streams', () => {
   for (const region of ['fire', 'air', 'earth', 'water']) {
-    const b = raidBrowser({ variant: 'magitech', menus: true, seed: 1337 });
+    const b = legacyMagitechBrowser({ menus: true, seed: 1337 });
     b.raid.state.hero.gold = 100; b.raid.checkGoldBox(); b.raid.saveRun();
     const data = magitechSave(b); data.region = region;
     const raw = JSON.stringify(data); b.storage.set(MAGITECH_RUN_KEY, raw);
@@ -4987,7 +5006,7 @@ test('magitech location: all four v1 snapshots restore the same rolled reward, b
 });
 
 test('magitech location: released v1 without location remains read-only until explicit Continue and keeps its queues', () => {
-  const b = raidBrowser({ variant: 'magitech', menus: true, seed: 1337 });
+  const b = legacyMagitechBrowser({ menus: true, seed: 1337 });
   b.raid.state.hero.xp = 100; b.raid.checkLevelUp();
   b.elements.get('modal-body').querySelectorAll('.lv-card')[1].click(); b.raid.saveRun();
   const data = magitechSave(b); delete data.region;
@@ -5036,6 +5055,486 @@ test('magitech clear tiles: idle shells have no fill; four metal tones and oppos
   });
   assert.equal(new Set(tones).size, 4);
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /Постоянная заливка убрана/); assert.match(html, /Стихийная основа ±25% согласована/);
-  assert.match(html, /но множители и грейды бойцов ещё не включены в бой/);
+  assert.match(html, /Постоянная заливка убрана/); assert.match(html, /Стихийный бой — в новых забегах/);
+  assert.match(html, /Старые забеги продолжаются по прежним правилам/);
+});
+
+// Approved first-stage policy: secondary effects keep ONE neutral D0 even when
+// primary targets receive different amounts. Supply those amounts through the
+// existing snapshot hook; this does NOT activate elements, assignments or RNG.
+function magitechSecondaryFixture({ types = [0, 0], defence = 4 } = {}) {
+  const b = raidCombat({ variant: 'magitech', seed: 2718 });
+  const r = b.raid, s = r.state;
+  s.forceCoins = 1; s.pierce = 0;
+  for (const slot of [0, 1, 2]) s.board[slot] = { type: 'sword', element: 'earth' };
+  const targets = types.map((type, i) => raidOld(r, i + 3, { hp: 100, maxHp: 100, def: defence }, type));
+  // Accepted B3/W2/three-sword example: strong10.5 vs weak7.5, neutral D0=9.
+  const snapshot = { chain: [0, 1, 2, 3, 4], effective: [0, 1, 2, 3, 4],
+    hasSkull: true, damage: 9, spiky: types.includes(2), uppercuts: [],
+    targetDamage: new Map([[3, 10.5], [4, 7.5]]) };
+  return { ...b, targets, snapshot, hit: () => r.applyChainEffects(3, 0, 0, 0, [3, 4], snapshot) };
+}
+
+test('magitech neutral secondary: leech, shown damage and swordsHits use D0 once, not summed per-target HP or raw damage', () => {
+  const { raid: r, targets, hit } = magitechSecondaryFixture();
+  r.state.hero.hp = 10; r.state.leech = .2;
+  const result = hit();
+  assert.deepEqual(targets.map(s => s.hp), [93, 96], 'one final round then one armour subtraction per primary target');
+  assert.equal(r.state.hero.hp, 11, 'floor(float32(9 × float32(.2))) =1, not 2 from lost HP or 3 from summed raw hits');
+  assert.equal(r.state.scrollLeechLabel.number, 1, 'I1 label retains the same neutral leech amount');
+  assert.equal(result.dmgShown, 9); assert.equal(r.state.swordsHits, 9);
+  assert.equal(result.kills, 0); assert.equal(r.state.turn, 10);
+});
+
+test('magitech neutral secondary: two selected Spiky targets reflect neutral D0 only once, bypassing hero armour', () => {
+  const { raid: r, targets, hit } = magitechSecondaryFixture({ types: [2, 2] });
+  const armour = r.state.hero.armor;
+  hit();
+  assert.deepEqual(targets.map(s => s.hp), [93, 96]);
+  assert.equal(r.state.hero.hp, 41, 'one reflection of9, not 11,8,18, or one reflection per Spiky');
+  assert.equal(r.state.hero.armor, armour);
+  assert.equal(r.state.swordsHits, 9); assert.equal(r.state.turn, 10);
+});
+
+test('magitech neutral secondary: an off-chain Meat Shield intercepts D0 and does not convert leech to actual HP loss', () => {
+  const { raid: r, targets, snapshot, hit } = magitechSecondaryFixture();
+  const shield = raidOld(r, 35, { hp: 100, maxHp: 100, def: 4 }, 30);
+  r.state.hero.hp = 10; r.state.leech = .2;
+  snapshot.targetDamage = new Map([[3, 0], [4, 0]]); // Existing shield blocks these direct targets.
+  const result = hit();
+  assert.deepEqual(targets.map(s => s.hp), [100, 100]);
+  assert.equal(shield.hp, 95, 'neutral9 minus shield armour4, never the sum of blocked primary hits');
+  assert.equal(r.state.hero.hp, 11); assert.equal(result.dmgShown, 9);
+  assert.equal(r.state.swordsHits, 9); assert.equal(result.kills, 0);
+});
+
+test('magitech neutral secondary: Uppercut adds neutral W without Boost and retains priority over an outside Meat Shield', () => {
+  const b = raidCombat({ variant: 'magitech', classId: 'warrior', seed: 2718 });
+  const r = b.raid, s = r.state;
+  s.forceCoins = 1; s.pierce = 0; s.swordBoost = 1; s.leech = .2; s.hero.hp = 10;
+  for (const slot of [12, 0, 1]) s.board[slot] = { type: 'sword', element: 'earth' };
+  const target = raidOld(r, 6, { hp: 100, maxHp: 100 });
+  const shield = raidOld(r, 35, { hp: 100, maxHp: 100 }, 30);
+  raidSelect(r, [12, 6, 0, 1]);
+  const preview = r.chainPreview();
+  assert.equal(preview.damage, 15); assert.equal(preview.skulls[0].damage, 17, 'D0 + W, not D0 + doubled W');
+  r.resolveChain(); b.advance(420);
+  assert.equal(target.hp, 83); assert.equal(shield.hp, 85);
+  assert.equal(s.hero.hp, 13, 'leech remains one neutral15 ×20%, without the target-only Uppercut addition');
+  assert.equal(s.swordsHits, 15); assert.equal(s.turn, 10);
+});
+
+test('magitech neutral secondary: weapon poison amount and armour-ignoring tick are independent of primary hit strength', () => {
+  const { raid: r, targets, hit } = magitechSecondaryFixture({ defence: 100 });
+  r.state.weaponPoison = 2;
+  hit();
+  assert.deepEqual(targets.map(s => s.hp), [100, 100]);
+  for (const skull of targets) assert.deepEqual(Array.from(skull.poison), [2, 2, 2]);
+  const immune = raidOld(r, 35, { hp: 100, maxHp: 100, def: 100 }, 9);
+  r.hitSkullAt(35, 10.5, { direct: true });
+  assert.deepEqual(Array.from(immune.poison), [0, 0, 0], 'existing Poisonous immunity remains');
+  r.endEnemyTurn();
+  assert.deepEqual(targets.map(s => s.hp), [98, 98], 'poison ticks for stored2, not a scaled or armour-reduced amount');
+  for (const skull of targets) assert.deepEqual(Array.from(skull.poison), [2, 2, 0]);
+  assert.equal(immune.hp, 100);
+});
+
+test('magitech neutral secondary: collected burning damage keeps its stored amount and ignores safe fire', () => {
+  const { raid: r, targets, hit } = magitechSecondaryFixture();
+  Object.assign(r.state.board[0], { burn: true, fireDamage: 4 });
+  Object.assign(r.state.board[1], { burn: true, fireDamage: 2 });
+  Object.assign(r.state.board[2], { burn: true, fireDamage: 99, fireSafe: true });
+  const armour = r.state.hero.armor;
+  hit();
+  assert.deepEqual(targets.map(s => s.hp), [93, 96]);
+  assert.equal(r.state.hero.hp, 44, 'stored4+2 once, no target multiplier and no safe99');
+  assert.equal(r.state.hero.armor, armour); assert.equal(r.state.turn, 10);
+});
+
+// First approved combat increment. These use real assignments + preview + hit /
+// resolve paths, not injected snapshot.targetDamage. v1 coverage above remains.
+const raidElements = ['fire', 'air', 'earth', 'water'];
+// k*8: explicit independent table makes boss averages exact eighths.
+const elementalEighths = [[8,10,8,6], [6,8,10,8], [8,6,8,10], [10,8,6,8]];
+function elementalCombat(options = {}) {
+  const b = raidCombat({ ...options, variant: 'magitech', menus: true });
+  b.raid.state.forceCoins = 1; b.raid.state.pierce = 0;
+  return b;
+}
+function elementalWeapon(r, slot, element, extra = {}) { return r.state.board[slot] = { type: 'sword', element, ...extra }; }
+function elementalPair({ classId = 'adventurer', types = [0,0], defence = 4, leech = 0 } = {}) {
+  const b = elementalCombat({ classId, seed: 2718 }), r = b.raid;
+  for (let slot = 0; slot < 3; slot++) elementalWeapon(r, slot, 'water');
+  const targets = ['fire','earth'].map((element, i) => raidOld(r, i + 3, { hp: 100, maxHp: 100, def: defence, element }, types[i]));
+  r.state.leech = leech;
+  raidSelect(r, [0,1,2,3,4]);
+  return { ...b, targets };
+}
+
+test('magitech elemental saves: new runs use explicit v2 rules and independent RNG, without altering a classic start or profile', () => {
+  for (const seed of [0,1,71,2718,0xffffffff]) {
+    const old = raidBrowser({ seed }), b = raidBrowser({ variant: 'magitech', seed });
+    const saved = magitechSave(b);
+    assert.equal(saved.version, 2); assert.equal(saved.combat.rules, 'elements-v1');
+    assert.ok(Number.isInteger(saved.combat.rng) && saved.combat.rng >= 0 && saved.combat.rng <= 0xffffffff);
+    assert.equal(b.raid.savedRunInfo().combatRules, 'elements-v1');
+    const neutral = magitechSnapshot(b.raid);
+    for (const cell of neutral.board) delete cell.element;
+    assert.deepEqual(neutral, magitechSnapshot(old.raid), `same starting resources/6 RNG at seed${seed}`);
+    for (const cell of saved.state.board) {
+      if (['sword','arrow'].includes(cell.type)) assert.ok(raidElements.includes(cell.element));
+      else assert.equal(Object.hasOwn(cell, 'element'), false);
+    }
+    assert.deepEqual(saved.rng, Array.from(old.raid.state.rngSeeds));
+    assert.equal(b.storage.has('raid:activeRun'), false);
+  }
+});
+
+for (let from = 0; from < 4; from++) for (let to = 0; to < 4; to++) test(`magitech elemental hit: ${raidElements[from]} weapons against ${raidElements[to]} keep neutral base and one rounding/armour stage`, () => {
+  const b = elementalCombat(), r = b.raid;
+  for (let slot = 0; slot < 3; slot++) elementalWeapon(r, slot, raidElements[from]);
+  const target = raidOld(r, 3, { hp: 100, maxHp: 100, def: 4, element: raidElements[to] });
+  raidSelect(r, [0,1,2,3]);
+  const expected = 3 + 6 * elementalEighths[from][to] / 8;
+  assert.equal(r.chainPreview().damage, 9); assert.equal(r.chainPreview().skulls[0].damage, expected);
+  const rng = magitechSave(b).combat.rng;
+  r.resolveChain(); b.advance(419); assert.equal(target.hp, 100);
+  b.advance(1); assert.equal(target.hp, 100 - Math.max(0, Math.round(expected) - 4));
+  assert.equal(r.state.swordsHits, 9); assert.equal(r.state.turn, 10);
+  assert.equal(magitechSave(b).combat.rng, rng, 'preview/commit/coin refill must not reroll elements');
+});
+
+test('magitech elemental hit: mixed magic/broken/arrow weapons and every dual boss use exact per-weapon means, never a majority or repeated armour', () => {
+  const b = elementalCombat(), r = b.raid, s = r.state;
+  let cases = 0;
+  for (let a = 0; a < 4; a++) for (let z = a + 1; z < 4; z++) for (let weapon = 0; weapon < 4; weapon++) {
+    for (const W of [2,3,10]) for (const boost of [1,2]) for (const def of [0,4,8]) {
+      raidBoard(r); s.selected = []; s.chainType = null; s._chainOrder = [0,1,2,3,4];
+      s.hero.weaponDamage = W; s.swordBoost = boost - 1;
+      const elements = [weapon, (weapon + 1) % 4, (weapon + 3) % 4, (weapon + 2) % 4], weights = [5,1,1,0];
+      elementalWeapon(r, 0, raidElements[elements[0]], { magicSword: true });
+      elementalWeapon(r, 1, raidElements[elements[1]], { type: 'arrow' });
+      elementalWeapon(r, 2, raidElements[elements[2]]);
+      elementalWeapon(r, 3, raidElements[elements[3]], { magicSword: true, broken: true });
+      const boss = raidOld(r, 4, { hp: 1000, maxHp: 1000, def, element: raidElements[a], secondaryElement: raidElements[z] }, 1);
+      raidSelect(r, [0,1,2,3,4]);
+      const weightedEighths = weights.reduce((sum, q, i) => sum + q * (elementalEighths[elements[i]][a] + elementalEighths[elements[i]][z]) / 2, 0);
+      const raw = (r.baseDamage() * 8 + W * boost * weightedEighths) / 8;
+      const preview = r.chainPreview(); assert.equal(preview.swordCount, 7); assert.equal(preview.skulls[0].damage, raw);
+      const result = r.applyChainEffects(7, 0, 0, 0, [4]);
+      assert.equal(boss.hp, 1000 - Math.max(0, Math.round(raw) - def));
+      assert.equal(result.dmgShown, r.baseDamage() + W * boost * 7);
+      if (z - a === 2) assert.equal(raw, result.dmgShown, 'opposite boss pair neutralises every individual weapon');
+      cases++;
+    }
+  }
+  assert.equal(cases, 432);
+});
+
+test('magitech elemental hit: actual multi-target commit keeps leech/I1/common damage neutral and executes the original timed tail once', () => {
+  const b = elementalPair({ leech: .2 }), r = b.raid, s = r.state;
+  s.hero.hp = 10;
+  const preview = r.chainPreview();
+  assert.equal(preview.damage, 9); assert.deepEqual(Array.from(preview.skulls, t => t.damage), [10.5,7.5]);
+  const before = raidJSON(s.rngSeeds); r.saveRun(); const elementRng = magitechSave(b).combat.rng;
+  for (let n = 0; n < 5; n++) { r.chainPreview(); r.saveRun(); }
+  assert.deepEqual(raidJSON(s.rngSeeds), before); assert.equal(magitechSave(b).combat.rng, elementRng);
+  r.resolveChain(); b.advance(420);
+  assert.deepEqual(b.targets.map(t => t.hp), [93,96]); assert.equal(s.hero.hp, 11);
+  assert.equal(s.scrollLeechLabel.number, 1); assert.equal(s.swordsHits, 9);
+  b.advance(549); assert.equal(s.turn, 10); b.advance(1); assert.equal(s.turn, 11);
+  b.advance(2000); assert.equal(s.turn, 11); assert.equal(s.chainCount, 1);
+});
+
+test('magitech elemental hit: real selected Spiky targets reflect one neutral D0, not either elemental hit or their sum', () => {
+  const b = elementalPair({ types: [2,2] }), r = b.raid, armour = r.state.hero.armor;
+  r.resolveChain(); b.advance(420);
+  assert.deepEqual(b.targets.map(t => t.hp), [93,96]); assert.equal(r.state.hero.hp, 41);
+  assert.equal(r.state.hero.armor, armour); assert.equal(r.state.swordsHits, 9);
+});
+
+test('magitech elemental hit: existing off-chain Meat Shield gate blocks direct hits but intercepts neutral D0 with unchanged leech', () => {
+  const b = elementalPair({ leech: .2 }), r = b.raid;
+  const shield = raidOld(r, 35, { hp: 100, maxHp: 100, def: 4, element: 'water' }, 30);
+  r.state.hero.hp = 10;
+  assert.deepEqual(Array.from(r.chainPreview().skulls, t => t.damage), [0,0]);
+  r.resolveChain(); b.advance(420);
+  assert.deepEqual(b.targets.map(t => t.hp), [100,100]); assert.equal(shield.hp, 95);
+  assert.equal(r.state.hero.hp, 11); assert.equal(r.state.swordsHits, 9);
+});
+
+test('magitech elemental hit: Uppercut adds only unboosted neutral W after elemental sum, before the classic Meat Shield/Chaotic gates', () => {
+  for (const type of [0,14,27]) {
+    const b = elementalCombat({ classId: 'warrior' }), r = b.raid, s = r.state;
+    s.swordBoost = 1; s.leech = .2; s.hero.hp = 10;
+    for (const slot of [12,0,1]) elementalWeapon(r, slot, 'water');
+    const target = raidOld(r, 6, { hp: 100, maxHp: 100, element: 'fire' }, type);
+    const shield = raidOld(r, 35, { hp: 100, maxHp: 100, element: 'air' }, 30);
+    raidSelect(r, [12,6,0,1]);
+    assert.equal(r.chainPreview().damage, 15); assert.equal(r.chainPreview().skulls[0].damage, type === 27 ? 18 : 20);
+    r.resolveChain(); b.advance(420);
+    assert.equal(target.hp, type === 27 ? 82 : 80, 'Armoured upward exit precedes Uppercut; Uppercut precedes Chaotic/outside shield');
+    assert.equal(shield.hp, 85); assert.equal(s.hero.hp, 13); assert.equal(s.swordsHits, 15);
+  }
+});
+
+test('magitech elemental hit: Armoured downward exit and Confused still suppress direct damage before elemental or Uppercut bonuses', () => {
+  const b = elementalCombat({ classId: 'warrior' }), r = b.raid;
+  for (const slot of [0,12]) elementalWeapon(r, slot, 'water');
+  const target = raidOld(r, 6, { hp: 100, maxHp: 100, element: 'fire' }, 27);
+  raidSelect(r, [0,6,12]); assert.equal(r.chainPreview().skulls[0].damage, 0);
+  r.resolveChain(); b.advance(420); assert.equal(target.hp, 100);
+  const c = elementalCombat(), q = c.raid, config = raidJSON(q.state.classConfig);
+  config.flaws[1] = 'Confused'; config.perks[1] = 'Intimidating'; q.state.classConfig = config; q.state.turn = 4;
+  for (const slot of [0,1]) elementalWeapon(q, slot, 'water');
+  const confusedTarget = raidOld(q, 2, { hp: 100, maxHp: 100, element: 'fire' });
+  raidSelect(q, [0,1,2]); assert.equal(q.chainPreview().skulls[0].damage, 0);
+  q.resolveChain(); c.advance(420); assert.equal(confusedTarget.hp, 100);
+});
+
+test('magitech elemental preview: lethal highlights use final hit rounding, not raw10.5 versus HP11; base-only attacks stay neutral', () => {
+  const b = elementalCombat(), r = b.raid;
+  for (const slot of [0,1,2]) elementalWeapon(r, slot, 'water');
+  raidOld(r, 3, { hp: 7, maxHp: 7, def: 4, element: 'fire' });
+  raidSelect(r, [0,1,2,3]);
+  assert.equal(r.chainPreview().skulls[0].damage, 10.5); assert.equal(r.chainPreview().lethals.length, 1);
+  r.resolveChain(); b.advance(420); assert.equal(r.state.skullsKilled, 1);
+  const c = elementalCombat(), q = c.raid;
+  const targets = ['fire','air','water'].map((element, i) => raidOld(q, i, { hp: 100, maxHp: 100, element }));
+  raidSelect(q, [0,1,2]); assert.equal(q.chainPreview().damage, 3);
+  assert.deepEqual(Array.from(q.chainPreview().skulls, t => t.damage), [3,3,3]);
+  q.resolveChain(); c.advance(420); assert.deepEqual(targets.map(t => t.hp), [97,97,97]);
+});
+
+test('magitech elemental saves: a v1 Continue stays classical through combat/new enemies and only explicit newGame opts into v2', () => {
+  const b = legacyMagitechBrowser({ menus: true, seed: 2718 }), r = b.raid;
+  raidBoard(r); r.state.forceCoins = 1; r.state.pierce = 0;
+  for (const slot of [0,1,2]) r.state.board[slot] = { type: 'sword' };
+  const target = raidOld(r, 3, { hp: 100, maxHp: 100, def: 4 });
+  raidSelect(r, [0,1,2,3]); assert.equal(r.chainPreview().skulls[0].damage, 9);
+  r.resolveChain(); b.advance(420); assert.equal(target.hp, 95);
+  b.advance(2000); assert.equal(r.saveRun(), true);
+  const saved = magitechSave(b); assert.equal(saved.version, 1); assert.equal(saved.combat, undefined);
+  assert.equal(r.makeSkull(true).element, undefined); assert.equal(r.makeSkull(false, true, 4).element, undefined);
+  const next = raidReload(b, { variant: 'magitech' }); assert.equal(next.raid.savedRunInfo().combatRules, 'classic-v1');
+  next.raid.newGame(2718); assert.equal(magitechSave(next).version, 2); assert.equal(next.raid.savedRunInfo().combatRules, 'elements-v1');
+});
+
+for (const phase of ['match-chain','enemy','level','gold','armor']) test(`magitech elemental saves: ${phase} checkpoint restores elements/rules/RNG/rolled choices and executes no duplicate action`, () => {
+  let b = elementalPair({ leech: .2 }), r = b.raid;
+  if (phase === 'match-chain' || phase === 'enemy') {
+    r.resolveChain(); b.advance(phase === 'match-chain' ? 200 : 420);
+  } else {
+    r.state.selected = []; r.state.chainType = null;
+    if (phase === 'level') { r.state.hero.xp = 100; r.checkLevelUp(); b.elements.get('modal-body').querySelectorAll('.lv-card')[1].click(); }
+    else if (phase === 'gold') { r.state.hero.gold = 100; r.checkGoldBox(); }
+    else { r.state.upgradeBar = 100; r.checkUpgradeBar(); }
+  }
+  assert.equal(r.saveRun(), true); const saved = magitechSave(b);
+  const idle = raidBrowser({ variant: 'magitech', menus: true, start: false, saved: b.storage });
+  assert.equal(idle.raid.state, null); assert.equal(idle.raid.savedRunInfo().combatRules, 'elements-v1');
+  assert.equal(idle.storage.get(MAGITECH_RUN_KEY), JSON.stringify(saved), 'reading never rewrites the save');
+  assert.equal(idle.raid.resumeSavedRun(), true); const restored = magitechSave(idle);
+  for (const key of ['combat','state','rng','menu','results','arrivals','next','region']) assert.deepEqual(restored[key], saved[key], phase + '/' + key);
+  if (phase === 'match-chain' || phase === 'enemy') {
+    idle.advance(phase === 'match-chain' ? 419 : 549); assert.equal(idle.raid.state.turn, 10);
+    settleMagitechFixture(idle); assert.equal(idle.raid.state.turn, 11); assert.equal(idle.raid.state.chainCount, 1);
+    assert.equal(idle.raid.state.swordsHits, 9);
+  } else assert.equal(idle.raid.state.pendingModal, phase);
+  // The next sequence is identical to an uninterrupted page's independent RNG.
+  const a = r.makeSkull(false, true, 4), z = idle.raid.makeSkull(false, true, 4);
+  assert.equal(z.element, a.element);
+  b = idle; r = b.raid; assert.equal(r.saveStatus.state, 'saved');
+});
+
+test('magitech elemental saves: assigned sword/arrow/boss elements and next RNG sequence survive movement, shuffle, conversion and Continue', () => {
+  let b = elementalCombat({ seed: 2718 }), r = b.raid;
+  for (let i = 0; i < 30; i++) elementalWeapon(r, i, raidElements[i % 4]);
+  const boss = raidOld(r, 35, { hp: 100, maxHp: 100 }, 1);
+  const pair = [boss.element, boss.secondaryElement], original = [...r.state.board], elements = original.map(c => c.element);
+  r.state.board[30] = { type: 'empty' }; r.placeNewTiles({});
+  assert.equal(r.state.board[6], original[0]); assert.equal(r.state.board[6].element, elements[0]);
+  r.activateSkill('earthquake'); b.advance(2000);
+  for (const cell of original.filter(c => c.element)) assert.equal(cell.element, elements[original.indexOf(cell)]);
+  r.saveRun(); const before = magitechSave(b).combat;
+  r.activateSkill('magicsword'); b.advance(2000); assert.equal(r.state.board.filter(c => c.magicSword).length, 1);
+  const weapons = r.state.board.filter(c => c.type === 'sword').map(c => c.element);
+  r.activateSkill('volley'); b.advance(2000);
+  assert.deepEqual(r.state.board.filter(c => c.type === 'arrow').map(c => c.element), weapons);
+  r.saveRun(); assert.deepEqual(magitechSave(b).combat, before, 'magic and volley do not consume element RNG');
+  const checkpoint = magitechSave(b); b = raidReload(b, { variant: 'magitech' }); r = b.raid;
+  assert.deepEqual(magitechSave(b).combat, checkpoint.combat); assert.deepEqual(raidJSON(r.state.board), checkpoint.state.board);
+  const nowBoss = r.state.board.find(c => c.type === 'skull').skull;
+  assert.deepEqual([nowBoss.element, nowBoss.secondaryElement], pair);
+  const future = Array.from({ length: 50 }, () => r.createNewTile());
+  const other = raidBrowser({ variant: 'magitech', menus: true, start: false, saved: { [MAGITECH_RUN_KEY]: JSON.stringify(checkpoint) } });
+  assert.equal(other.raid.resumeSavedRun(), true);
+  assert.deepEqual(raidJSON(future), raidJSON(Array.from({ length: 50 }, () => other.raid.createNewTile())));
+});
+
+test('magitech elemental generation: ordinary local, special70/10/10/10, boss local+uniform other and weapon25 each on a separate reproducible stream', () => {
+  const b = raidBrowser({ variant: 'magitech', classId: 'ranger', seed: 8128 });
+  const control = legacyMagitechBrowser({ classId: 'ranger', seed: 8128 });
+  const r = b.raid, q = control.raid, weapons = [0,0,0,0], specials = [0,0,0,0], bosses = [0,0,0,0];
+  r.state.turn = q.state.turn = 100; r.state.promotionRemaining = q.state.promotionRemaining = 1000000;
+  let arrows = 0;
+  const withoutElements = value => { const v = raidJSON(value); delete v.element; delete v.secondaryElement; if (v.skull) { delete v.skull.element; delete v.skull.secondaryElement; } return v; };
+  for (let n = 0; n < 10000; n++) {
+    const tile = r.createNewTile(), old = q.createNewTile();
+    assert.deepEqual(withoutElements(tile), raidJSON(old), 'element rolls cannot change type/spawn/stats/decoration draws');
+    if (['sword','arrow'].includes(tile.type)) { weapons[raidElements.indexOf(tile.element)]++; if (tile.type === 'arrow') arrows++; }
+    if (tile.type === 'skull') assert.equal(tile.skull.element, 'earth');
+    const s = r.makeSkull(false, true, 4), t = q.makeSkull(false, true, 4);
+    specials[raidElements.indexOf(s.element)]++; assert.deepEqual(withoutElements(s), raidJSON(t));
+    const boss = r.makeSkull(true), oldBoss = q.makeSkull(true);
+    assert.equal(boss.element, 'earth'); assert.notEqual(boss.secondaryElement, 'earth');
+    bosses[raidElements.indexOf(boss.secondaryElement)]++; assert.deepEqual(withoutElements(boss), raidJSON(oldBoss));
+  }
+  assert.ok(arrows > 0);
+  const total = weapons.reduce((a,z) => a+z, 0); for (const count of weapons) assert.ok(Math.abs(count / total - .25) < .04, JSON.stringify(weapons));
+  specials.forEach((count, i) => assert.ok(Math.abs(count / 10000 - (i === 2 ? .7 : .1)) < .025, JSON.stringify(specials)));
+  bosses.forEach((count, i) => assert.ok(i === 2 ? count === 0 : Math.abs(count / 10000 - 1/3) < .025, JSON.stringify(bosses)));
+  assert.deepEqual(raidJSON(r.state.rngSeeds), raidJSON(q.state.rngSeeds));
+  assert.equal(r.saveRun(), true); const saved = magitechSave(b);
+  const next = raidReload(b, { variant: 'magitech' }); assert.deepEqual(magitechSave(next).combat, saved.combat);
+});
+
+test('magitech elemental generation: zero run seed still gives new converted weapons all four elements, never the cosmetic hash', () => {
+  const b = elementalCombat({ seed: 0 }), r = b.raid;
+  raidBoard(r, 'coin'); r.activateSkill('dazzle'); b.advance(2000);
+  assert.equal(new Set(r.state.board.map(c => c.element)).size, 4);
+  const original = raidJSON(r.state.board); r.saveRun(); const saved = magitechSave(b);
+  for (let n = 0; n < 5; n++) { r.chainPreview(); r.saveRun(); }
+  assert.deepEqual(raidJSON(r.state.board), original); assert.deepEqual(magitechSave(b).combat, saved.combat);
+});
+
+test('magitech elemental generation: Lich stats-only revival and Exorcise keep primary assignment without a hidden element draw', () => {
+  const b = elementalCombat(), r = b.raid;
+  const lich = raidOld(r, 0, { hp: 1, maxHp: 1, phylactery: true, lichDelay: false, element: 'water' }, 32);
+  r.saveRun(); const before = magitechSave(b).combat;
+  r.applySpecialAbilities(); assert.equal(lich.phylactery, false); assert.equal(lich.element, 'water');
+  r.saveRun(); assert.deepEqual(magitechSave(b).combat, before);
+  raidBoard(r); const boss = raidOld(r, 0, { hp: 100, maxHp: 100 }, 1), primary = boss.element;
+  r.saveRun(); const other = magitechSave(b).combat;
+  r.activateSkill('exorcise'); b.advance(2000);
+  assert.equal(boss.boss, false); assert.equal(boss.type, 0); assert.equal(boss.element, primary); assert.equal(Object.hasOwn(boss, 'secondaryElement'), false);
+  assert.equal(r.saveRun(), true); assert.deepEqual(magitechSave(b).combat, other);
+});
+
+for (const invalid of ['missing-combat','unknown-rules','extra-combat','missing-rng','negative-rng','fraction-rng','overflow-rng','string-rng','missing-region','missing-weapon','bad-weapon','nonweapon-element','missing-enemy','missing-boss-secondary','same-boss-secondary','nonboss-secondary','v1-with-elements','v1-with-combat','unknown-version']) test(`magitech elemental saves: reject ${invalid} without switching the live rules/RNG or overwriting another checkpoint`, () => {
+  const b = elementalCombat(), r = b.raid;
+  elementalWeapon(r, 0, 'water'); raidOld(r, 1, {}, 1); raidOld(r, 2, {}, 4);
+  assert.equal(r.saveRun(), true); const valid = magitechSave(b), data = raidJSON(valid);
+  if (invalid === 'missing-combat') delete data.combat;
+  if (invalid === 'unknown-rules') data.combat.rules = 'elements-v2';
+  if (invalid === 'extra-combat') data.combat.extra = true;
+  if (invalid === 'missing-rng') delete data.combat.rng;
+  if (invalid === 'negative-rng') data.combat.rng = -1;
+  if (invalid === 'fraction-rng') data.combat.rng = .5;
+  if (invalid === 'overflow-rng') data.combat.rng = 0x100000000;
+  if (invalid === 'string-rng') data.combat.rng = '71';
+  if (invalid === 'missing-region') delete data.region;
+  if (invalid === 'missing-weapon') delete data.state.board[0].element;
+  if (invalid === 'bad-weapon') data.state.board[0].element = 'lava';
+  if (invalid === 'nonweapon-element') data.state.board[35].element = 'fire';
+  if (invalid === 'missing-enemy') delete data.state.board[2].skull.element;
+  if (invalid === 'missing-boss-secondary') delete data.state.board[1].skull.secondaryElement;
+  if (invalid === 'same-boss-secondary') data.state.board[1].skull.secondaryElement = data.state.board[1].skull.element;
+  if (invalid === 'nonboss-secondary') data.state.board[2].skull.secondaryElement = 'fire';
+  if (invalid === 'v1-with-elements') { data.version = 1; delete data.combat; }
+  if (invalid === 'v1-with-combat') { const old = legacyMagitechSave(data); Object.assign(data, old); }
+  if (invalid === 'unknown-version') data.version = 3;
+  const state = r.state, before = raidJSON(state), raw = JSON.stringify(data); b.storage.set(MAGITECH_RUN_KEY, raw);
+  assert.equal(r.resumeSavedRun(), false); assert.equal(r.state, state); assert.deepEqual(raidJSON(r.state), before);
+  assert.equal(b.storage.get(MAGITECH_RUN_KEY), raw); assert.equal(r.saveStatus.state, 'invalid');
+  // A rejected file cannot change ELEMENTAL_COMBAT either.
+  b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(valid)); assert.equal(r.resumeSavedRun(), true);
+  assert.deepEqual(magitechSave(b).combat, valid.combat);
+});
+
+function neutralElementalSnapshot(raid) {
+  const state = magitechSnapshot(raid);
+  for (const cell of state.board) {
+    delete cell.element;
+    if (cell.skull) { delete cell.skull.element; delete cell.skull.secondaryElement; }
+  }
+  return state;
+}
+
+test('magitech elemental secondary: all 42 skills keep classical effects/6 RNG and leave a valid resumable v2 checkpoint', () => {
+  const source = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
+  const ids = [...(source.slice(source.indexOf('  const SKILLS = ['), source.indexOf('  // 7 уровней'))
+    + source.slice(source.indexOf('  const UNIQUE_SKILLS = ['), source.indexOf('  const ALL_SKILLS'))).matchAll(/\{ id: '(\w+)'/g)].map(match => match[1]);
+  assert.equal(ids.length, 42);
+  for (const [index, id] of ids.entries()) {
+    const options = { classId: raidClassIds[index % 10], difficulty: index % 3, menus: true, seed: 8801 };
+    const old = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    for (const browser of [old, b]) {
+      const r = browser.raid, s = r.state;
+      s.turn = 80; s.hero.hp = 900; s.hero.maxHp = 1000; s.hero.armor = 20; s.hero.maxArmor = 30;
+      s.hero.xp = 99; s.hero.gold = 99; s.upgradeBar = 99; s.trophyRemaining = 30;
+      s.skills = [id]; s.skillLevels = { [id]: 1 }; s.skillCooldowns = { [id]: 0 };
+      s.board = Array.from({ length: 36 }, (_, slot) => ({ type: ['sword', 'shield', 'coin', 'potion'][slot % 4], ...(browser === b && slot % 4 === 0 ? { element: raidElements[slot / 4 % 4] } : {}) }));
+      raidOld(r, 4, { atk: 2, hp: 3, maxHp: 20, def: 2 });
+      raidOld(r, 15, { atk: 3, hp: 30, maxHp: 30, def: 3 }, 2 + index % 31);
+      raidOld(r, 30, { atk: 5, hp: 35, maxHp: 35, def: 4 }, 1);
+      r.activateSkill(id); settleMagitechFixture(browser);
+    }
+    assert.deepEqual(neutralElementalSnapshot(b.raid), magitechSnapshot(old.raid), id + ': no elemental bonus for existing skills');
+    assert.equal(b.raid.saveRun(), true, id + ': transformed board must pass v2 validation');
+    const saved = magitechSave(b), next = raidReload(b, { variant: 'magitech' });
+    assert.equal(saved.version, 2); assert.deepEqual(raidJSON(next.raid.state.board), saved.state.board, id);
+    assert.deepEqual(magitechSave(next).combat, saved.combat, id);
+  }
+});
+
+test('magitech elemental secondary: all 31 inherited special ability paths retain classical effects/6 RNG, stable surviving assignments and valid v2 saves', () => {
+  for (let type = 2; type <= 32; type++) {
+    const options = { classId: raidClassIds[type % 10], difficulty: type % 3, menus: true, seed: 2718 };
+    const old = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    let identities;
+    for (const browser of [old, b]) {
+      const r = browser.raid, s = r.state;
+      s.turn = 100; s.hero.hp = s.hero.maxHp = 10000; s.hero.maxArmor = s.hero.armor = 30;
+      s.board = Array.from({ length: 36 }, (_, slot) => ({ type: ['sword','shield','coin','potion'][slot % 4], ...(browser === b && slot % 4 === 0 ? { element: raidElements[slot / 4 % 4] } : {}) }));
+      raidOld(r, 14, { atk: 2, hp: 1000, maxHp: 1000, countdown: 1, ...(type === 32 ? { phylactery: true, lichDelay: false, hp: 1 } : {}) }, type);
+      raidOld(r, 24, { atk: 1, hp: 4, maxHp: 4 });
+      if (browser === b) identities = new Map(s.board.map(c => [c.skull || c, c.skull ? [c.skull.element,c.skull.secondaryElement] : [c.element]]));
+      r.endEnemyTurn(); settleMagitechFixture(browser);
+    }
+    assert.deepEqual(neutralElementalSnapshot(b.raid), magitechSnapshot(old.raid), 'special ' + type);
+    for (const cell of b.raid.state.board) {
+      const key = cell.skull || cell, prior = identities.get(key);
+      if (prior) assert.deepEqual(cell.skull ? [cell.skull.element,cell.skull.secondaryElement] : [cell.element], prior, 'surviving assignment ' + type);
+    }
+    assert.equal(b.raid.saveRun(), true, 'special ' + type + ': v2 validation after conversion/movement');
+    const saved = magitechSave(b), next = raidReload(b, { variant: 'magitech' });
+    assert.deepEqual(raidJSON(next.raid.state.board), saved.state.board, 'special ' + type + ': Continue');
+    assert.deepEqual(magitechSave(next).combat, saved.combat);
+  }
+});
+
+test('magitech elemental transformations: Hack preserves existing weapons; Big Game retains an enemy primary; neither rerolls an existing element', () => {
+  const b = elementalCombat({ seed: 2718 }), r = b.raid;
+  for (let slot = 0; slot < 36; slot++) elementalWeapon(r, slot, raidElements[slot % 4]);
+  const assignments = r.state.board.map(c => c.element); r.saveRun(); const before = magitechSave(b).combat;
+  r.activateSkill('hack'); b.advance(2000); assert.deepEqual(r.state.board.map(c => c.element), assignments);
+  r.saveRun(); assert.deepEqual(magitechSave(b).combat, before, 'Hack did not introduce any new weapon');
+  raidBoard(r); const target = raidOld(r, 0, { hp: 100, maxHp: 100, element: 'water' });
+  r.saveRun(); const prior = magitechSave(b).combat;
+  r.activateSkill('biggame'); b.advance(2000);
+  const promoted = r.state.board.find(c => c.type === 'skull').skull;
+  assert.notEqual(promoted.uid, target.uid, 'retain classic stats/UID promotion path');
+  assert.equal(promoted.promotedByBigGame, true); assert.equal(promoted.element, 'water');
+  assert.equal(r.saveRun(), true);
+  if (!promoted.boss) assert.deepEqual(magitechSave(b).combat, prior, 'existing primary never rerolled');
+  else assert.ok(promoted.secondaryElement && promoted.secondaryElement !== 'water');
+  // Exorcise can have left a nonlocal ordinary. If its later promotion rolls a
+  // boss, the additional element must differ from THAT primary, not RUN_REGION.
+  for (const element of raidElements) for (let i = 0; i < 64; i++) {
+    const boss = r.makeSkull(true, false, undefined, { element });
+    assert.equal(boss.element, element); assert.notEqual(boss.secondaryElement, element);
+    assert.ok(raidElements.includes(boss.secondaryElement));
+    r.state.board[0] = { type: 'skull', skull: boss }; assert.equal(r.saveRun(), true);
+  }
 });
