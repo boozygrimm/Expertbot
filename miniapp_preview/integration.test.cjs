@@ -1861,7 +1861,25 @@ test('magitech fork: classic artifact stays pinned and the new standalone contai
     for (const [key, value] of Object.entries(entries)) digest.update(key + '\0' + JSON.stringify(value) + '\0');
     assert.equal(digest.digest('hex'), expected, 'previously accepted templates/palettes/variants stay byte-identical');
   }
-  assert.equal(ready.length >= 30, true, 'do not lose the ten new silhouettes');
+  assert.deepEqual(ready, catalog.expected_types, 'all 31 unique special types must now be ready, including Lich32');
+  assert.equal(catalog.complete, true);
+  const allPrevious = {
+    portraits: Object.fromEntries(Object.entries(sprites.portraits).filter(([key]) => !key.endsWith('_special_32'))),
+    sources: Object.fromEntries(Object.entries(sprites.sources).filter(([key]) => !key.endsWith('_special_32'))),
+    templates: Object.fromEntries(Object.entries(sprites.special_templates).filter(([key]) => key !== '32')),
+    palettes: sprites.special_palettes,
+  };
+  for (const [section, expected, count] of [
+    ['portraits', '1adcc2cd55efb0d8f9584d37dbabab8cd40f51a0d4c7d99693a9fa83314af62d', 136],
+    ['sources', '3a1fcdfb3e987487802e4730e4403721c99153d5642930727691b3ab71ac65ef', 136],
+    ['templates', '0b32b1adae9701609ed3a64f799d63886dd298bb7f9b3358691a6a955cc43a1b', 30],
+    ['palettes', '29480bbee0b92e4e07b9d1c0635db3e8720f59570be4e29cd90eaed2d2d29f77', 4],
+  ]) {
+    assert.equal(Object.keys(allPrevious[section]).length, count);
+    const digest = crypto.createHash('sha256');
+    for (const [key, value] of Object.entries(allPrevious[section])) digest.update(key + '\0' + JSON.stringify(value) + '\0');
+    assert.equal(digest.digest('hex'), expected, 'PR131 art, source records and palettes must not be regenerated');
+  }
   assert.equal(originalCount, 16);
   assert.equal(original.digest('hex'), 'cbcc769edcee82eb1627effa2ba085f675cbdb342fb11e377dad2a82cd918cc1', 'all 16 approved temporary crops stay byte-identical');
   for (const element of ['fire', 'air', 'earth', 'water']) {
@@ -2990,8 +3008,8 @@ for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech monster r
     assert.equal(catalog.complete, catalog.expected_types.every(type => catalog.ready_types.includes(type)));
     assert.equal(JSON.stringify(r.state), before); assert.equal(JSON.stringify(r.state.rngSeeds), beforeRng);
     assert.ok(r.state.board.every(c => magitechElements.includes(c.skull.element)), 'gameplay assigned elements exist before rendering');
-    // All 31 inherited special types are on this board, including those still
-    // waiting for unique art. This fixture does NOT pretend those are complete.
+    // All 31 inherited special types, including the newly completed Lich, are
+    // on this board; every one must have its own assigned-element portrait.
     doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-classes').click();
     const other = region === 'water' ? 'fire' : 'water';
     doc.querySelector(`button[data-raid-region="${other}"]`).click();
@@ -3180,8 +3198,11 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /10.*(?:образ|силуэт)/);
-    assert.match(doc.querySelector('#updates-current').textContent, /30\s*(?:из|\/)\s*31/);
+    assert.match(doc.querySelector('#updates-current').textContent, /31\s*(?:из|\/)\s*31/);
+    assert.match(doc.querySelector('#updates-current').textContent, /четыр[её]х.*стихи/);
+    assert.doesNotMatch(doc.querySelector('#updates-current').textContent, /Лич пока|30\s*(?:из|\/)\s*31/);
+    assert.match(doc.querySelector('#updates-current').textContent, /без общей временной замены/);
+    assert.match(doc.querySelector('#updates-history').textContent, /10.*образ/);
     assert.match(doc.querySelector('#updates-current').textContent, /Лич/);
     assert.ok(doc.querySelectorAll('#updates-history li').length >= 3);
     assert.match(doc.querySelector('#updates-history').textContent, /Стихи|стихи/);
@@ -3484,4 +3505,66 @@ test('magitech special details: touch compatibility click cannot immediately dis
     assert.equal(b.raid.state.pendingModal, null); assert.equal(b.raid.state.turn, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
+});
+
+
+for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete catalogue: ${region} Lich keeps its own art in details, phylactery, Continue and revival under both v1/v2`, async () => {
+  for (const version of [1, 2]) {
+    let b = await orbFixture({ region, reduced: true }), r = b.raid;
+    const savedRun = () => JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')));
+    try {
+      showOrbFixture(b, idx => idx === 0
+        ? { type: 'skull', skull: Object.assign(r.makeSkull(false, true, 32), { element: region, atk: 0, def: 0, hp: 1, maxHp: 1 }) }
+        : { type: 'coin' });
+      if (version === 1) {
+        // Explicit legacy fixture ONLY. Genuine released-v1 runtime remains a
+        // separate native check, not this test-only metadata conversion.
+        const saved = raidStorage(b.dom.window), key = magitechKey('raid:activeRun');
+        saved[key] = JSON.stringify(releasedMagitechCheckpoint(JSON.parse(saved[key])));
+        b.dom.window.close();
+        b = await openMagitech({ saved, start: false, setup(w) { orbAnimationHarness(w, { reduced: true }); } });
+        r = b.raid; assert.equal(r.resumeSavedRun(), true);
+      }
+      let doc = b.dom.window.document;
+      const portrait = `${region}_special_32`, art = b.dom.window.RAID_MONSTER_ART[portrait];
+      assert.ok(art, 'Lich must not be a shared fallback');
+      const image = doc.querySelector('.cell[data-idx="0"] img.skull-art');
+      assert.equal(image.dataset.portrait, portrait); assert.equal(image.src, art);
+      const before = savedRun(); assert.equal(before.version, version);
+      r.showSkullModal(r.state.board[0].skull);
+      assert.equal(doc.querySelector('.skull-feat-art').dataset.portrait, portrait);
+      assert.equal(doc.querySelector('.skull-feat-art').src, art);
+      assert.match(doc.querySelector('#modal-title').textContent, /ЛИЧ/);
+      assert.match(doc.querySelector('.skull-feat-list').textContent, /филактерий/);
+      doc.querySelector('#modal-body .btn').click();
+      await new Promise(resolve => b.dom.window.setTimeout(resolve, 120));
+      assert.equal(doc.querySelector('.cell[data-idx="0"] img.skull-art'), image);
+      assert.deepEqual(savedRun().rng, before.rng);
+      assert.deepEqual(savedRun().combat, before.combat);
+      r.hitSkullAt(0, 100000, { direct: true });
+      assert.equal(r.state.board[0].skull.phylactery, true);
+      assert.equal(r.state.skullsKilled, 0); assert.equal(r.state.specialsKilled, 0);
+      assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+      assert.equal(doc.querySelector('.cell[data-idx="0"] img.skull-art').dataset.portrait, portrait);
+      const checkpoint = savedRun(), saved = raidStorage(b.dom.window);
+      b.dom.window.close();
+      b = await openMagitech({ saved, start: false, setup(w) { orbAnimationHarness(w, { reduced: true }); } });
+      r = b.raid; doc = b.dom.window.document; assert.equal(r.resumeSavedRun(), true);
+      const resumed = savedRun(); assert.equal(resumed.version, version);
+      for (const key of ['region', 'rng', 'combat']) assert.deepEqual(resumed[key], checkpoint[key]);
+      assert.deepEqual(resumed.state.board, checkpoint.state.board);
+      assert.equal(doc.querySelector('.cell[data-idx="0"] img.skull-art').src, art);
+      r.applySpecialAbilities();
+      assert.equal(r.state.board[0].skull.phylactery, true, 'the existing one-step Lich delay stays intact');
+      r.applySpecialAbilities();
+      assert.equal(r.state.board[0].skull.phylactery, false);
+      assert.equal(r.state.board[0].skull.type, 32);
+      assert.equal(r.state.board[0].skull.element, version === 2 ? region : undefined);
+      assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+      assert.equal(doc.querySelector('.cell[data-idx="0"] img.skull-art').src, art);
+      assert.deepEqual(savedRun().combat, checkpoint.combat, 'revival does not reroll an element');
+      assert.equal(savedRun().version, version);
+      assert.deepEqual(b.errors, []);
+    } finally { b.dom.window.close(); }
+  }
 });
