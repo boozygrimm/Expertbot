@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#140e22">
-<meta name="raid-build" content="ece8802c9de3">
+<meta name="raid-build" content="e8894dda6bf6">
 <title>Lunapark · Рейд</title>
 <style>
 /* miniapp_preview/raid.css — пробник Рейда */
@@ -43,7 +43,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   border-left: 1px solid #4a315a;
   border-right: 1px solid #4a315a;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
 }
 /* top brand */
 .brand {
@@ -76,16 +76,20 @@ body { display: flex; align-items: stretch; justify-content: center; }
 
 /* board */
 .board-wrap {
-  position: relative; flex: 1 1 auto; min-height: 0;
+  position: relative; flex: 1 0 auto; min-height: 0;
   display: grid; place-items: center; margin: 2px 0 8px;
+  grid-template-rows: minmax(180px, 1fr) auto; gap: 6px;
 }
 #board {
   position: relative;
-  width: min(94vw, 430px);
-  height: min(52vh, 430px);
+  /* Reserve the real board + footer before the HUD. Size containment stops
+     percentage SVG/images from imposing their intrinsic height on this track. */
+  contain: size;
+  width: min(100%, 430px);
+  height: 100%; min-height: 180px; max-height: 430px;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-template-rows: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   gap: 3px;
   padding: 6px;
   background: linear-gradient(160deg, #241532 0%, #160f26 100%);
@@ -118,7 +122,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   filter: drop-shadow(0 0 6px rgba(201,168,255,0.8));
 }
 .cell {
-  position: relative; display: grid; place-items: center;
+  position: relative; display: grid; place-items: center; min-width: 0; min-height: 0;
   border: 1px solid rgba(99, 65, 124, 0.22);
   border-radius: 9px;
   background: radial-gradient(circle at 50% 35%, #2a1a35 0%, #1a1026 80%);
@@ -457,14 +461,14 @@ body { display: flex; align-items: stretch; justify-content: center; }
 
 /* responsive */
 @media (max-height: 720px) {
-  #board { width: min(94vw, 370px); height: min(46vh, 370px); }
+  #board { width: min(100%, 370px); max-height: 370px; }
   .brand-text strong { font-size: 14px; }
   .notice { margin-bottom: 6px; padding: 5px 10px; }
   .skills { min-height: 50px; }
 }
 @media (max-height: 560px) {
   .shell { padding-top: 8px; }
-  #board { width: min(94vw, 320px); height: min(44dvh, 320px); }
+  #board { width: min(100%, 320px); max-height: 320px; }
   .hud-row { gap: 4px; }
   .hud-cell { padding: 4px 6px; }
   .skills { min-height: 46px; }
@@ -589,10 +593,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
   border-radius: 8px; padding: 5px 8px; margin-bottom: 6px;
 }
 .board-foot {
-  position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%);
-  display: flex; gap: 10px; font-size: 9px; color: #bfa8c9; font-weight: 700;
+  position: static; transform: none; max-width: 100%;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 10px; font-size: 9px; color: #bfa8c9; font-weight: 700;
   background: rgba(14,9,22,0.8); border: 1px solid #3d2a52; border-radius: 999px;
-  padding: 2px 9px; white-space: nowrap;
+  padding: 2px 9px; white-space: normal;
 }
 .board-wrap { margin-bottom: 14px; }
 .hud { gap: 4px; }
@@ -617,10 +621,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .menu-modal.show { opacity: 1; pointer-events: auto; }
 .menu-card {
   width: min(100%, 340px); min-width: 0; display: flex; flex-direction: column; gap: 7px;
+  max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain;
   background: linear-gradient(160deg, #2c1b40, #161028); border: 1px solid #8a5fb0;
   border-radius: 16px; padding: 16px;
 }
 .menu-card h3 { margin: 0 0 6px; text-align: center; color: #ffe2a9; font: 700 19px Georgia, serif; }
+.menu-card .btn { min-height: 44px; }
 @media (max-height: 720px) {
   .skills { min-height: 48px; }
   .run-actions .icon-btn { font-size: 9px; padding: 4px 6px; }
@@ -676,6 +682,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .save-note { margin: 4px 0 12px; color: #c9b5d2; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .save-warning { flex: none; margin: 2px 0 4px; padding: 6px 8px; border: 1px solid #bc794c; border-radius: 8px; color: #ffdaab; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
 .restart-modal { z-index: 110; }
+.exit-modal { z-index: 140; }
 .restart-modal .menu-card { min-width: 0; }
 #picker-resume { white-space: normal; overflow-wrap: anywhere; }
 #picker-save-status { flex: none; margin: 0; }
@@ -718,35 +725,32 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .achievement-record progress { display: block; width: 100%; height: 9px; accent-color: #d0ae61; }
 .achievement-notice { position: fixed; z-index: 150; top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; width: fit-content; max-width: min(480px, calc(100% - 24px)); margin: 0 auto; padding: 10px 14px; border: 1px solid #b8a35b; border-radius: 12px; background: #292035; color: #ffe7b4; box-shadow: 0 5px 25px #0009; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; pointer-events: none; }
 
-/* Telegram launch is opt-in; ordinary/offline browser layout is unchanged. */
+/* Telegram host dimensions/safe areas are opt-in; the field flow is shared. */
 .telegram-status { margin: 0; color: #d3bedf; font-size: 11px; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
 .telegram-preview {
+  --raid-tg-visible-height: min(100dvh, var(--raid-tg-height, 100dvh));
   --raid-inset-top: calc(max(env(safe-area-inset-top, 0px), var(--raid-tg-safe-top, 0px)) + var(--raid-tg-content-top, 0px));
   --raid-inset-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--raid-tg-safe-bottom, 0px)) + var(--raid-tg-content-bottom, 0px));
   --raid-inset-left: calc(max(env(safe-area-inset-left, 0px), var(--raid-tg-safe-left, 0px)) + var(--raid-tg-content-left, 0px));
   --raid-inset-right: calc(max(env(safe-area-inset-right, 0px), var(--raid-tg-safe-right, 0px)) + var(--raid-tg-content-right, 0px));
 }
 .telegram-preview .shell {
-  height: var(--raid-tg-height, 100dvh);
+  height: var(--raid-tg-visible-height);
   padding: calc(8px + var(--raid-inset-top)) calc(14px + var(--raid-inset-right)) calc(10px + var(--raid-inset-bottom)) calc(14px + var(--raid-inset-left));
   overflow-y: auto; overscroll-behavior: contain;
 }
-.telegram-preview .board-wrap { min-height: 180px; }
-/* A percentage of the shrinking grid track can still overflow a short host
-   viewport. Use its stable pixel height, leaving the HUD scrollable below. */
-.telegram-preview #board {
-  width: min(100%, 430px);
-  height: clamp(180px, calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 300px), 430px);
-}
+/* The shared non-shrinking board/footer layout uses the actual remaining
+   space, not a fixed subtraction from Telegram's viewport height. */
+.telegram-preview #board { width: min(100%, 430px); max-height: 430px; }
 .telegram-preview :is(.class-picker, .menu-modal, .modal, .help-modal) {
-  bottom: auto; height: var(--raid-tg-height, 100dvh);
+  bottom: auto; height: var(--raid-tg-visible-height);
   padding: calc(16px + var(--raid-inset-top)) calc(12px + var(--raid-inset-right)) calc(16px + var(--raid-inset-bottom)) calc(12px + var(--raid-inset-left));
 }
 .telegram-preview :is(.picker-card, .modal-card, .menu-card, .help-card) {
-  max-height: calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px);
+  max-height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px);
   overflow-y: auto;
 }
-.telegram-preview .picker-card.editor-open { height: calc(var(--raid-tg-height, 100dvh) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px); overflow: hidden; }
+.telegram-preview .picker-card.editor-open { height: calc(var(--raid-tg-visible-height) - var(--raid-inset-top) - var(--raid-inset-bottom) - 32px); overflow: hidden; }
 .telegram-preview .achievement-notice { top: calc(12px + var(--raid-inset-top)); }
 
 /* Keep last: view layout rules must not make a hidden panel visible/clickable. */
@@ -760,7 +764,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="picker-card" id="picker-card">
     <div class="picker-main" id="class-picker-main">
     <h3 class="picker-title">⚔ Выбери класс</h3>
-    <p class="build-label">Сборка ece8802c9de3</p>
+    <p class="build-label">Сборка e8894dda6bf6</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Продолжи сохранённый забег или начни новый с карточки класса. Настройки под карточкой действуют только на следующие забеги.</p>
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
@@ -882,7 +886,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
     <h3>⚔ Меню рейда</h3>
-    <p class="build-label">Сборка ece8802c9de3</p>
+    <p class="build-label">Сборка e8894dda6bf6</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
     <button class="btn" id="menu-resume" type="button">Продолжить</button>
@@ -891,7 +895,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
     <button class="btn secondary" id="menu-history" type="button">Рекорды и статистика</button>
     <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
     <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
-    <button class="btn secondary" id="menu-close" type="button">Закрыть</button>
+    <button class="btn secondary" id="menu-close" type="button">Закрыть меню</button>
   </div>
 </div>
 
@@ -922,6 +926,16 @@ body { display: flex; align-items: stretch; justify-content: center; }
   </div>
 </div>
 
+<!-- Explicit opt-out only when an exit checkpoint cannot be written. -->
+<div class="menu-modal exit-modal" id="exit-modal" role="alertdialog" aria-modal="true" aria-labelledby="exit-title" aria-describedby="exit-confirm-text" hidden>
+  <div class="menu-card">
+    <h3 id="exit-title">Закрыть без сохранения?</h3>
+    <p class="save-note" id="exit-confirm-text"></p>
+    <button class="btn secondary" id="exit-cancel" type="button">Остаться в игре</button>
+    <button class="btn" id="exit-confirm" type="button">Всё равно закрыть</button>
+  </div>
+</div>
+
 <!-- generic modal (level / gold / armor / gameover) -->
 <div class="modal" id="modal" role="dialog" aria-modal="true">
   <div class="modal-card">
@@ -935,7 +949,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   <div class="help-card">
     <h3>⚔ Как играть</h3>
     <p><b>Пробник классического Рейда</b> на своих графике и коде.</p>
-    <p class="build-label">Сборка ece8802c9de3</p>
+    <p class="build-label">Сборка e8894dda6bf6</p>
     <ul>
       <li>Смахни по 3+ клеток одной категории (меч/щит/монета/зелье).</li>
       <li>Череп идёт в цепочку с мечом/стрелой и сам может начинать её.</li>
@@ -953,7 +967,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
       <li>Надето пять вещей: оружие, шлем, доспех, щит и аксессуар. Магазин предлагает 3 замены для этих слотов: бонусы старой вещи снимаются, новые не прибавляются поверх них. Например, оружие 2 → 3 даёт лишь +1 урона за меч. Бывают и обмены: −1 к одному параметру ради двойного прироста другого, например +2 к урону оружия. Карточка показывает обе вещи, улучшения зелёным и ухудшения красным.</li>
       <li>Апгрейд только добавляет бонус конкретной надетой вещи: остальные её параметры не уменьшаются. Это не вечная прибавка персонажу. При следующей покупке учитываются все параметры надетой вещи; если их нет у замены — бонус исчезнет. В обоих меню можно посмотреть всю экипировку. «Ускорение навыков» не складывается с другим таким же предметом.</li>
       <li>📜 Свиток прилагается к одному из предметов и разово применяет указанный навык при покупке: не занимает слот и не меняет заряд такого же навыка. Воспроизводится ошибка классического фильтра (I1): он читает занятые слоты, счётчики и историю надписи лечения «Сок», а не список выученных навыков. 10%-е исключения обходят этот фильтр. Для воспроизводимости неинициализированная память считается нулевой при открытии страницы; история надписи сохраняется между забегами в этой вкладке. «Продолжить» после перезагрузки восстанавливает историю именно сохранённого забега; без продолжения новая страница начинает её заново. Это модель совместимости, не точная копия памяти и таймингов оригинала. Если данных недостаточно или кандидатов нет, пропускается только свиток, не покупка.</li>
-      <li>Тест в Telegram открывается кнопкой «Рейд · тест» в личке владельца бота (/raid_test). Рабочая база и серверные награды не подключаются; сам URL пробника публичный. Сохранения Telegram могут быть отдельными от обычного браузера. Оболочка разворачивает окно и отключает сворачивание вертикальным свайпом, если версия клиента позволяет. Кнопка «Назад» возвращает из просмотра или открывает меню, но не отменяет обязательный выбор наград. Прерванный системой жест отменяется без хода. Если SDK недоступен, это явно показано: такой запуск не подтверждает работу оболочки Telegram.</li>
+      <li>Тест в Telegram открывается кнопкой «Рейд · тест» в личке владельца бота (/raid_test). Рабочая база и серверные награды не подключаются; сам URL пробника публичный. Сохранения Telegram могут быть отдельными от обычного браузера. Оболочка разворачивает окно и отключает сворачивание вертикальным свайпом, если версия клиента позволяет. Во вложенных окнах «Назад» возвращает к игре, не отменяя обязательных наград. На основном экране остаётся штатная кнопка закрытия Telegram. «Меню → Закрыть Mini App» сохраняет текущий момент и отправляет команду выхода; если запись не удалась, можно остаться или явно подтвердить закрытие с риском потери последних действий. После повторного входа нужно нажать «Продолжить», в том числе для ожидающих наград. В обычном браузере «Закрыть меню» только возвращает в игру. Прерванный системой жест отменяется без хода. Если SDK недоступен, это явно показано: такой запуск не подтверждает работу оболочки Telegram.</li>
       <li>Забег автоматически сохраняется в этом браузере: поле, герой, вещи, навыки, случайность и ожидающие награды. После перезагрузки нажми «Продолжить» на первом экране. Предложения магазина/уровня/апгрейда и отметки 2-из-4 не перебрасываются; прерванный ход завершается один раз. Незавершённый жест не продолжается сам. Время вне страницы не расходует ходы; визуальная задержка начатого действия запускается заново, затухание «Сока» продолжает сохранённый остаток.</li>
       <li>Одновременно хранится один активный забег; новый заменит его после подтверждения. Смерть и победа убирают возможность продолжить. Очистка данных браузера удалит сохранение, приватный режим или запрет хранилища может помешать записи — смотри предупреждение. Это локальный пробник, без аккаунта, синхронизации и наград парка. Не играй одновременно в нескольких вкладках: устаревшая приостанавливается при изменении сохранения.</li>
       <li>«Рекорды и статистика» доступны до старта и из меню. По 10 результатов в шести категориях; равный счёт идёт после прежних, а новый самый низкий при заполненной таблице заменяет десятое место — классическое правило. В Спринте XP/GP/UP делятся на 4 отдельно, победа удваивает только очки. В Кренделе показаны средние пересечения (усечение после каждой цепи), максимум и число цепей с очками. Для старого сохранения уже набранную статистику пересечений восстановить нельзя — будет прочерк, но его очки сохранятся.</li>
@@ -2262,6 +2276,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
     SCHEDULED_STEP = AFTER_ARRIVALS = RESOURCE_BATCH = null; DRAINING_ARRIVALS = false;
@@ -3588,6 +3603,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
+    cancelTelegramExit(false);
     try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
     clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
     closeRunHistory();
@@ -6314,7 +6330,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   // public, and only its launcher in the bot is owner-private. Our code never sends or
   // persists initData/user details; gameplay and storage stay browser-local.
   let TELEGRAM_APP = null;
-  let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null;
+  let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null, TELEGRAM_EXIT = null;
   function telegramCall(target, method, ...args) {
     try { if (typeof target?.[method] === 'function') { target[method](...args); return true; } }
     catch (ignored) { /* Old clients/SDK failures must not break the game. */ }
@@ -6329,21 +6345,54 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
   function syncTelegramChrome() {
     if (!TELEGRAM_APP) return;
     const live = !!S && !S.over;
-    const back = live || HISTORY_OPEN || !!classEditor || telegramLayer('help-modal') || telegramLayer('restart-modal');
+    // Back belongs to nested views only. At the board/reward root Telegram
+    // must keep its native Close control, not trap the user in a menu loop.
+    const back = HISTORY_OPEN || !!classEditor || pickerOpen && live
+      || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
+      || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
+  function cancelTelegramExit(focus = true) {
+    const previous = TELEGRAM_EXIT; TELEGRAM_EXIT = null;
+    const wrap = el('exit-modal');
+    if (wrap) { wrap.classList.remove('show'); wrap.hidden = true; }
+    if (focus) previous?.focus?.focus();
+  }
+  function requestTelegramClose(discard = false) {
+    if (!TELEGRAM_APP) return false;
+    cancelPointerGesture();
+    // A pending reward is a resumable checkpoint, not a reason to forbid exit.
+    // close() can bypass the native closing prompt, so an unsuccessful write
+    // needs our explicit, accessible discard confirmation before that request.
+    const saved = !S || saveRun();
+    if (!saved && !discard) {
+      const wrap = el('exit-modal');
+      if (!wrap) return false;
+      TELEGRAM_EXIT = { runId: RUN_ID, focus: document.activeElement };
+      el('exit-confirm-text').textContent = 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
+      wrap.hidden = false; wrap.classList.add('show'); el('exit-cancel')?.focus();
+      syncTelegramChrome();
+      return false;
+    }
+    cancelTelegramExit(false);
+    if (telegramCall(TELEGRAM_APP, 'close')) return true;
+    telegramNotice('Команда закрытия недоступна. Вернись в игру и используй кнопку закрытия Telegram в шапке.');
+    flash('Для выхода используй кнопку закрытия Telegram в шапке');
+    syncTelegramChrome();
+    return false;
+  }
   function telegramBack() {
     cancelPointerGesture();
-    if (telegramLayer('restart-modal')) cancelNewGame();
+    if (telegramLayer('exit-modal')) cancelTelegramExit();
+    else if (telegramLayer('restart-modal')) cancelNewGame();
     else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('help')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
-    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
+    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
-    else if (S && !S.over) { saveRun(); el('menu-modal')?.classList.add('show'); el('menu-resume')?.focus(); }
     syncTelegramChrome();
   }
   function initTelegramPreview() {
@@ -6358,6 +6407,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       if (TELEGRAM_APP) return;
       TELEGRAM_APP = tg;
       document.documentElement.classList.add('telegram-preview');
+      const close = el('menu-close'); if (close) close.textContent = 'Закрыть Mini App';
       const root = document.documentElement.style;
       const validHeight = value => Number.isFinite(value) && value >= 160 && value <= 10000;
       const inset = value => Number.isFinite(value) && value >= 0 && value <= 160 ? value : 0;
@@ -6384,7 +6434,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'menu-modal', 'modal']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -6447,6 +6497,20 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
         }
       }
     });
+    el('exit-cancel')?.addEventListener('click', () => cancelTelegramExit());
+    el('exit-confirm')?.addEventListener('click', () => {
+      if (TELEGRAM_EXIT?.runId === RUN_ID) requestTelegramClose(true);
+    });
+    el('exit-modal')?.addEventListener('keydown', event => {
+      if (!TELEGRAM_EXIT) return;
+      if (event.key === 'Escape') { event.preventDefault(); cancelTelegramExit(); }
+      if (event.key === 'Tab') {
+        const first = el('exit-cancel'), last = el('exit-confirm');
+        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+        }
+      }
+    });
     const restartBtn = qs('#restart');
     if (restartBtn) restartBtn.addEventListener('click', () => requestNewGame());
     const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
@@ -6465,7 +6529,7 @@ window.SKULL_ART = {"e1_ghost": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
       menuBtn.addEventListener('click', () => { if (S) saveRun(); menuModal.classList.add('show'); });
       const hide = () => menuModal.classList.remove('show');
       const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
-      const close = qs('#menu-close'); if (close) close.addEventListener('click', hide);
+      const close = qs('#menu-close'); if (close) close.addEventListener('click', () => { if (TELEGRAM_APP) requestTelegramClose(); else hide(); });
       const classes = el('menu-classes'); if (classes) classes.addEventListener('click', () => {
         if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return; }
         hide(); showClassPicker();
