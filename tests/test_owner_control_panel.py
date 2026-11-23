@@ -263,10 +263,10 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_main_sections_and_backward_compatibility(self):
         markup = (await panel.home_content())[1]
         # Every private screen ends with refresh + close, so the panel must too.
-        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 2, 2, 1, 1, 1])
+        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 2, 2, 1, 1, 1, 1])
         self.assertEqual(callbacks(markup), {'owner_panel:news', 'ovideo:open', 'owner_panel:group_menu',
                          'owner_panel:alchemy', 'owner_panel:media', 'owner_panel:help',
-                         'owner_panel:home', 'owner_panel:close', 'owner_panel:status',
+                         'owner_panel:home', 'owner_panel:close', 'owner_panel:status', 'owner_panel:raid_test',
                          'gnews:home', 'news_panel:scripts', 'news_panel:editions'})
         for route, expected, back in [
             ('group_menu', {'owner_panel:groups', 'owner_tools:reports', 'owner_tools:points'}, 'owner_panel:home'),
@@ -302,3 +302,193 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
         for route in ('images', 'search'):
             markup = await self.click('owner_panel:' + route)
             self.assertIn('owner_panel:media', callbacks(markup))
+
+
+class RaidMiniAppEntryTests(unittest.IsolatedAsyncioTestCase):
+    """Only the bot entry is private; a public static URL is not an auth layer."""
+
+    def message(self, user=None, chat_id=None, kind='private'):
+        return SimpleNamespace(
+            from_user=SimpleNamespace(id=panel.ADMIN_ID if user is None else user),
+            chat=SimpleNamespace(type=kind, id=panel.ADMIN_ID if chat_id is None else chat_id),
+            answer=AsyncMock(), edit_text=AsyncMock())
+
+    def assert_launcher(self, text, markup):
+        import re
+        from pathlib import Path
+        from aiogram.types import WebAppInfo
+        from urllib.parse import parse_qs, urlsplit
+        buttons = [b for row in markup.inline_keyboard for b in row]
+        launchers = [b for b in buttons if b.web_app]
+        self.assertEqual(len(launchers), 1)
+        self.assertIsInstance(launchers[0].web_app, WebAppInfo)
+        self.assertIsNone(launchers[0].url, 'ordinary URL button is not a Mini App launch')
+        url = urlsplit(launchers[0].web_app.url)
+        self.assertEqual((url.scheme, url.netloc, url.path),
+                         ('https', 'boozygrimm.github.io', '/Expertbot/lunapark-raid.html'))
+        build = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">',
+                          (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').read_text()).group(1)
+        self.assertEqual(parse_qs(url.query), {'telegram': ['1'], 'build': [build]})
+        self.assertIn(build, text)
+        self.assertIn('публичный', text)
+        self.assertIn('локальные', text)
+        self.assertIn('Без рабочей базы', text)
+        self.assertLessEqual(len(text.encode('utf-16-le')) // 2, 4096)
+        self.assertEqual(callbacks(markup), {'owner_panel:home', 'owner_panel:raid_test', 'owner_panel:close'})
+
+    async def test_command_sends_web_app_and_clears_only_owner_private_input_without_db(self):
+        class NoDatabase:
+            def __getattr__(self, name):
+                raise AssertionError('Mini App launcher accessed database: ' + name)
+        message = self.message()
+        state = SimpleNamespace(clear=AsyncMock())
+        with patch.object(panel, 'db', NoDatabase()):
+            await panel.open_raid_test(message, state)
+        state.clear.assert_awaited_once()
+        message.answer.assert_awaited_once()
+        args = message.answer.await_args
+        self.assert_launcher(args.args[0], args.kwargs['reply_markup'])
+        self.assertIsNone(args.kwargs['parse_mode'])
+        self.assertTrue(args.kwargs['protect_content'])
+
+    async def test_command_denies_other_users_groups_wrong_private_id_and_missing_sender(self):
+        for sender, chat_id, kind in (
+                (panel.ADMIN_ID + 1, panel.ADMIN_ID + 1, 'private'),
+                (panel.ADMIN_ID + 1, panel.ADMIN_ID, 'private'),
+                (panel.ADMIN_ID, panel.ADMIN_ID + 1, 'private'),
+                (panel.ADMIN_ID, -100123, 'group'),
+                (panel.ADMIN_ID, -100123, 'supergroup'),
+                (panel.ADMIN_ID, panel.ADMIN_ID, 'channel')):
+            with self.subTest(sender=sender, chat=chat_id, kind=kind):
+                message = self.message(sender, chat_id, kind)
+                state = SimpleNamespace(clear=AsyncMock())
+                await panel.open_raid_test(message, state)
+                message.answer.assert_not_awaited()
+                state.clear.assert_not_awaited()
+        message = self.message(); message.from_user = None
+        await panel.open_raid_test(message)
+        message.answer.assert_not_awaited()
+
+    async def test_panel_callback_has_same_launcher_and_owner_checks_before_clearing_state(self):
+        message = self.message()
+        cb = SimpleNamespace(from_user=message.from_user, message=message,
+                             data='owner_panel:raid_test', answer=AsyncMock())
+        state = SimpleNamespace(clear=AsyncMock())
+        with patch.object(panel, 'db', None):
+            await panel.control_action(cb, state)
+        state.clear.assert_awaited_once()
+        self.assert_launcher(message.edit_text.await_args.args[0],
+                             message.edit_text.await_args.kwargs['reply_markup'])
+        for sender, chat, kind in ((panel.ADMIN_ID + 1, panel.ADMIN_ID, 'private'),
+                                   (panel.ADMIN_ID, panel.ADMIN_ID + 1, 'private'),
+                                   (panel.ADMIN_ID, -100123, 'supergroup')):
+            message = self.message(sender, chat, kind)
+            cb.from_user = message.from_user; cb.message = message
+            state.clear.reset_mock()
+            await panel.control_action(cb, state)
+            state.clear.assert_not_awaited()
+            message.edit_text.assert_not_awaited()
+            self.assertTrue(cb.answer.await_args.kwargs['show_alert'])
+        cb.message = None
+        await panel.control_action(cb, state)
+        state.clear.assert_not_awaited()
+
+    async def test_missing_build_file_does_not_break_fixed_https_launcher(self):
+        from pathlib import Path
+        with patch.object(Path, 'open', side_effect=FileNotFoundError):
+            text, markup = panel.raid_preview_content()
+        self.assertIn('Номер сборки', text)
+        self.assertEqual(markup.inline_keyboard[0][0].web_app.url, panel.RAID_PREVIEW_URL)
+
+    async def test_command_menu_is_published_only_in_owner_chat_scope(self):
+        from app_setup import set_commands
+        from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS
+        self.assertIn('raid_test', dict(ADMIN_PRIVATE_COMMAND_SPECS))
+        self.assertNotIn('raid_test', dict(USER_PRIVATE_COMMAND_SPECS))
+        self.assertNotIn('raid_test', dict(GROUP_COMMAND_SPECS))
+        bot = SimpleNamespace(set_my_commands=AsyncMock())
+        await set_commands(bot)
+        calls = [c for c in bot.set_my_commands.await_args_list
+                 if any(command.command == 'raid_test' for command in c.args[0])]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].kwargs['scope'].chat_id, panel.ADMIN_ID)
+
+    async def test_real_dispatcher_launch_escapes_broad_fsm_inputs_and_denies_forged_entries(self):
+        import subprocess
+        import sys
+        script = r'''
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from aiogram import Bot
+from aiogram.methods import SendMessage, EditMessageText, GetMe
+from aiogram.types import Update, User
+from app_setup import configure_dispatcher
+from config import ADMIN_ID
+from handlers import owner_control_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, auth, logger
+
+class NoDatabase:
+    def __getattr__(self, name):
+        raise AssertionError('Unexpected database access: ' + name)
+
+async def run():
+    bot = Bot('123456:TESTTOKEN')
+    sent = []
+    async def request(bot_arg, method, **kwargs):
+        if isinstance(method, GetMe):
+            return User(id=bot.id, is_bot=True, first_name='Test', username='raid_owner_bot')
+        sent.append(method)
+        return True
+    dp = configure_dispatcher()
+    user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}
+    chat = {'id':ADMIN_ID, 'type':'private'}
+    auth_db = SimpleNamespace(auth_chats=SimpleNamespace(find_one=AsyncMock(return_value={'status':'approved'})))
+    try:
+        with patch.object(panel, 'db', NoDatabase()), patch.object(alc_build, 'db', NoDatabase()), \
+             patch.object(tools, 'db', NoDatabase()), patch.object(logger, 'db', NoDatabase()), \
+             patch.object(auth, 'db', auth_db), \
+             patch.object(alc_intro, 'get_intro_session', AsyncMock(side_effect=AssertionError('root entry reached intro'))), \
+             patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
+            context = dp.fsm.get_context(bot=bot, chat_id=ADMIN_ID, user_id=ADMIN_ID)
+            for i, waiting in enumerate((None, tools.OwnerInput.waiting, 'PanelState:waiting_for_daily_time', 'LegacyForm:waiting'), 1):
+                await context.set_state(waiting); await context.set_data({'action':'prepare', 'sentinel':i})
+                msg = {'message_id':i, 'date':1760000000, 'chat':chat, 'from':user,
+                       'text':'/raid_test@raid_owner_bot' if i == 2 else '/raid_test'}
+                before = len(sent)
+                await asyncio.wait_for(dp.feed_update(bot, Update.model_validate({'update_id':i, 'message':msg})), 4)
+                new = sent[before:]
+                assert len(new) == 1 and isinstance(new[0], SendMessage), new
+                assert new[0].reply_markup.inline_keyboard[0][0].web_app.url.startswith(panel.RAID_PREVIEW_URL)
+                assert await context.get_state() is None and await context.get_data() == {}
+            for i, (sender, chat_id, kind) in enumerate(((ADMIN_ID+1, ADMIN_ID+1, 'private'),
+                    (ADMIN_ID+1, ADMIN_ID, 'private'), (ADMIN_ID, ADMIN_ID+1, 'private'),
+                    (ADMIN_ID, -1001, 'supergroup')), 20):
+                who = dict(user, id=sender); where = {'id':chat_id, 'type':kind}
+                denied_context = dp.fsm.get_context(bot=bot, chat_id=chat_id, user_id=sender)
+                await denied_context.set_state(tools.OwnerInput.waiting)
+                await denied_context.set_data({'sentinel':'must survive'})
+                before = len(sent)
+                msg = {'message_id':i, 'date':1760000000, 'chat':where, 'from':who, 'text':'/raid_test'}
+                await asyncio.wait_for(dp.feed_update(bot, Update.model_validate({'update_id':i, 'message':msg})), 4)
+                assert len(sent) == before
+                assert await denied_context.get_state() == tools.OwnerInput.waiting.state
+                assert await denied_context.get_data() == {'sentinel':'must survive'}
+                cb = {'id':str(i), 'chat_instance':'test', 'from':who, 'data':'owner_panel:raid_test',
+                      'message':{'message_id':99, 'date':1760000000, 'chat':where,
+                                 'from':{'id':bot.id,'is_bot':True,'first_name':'Test'}, 'text':'Panel'}}
+                await asyncio.wait_for(dp.feed_update(bot, Update.model_validate({'update_id':i+100, 'callback_query':cb})), 4)
+                assert not any(isinstance(m, (SendMessage, EditMessageText)) for m in sent[before:])
+                assert await denied_context.get_state() == tools.OwnerInput.waiting.state
+            cb['id']='owner'; cb['from']=user; cb['message']['chat']=chat
+            await context.set_state(tools.OwnerInput.waiting)
+            await asyncio.wait_for(dp.feed_update(bot, Update.model_validate({'update_id':200, 'callback_query':cb})), 4)
+            assert isinstance(sent[-1], EditMessageText)
+            assert sent[-1].reply_markup.inline_keyboard[0][0].web_app
+            assert await context.get_state() is None
+    finally:
+        await dp.storage.close()
+        await bot.session.close()
+asyncio.run(run())
+'''
+        result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, timeout=40)
+        self.assertEqual(result.returncode, 0, result.stderr)

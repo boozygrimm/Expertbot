@@ -18,6 +18,7 @@ ADMIN_PRIVATE_COMMAND_SPECS = [
     ("lore_edit", "Редактор Наследия"),
     ("lore_help", "Справка по лору"),
     ("panel", "Панель управления"),
+    ("raid_test", "Рейд · тест Mini App"),
 ]
 
 GROUP_COMMAND_SPECS = [

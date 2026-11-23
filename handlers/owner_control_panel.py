@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+from pathlib import Path
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from aiogram import F, Router, types
@@ -19,6 +21,42 @@ from news_prototype import owner_daily, owner_trial
 router = Router()
 logger = logging.getLogger(__name__)
 _input_state_lock = asyncio.Lock()
+RAID_PREVIEW_URL = 'https://boozygrimm.github.io/Expertbot/lunapark-raid.html?telegram=1'
+
+
+def raid_preview_content():
+    # Fixed public Pages target, never a user-supplied URL. The command/button
+    # is owner-private; the demo itself remains public and browser-local.
+    build = ''
+    try:
+        with (Path(__file__).resolve().parents[1] / 'lunapark-raid.html').open(encoding='utf-8') as page:
+            match = re.search(r'<meta name="raid-build" content="([a-f0-9]{12})">', page.read(1024))
+        if match:
+            build = match[1]
+    except (OSError, UnicodeError):
+        pass
+    text = ('⚔️ Рейд · тест Mini App\n\n'
+            'Запуск только из лички владельца. Сам пробник на Pages публичный.\n'
+            'Без рабочей базы, серверных наград и переноса прогресса алхимии. '
+            'Сохранения локальные и могут отличаться от обычного браузера.\n\n'
+            'Проверь цепочку пальцем, выбор наград, сворачивание и повторный вход → «Продолжить».\n'
+            + (f'Ожидаемая сборка: {build}.' if build else 'Номер сборки показан внутри пробника.'))
+    b = InlineKeyboardBuilder()
+    b.button(text='⚔️ Открыть Рейд · тест', web_app=types.WebAppInfo(url=RAID_PREVIEW_URL + (f'&build={build}' if build else '')))
+    b.adjust(1)
+    add_nav(b, back=HOME_CALLBACK, back_label='‹ Пульт', refresh='owner_panel:raid_test')
+    return text, b.as_markup()
+
+
+# Registered on the root dispatcher before any broad FSM input handlers.
+async def open_raid_test(message: types.Message, state: FSMContext = None):
+    if (not message.from_user or message.from_user.id != ADMIN_ID or not message.chat
+            or message.chat.type != 'private' or message.chat.id != ADMIN_ID):
+        return
+    if state:
+        await state.clear()
+    text, markup = raid_preview_content()
+    await message.answer(text, reply_markup=markup, parse_mode=None, protect_content=True)
 
 
 def authorized(callback) -> bool:
@@ -63,6 +101,7 @@ async def home_content():
     builder.button(text='🎨 Картинки и поиск', callback_data='owner_panel:media')
     builder.button(text='❓ Справка', callback_data='owner_panel:help')
     builder.adjust(1, 2, 2, 2, 2, 1)
+    builder.row(types.InlineKeyboardButton(text='⚔️ Рейд · тест', callback_data='owner_panel:raid_test'))
     add_nav(builder, refresh='owner_panel:home')
     return text, builder.as_markup()
 
@@ -125,6 +164,7 @@ def section_content(section):
 # One screen with every reserved text command, grouped the same way as the
 # panels. Buttons stay the primary way; this is the printable map for them.
 COMMAND_GROUPS = (
+    ('Пробники', [('/raid_test', 'открыть локальный Рейд внутри Telegram без рабочих данных')]),
     ('Новости и сценарии', [
         ('/news_prepare ССЫЛКА', 'подготовить сценарий по ссылке, акцент — следующей строкой'),
         ('/news_prepare_many', 'то же для двух-четырёх ссылок'),
@@ -394,7 +434,7 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
     action = (callback.data or '').partition(':')[2]
     if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups',
                             'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help',
-                            'commands', 'worker', 'status'):
+                            'commands', 'worker', 'status', 'raid_test'):
         # Leaving a section must also release an unfinished text input, or the
         # next non-command message would be swallowed by that old form.
         get_data = getattr(state, 'get_data', None)
@@ -422,6 +462,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             text, markup = await panel_content()
         elif action == 'home':
             text, markup = await home_content()
+        elif action == 'raid_test':
+            text, markup = raid_preview_content()
         elif action == 'status':
             text, markup = await status_content()
         elif action == 'worker':
