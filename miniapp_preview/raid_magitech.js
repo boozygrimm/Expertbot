@@ -928,7 +928,8 @@
   }
   function raidAchievementAvailable(id) { return ![45, 70, 71, 76, 77].includes(id); }
 
-  let RAID_REGION = 'earth';
+  let RAID_REGION = 'earth'; // Preference / preview for the NEXT run.
+  let RUN_REGION = null; // Cosmetic snapshot, never part of combat state/RNG.
   function raidPortraitKey(skull) {
     // Deterministic visual assignment only. No element is added to the enemy
     // in combat; no distribution, damage, status, loot or RNG draw changes.
@@ -940,10 +941,16 @@
   function applyRaidRegion(region) {
     if (!Object.hasOwn(RAID_REGIONS, region)) return false;
     RAID_REGION = region;
-    if (document.documentElement) document.documentElement.dataset.raidRegion = region;
-    const data = RAID_REGIONS[region];
-    for (const node of document.querySelectorAll('[data-raid-region-title]')) node.textContent = data.title;
-    for (const node of document.querySelectorAll('[data-raid-region-caption]')) node.textContent = data.index + ' / ' + data.element;
+    // Preparation may preview a different NEXT location. Never repaint the
+    // shell of an existing run (including a paused run or its death screen).
+    const current = S && RUN_REGION ? RUN_REGION : region;
+    if (document.documentElement && document.documentElement.dataset.raidRegion !== current) document.documentElement.dataset.raidRegion = current;
+    const picker = document.getElementById('class-picker');
+    if (picker) picker.dataset.raidRegion = region;
+    for (const node of document.querySelectorAll('[data-raid-region-title], [data-raid-region-caption]')) {
+      const data = RAID_REGIONS[node.closest('#class-picker') ? region : current];
+      node.textContent = node.hasAttribute('data-raid-region-title') ? data.title : data.index + ' / ' + data.element;
+    }
     for (const button of document.querySelectorAll('button[data-raid-region]')) button.setAttribute('aria-pressed', String(button.dataset.raidRegion === region));
     return true;
   }
@@ -952,11 +959,19 @@
     try { const saved = profileStorage.getItem('raid:appearance'); if (Object.hasOwn(RAID_REGIONS, saved)) region = saved; } catch (ignored) { /* UI remains available without persistence. */ }
     applyRaidRegion(region);
   }
+  function saveRaidAppearance() {
+    // An older checkpoint has no region of its own. Preserve its first-read
+    // fallback across a preview + page close until a successful pinned save.
+    if (LEGACY_RUN_REGION) return;
+    try { profileStorage.setItem('raid:appearance', RAID_REGION); } catch (ignored) { /* profileStorage already shows the identity warning. */ }
+  }
   function initRaidAppearance() {
     loadRaidAppearance();
     for (const button of document.querySelectorAll('button[data-raid-region]')) button.addEventListener('click', () => {
+      // Hidden/stale controls cannot change even the next-run preference.
+      if (!pickerOpen || NEW_RUN_REQUEST || !button.closest('#class-picker')) return;
       if (!applyRaidRegion(button.dataset.raidRegion)) return;
-      try { profileStorage.setItem('raid:appearance', RAID_REGION); } catch (ignored) { /* profileStorage already shows the identity warning. */ }
+      saveRaidAppearance();
     });
   }
   function mechEmblem(native) {
@@ -1128,6 +1143,7 @@
     'arrivals', 'rngSeeds', '_runePathSet', '_chainOrder', '_lastChainCells']);
   let RUN_SAVE_BASE;
   let SAVED_RUN = null;
+  let LEGACY_RUN_REGION = false;
   let FINISHED_RECORD = null;
   let SAVE_TIMER = null;
   let SAVE_CONFLICT = false;
@@ -1315,7 +1331,8 @@
       readHistoryRecord(data.record); return { status: 'finished', record: data.record };
     }
     const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
-    saveObject(data, [...keys, 'orbElements'], keys);
+    saveObject(data, [...keys, 'orbElements', 'region'], keys);
+    if (Object.hasOwn(data, 'region')) saveCheck(typeof data.region === 'string' && Object.hasOwn(RAID_REGIONS, data.region));
     if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
@@ -1394,7 +1411,7 @@
       : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
     return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: 1, status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
       build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
-      menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex) });
+      menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex), region: RUN_REGION || RAID_REGION });
   }
   function saveStatus(state, message) {
     RUN_SAVE_STATUS = { state, message };
@@ -1411,6 +1428,8 @@
     RUN_SAVE_BASE = raw;
     try {
       const decoded = raw === null ? null : decodeRunSave(raw);
+      LEGACY_RUN_REGION = decoded?.status === 'active' && !Object.hasOwn(decoded, 'region');
+      if (LEGACY_RUN_REGION) decoded.region = SAVED_RUN?.state.historyId === decoded.state.historyId ? SAVED_RUN.region : RAID_REGION;
       SAVED_RUN = decoded?.status === 'active' ? decoded : null;
       if (decoded?.status === 'finished') recordFinishedRun(decoded.record);
       if (SAVED_RUN) {
@@ -1464,6 +1483,7 @@
     try {
       profileStorage.setItem(RUN_SAVE_KEY, raw);
       RUN_SAVE_BASE = raw; SAVED_RUN = decoded?.status === 'active' ? decoded : null;
+      LEGACY_RUN_REGION = false;
       if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
       saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
       if (S.over) recordFinishedRun(FINISHED_RECORD);
@@ -1508,6 +1528,10 @@
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeRunHistory();
     S = data.state;
+    // Released v1 checkpoints without region use the profile's appearance once;
+    // all subsequent checkpoints pin it independently from next-run preferences.
+    RUN_REGION = data.region ?? RAID_REGION;
+    applyRaidRegion(RAID_REGION);
     if (data.orbElements) S.board.forEach((cell, idx) => ORB_ELEMENTS.set(cell, data.orbElements[idx]));
     syncClassAchievements();
     S.rngSeeds = [...data.rng]; RNG_SEEDS.set(data.rng); SKULL_UID = data.skullUid; SKULL_IMAGES.clear();
@@ -1525,7 +1549,7 @@
       if (data.menu) { S.levelDraft = [...data.menu.picked]; openModal(data.menu.kind, restoreMenuChoices(data.menu)); }
       else resumeRewards();
     }
-    saveRun();
+    if (saveRun()) saveRaidAppearance();
     return true;
   }
 
@@ -3012,6 +3036,8 @@
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
+    RUN_REGION = RAID_REGION;
+    applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
     // starts fresh unless explicitly resuming a saved run (including history).
     if (previousLabel) S.scrollLeechLabel = { ...previousLabel, active: false, inFlight: false };
@@ -3072,7 +3098,7 @@
     renderHUD();
     renderChainTip();
     log('✦ Новый забег: ' + cls.name + ' спускается в рейд');
-    saveRun();
+    if (saveRun()) saveRaidAppearance();
   }
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
@@ -5990,7 +6016,7 @@
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
-    else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('help')?.focus(); }
+    else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
@@ -6122,8 +6148,6 @@
         }
       }
     });
-    const restartBtn = qs('#restart');
-    if (restartBtn) restartBtn.addEventListener('click', () => requestNewGame());
     const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
     const picker = el('class-picker');
     if (picker) picker.addEventListener('keydown', event => {
@@ -6156,15 +6180,11 @@
     if (statsBtn) statsBtn.addEventListener('click', () => {
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
-    const helpBtn = qs('#help');
-    if (helpBtn) helpBtn.addEventListener('click', () => {
-      const wrap = qs('#help-modal');
-      if (wrap) wrap.classList.toggle('show');
-    });
     const helpClose = qs('#help-close');
     if (helpClose) helpClose.addEventListener('click', () => {
       const wrap = qs('#help-modal');
       if (wrap) wrap.classList.remove('show');
+      el('menu-btn')?.focus();
     });
     showClassPicker();
   }

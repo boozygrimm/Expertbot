@@ -767,9 +767,10 @@ body { display: flex; align-items: stretch; justify-content: center; }
   --raid-scene: var(--raid-scene-earth);
   --raid-view-height: var(--raid-tg-visible-height, 100dvh);
 }
-html[data-raid-region="fire"] { --raid-accent: #eab17d; --raid-scene: var(--raid-scene-fire); }
-html[data-raid-region="air"] { --raid-accent: #afc9ec; --raid-scene: var(--raid-scene-air); }
-html[data-raid-region="water"] { --raid-accent: #83cdd9; --raid-scene: var(--raid-scene-water); }
+.class-picker[data-raid-region="earth"] { --raid-accent: #8cdbc1; --raid-scene: var(--raid-scene-earth); }
+html[data-raid-region="fire"], .class-picker[data-raid-region="fire"] { --raid-accent: #eab17d; --raid-scene: var(--raid-scene-fire); }
+html[data-raid-region="air"], .class-picker[data-raid-region="air"] { --raid-accent: #afc9ec; --raid-scene: var(--raid-scene-air); }
+html[data-raid-region="water"], .class-picker[data-raid-region="water"] { --raid-accent: #83cdd9; --raid-scene: var(--raid-scene-water); }
 html, body { background: #071718; color: #e6eadd; }
 body { background-image: linear-gradient(90deg,#031415a8,#03141528,#031415b8),var(--raid-scene); background-size: cover; background-position: center; }
 button, select { font-family: inherit; }
@@ -873,21 +874,27 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .class-editor-status { color: #d5c892; }
 /* In-run layout keeps the released non-shrinking field / footer / HUD flow. */
 .shell { width: min(100%,580px); padding: 14px 18px max(12px,env(safe-area-inset-bottom)); background: linear-gradient(#081e1eea,#071a1bf8 65%); border-color: #99916a6b; }
-.brand { padding: 4px 1px 9px; }
+/* One 44px action row; help/restart remain in the pause menu. */
+.brand { padding: 0 0 5px; gap: 8px; }
+.brand-logo, .brand-text { min-width: 0; }
 .brand-mark { border: 0; box-shadow: none; background: transparent; border-radius: 0; width: 33px; height: 37px; color: #d9c38d; }
 .brand-mark svg { width: 100%; height: 100%; }
-.brand-text strong { font: 400 25px/1.1 Georgia,serif; letter-spacing: .15em; color: #e9d7a8; }
-.brand-text small { font-size: 7px; letter-spacing: .17em; color: #a9bba7; }
-.brand-actions { gap: 5px; }
+.brand-text strong { display: block; margin-top: 3px; font: 400 17px/1.15 Georgia,serif; letter-spacing: -.015em; color: #e9d7a8; overflow-wrap: anywhere; }
+.brand-text small { font-size: 7px; line-height: 1.3; letter-spacing: .06em; color: #a9bba7; }
+.brand-actions { flex: none; gap: 4px; }
+.brand-actions .icon-btn { width: 44px; height: 44px; padding: 4px; font-size: 10px; }
+@media (max-width: 380px) { .brand-text strong { font-size: 15px; } }
 .icon-btn { display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 5px 9px; border-radius: 4px; border: 1px solid #8d875a66; background: #102c28; color: #d9cca1; }
 .icon-btn:hover { background: #254339; }
 .ui-glyph { width: 20px; height: 20px; vertical-align: middle; }
-.raid-run-heading { flex: none; display: flex; justify-content: space-between; align-items: center; margin: 3px 0; font: 400 19px/1.2 Georgia,serif; color: #e1d9b7; gap: 8px; }
-.raid-stage-tag { font: 600 7px/1.4 system-ui,sans-serif; letter-spacing: .12em; color: #b7c8ac; border: 1px solid #6d7d574d; padding: 4px 6px; border-radius: 2px; }
-.raid-combat-note { flex: none; color: #c6c4a4; font-size: 9px; line-height: 1.4; margin: 3px 0 9px; }
-.skills-head { gap: 7px; margin-bottom: 7px; }
-.skills { gap: 5px; min-height: 58px; }
-.skill { background: linear-gradient(145deg,#1c3933,#0f2828); border-color: #72836380; border-radius: 4px; color: #d8d3ae; }
+.raid-menu-location { margin: 0; color: #e1d9b7; font: 400 19px/1.2 Georgia,serif; }
+.raid-combat-note { color: #c6c4a4; font-size: 10px; line-height: 1.4; margin: 3px 0; }
+.skills-head { gap: 0; margin-bottom: 5px; }
+/* Reserve two text lines even in empty slots: learning a long-named module
+   must not move a falling orb's already-captured destination. */
+.skills { gap: 4px; min-height: 56px; }
+.skill { position: relative; min-height: 56px; padding: 4px 3px; justify-content: center; background: linear-gradient(145deg,#1c3933,#0f2828); border-color: #72836380; border-radius: 4px; color: #d8d3ae; }
+.skill .cd { position: absolute; top: 1px; right: 2px; padding: 1px 2px; border-radius: 2px; background: #0b2121ed; font-variant-numeric: tabular-nums; }
 .skill.empty { background: #0d222280; border-color: #6c80504d; }
 .skill .skill-name { color: #d8d9bc; font-size: 9px; line-height: 1.2; letter-spacing: 0; max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 .run-actions .icon-btn { min-height: 44px; font-size: 9px; border-radius: 3px; }
@@ -1059,7 +1066,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation: none !important; transition: none !important; } }
 .module-glyph { display: block; width: 100%; height: 100%; color: #d7c58e; }
-.skill-icon { display: grid; place-items: center; width: 24px; height: 24px; margin: 0 auto 4px; }
+.skill-icon { display: grid; place-items: center; width: 20px; height: 20px; margin: 0 auto; }
 .skill-slot-empty { color: #91a88b; opacity: .6; font: 300 25px/1 Georgia,serif; }
 .lv-icon { display: block; width: 26px; height: 26px; }
 .lv-chip .equipment-glyph, .shop-icon .equipment-glyph { display: block; width: 90%; height: 90%; }

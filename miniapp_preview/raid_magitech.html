@@ -24,11 +24,11 @@
       <div class="raid-world-footer">
         <div class="raid-location-line"><span class="raid-location-no" data-raid-region-caption>03 / Земля</span><span class="raid-online-dot">●</span></div>
         <h2 data-raid-region-title>Забытый лес</h2>
-        <div class="raid-region-options" role="group" aria-label="Визуальная тема локации"><button type="button" data-raid-region="fire" aria-pressed="false"><span class="region-symbol">△</span><span>Огонь</span><small>01</small></button>
+        <div class="raid-region-options" role="group" aria-label="Локация нового забега"><button type="button" data-raid-region="fire" aria-pressed="false"><span class="region-symbol">△</span><span>Огонь</span><small>01</small></button>
             <button type="button" data-raid-region="air" aria-pressed="false"><span class="region-symbol">≋</span><span>Воздух</span><small>02</small></button>
             <button type="button" data-raid-region="earth" aria-pressed="true"><span class="region-symbol">◇</span><span>Земля</span><small>03</small></button>
             <button type="button" data-raid-region="water" aria-pressed="false"><span class="region-symbol">◡</span><span>Вода</span><small>04</small></button></div>
-        <p class="raid-theme-hint">Пока меняет только оформление — не параметры и не состав врагов.</p>
+        <p class="raid-theme-hint">Локация нового забега. Выбор здесь не меняет текущий рейд или его продолжение. Пока влияет только на оформление, не на бой.</p>
       </div>
     </aside>
 
@@ -73,10 +73,9 @@
   <!-- top brand -->
   <header class="brand">
     <div class="brand-logo">
-      <div class="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></div>
       <div class="brand-text">
-        <small>ЛУНА-ПАРК / МАГИТЕХ</small>
-        <strong>RAID</strong>
+        <small>RAID / КЛАССИЧЕСКИЙ БОЙ</small>
+        <strong data-raid-region-title>Забытый лес</strong>
       </div>
     </div>
     <div class="brand-actions">
@@ -84,19 +83,12 @@
         <input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты">
         <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9Z"/><path class="sound-waves" d="m16 7a7 7 0 0 1 0 10m3-13a11 11 0 0 1 0 16"/><path class="sound-mute-line" d="m17 9 5 6m0-6-5 6"/></g></svg>
       </label>
-      <button class="icon-btn" id="help" type="button" title="Как играть">?</button>
-      <button class="icon-btn" id="restart" type="button" title="Начать заново">↻</button>
+      <button class="icon-btn" id="stats-btn" type="button" title="Свойства героя" aria-label="Свойства героя"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3M9 16h6m-3-3v6"/></g></svg></button>
+      <button class="icon-btn" id="menu-btn" type="button" title="Меню рейда">Меню</button>
     </div>
   </header>
-  <div class="raid-run-heading"><span data-raid-region-title>Забытый лес</span><span class="raid-stage-tag">ДИЗАЙН-ПРОТОТИП</span></div>
-  <p class="raid-combat-note">Классический бой · стихийные множители ещё не включены</p>
-
   <div class="skills-head">
     <div class="skills" id="skills" aria-label="Умения"></div>
-    <div class="run-actions">
-      <button class="icon-btn" id="menu-btn" type="button">Меню</button>
-      <button class="icon-btn" id="stats-btn" type="button">Свойства</button>
-    </div>
   </div>
 
   <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
@@ -155,12 +147,10 @@
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
     <h3>Пауза рейда</h3>
-    <p class="raid-menu-theme-title">ОФОРМЛЕНИЕ ЛОКАЦИИ</p>
-    <div class="raid-region-options raid-menu-regions" role="group" aria-label="Визуальная тема"><button type="button" data-raid-region="fire" aria-pressed="false"><span class="region-symbol">△</span><span>Огонь</span><small>01</small></button>
-            <button type="button" data-raid-region="air" aria-pressed="false"><span class="region-symbol">≋</span><span>Воздух</span><small>02</small></button>
-            <button type="button" data-raid-region="earth" aria-pressed="true"><span class="region-symbol">◇</span><span>Земля</span><small>03</small></button>
-            <button type="button" data-raid-region="water" aria-pressed="false"><span class="region-symbol">◡</span><span>Вода</span><small>04</small></button></div>
-    <p class="raid-theme-hint">Только фон и цвет интерфейса. На бой не влияет.</p>
+    <p class="raid-menu-theme-title">ЛОКАЦИЯ ЗАБЕГА</p>
+    <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
+    <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
+    <p class="raid-combat-note">Классический бой · стихийные множители ещё не включены.</p>
     <p class="build-label">Сборка __RAID_BUILD__</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
@@ -236,9 +226,9 @@
       <li>Навыки и 31 особый тип врагов сохраняют исходные эффекты. Под портретом только числа: атака · броня · HP; число сверху — отсчёт способности. Лёд останавливает анимацию материала и показывает уже существующую заморозку, не меняя её правил. Тап по особому или боссу показывает текущие параметры и способности. Выбор портрета не добавляет ему новую механику. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
       <li>Урон, лечение и ресурсы всплывают у реального получателя, не в центре экрана. Подробности вещей и сводка персонажа ничего не покупают, не перебрасывают предложения и не применяют награду.</li>
       <li>Свиток при покупке разово применяет навык, не занимая слот. Сохранена модель классического ошибочного фильтра I1: занятость слотов, счётчики и история надписи лечения, не правило «ещё не выучен». Неинициализированные слова свежей страницы — нули по политике совместимости, а не доказанный факт памяти оригинала. «Продолжить» восстанавливает историю сохранённого рейда.</li>
-      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: доска, оформление каждого меча, герой, шесть потоков случайности, предложения и отметки наград восстанавливаются без переброса. Анимации не управляют наградами; при уменьшении движения в настройках устройства эффекты и падение выключены. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
+      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: локация забега, доска, оформление каждого меча, герой, шесть потоков случайности, предложения и отметки наград восстанавливаются без переброса. Анимации не управляют наградами; при уменьшении движения в настройках устройства эффекты и падение выключены. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
       <li>Рекорды и статистика локальные, без общей телеметрии, лаборатории, серверной игровой базы, облачной синхронизации и наград парка. Наследованный каталог достижений ещё не адаптирован целиком: условия Sprint/Pretzel/Harder в этом режиме недоступны, их не заменяли придуманными. «Я всё вижу» также остаётся неподтверждённым.</li>
-      <li>Этот URL не подключён к кнопке бота. Команда /raid_test по-прежнему открывает классический тест. Если копию открыть в SDK-оболочке с telegram=1, профиль выбирается отдельно по ID, не авторизуется сервером и не читает legacy-профиль владельца. При неизвестном/сменившемся ID запись отключена. «Закрыть Mini App» сохраняет продолжение, а не заканчивает рейд; при ошибке записи нужен явный выбор. Отдельное добровольное завершение ещё не реализовано.</li>
+      <li>Новый вход /raid_test в текущем боте открывает эту магитех-версию после обновления процесса бота. Запроси свежую кнопку: старые сообщения по-прежнему ведут в прежний тест. В SDK-оболочке с telegram=1 профиль выбирается отдельно по ID, не авторизуется сервером и не читает классический или legacy-профиль владельца. При неизвестном/сменившемся ID запись отключена. «Закрыть Mini App» сохраняет продолжение, а не заканчивает рейд; при ошибке записи нужен явный выбор. Отдельное добровольное завершение ещё не реализовано.</li>
       <li>Иконки временно вырезаны из присланных скриншотов, не из исходного атласа. Фоны созданы для этого визуального прототипа; названия мест рабочие. Финальные стихии бойцов, грейды, баланс и полная замена всех текстур — следующие согласуемые шаги.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
