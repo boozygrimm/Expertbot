@@ -1003,7 +1003,7 @@ test('built raid achievements: dedicated records/achievements entries open their
 function raidTelegramStub({ version = '8.0', overrides = {} } = {}) {
   const calls = [], events = new Map(); let back;
   const tg = {
-    initData: 'SYNTHETIC_UI_ONLY_NOT_AUTH', platform: 'android', version,
+    initData: 'SYNTHETIC_UI_ONLY_NOT_AUTH', initDataUnsafe: { user: { id: 701 } }, platform: 'android', version,
     viewportStableHeight: 680, viewportHeight: 680,
     safeAreaInset: { top: 24, bottom: 18, left: 0, right: 0 },
     contentSafeAreaInset: { top: 8, bottom: 0, left: 0, right: 0 },
@@ -1024,12 +1024,12 @@ function raidTelegramStub({ version = '8.0', overrides = {} } = {}) {
     },
     ...overrides,
   };
-  for (const name of ['CloudStorage', 'initDataUnsafe']) Object.defineProperty(tg, name, {
+  for (const name of ['CloudStorage']) Object.defineProperty(tg, name, {
     get() { throw new Error('Raid shell must not read ' + name); },
   });
   return { tg, calls, events, fire: (name, payload) => events.get(name)?.(payload), back: () => back?.() };
 }
-const telegramRaidUrl = 'https://raid.test/?telegram=1';
+const telegramRaidUrl = 'https://raid.test/?telegram=1#raid_legacy_owner=701';
 function raidStorage(window) { return Object.fromEntries(Object.entries(window.localStorage)); }
 function raidPointer(window, target, type, pointerId = 1, extra = {}) {
   const event = new window.Event(type, { bubbles: true, cancelable: true });
@@ -1059,7 +1059,7 @@ test('built raid Telegram is opt-in; ordinary browser stays SDK/network-free eve
   } finally { dom.window.close(); }
 });
 
-test('built raid Telegram calls ready/expand/swipe protection once, without identity, API, cloud or autoplay', async () => {
+test('built raid Telegram calls ready/expand/swipe protection once, without server auth, API, cloud or autoplay', async () => {
   const stub = raidTelegramStub(), requests = [];
   const { dom, raid, errors } = await openRaid({ url: telegramRaidUrl, start: false, setup(window) {
     window.Telegram = { WebApp: stub.tg };
@@ -1094,7 +1094,7 @@ for (const mode of ['no-data', 'old-client', 'missing-methods', 'throwing-method
   try {
     assert.ok(raid.state && raid.state.board.length === 36);
     assert.match(dom.window.document.querySelector('#picker-telegram-status').textContent,
-      mode === 'no-data' ? /Браузерный режим/ : /свайпы Telegram не отключены/);
+      mode === 'no-data' ? /Профиль Telegram не определён/ : /свайпы Telegram не отключены/);
     if (mode === 'no-data' || mode === 'old-client') assert.ok(!stub.calls.includes('disableVerticalSwipes'));
     dom.window.document.querySelector('#menu-btn').click();
     assert.equal(dom.window.document.querySelector('#menu-modal').classList.contains('show'), true);
@@ -1651,6 +1651,137 @@ test('built raid localized feedback: board-wide stress is bounded and resume nev
     b.dom.window.document.querySelector('#picker-resume').click();
     assert.deepEqual(JSON.parse(JSON.stringify([b.raid.state.hero, b.raid.state.board, b.raid.state.rngSeeds])), expected);
     assert.equal(b.dom.window.document.querySelectorAll('.float-fx').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// Account ID below is a UI-only local namespace, never server authentication.
+const testerRaidUrl = 'https://raid.test/?telegram=1';
+function localAccountSDK(id) { return { initData: 'LOCAL_PROFILE_NOT_AUTH', initDataUnsafe: { user: { id } }, ready() {} }; }
+const scopedRaidKey = (id, key) => `raid:tg:${id}:${key.slice(5)}`;
+async function openAccountRaid(id, options = {}) {
+  const sdk = localAccountSDK(id);
+  return openRaid({ ...options, url: options.url || testerRaidUrl, setup(window) {
+    window.Telegram = { WebApp: sdk };
+    options.setup?.(window, sdk);
+  } });
+}
+
+test('built raid tester profiles: a tester starts fresh without reading/copying legacy owner or browser progress', async () => {
+  const owner = await openRaid();
+  let tester;
+  try {
+    owner.raid.unlockClass('mage'); owner.raid.levelUpClass('mage');
+    owner.raid.state.hero.hp = 13; owner.raid.saveRun();
+    const legacy = raidStorage(owner.dom.window);
+    tester = await openAccountRaid(71001, { saved: legacy, start: false });
+    assert.equal(tester.raid.state, null);
+    assert.equal(tester.raid.savedRunInfo(), null);
+    assert.equal(tester.raid.classLevelOf('mage'), 0);
+    assert.equal(tester.dom.window.document.querySelector('#picker-resume').hidden, true);
+    tester.raid.newGame(88); tester.raid.unlockClass('ranger'); tester.raid.setSelectedClassId('ranger'); tester.raid.saveRun();
+    for (const [key, value] of Object.entries(legacy)) assert.equal(tester.dom.window.localStorage.getItem(key), value);
+    assert.ok(tester.dom.window.localStorage.getItem(scopedRaidKey(71001, 'raid:activeRun')));
+    assert.ok(tester.dom.window.localStorage.getItem(scopedRaidKey(71001, 'raid:classLevels')));
+    assert.match(tester.dom.window.document.querySelector('#picker-profile-status').textContent, /71001/);
+    assert.deepEqual(tester.errors, []);
+  } finally { owner.dom.window.close(); tester?.dom.window.close(); }
+});
+
+test('built raid tester profiles: two accounts on the same origin preserve independent drafts, classes, settings, history and RNG', async () => {
+  let a = await openAccountRaid(71002), b;
+  try {
+    a.raid.unlockClass('mage'); for (let n = 0; n < 4; n++) a.raid.levelUpClass('mage');
+    a.raid.setSelectedClassId('mage'); assert.equal(a.raid.saveClassConfig('mage', a.raid.defaultClassConfig('mage')), true);
+    endBuiltRaid(a.raid); await until(() => a.raid.state.over);
+    a.raid.newGame(19); a.raid.state.hero.hp = 21; a.raid.state.hero.xp = 100; a.raid.checkLevelUp();
+    a.dom.window.document.querySelectorAll('.lv-card')[1].click(); a.raid.saveRun();
+    const expected = JSON.parse(JSON.stringify([a.raid.state.hero, a.raid.state.board, a.raid.state.menuCandidates, a.raid.state.levelDraft, a.raid.state.rngSeeds]));
+    const first = raidStorage(a.dom.window), config = a.raid.getClassConfig('mage');
+    const profile = JSON.parse(JSON.stringify(a.raid.getLocalHistory()));
+    for (const name of ['class', 'classLevels', 'classConfigs', 'mode', 'difficulty', 'trophyRemaining', 'activeRun', 'history']) {
+      assert.ok(Object.hasOwn(first, scopedRaidKey(71002, 'raid:' + name)), 'missing account-scoped ' + name);
+    }
+    a.dom.window.close();
+    b = await openAccountRaid(71003, { saved: first });
+    assert.equal(b.raid.classLevelOf('mage'), 0);
+    assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 0);
+    b.raid.unlockClass('rogue'); b.raid.state.hero.hp = 37; b.raid.saveRun();
+    const both = raidStorage(b.dom.window);
+    for (const [key, value] of Object.entries(first)) assert.equal(both[key], value, 'B changed A: ' + key);
+    b.dom.window.close();
+    a = await openAccountRaid(71002, { saved: both, start: false });
+    assert.equal(a.raid.state, null); a.dom.window.document.querySelector('#picker-resume').click();
+    assert.deepEqual(JSON.parse(JSON.stringify([a.raid.state.hero, a.raid.state.board, a.raid.state.menuCandidates, a.raid.state.levelDraft, a.raid.state.rngSeeds])), expected);
+    assert.equal(a.raid.classLevelOf('mage'), 5); assert.equal(a.raid.classLevelOf('rogue'), 0);
+    assert.deepEqual(JSON.parse(JSON.stringify(a.raid.getClassConfig('mage'))), JSON.parse(JSON.stringify(config)));
+    assert.equal(a.raid.getLocalHistory().classes.adventurer.games, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(a.raid.getLocalHistory())), profile, 'B cannot alter A records, class totals or achievement progress');
+    assert.deepEqual(a.errors, []); assert.deepEqual(b.errors, []);
+  } finally { a.dom.window.close(); b?.dom.window.close(); }
+});
+
+test('built raid tester profiles: old owner data is retained only for a matching owner launcher identity', async () => {
+  let owner = await openRaid(), other;
+  try {
+    owner.raid.state.hero.hp = 17; owner.raid.saveRun(); const saved = raidStorage(owner.dom.window); owner.dom.window.close();
+    owner = await openAccountRaid(71004, { url: testerRaidUrl + '#raid_legacy_owner=71004', saved, start: false });
+    assert.ok(owner.raid.savedRunInfo()); owner.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(owner.raid.state.hero.hp, 17);
+    owner.raid.saveRun(); const ownerSnapshot = raidStorage(owner.dom.window); owner.dom.window.close();
+    other = await openAccountRaid(71005, { url: testerRaidUrl + '#raid_legacy_owner=71004', saved: ownerSnapshot, start: false });
+    assert.equal(other.raid.savedRunInfo(), null, 'forwarding owner launch URL cannot select owner data for another account');
+    other.raid.newGame(5); other.raid.saveRun();
+    assert.ok(other.dom.window.localStorage.getItem(scopedRaidKey(71005, 'raid:activeRun')));
+    assert.equal(other.dom.window.localStorage.getItem('raid:activeRun'), ownerSnapshot['raid:activeRun']);
+  } finally { owner.dom.window.close(); other?.dom.window.close(); }
+});
+
+for (const id of [undefined, 0, -1, 1.5, '71006', Infinity]) test(`built raid tester profiles: missing or invalid SDK identity ${id} never falls back to shared persistent storage`, async () => {
+  const legacy = { 'raid:classLevels': '{"adventurer":1,"mage":10}', 'raid:activeRun': 'not this profile' };
+  const b = await openAccountRaid(id, { saved: legacy });
+  try {
+    assert.equal(b.raid.classLevelOf('mage'), 0);
+    assert.equal(b.raid.saveRun(), false);
+    assert.deepEqual(raidStorage(b.dom.window), legacy);
+    assert.match(b.dom.window.document.querySelector('#picker-profile-status').textContent, /не определён|не определен/);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('built raid tester profiles: delayed SDK selects account before Continue but cannot rebind a started anonymous run', async () => {
+  for (const started of [false, true]) {
+    const fixture = await openAccountRaid(71007); fixture.raid.state.hero.hp = 12; fixture.raid.saveRun();
+    const saved = raidStorage(fixture.dom.window); fixture.dom.window.close();
+    const b = await openRaid({ url: testerRaidUrl, saved, start: started });
+    try {
+      assert.equal(b.raid.savedRunInfo(), null);
+      b.dom.window.Telegram = { WebApp: localAccountSDK(71007) };
+      b.dom.window.document.querySelector('script[src]').onload();
+      if (!started) {
+        assert.ok(b.raid.savedRunInfo()); b.dom.window.document.querySelector('#picker-resume').click(); assert.equal(b.raid.state.hero.hp, 12);
+      } else {
+        assert.equal(b.raid.saveRun(), false);
+        assert.deepEqual(raidStorage(b.dom.window), saved, 'late SDK must not overwrite this account with an anonymous run');
+      }
+      assert.deepEqual(b.errors, []);
+    } finally { b.dom.window.close(); }
+  }
+});
+
+test('built raid tester profiles: account changes stop writes; other account storage events cannot conflict this run', async () => {
+  let sdk; const b = await openAccountRaid(71008, { setup(window, value) { sdk = value; } });
+  try {
+    b.raid.saveRun(); const before = raidStorage(b.dom.window), raw = JSON.stringify(b.raid.state);
+    const otherKey = scopedRaidKey(71009, 'raid:activeRun');
+    b.dom.window.localStorage.setItem(otherKey, 'other account');
+    b.dom.window.dispatchEvent(new b.dom.window.StorageEvent('storage', { key: otherKey, newValue: 'other account' }));
+    assert.equal(b.raid.saveStatus.state, 'saved'); assert.equal(JSON.stringify(b.raid.state), raw);
+    sdk.initDataUnsafe.user.id = 71009;
+    assert.equal(b.raid.saveRun(), false);
+    for (const [key, value] of Object.entries(before)) assert.equal(b.dom.window.localStorage.getItem(key), value);
+    assert.equal(b.dom.window.localStorage.getItem(otherKey), 'other account');
+    assert.match(b.dom.window.document.querySelector('#menu-profile-status').textContent, /смен|заново/);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

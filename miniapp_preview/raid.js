@@ -3,6 +3,69 @@
 // Свой код, своя графика, своя стилистика. Запускать через lunapark-raid.html.
 'use strict';
 (function () {
+  // A local namespace, NOT authentication. The public Pages client never
+  // validates an admission or sends initData to a server. Unknown Telegram
+  // identities must not silently read/write the old shared browser profile.
+  const TELEGRAM_PROFILE = typeof URLSearchParams === 'function'
+    && new URLSearchParams(window.location?.search || '').get('telegram') === '1';
+  function telegramProfileId() {
+    try {
+      const app = window.Telegram?.WebApp, id = app?.initData && app.initDataUnsafe?.user?.id;
+      return Number.isSafeInteger(id) && id > 0 && id < 2 ** 52 ? id : null;
+    } catch (ignored) { return null; }
+  }
+  function localProfilePrefix(id) {
+    // Only the owner's newly issued launcher carries this compatibility hint.
+    // Match the actual SDK account so forwarding that URL never selects the
+    // owner's legacy data for another account. The fragment stays local (not
+    // sent to Pages), and is not an access token.
+    const legacy = new URLSearchParams(window.location.hash.slice(1)).get('raid_legacy_owner');
+    return legacy === String(id) ? 'raid:' : `raid:tg:${id}:`;
+  }
+  let PROFILE_ID = TELEGRAM_PROFILE ? telegramProfileId() : null;
+  let PROFILE_PREFIX = TELEGRAM_PROFILE ? (PROFILE_ID ? localProfilePrefix(PROFILE_ID) : null) : 'raid:';
+  function profileNotice(text) {
+    for (const id of ['picker-profile-status', 'menu-profile-status']) {
+      const node = document.getElementById(id);
+      if (node) { node.textContent = text; node.hidden = !text; }
+    }
+  }
+  function profileStorageCheck() {
+    if (PROFILE_PREFIX === null) {
+      profileNotice('Профиль Telegram не определён. Общие данные не загружаются; без профиля сохранение недоступно. Открой Mini App заново.');
+      throw new Error('Telegram profile unavailable');
+    }
+    if (TELEGRAM_PROFILE && telegramProfileId() !== PROFILE_ID) {
+      profileNotice('Аккаунт Telegram сменился или недоступен. Запись остановлена: закрой Mini App и открой заново для своего аккаунта.');
+      throw new Error('Telegram profile changed');
+    }
+  }
+  const profileStorage = {
+    key(key) { return PROFILE_PREFIX === null ? null : PROFILE_PREFIX + key.slice(5); },
+    getItem(key) { profileStorageCheck(); return localStorage.getItem(this.key(key)); },
+    setItem(key, value) { profileStorageCheck(); localStorage.setItem(this.key(key), value); },
+    removeItem(key) { profileStorageCheck(); localStorage.removeItem(this.key(key)); },
+  };
+  function connectLocalProfile() {
+    if (!TELEGRAM_PROFILE) return;
+    const id = telegramProfileId();
+    if (!id || PROFILE_ID && PROFILE_ID !== id || PROFILE_ID === null && S) {
+      profileNotice('Профиль Telegram не определён или игра начата до его загрузки. Чтобы не затереть свой прогресс, открой Mini App заново; текущая игра не сохраняется.');
+      return;
+    }
+    if (PROFILE_ID === null) {
+      // SDK loads asynchronously. Rehydrate only before a run starts, never
+      // relabel an anonymous live run or copy it into an existing account.
+      PROFILE_ID = id; PROFILE_PREFIX = localProfilePrefix(id);
+      classLevels = loadClassLevels(); classConfigs = loadClassConfigs(); selectedClassId = loadStoredClassId();
+      RUN_SAVE_BASE = undefined;
+      readRunSlot(); readRunHistory();
+      if (HISTORY_OPEN) renderRunHistory();
+      else if (pickerOpen) showClassPicker();
+    }
+    profileNotice(`Профиль Telegram ${PROFILE_ID} · свой прогресс на этом устройстве. Между устройствами не синхронизируется.`);
+  }
+
   // ============================================================
   // КЛАССИЧЕСКИЕ ПАРАМЕТРЫ: Dungeon Raid, сложность «Нормaл»
   //
@@ -593,7 +656,7 @@
   // --- класс выбранный пользователем (пикер в начале забега) ---
   function loadStoredClassId() {
     try {
-      const raw = localStorage.getItem('raid:class');
+      const raw = profileStorage.getItem('raid:class');
       return (raw && classDefinition(raw)) ? raw : 'adventurer';
     } catch (e) { return 'adventurer'; }
   }
@@ -602,7 +665,7 @@
   let classLevels = loadClassLevels();
   function loadClassLevels() {
     try {
-      const raw = localStorage.getItem(CLASS_LEVELS_KEY);
+      const raw = profileStorage.getItem(CLASS_LEVELS_KEY);
       let obj = raw ? JSON.parse(raw) : {};
       if (!obj || typeof obj !== 'object' || Array.isArray(obj)) obj = {};
       // localStorage — внешние данные: чистим значения, иначе строка из него
@@ -618,7 +681,7 @@
     } catch (e) { return { adventurer: 1 }; }
   }
   function saveClassLevels() {
-    try { localStorage.setItem(CLASS_LEVELS_KEY, JSON.stringify(classLevels)); } catch (e) {}
+    try { profileStorage.setItem(CLASS_LEVELS_KEY, JSON.stringify(classLevels)); } catch (e) {}
   }
   function classLevelOf(id) { return (classLevels && classLevels[id]) || 0; }
   function isClassUnlocked(id) { return classLevelOf(id) >= 1; }
@@ -644,7 +707,7 @@
     if (!classDefinition(id)) return;
     if (!isClassUnlocked(id)) return;
     selectedClassId = id;
-    try { localStorage.setItem('raid:class', id); } catch (e) {}
+    try { profileStorage.setItem('raid:class', id); } catch (e) {}
   }
   // --- persistent class setup; the live run owns a separate frozen snapshot ---
   const CLASS_CONFIG_KEY = 'raid:classConfigs';
@@ -730,7 +793,7 @@
   function loadClassConfigs() {
     const configs = {};
     try {
-      const raw = JSON.parse(localStorage.getItem(CLASS_CONFIG_KEY));
+      const raw = JSON.parse(profileStorage.getItem(CLASS_CONFIG_KEY));
       if (raw?.version !== 1 || !raw.classes || typeof raw.classes !== 'object' || Array.isArray(raw.classes)) return configs;
       for (const cls of CLASSES) if (Object.hasOwn(raw.classes, cls.id)) configs[cls.id] = normaliseClassConfig(cls.id, raw.classes[cls.id]);
     } catch (e) { /* A broken or unavailable local profile must not block play. */ }
@@ -743,7 +806,7 @@
   function saveClassConfig(id, raw) {
     if (!classDefinition(id) || !classRules(id).editable || !raw || typeof raw !== 'object') return false;
     const next = { ...classConfigs, [id]: normaliseClassConfig(id, raw) };
-    try { localStorage.setItem(CLASS_CONFIG_KEY, JSON.stringify({ version: 1, classes: next })); }
+    try { profileStorage.setItem(CLASS_CONFIG_KEY, JSON.stringify({ version: 1, classes: next })); }
     catch (e) { return false; }
     classConfigs = next;
     return true;
@@ -1200,7 +1263,7 @@
   }
   function readRunSlot() {
     let raw;
-    try { raw = localStorage.getItem(RUN_SAVE_KEY); }
+    try { raw = profileStorage.getItem(RUN_SAVE_KEY); }
     catch (e) { saveStatus('unavailable', 'Хранилище браузера недоступно. Продолжить после закрытия страницы не получится.'); return false; }
     RUN_SAVE_BASE = raw;
     try {
@@ -1228,7 +1291,7 @@
   function ownsRunSlot() {
     if (SAVE_CONFLICT) return false;
     try {
-      const current = localStorage.getItem(RUN_SAVE_KEY);
+      const current = profileStorage.getItem(RUN_SAVE_KEY);
       if (RUN_SAVE_BASE !== undefined && current !== RUN_SAVE_BASE) {
         SAVE_CONFLICT = true;
         saveStatus('conflict', 'Сохранение изменено в другой вкладке. Эта вкладка приостановлена: обнови страницу, чтобы продолжить актуальный забег.');
@@ -1256,7 +1319,7 @@
       return false;
     }
     try {
-      localStorage.setItem(RUN_SAVE_KEY, raw);
+      profileStorage.setItem(RUN_SAVE_KEY, raw);
       RUN_SAVE_BASE = raw; SAVED_RUN = decoded?.status === 'active' ? decoded : null;
       if (SAVED_RUN) SAVE_REVISION = SAVED_RUN.revision;
       saveStatus(SAVED_RUN ? 'saved' : 'empty', SAVED_RUN ? `Забег сохранён в этом браузере · ход ${S.turn}.` : 'Забег завершён. Активного сохранения нет.');
@@ -1266,7 +1329,7 @@
     } catch (e) {
       // Small tombstones/removal usually still work when a large write hits the
       // quota. Never leave a pre-death or pre-trophy checkpoint looking current.
-      try { localStorage.removeItem(RUN_SAVE_KEY); RUN_SAVE_BASE = null; SAVED_RUN = null; } catch (ignored) {}
+      try { profileStorage.removeItem(RUN_SAVE_KEY); RUN_SAVE_BASE = null; SAVED_RUN = null; } catch (ignored) {}
       saveStatus('unavailable', 'Не удалось сохранить забег. Разреши локальное хранилище и освободи место; до успешной записи не закрывай страницу.');
       if (S.over) recordFinishedRun(FINISHED_RECORD);
       else { rememberAchievementProgress(); flushAchievementProgress(); }
@@ -1485,10 +1548,10 @@
       if (changed) {
         data.revision++;
         const raw = JSON.stringify(data); decodeRunHistory(raw);
-        if (localStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
+        if (profileStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
           historyStatus('conflict', 'История изменилась в другой вкладке. Нажми «Повторить запись»; прогресс пока остаётся в сохранении забега.'); return false;
         }
-        localStorage.setItem(RUN_HISTORY_KEY, raw);
+        profileStorage.setItem(RUN_HISTORY_KEY, raw);
       }
       ACHIEVEMENT_PENDING.clear(); announceAchievements(before, data.achievements.progress);
       if (!HISTORY_PENDING) historyStatus('saved', 'Достижения сохранены в этом браузере.');
@@ -1641,7 +1704,7 @@
   }
   function readRunHistory() {
     let raw;
-    try { raw = localStorage.getItem(RUN_HISTORY_KEY); }
+    try { raw = profileStorage.getItem(RUN_HISTORY_KEY); }
     catch (e) { historyStatus('unavailable', 'Рекорды и статистика недоступны: браузер запретил чтение хранилища.'); return null; }
     try {
       const data = raw === null ? emptyRunHistory() : decodeRunHistory(raw);
@@ -1673,10 +1736,10 @@
       data.completed.push(record.id); data.completed = data.completed.slice(-512);
       data.last = { type: record.type, index, id: record.id }; data.revision++;
       const raw = JSON.stringify(data); decodeRunHistory(raw);
-      if (localStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
+      if (profileStorage.getItem(RUN_HISTORY_KEY) !== stored.raw) {
         historyStatus('conflict', 'История изменилась в другой вкладке. Нажми «Повторить запись», не запускай два забега одновременно.'); return false;
       }
-      localStorage.setItem(RUN_HISTORY_KEY, raw);
+      profileStorage.setItem(RUN_HISTORY_KEY, raw);
       ACHIEVEMENT_PENDING.delete(record.id);
       announceAchievements(before, data.achievements.progress);
       HISTORY_PENDING = null; historyStatus('saved', 'Результат записан в локальные рекорды и статистику класса.'); return true;
@@ -2625,7 +2688,7 @@
     clearFloatEffects();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
-    try { RUN_SAVE_BASE = localStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
+    try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
     clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
     closeRunHistory();
     for (const id of ['restart-modal', 'menu-modal', 'help-modal']) el(id)?.classList.remove('show');
@@ -2657,11 +2720,11 @@
     // Mode / difficulty choose the original rule set independently.
     const modeEl = qs('#mode-select');
     const diffEl = qs('#difficulty-select');
-    S.mode = (modeEl && modeEl.value) || (() => { try { return localStorage.getItem('raid:mode') || 'classic'; } catch (e) { return 'classic'; } })();
-    S.difficulty = Number(( diffEl && diffEl.value) || (() => { try { return localStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+    S.mode = (modeEl && modeEl.value) || (() => { try { return profileStorage.getItem('raid:mode') || 'classic'; } catch (e) { return 'classic'; } })();
+    S.difficulty = Number(( diffEl && diffEl.value) || (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
     if (!['classic', 'sprint', 'pretzel'].includes(S.mode)) S.mode = 'classic';
     S.difficulty = Math.max(0, Math.min(3, S.difficulty || 0));
-    try { localStorage.setItem('raid:mode', S.mode); localStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
+    try { profileStorage.setItem('raid:mode', S.mode); profileStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
     S.classId = getSelectedClassId();
     S.classConfig = getClassConfig(S.classId);
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]);
@@ -4286,12 +4349,12 @@
   }
   function readTrophyRemaining() {
     try {
-      const value = Number(localStorage.getItem('raid:trophyRemaining'));
+      const value = Number(profileStorage.getItem('raid:trophyRemaining'));
       return Number.isFinite(value) ? Math.max(0, Math.min(30, Math.trunc(value))) : 0;
     } catch (e) { return 0; }
   }
   function saveTrophyRemaining() {
-    try { localStorage.setItem('raid:trophyRemaining', String(S.trophyRemaining)); } catch (e) {}
+    try { profileStorage.setItem('raid:trophyRemaining', String(S.trophyRemaining)); } catch (e) {}
   }
   function advanceTrophyAt(slot) {
     let created = false;
@@ -5455,8 +5518,8 @@
   }
 
   // Opt-in Telegram UI bridge. This is NOT authentication: the Pages demo is
-  // public, and only its launcher in the bot is owner-private. Our code never sends or
-  // persists initData/user details; gameplay and storage stay browser-local.
+  // public; admission only controls its bot launcher. Only the SDK numeric ID
+  // selects a local namespace. No initData/profile is sent to a server or cloud.
   let TELEGRAM_APP = null;
   let TELEGRAM_BACK = null, TELEGRAM_CONFIRM = null, TELEGRAM_EXIT = null;
   function telegramCall(target, method, ...args) {
@@ -5526,13 +5589,14 @@
   function initTelegramPreview() {
     if (new URLSearchParams(window.location.search).get('telegram') !== '1') return;
     telegramNotice('Подключение Telegram… Сохранения здесь могут отличаться от браузерных.');
-    const timeout = setTimeout(() => telegramNotice('Telegram SDK не загрузился. Игра доступна локально, но жесты Telegram не защищены. Открой Mini App заново.'), 8000);
+    const timeout = setTimeout(() => telegramNotice('Telegram SDK не загрузился. Без профиля сохранение недоступно, жесты Telegram не защищены. Открой Mini App заново.'), 8000);
     function connect() {
       clearTimeout(timeout);
       const tg = window.Telegram?.WebApp;
       // Presence is only a UI hint, never a trusted identity/permission check.
-      if (!tg?.initData) { telegramNotice('Браузерный режим: для проверки Telegram открой Рейд кнопкой в личке бота.'); return; }
+      if (!tg?.initData) { telegramNotice('Профиль Telegram не определён: открой Рейд кнопкой в своей личке бота. Игра без профиля не сохраняется.'); return; }
       if (TELEGRAM_APP) return;
+      connectLocalProfile();
       TELEGRAM_APP = tg;
       document.documentElement.classList.add('telegram-preview');
       const close = el('menu-close'); if (close) close.textContent = 'Закрыть Mini App';
@@ -5573,7 +5637,7 @@
     const sdk = document.createElement('script');
     sdk.src = 'https://telegram.org/js/telegram-web-app.js'; sdk.async = true;
     sdk.onload = connect;
-    sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Игра работает локально, но жесты Telegram не защищены.'); };
+    sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Без профиля игра не сохраняется, жесты Telegram не защищены.'); };
     document.head.appendChild(sdk);
   }
 
@@ -5585,8 +5649,8 @@
     window.addEventListener?.('pagehide', () => { cancelPointerGesture(); saveRun(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
-      if (event.key === RUN_HISTORY_KEY || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
-      if (event.key !== RUN_SAVE_KEY && event.key !== null) return;
+      if (event.key === profileStorage.key(RUN_HISTORY_KEY) || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
+      if (event.key !== profileStorage.key(RUN_SAVE_KEY) && event.key !== null) return;
       // Finished pages still own timers/pagehide callbacks: never adopt a new
       // tab's baseline and then overwrite it with our old terminal checkpoint.
       if (S) ownsRunSlot();
