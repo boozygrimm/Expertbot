@@ -2800,12 +2800,18 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   не runtime ради ожиданий.
 - **Guards PASS:** повторная сборка байт-в-байт (тот же id/размер/SHA);
   **562 прочих tracked blob** неизменны (изменены8 существующих файлов);
-  из384 общих функций JS **370 побайтово равны** HEAD, **14 изменены**
+  из384 общих функций JS **370 побайтово равны** base (released cac8221e1021),
+  **14 изменены**
   (decodeRunSave, hasRetuneRules, newGame, openClassEditor, primaryChainDamage,
   renderChainTip, renderCharacterSummary, renderClassPicker, renderHUD,
   requestNewGame, resumeSavedRun, runSaveVersion, showClassPicker,
   withWeaponElement), **6 добавлено**, **0 удалено**, плюс2 module-level
-  объявления (`AFFINITY_RULES`, `pickerAffinities`). Source/inline-JS syntax OK,
+  объявления (`AFFINITY_RULES`, `pickerAffinities`). Сравнение функций — только по
+  телу с парными скобками: наивный срез «до следующего `function`» даёт2 ложных
+  срабатывания (`raidAchievementAvailable`, `flashOnInvalid`) из-за вставленных
+  рядом module-level объявлений, поэтому список из16 имён в прежнем
+  `/tmp/raid-affinity-scope.json` — не фактический набор изменённых функций.
+  Source/inline-JS syntax OK,
   preview с внешним Host → HTTP200 и точные4051389B, `git diff --check` чисто,
   5 genuine fixtures сверены с их Git-ревизиями. Снимки — `.arena/raid-affinity`
   (17 PNG, вне Git), логи/harness — `/tmp/raid-affinity-*`.
