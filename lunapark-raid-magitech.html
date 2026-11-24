@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="93fe70e78b83">
+<meta name="raid-build" content="18b43b68f707">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1124,6 +1124,55 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 #hud-xp .hud-label > span:first-child::before { content: '+'; margin-right: 5px; color: #c3d69d; }
 #hud-gold .hud-label > span:first-child::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid #c7ae6d; margin-right: 5px; }
 @media (max-width: 720px) { .raid-intro h1 { font-size: clamp(25px,7.8vw,31px); } }
+/* Compact mech roster: readable miniatures, with every rule in the circular detail glass. */
+.picker-class { position: relative; min-width: 0; }
+.picker-main .picker-grid { grid-template-columns: repeat(5,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 7px; overflow: hidden; padding: 2px; }
+.picker-class:first-child { grid-column: auto; }
+.picker-card-btn { position: relative; width: 100%; height: 100%; min-height: 105px; padding: 6px 4px 7px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: radial-gradient(ellipse at 50% 25%,#50614b5c,transparent 67%),linear-gradient(145deg,#1b302b,#102321); border: 1px solid #91865c80; border-radius: 12px; overflow: hidden; }
+.picker-card-btn:hover,.picker-card-btn:focus-visible { transform: translateY(-2px); border-color: #e5cf94; box-shadow: 0 0 18px #c4b66a25,inset 0 0 22px #c2c78a14; }
+.picker-card-btn.selected { border-color: #eed08b; box-shadow: 0 0 0 1px #eed08b6b,0 0 18px #d9bc6c44; }
+.picker-card-btn.locked { opacity: .66; filter: saturate(.55); }
+.mech-portrait { width: clamp(52px,7.5vw,86px); aspect-ratio: 1; position: relative; display: grid; place-items: center; border-radius: 50%; background: radial-gradient(circle,#426056b0,#102522 67%); border: 1px solid #b4a46c88; box-shadow: inset 0 0 14px #b8d3ab24,0 0 12px #bda75a20; animation: mech-idle-float 4.2s ease-in-out infinite; }
+.mech-portrait img { position: relative; z-index: 1; width: 112%; height: 112%; object-fit: contain; filter: drop-shadow(0 3px 3px #000b); }
+.mech-portrait-ring { position: absolute; inset: 5px; border: 1px dashed #c8b77b72; border-radius: 50%; animation: mech-ring-turn 24s linear infinite; }
+.pick-name { display: block; max-width: 100%; color: #f0e2b6; font: 400 clamp(10px,1vw,15px)/1.05 Georgia,serif; text-align: center; overflow-wrap: anywhere; }
+.mech-card-status { color: #aabb9b; font: 700 7px/1 system-ui,sans-serif; letter-spacing: .1em; }
+.mech-info { position: absolute; z-index: 3; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid #d7c17d7a; border-radius: 50%; background: #071715d9; color: #f1dfaa; font: 700 12px Georgia,serif; cursor: pointer; }
+.mech-info:hover,.mech-info[aria-expanded="true"] { background: #ba9e57; color: #071715; }
+.picker-affinity-field,.picker-affinity-note,.class-config-btn { display: none; }
+.mech-detail-popover { position: fixed; z-index: 10050; inset: 0; display: grid; place-items: center; padding: 14px; background: #020a0bd1; backdrop-filter: blur(6px); animation: mech-pop-in .18s ease-out; }
+.mech-detail-popover[hidden] { display: none; }
+.mech-detail-body { position: relative; width: min(490px,92vw); height: min(490px,92vw,82vh); min-height: 340px; border-radius: 50%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c3aa62 #182724; padding: 42px 52px 36px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: #e5e0c9; background: radial-gradient(circle at 50% 32%,#2b4943f2,#102321f5 65%,#081715fa); border: 1px solid #d3bd7eaa; box-shadow: 0 0 0 6px #dac17c12,0 24px 90px #000e,inset 0 0 50px #c2b16c12; }
+.mech-detail-body::before { content: ''; position: absolute; inset: 12px; border: 1px solid #cfbb7840; border-radius: 50%; pointer-events: none; }
+.mech-detail-close { position: absolute; z-index: 3; top: 34px; right: 42px; width: 34px; height: 34px; border: 1px solid #dbc88388; border-radius: 50%; background: #071715d9; color: #f4e4b2; font-size: 24px; cursor: pointer; }
+.mech-detail-portrait { width: 116px; height: 116px; flex: 0 0 116px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle,#77927a44,#091816 68%); border: 1px solid #d4bd7f99; box-shadow: 0 0 24px #c2a85c30; }
+.mech-detail-portrait img { width: 145%; height: 145%; object-fit: contain; filter: drop-shadow(0 5px 7px #000b); animation: mech-detail-breathe 3.5s ease-in-out infinite; }
+.mech-detail-body h3 { margin: 0; color: #f2dfaa; font: 400 25px/1 Georgia,serif; }
+.mech-detail-line { max-width: 300px; margin: 0; color: #c5d1bf; font: 10px/1.45 system-ui,sans-serif; }
+.mech-detail-line b { color: #e5cf8d; }
+.mech-detail-body .picker-affinity-field { display: flex; width: min(260px,100%); flex-direction: column; gap: 5px; color: #e4d49f; font-size: 10px; }
+.mech-detail-body .picker-affinity { min-height: 38px; border: 1px solid #9e9367; border-radius: 8px; padding: 7px; background: #102522; color: #eee3c4; }
+.mech-detail-body .picker-affinity-note { display: block; max-width: 270px; color: #a9c5b0; font-size: 9px; }
+.mech-detail-body .class-config-btn { display: block; width: min(230px,100%); border-radius: 999px; background: #152f2a; color: #eddbab; }
+@keyframes mech-idle-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes mech-ring-turn { to { transform: rotate(360deg); } }
+@keyframes mech-detail-breathe { 0%,100% { transform: translateY(1px) scale(1); } 50% { transform: translateY(-3px) scale(1.025); } }
+@keyframes mech-pop-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
+html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-portrait-ring,html[data-raid-motion="off"] .mech-detail-portrait img { animation: none !important; }
+@media (max-width: 720px) {
+  .picker-main { padding: 14px 12px 12px; gap: 7px; }
+  .picker-title { font-size: 27px; }
+  .picker-main .picker-hint,.picker-main .raid-prototype-note,.picker-main > .build-label { display: none; }
+  .picker-main .picker-grid { grid-template-columns: repeat(5,minmax(0,1fr)); grid-template-rows: repeat(2,minmax(72px,1fr)); gap: 5px; }
+  .picker-card-btn { min-height: 76px; border-radius: 9px; }
+  .mech-portrait { width: clamp(42px,11vw,62px); }
+  .pick-name { font-size: 9px; }
+  .mech-info { width: 18px; height: 18px; font-size: 10px; top: 2px; right: 2px; }
+  .mech-detail-body { width: min(92vw,430px); height: min(92vw,430px,80vh); min-height: min(330px,72vh); padding: 36px 38px 28px; }
+  .mech-detail-portrait { width: 96px; height: 96px; flex-basis: 96px; }
+  .mech-detail-close { top: 28px; right: 32px; }
+}
+@media (prefers-reduced-motion: reduce) { .mech-portrait,.mech-portrait-ring,.mech-detail-portrait img,.mech-detail-popover { animation: none !important; } }
 /* Alchemy glass marbles — discovery.css (technical branch 37a857da / PR87).
    The socket remains fixed for hit testing; only its identity-keyed orb moves.
    Six material textures are cosmetic, not six new combat statuses. */
@@ -1513,7 +1562,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка 93fe70e78b83</p>
+    <p class="build-label">Сборка 18b43b68f707</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1664,7 +1713,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 93fe70e78b83</p>
+    <p class="build-label">Сборка 18b43b68f707</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1698,7 +1747,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 93fe70e78b83</p>
+      <p class="build-label" id="updates-build">Сборка 18b43b68f707</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
@@ -1710,6 +1759,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <li><b>Понятнее описания экипировки.</b> Уточнили, когда срабатывает снижение атаки врагов и другие свойства предметов. Правила боя не менялись.</li>
         <li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>
         <li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>
+        <li><b>Новая галерея мехов.</b> Для каждого меха — своя портретная фигурка в компактной сетке без длинного списка. Нажми «i», чтобы открыть круглую полупрозрачную карточку с пилотом, свойствами, модулями и настройками. Фигурки слегка парят, руны вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>
       </ul>
       <p class="updates-important"><b>Важно:</b> если рейд уже начат, он продолжится по прежним правилам — без склонности. Склонность можно выбрать перед следующим рейдом. Ничего удалять не нужно. Просмотр другого рейда и рост уровня меха не меняют уже начатый рейд; «Продолжить» восстановит его прежний выбор. «Перенастройка» сохраняет базовые 12 ходов и один из четырёх слотов. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>
@@ -1787,7 +1837,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 93fe70e78b83.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 18b43b68f707.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -8094,6 +8144,24 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     grid.innerHTML = '';
     const generation = ++pickerGeneration; pickerAffinities.clear();
     const current = () => pickerOpen && !classEditor && !NEW_RUN_REQUEST && !UPDATES_OPEN && !HISTORY_OPEN && generation === pickerGeneration;
+    el('picker-card')?.querySelector('.mech-detail-popover')?.remove();
+    const detail = document.createElement('section');
+    let detailOwner = null;
+    detail.className = 'mech-detail-popover'; detail.hidden = true;
+    detail.setAttribute('role', 'dialog'); detail.setAttribute('aria-modal', 'true'); detail.setAttribute('aria-label', 'Сведения о мехе');
+    const detailBody = document.createElement('div'); detailBody.className = 'mech-detail-body';
+    detail.appendChild(detailBody); el('picker-card')?.appendChild(detail);
+    const closeDetail = () => {
+      if (detailOwner) {
+        for (const selector of ['.picker-affinity-field', '.picker-affinity-note', '.class-config-btn']) {
+          const node = detailBody.querySelector(selector); if (node) detailOwner.appendChild(node);
+        }
+      }
+      const trigger = detailOwner?.querySelector('.mech-info');
+      detailOwner = null; detail.hidden = true; detailBody.replaceChildren();
+      document.querySelector('.mech-info[aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+      trigger?.focus();
+    };
     for (const cls of CLASSES) {
       const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
       const row = document.createElement('div'); row.className = 'picker-class';
@@ -8108,7 +8176,36 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       }
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег<\/span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле<\/span>';
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}<\/span><span class="pick-identity"><span class="pick-model">МЕХ ${String(cls.native).padStart(2, '0')}<\/span><span class="pick-name">${cls.name}<\/span><span class="pick-race">Пилот · ${RACE_INFO[config.race].name}<\/span><\/span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}<\/span><\/span>${desc.join('')}<span class="pick-race-desc">Пилот: ${RACE_INFO[config.race].desc}<\/span><span class="pick-unique">Модуль меха: ${cls.uniqueSkillDesc}<\/span>${status}`;
+      btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"><\/span><\/span><span class="pick-name">${cls.name}<\/span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}<\/span>`;
+      btn.title = unlocked ? `Начать рейд за меха «${cls.name}»` : `Мех «${cls.name}» закрыт`;
+      const info = document.createElement('button'); info.type = 'button'; info.className = 'mech-info';
+      info.textContent = 'i'; info.setAttribute('aria-label', `Свойства меха «${cls.name}»`);
+      info.setAttribute('aria-haspopup', 'dialog'); info.setAttribute('aria-expanded', 'false');
+      info.addEventListener('click', () => {
+        if (!current()) return;
+        document.querySelectorAll('.mech-info[aria-expanded="true"]').forEach(node => node.setAttribute('aria-expanded', 'false'));
+        info.setAttribute('aria-expanded', 'true'); detailBody.replaceChildren(); detailOwner = row;
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'mech-detail-close'; close.textContent = '×'; close.setAttribute('aria-label', 'Закрыть сведения'); close.addEventListener('click', closeDetail);
+        const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
+        const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
+        const heading = document.createElement('h3'); heading.textContent = cls.name;
+        const line = (label, text, className = '') => { const p = document.createElement('p'); p.className = 'mech-detail-line ' + className; const b = document.createElement('b'); b.textContent = label; p.append(b, document.createTextNode(text)); return p; };
+        detailBody.append(close, portrait, heading,
+          line('Пилот · ', RACE_INFO[config.race].name + ' — ' + RACE_INFO[config.race].desc),
+          line('Мех · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
+          line('Модуль · ', cls.uniqueSkillDesc),
+          line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
+          line('Изъяны · ', config.flaws.filter(Boolean).map(name => CLASS_TRAITS.flaws[name].name).join(' · ') || 'нет'),
+          line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
+        const affinity = row.querySelector('.picker-affinity-field');
+        const affinityNote = row.querySelector('.picker-affinity-note');
+        if (affinity) detailBody.appendChild(affinity);
+        if (affinityNote) detailBody.appendChild(affinityNote);
+        const configButton = row.querySelector('.class-config-btn');
+        if (configButton) detailBody.appendChild(configButton);
+        detail.hidden = false; close.focus();
+      });
+      row.appendChild(info);
       // A synthesized click from closing results must not start the mech
       // underneath. A pointer activation has to BEGIN on this picker generation.
       bindReadOnlyDismiss(btn, () => {
@@ -8148,9 +8245,11 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
       edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
       edit.setAttribute('aria-label', edit.textContent + ': ' + cls.name);
-      edit.addEventListener('click', () => { if (current()) openClassEditor(cls.id); });
+      edit.addEventListener('click', () => { if (current()) { closeDetail(); openClassEditor(cls.id); } });
       row.appendChild(edit); grid.appendChild(row);
     }
+    detail.addEventListener('click', event => { if (event.target === detail) closeDetail(); });
+    detail.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeDetail(); } });
   }
   function closeClassEditor(focus = true) {
     const id = classEditor?.id;

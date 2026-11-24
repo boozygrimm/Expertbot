@@ -4612,6 +4612,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.ok(html.includes('<li><b>Понятнее описания экипировки.</b> Уточнили, когда срабатывает снижение атаки врагов и другие свойства предметов. Правила боя не менялись.</li>'));
   assert.ok(html.includes('<li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>'));
   assert.ok(html.includes('<li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>'));
+  assert.ok(html.includes('<li><b>Новая галерея мехов.</b> Для каждого меха — своя портретная фигурка в компактной сетке без длинного списка. Нажми «i», чтобы открыть круглую полупрозрачную карточку с пилотом, свойствами, модулями и настройками. Фигурки слегка парят, руны вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>'));
   assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после этого залпа снижает силу атаки черепов, уже стоявших на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
@@ -4878,6 +4879,31 @@ test('magitech shields: five transparent shield models match shop and equipped b
     assert.equal(png[25], 6, `shield ${index} has true RGBA alpha`);
     assert.equal(png.readUInt32BE(16), 256);
   }
+});
+
+test('magitech mech gallery: every mech has its own transparent portrait, compact selection and circular glass details', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const classBlock = js.match(/const CLASSES = \[([^]*?)\n  \];/)?.[1];
+  assert.ok(classBlock);
+  const ids = [...classBlock.matchAll(/id: '([a-z]+)'/g)].map(match => match[1]);
+  assert.equal(ids.length, 10);
+  for (const id of ids) {
+    const png = readFileSync(new URL(`./assets/mech_${id}.png`, import.meta.url));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(png[25], 6, `${id} portrait has alpha transparency`);
+    assert.equal(png.readUInt32BE(16), 512);
+  }
+  assert.match(js, /mech_\$\{cls\.id\}\.png/);
+  assert.match(js, /className = 'mech-info'/);
+  assert.match(js, /role', 'dialog'/);
+  assert.match(js, /line\('Модуль · ', cls\.uniqueSkillDesc\)/);
+  assert.match(js, /line\('Пассивы · '/);
+  assert.match(js, /line\('Изъяны · '/);
+  assert.match(css, /grid-template-columns: repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(css, /\.mech-detail-body[^]*border-radius: 50%/);
+  assert.match(css, /data-raid-motion="off"[^]*animation: none/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
 });
 
 test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {

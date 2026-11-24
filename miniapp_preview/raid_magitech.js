@@ -6274,6 +6274,24 @@
     grid.innerHTML = '';
     const generation = ++pickerGeneration; pickerAffinities.clear();
     const current = () => pickerOpen && !classEditor && !NEW_RUN_REQUEST && !UPDATES_OPEN && !HISTORY_OPEN && generation === pickerGeneration;
+    el('picker-card')?.querySelector('.mech-detail-popover')?.remove();
+    const detail = document.createElement('section');
+    let detailOwner = null;
+    detail.className = 'mech-detail-popover'; detail.hidden = true;
+    detail.setAttribute('role', 'dialog'); detail.setAttribute('aria-modal', 'true'); detail.setAttribute('aria-label', 'Сведения о мехе');
+    const detailBody = document.createElement('div'); detailBody.className = 'mech-detail-body';
+    detail.appendChild(detailBody); el('picker-card')?.appendChild(detail);
+    const closeDetail = () => {
+      if (detailOwner) {
+        for (const selector of ['.picker-affinity-field', '.picker-affinity-note', '.class-config-btn']) {
+          const node = detailBody.querySelector(selector); if (node) detailOwner.appendChild(node);
+        }
+      }
+      const trigger = detailOwner?.querySelector('.mech-info');
+      detailOwner = null; detail.hidden = true; detailBody.replaceChildren();
+      document.querySelector('.mech-info[aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
+      trigger?.focus();
+    };
     for (const cls of CLASSES) {
       const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
       const row = document.createElement('div'); row.className = 'picker-class';
@@ -6288,7 +6306,36 @@
       }
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег</span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}</span><span class="pick-identity"><span class="pick-model">МЕХ ${String(cls.native).padStart(2, '0')}</span><span class="pick-name">${cls.name}</span><span class="pick-race">Пилот · ${RACE_INFO[config.race].name}</span></span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}</span></span>${desc.join('')}<span class="pick-race-desc">Пилот: ${RACE_INFO[config.race].desc}</span><span class="pick-unique">Модуль меха: ${cls.uniqueSkillDesc}</span>${status}`;
+      btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"></span></span><span class="pick-name">${cls.name}</span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}</span>`;
+      btn.title = unlocked ? `Начать рейд за меха «${cls.name}»` : `Мех «${cls.name}» закрыт`;
+      const info = document.createElement('button'); info.type = 'button'; info.className = 'mech-info';
+      info.textContent = 'i'; info.setAttribute('aria-label', `Свойства меха «${cls.name}»`);
+      info.setAttribute('aria-haspopup', 'dialog'); info.setAttribute('aria-expanded', 'false');
+      info.addEventListener('click', () => {
+        if (!current()) return;
+        document.querySelectorAll('.mech-info[aria-expanded="true"]').forEach(node => node.setAttribute('aria-expanded', 'false'));
+        info.setAttribute('aria-expanded', 'true'); detailBody.replaceChildren(); detailOwner = row;
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'mech-detail-close'; close.textContent = '×'; close.setAttribute('aria-label', 'Закрыть сведения'); close.addEventListener('click', closeDetail);
+        const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
+        const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
+        const heading = document.createElement('h3'); heading.textContent = cls.name;
+        const line = (label, text, className = '') => { const p = document.createElement('p'); p.className = 'mech-detail-line ' + className; const b = document.createElement('b'); b.textContent = label; p.append(b, document.createTextNode(text)); return p; };
+        detailBody.append(close, portrait, heading,
+          line('Пилот · ', RACE_INFO[config.race].name + ' — ' + RACE_INFO[config.race].desc),
+          line('Мех · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
+          line('Модуль · ', cls.uniqueSkillDesc),
+          line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
+          line('Изъяны · ', config.flaws.filter(Boolean).map(name => CLASS_TRAITS.flaws[name].name).join(' · ') || 'нет'),
+          line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
+        const affinity = row.querySelector('.picker-affinity-field');
+        const affinityNote = row.querySelector('.picker-affinity-note');
+        if (affinity) detailBody.appendChild(affinity);
+        if (affinityNote) detailBody.appendChild(affinityNote);
+        const configButton = row.querySelector('.class-config-btn');
+        if (configButton) detailBody.appendChild(configButton);
+        detail.hidden = false; close.focus();
+      });
+      row.appendChild(info);
       // A synthesized click from closing results must not start the mech
       // underneath. A pointer activation has to BEGIN on this picker generation.
       bindReadOnlyDismiss(btn, () => {
@@ -6328,9 +6375,11 @@
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
       edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
       edit.setAttribute('aria-label', edit.textContent + ': ' + cls.name);
-      edit.addEventListener('click', () => { if (current()) openClassEditor(cls.id); });
+      edit.addEventListener('click', () => { if (current()) { closeDetail(); openClassEditor(cls.id); } });
       row.appendChild(edit); grid.appendChild(row);
     }
+    detail.addEventListener('click', event => { if (event.target === detail) closeDetail(); });
+    detail.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeDetail(); } });
   }
   function closeClassEditor(focus = true) {
     const id = classEditor?.id;
