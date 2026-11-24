@@ -5683,3 +5683,21 @@ test('magitech mech and pilot: all 91 unlocked pairings match inherited classic 
   }
   assert.equal(count, 91, 'controlled package parity, not a balance simulation or a new roster');
 });
+
+test('magitech direct settings source: compact board overlay reuses preferences/audio, never writes gameplay or schedules a combat continuation', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const section = js.slice(js.indexOf('  // --- direct board settings'), js.indexOf('  // --- first-entry release notes'));
+  assert.match(section, /function openGameSettings/); assert.match(section, /function closeGameSettings/);
+  assert.doesNotMatch(section, /\b(?:saveRun|queueRunSave|resumeRewards|closeRetune|cancelPointerGesture|setTimeout|setInterval|randInt)\s*\(|Math\.random|RNG_SEEDS|localStorage|profileStorage/);
+  assert.doesNotMatch(section, /\bS(?:\.[\w]+|\[[^\]]+\])*\s*(?:=(?!=)|\+\+|--)/);
+  assert.match(section, /activeDrag/); assert.match(section, /stopImmediatePropagation/); assert.match(section, /bindReadOnlyDismiss\(close, closeGameSettings/);
+  assert.match(html, /id="settings-btn"[^>]*aria-haspopup="dialog"[^>]*aria-controls="game-settings"[^>]*aria-expanded="false"/);
+  assert.equal((html.match(/id="sound-on"/g) || []).length, 1);
+  assert.equal((html.match(/role="switch"/g) || []).length, 3);
+  assert.match(css, /\.game-settings\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.game-settings-card\s*\{[^}]*272px[^}]*border-radius:\s*28px/);
+  assert.match(css, /\.settings-row\s*\{[^}]*min-height:\s*48px/);
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none !important;\s*\}\s*$/);
+});
