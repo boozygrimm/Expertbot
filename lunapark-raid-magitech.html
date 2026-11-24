@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="d78420b66464">
+<meta name="raid-build" content="6a5e7b06b6c1">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1252,11 +1252,6 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 #board .cell.selected .raid-orb:not(.frozen) .orb-material::before,
 #board .cell.selected .raid-orb:not(.frozen) .orb-material::after,
 #board .cell.selected .raid-orb:not(.frozen) .orb-fog-wisp { animation-play-state: running; }
-.sound-control { position: relative; }
-.sound-control input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; clip-path: inset(50%); overflow: hidden; }
-.sound-control:focus-within { outline: 2px solid #f5dfa0; outline-offset: 3px; }
-.sound-control .sound-mute-line, .sound-control input:not(:checked) ~ svg .sound-waves { display: none; }
-.sound-control input:not(:checked) ~ svg .sound-mute-line { display: block; }
 
 #board .skull-badge { bottom: 8%; width: 83%; padding: 1px 0; border: 0; border-radius: 9px; text-align: center; background: #071722de; color: #fff3d6; font-size: var(--badge-font,19cqw); font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: -.025em; line-height: 1.15; z-index: 8; text-shadow: 0 1px 2px #000; }
 .orb-countdown, .orb-charge { position: absolute; z-index: 8; display: grid; place-items: center; left: 38%; top: 3%; width: 24%; height: 24%; border-radius: 50%; background: #081c29e8; border: 1px solid #e8cea0a8; color: #fff2ca; font: 700 19cqw/1 system-ui,sans-serif; font-variant-numeric: tabular-nums; }
@@ -1408,6 +1403,42 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 /* On desktop the existing class list must remain usable when expanded. */
 .picker-main { overflow-y: auto; }
 
+/* Direct settings occupy the old sound slot, not another header column.
+   Only this small rounded card is blurred, never the entire game surface. */
+.brand-actions .settings-toggle { border-radius: 50%; cursor: pointer; background: #17342ca8; }
+.settings-toggle[aria-expanded="true"] { border-color: #d4c58d; background: #304d3c; }
+.game-settings {
+  position: fixed; inset: 0; bottom: auto; height: var(--raid-view-height); z-index: 100;
+  padding: calc(12px + var(--raid-inset-top, env(safe-area-inset-top, 0px))) calc(12px + var(--raid-inset-right, env(safe-area-inset-right, 0px))) calc(12px + var(--raid-inset-bottom, env(safe-area-inset-bottom, 0px))) calc(12px + var(--raid-inset-left, env(safe-area-inset-left, 0px)));
+  background: #020f101a; touch-action: none; overscroll-behavior: contain;
+}
+.game-settings-card {
+  position: absolute; width: min(272px, calc(100% - 24px - var(--raid-inset-left, env(safe-area-inset-left, 0px)) - var(--raid-inset-right, env(safe-area-inset-right, 0px))));
+  max-height: calc(var(--raid-view-height) - 24px - var(--raid-inset-top, env(safe-area-inset-top, 0px)) - var(--raid-inset-bottom, env(safe-area-inset-bottom, 0px)));
+  overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  padding: 8px 18px 14px; border: 1px solid #b7bb8d99; border-radius: 28px;
+  background: #102b28f5; color: #e8e7ce; box-shadow: 0 12px 36px #0007, inset 0 1px 0 #efffdb0d;
+}
+@supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
+  .game-settings-card { background: #102b28e6; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+}
+.game-settings-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.game-settings-card h3 { margin: 0; font: 400 19px/1.2 Georgia,serif; color: #eddbab; }
+.settings-close { display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 10px; margin-right: -8px; border: 0; border-radius: 50%; background: transparent; color: #c6d3bc; cursor: pointer; }
+.settings-close:hover { background: #c4d4b51a; }
+.game-settings-card fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
+.game-settings-card legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 0; border-bottom: 1px solid #b6c1a31f; font-size: 14px; line-height: 1.25; cursor: pointer; }
+.settings-row span { min-width: 0; overflow-wrap: anywhere; }
+.settings-row small { display: block; margin-top: 3px; color: #b2c5b0; font-size: 10px; }
+.settings-row input { appearance: none; -webkit-appearance: none; position: relative; flex: none; width: 42px; height: 24px; margin: 0; border: 1px solid #91aa8f80; border-radius: 999px; background: #071f20; cursor: pointer; }
+.settings-row input::before { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9cb09f; }
+.settings-row input:checked { background: #c5ba86; border-color: #e0d19e; }
+.settings-row input:checked::before { transform: translateX(18px); background: #1b3730; }
+.settings-hint, .settings-note { margin: 10px 0 0; color: #b7cbb4; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.game-settings-card [data-raid-visual-status] { color: #f0d1a2; }
+.game-settings :focus-visible, .settings-toggle:focus-visible { outline: 2px solid #f2dc9e; outline-offset: 3px; }
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
 
@@ -1438,7 +1469,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка d78420b66464</p>
+    <p class="build-label">Сборка 6a5e7b06b6c1</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот — один прежний расовый пакет: особенность и взаимодействие со смертным врагом, без нового слоя бонусов. Выбери мех или продолжи свой рейд.</p>
@@ -1494,10 +1525,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       </div>
     </div>
     <div class="brand-actions">
-      <label class="icon-btn sound-control" style="cursor:pointer" title="Тихие звуковые эффекты: вкл./выкл.">
-        <input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты">
-        <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9Z"/><path class="sound-waves" d="m16 7a7 7 0 0 1 0 10m3-13a11 11 0 0 1 0 16"/><path class="sound-mute-line" d="m17 9 5 6m0-6-5 6"/></g></svg>
-      </label>
+      <button class="icon-btn settings-toggle" id="settings-btn" type="button" title="Настройки игры" aria-label="Настройки игры" aria-haspopup="dialog" aria-controls="game-settings" aria-expanded="false"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="m9.5 3-.6 2-1.8 1-2-.5-2.5 4.3L4.1 11v2L2.6 14.2l2.5 4.3 2-.5 1.8 1 .6 2h5l.6-2 1.8-1 2 .5 2.5-4.3-1.5-1.2v-2l1.5-1.2-2.5-4.3-2 .5-1.8-1-.6-2Z"/><circle cx="12" cy="12" r="3"/></g></svg></button>
       <button class="icon-btn" id="stats-btn" type="button" title="Мех, пилот и итоговые параметры" aria-label="Мех, пилот и итоговые параметры"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3M9 16h6m-3-3v6"/></g></svg></button>
       <button class="icon-btn" id="menu-btn" type="button" title="Меню рейда">Меню</button>
     </div>
@@ -1569,6 +1597,21 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
      Viewport coordinates follow the actual recipient; never receives input. -->
 <div class="effect-layer" id="raid-effects" aria-hidden="true"></div>
 
+<!-- Transient board UI, not a pause or a mandatory reward modal. -->
+<div class="game-settings" id="game-settings" role="dialog" aria-modal="true" aria-labelledby="game-settings-title" hidden>
+  <section class="game-settings-card">
+    <header><h3 id="game-settings-title">Настройки</h3><button class="settings-close" id="settings-close" type="button" aria-label="Закрыть настройки"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></header>
+    <fieldset id="game-visual"><legend>Вид и движение</legend>
+      <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+      <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
+    </fieldset>
+    <label class="settings-row"><span>Звук<small>Тихие эффекты</small></span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
+    <p class="settings-hint">Вид — для этого профиля.<br>Звук — в этом окне игры.</p>
+    <p class="settings-note" data-raid-motion-note hidden></p>
+    <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
+  </section>
+</div>
+
 <!-- run menu -->
 <div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
   <div class="menu-card">
@@ -1577,7 +1620,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка d78420b66464</p>
+    <p class="build-label">Сборка 6a5e7b06b6c1</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1611,19 +1654,20 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка d78420b66464</p>
+      <p class="build-label" id="updates-build">Сборка 6a5e7b06b6c1</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
       <h4>В этом обновлении</h4>
       <ul id="updates-current">
-        <li><b>Два независимых переключателя.</b> «Вид и движение» на подготовке и в меню: кружки / без кружков, с анимациями / без анимаций — четыре сочетания. По умолчанию прежний вид; системное уменьшение движения всегда важнее включённых анимаций.</li>
-        <li><b>Без потери игровых подсказок.</b> Без оболочки остаются картинки, стихии, числа, выделение цепочки и метки состояний. Отключение анимаций сразу завершает только текущие эффекты, не ускоряет ход и не меняет награды. Выбор запоминается отдельно от рейда в своём профиле.</li>
-        <li><b>Мех и пилот — разные роли, прежняя сила.</b> В карточках, редакторе и сводке отдельно показаны специализация, пары пассив/изъян и модули меха, а также один прежний расовый пакет пилота вместе со смертным врагом. Новых бонусов поверх класса и расы нет; независимый выбор пилота — по-прежнему с уровня меха 5.</li>
+        <li><b>Настройки прямо на игровом экране.</b> Небольшая кнопка с шестерёнкой открывает компактную округлую полупрозрачную панель — без перехода в меню и без увеличения шапки.</li>
+        <li><b>Все три тумблера рядом.</b> Кружки / стеклянная оболочка, анимации и звук. Прежние независимые настройки вида дают четыре сочетания и запоминаются для своего профиля; звук, как раньше, действует в этом окне. По умолчанию всё включено, системное уменьшение движения важнее анимаций.</li>
+        <li><b>Закрыл — играешь дальше.</b> Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только панель; закрывающий тап не выбирает клетку под ней. Цели «Перенастройки» сохраняются. Панель не ускоряет и не приостанавливает ход; урон, случайность и награды прежние.</li>
       </ul>
-      <p class="updates-important"><b>Важно:</b> настройки вида доступны и через «Продолжить». Мех, пилот и конфигурация начатого рейда не меняются. Старые забеги v1/v2/v3 продолжаются по своим правилам без сброса или миграции; «Перенастройка» по-прежнему только в новых v3. Не очищай данные. «Понятно» лишь закрывает это окно, не запускает новый забег.</p>
+      <p class="updates-important"><b>Важно:</b> шестерёнка доступна и после «Продолжить»; заново начинать не нужно. Мех, пилот и конфигурация начатого рейда не меняются. Старые забеги v1/v2/v3 продолжаются по своим правилам без сброса или миграции; «Перенастройка» по-прежнему только в новых v3. Не очищай данные. «Понятно» лишь закрывает это окно, не запускает новый забег.</p>
       <h4>Краткая история</h4>
       <ol id="updates-history">
+        <li><b>Вид и движение; мех и пилот.</b> Два независимых переключателя вида: кружки и анимации, с сохранением игровых меток и приоритетом системного уменьшения движения. Резервный доступ на подготовке и в меню остаётся. В карточках, редакторе и сводке разделены прежние роли меха и пилота, включая расовый пакет со смертным врагом. Новых бонусов нет; независимый пилот — с уровня меха 5.</li>
         <li><b>Взрыв цепочки — по порядку выбора.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней, выжившие враги не взрываются. Длинная цепь уплотняет волну, не добавляет ожидание; падение остаётся общим и плавным. Теперь эффекты также подчиняются переключателю анимаций.</li>
         <li><b>«Перенастройка» и плавное падение.</b> В новых забегах добавлен модуль: стихия → 1–3 целых незамороженных меча/стрелы → отдельное применение, базовая перезарядка 12 ходов, один из четырёх слотов, без общей выдачи на старте. Оружие в плитках стало немного короче, массовое падение — плавнее и без подпрыгивания.</li>
         <li><b>Полный каталог 31 × 4.</b> Добавлен собственный образ Лича в четырёх стихиях. Все 31 особый тип получили свои портреты — без общей временной замены, в том числе через «Продолжить».</li>
@@ -1693,9 +1737,10 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   <div class="help-card">
     <h3>RAID / Как играть</h3>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка d78420b66464.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 6a5e7b06b6c1.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
-    <p><b>Вид и движение.</b> В одноимённом разделе на подготовке и в меню — ровно два независимых переключателя: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
+    <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
+    <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
     <p><b>Прозрачные плитки — проба оформления по умолчанию.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; только золотая монета и надетое оружие медленно поворачиваются, оружие — вокруг продольной оси рукоятки. Заморозка сохраняет лёд и останавливает движение, переключатель анимаций или системное уменьшение движения отключает её. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мех и пилот наследуют исходные класс и расовый пакет; нового слоя силы, грейдов, заданий и музыки нет. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
     <ul>
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
@@ -1820,6 +1865,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
     FLOAT_FRAME = 0;
     if (FLOAT_EFFECTS.size) renderFloatEffects();
+    positionGameSettings();
   }
   function loadVisualPreferences() {
     const defaults = { shells: true, animations: true };
@@ -3381,6 +3427,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function resumeSavedRun() {
     if (UPDATES_OPEN) return false;
+    closeGameSettings(false);
     closeRetune(false);
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
@@ -3833,6 +3880,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (RETUNE_DRAFT) return false;
     if (S?.resolving || S?.pendingModal && S.pendingModal !== 'gameover') { flash('Сначала заверши ход и выбор наград'); return false; }
     const wrap = el('history-modal'); if (!wrap) return false;
+    closeGameSettings(false);
     HISTORY_FOCUS = document.activeElement; HISTORY_OPEN = true;
     renderRunHistory(); wrap.hidden = false; wrap.classList.add('show'); el('history-title')?.focus(); return true;
   }
@@ -4918,6 +4966,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     if (UPDATES_OPEN) return false;
+    closeGameSettings(false);
     closeRetune(false);
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
@@ -5200,29 +5249,33 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       if (cell) toggleRetuneTarget(Number(cell.dataset.idx));
     });
     document.addEventListener('keydown', event => {
-      if (!RETUNE_DRAFT) return;
+      if (!RETUNE_DRAFT || GAME_SETTINGS) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRetune(); return; }
       const cell = event.target.closest?.('#board > .cell');
       if (cell && ['Enter', ' '].includes(event.key)) { event.preventDefault(); toggleRetuneTarget(Number(cell.dataset.idx)); }
       if (event.key === 'Tab') {
-        const controls = [...qsa('#retune-panel button:not(:disabled)'), ...qsa('#board .retune-eligible')];
-        const first = controls[0], last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
-          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
-        }
+        const controls = [el('settings-btn'), ...qsa('#retune-panel button:not(:disabled)'), ...qsa('#board .retune-eligible')];
+        const index = controls.indexOf(document.activeElement);
+        // Explicit order skips unrelated header/skill buttons between the
+        // settings opener and A1 panel in DOM order, in BOTH directions.
+        const next = index < 0 ? (event.shiftKey ? controls.length - 1 : 0)
+          : (index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length;
+        event.preventDefault(); controls[next]?.focus();
       }
     });
     for (const kind of ['pointerdown', 'click']) document.addEventListener(kind, event => {
       if (!RETUNE_DRAFT) return;
       if (!retuneContext(RETUNE_DRAFT)) { closeRetune(false); }
-      else if (el('retune-panel').contains(event.target) || el('board').contains(event.target)) return;
+      else if (el('retune-panel').contains(event.target) || el('board').contains(event.target)
+        || el('settings-btn').contains(event.target) || GAME_SETTINGS && el('game-settings').contains(event.target)) return;
       // Leave native vertical scrolling available outside the board. Only
       // activations are blocked; a non-control pointerdown need not cancel pan.
       if (kind === 'click' || event.target.closest?.('button,select,a,input')) event.preventDefault();
       event.stopImmediatePropagation();
     }, true);
     document.addEventListener('focusin', event => {
-      if (RETUNE_DRAFT && !el('retune-panel').contains(event.target) && !el('board').contains(event.target)) qs('[data-retune-element]')?.focus();
+      if (RETUNE_DRAFT && !GAME_SETTINGS && !el('retune-panel').contains(event.target) && !el('board').contains(event.target)
+        && !el('settings-btn').contains(event.target)) qs('[data-retune-element]')?.focus();
     });
   }
 
@@ -6698,6 +6751,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (body) body.scrollTop = 0;
   }
   function openModal(kind, restoredChoices = null) {
+    const hadSettings = !!GAME_SETTINGS;
+    closeGameSettings(false);
     closeRetune(false);
     const runId = RUN_ID;
     S.pendingModal = kind;
@@ -6768,6 +6823,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       achievements.addEventListener('click', () => { if (runId === RUN_ID && S.over) openAchievements(); });
       body.appendChild(history); body.appendChild(achievements); body.appendChild(restart);
     }
+    // An asynchronous reward may arrive while the transient settings are up.
+    // Hand focus to its real choice, never keep it inside a now-hidden panel.
+    if (hadSettings) body.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     queueRunSave();
   }
 
@@ -6800,6 +6858,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
 
   function showSkullModal(skull) {
+    closeGameSettings(false);
     const runId = RUN_ID;
     const wrap = el('modal');
     const title = el('modal-title');
@@ -7996,6 +8055,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     refresh(); return true;
   }
   function showClassPicker() {
+    closeGameSettings(false);
     closeRetune(false);
     if (S?.resolving || S?.pendingModal) return false;
     const picker = el('class-picker');
@@ -8057,7 +8117,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
-    const back = UPDATES_OPEN || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
+    const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
@@ -8071,6 +8131,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function requestTelegramClose(discard = false) {
     if (!TELEGRAM_APP) return false;
+    closeGameSettings(false);
     closeRetune(false);
     cancelPointerGesture();
     // A pending reward is a resumable checkpoint, not a reason to forbid exit.
@@ -8096,6 +8157,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function telegramBack() {
     // A read-only notice has no gesture/reward to cancel underneath it.
     if (UPDATES_OPEN) { closeUpdateNotice(); return; }
+    if (GAME_SETTINGS) { closeGameSettings(); return; }
     if (RETUNE_DRAFT) { closeRetune(); return; }
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
@@ -8134,6 +8196,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
           root.setProperty('--raid-tg-safe-' + side, inset(tg.safeAreaInset?.[side]) + 'px');
           root.setProperty('--raid-tg-content-' + side, inset(tg.contentSafeAreaInset?.[side]) + 'px');
         }
+        positionGameSettings();
       }
       telegramCall(tg, 'ready'); telegramCall(tg, 'expand');
       let canDisable = typeof tg.disableVerticalSwipes === 'function';
@@ -8143,14 +8206,14 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
       telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -8163,6 +8226,86 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     sdk.onload = connect;
     sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Без профиля игра не сохраняется, жесты Telegram не защищены.'); };
     document.head.appendChild(sdk);
+  }
+
+  // --- direct board settings (transient UI, NOT a pause/checkpoint) ----------
+  let GAME_SETTINGS = null, SETTINGS_OUTSIDE = null;
+  function positionGameSettings() {
+    if (!GAME_SETTINGS) return;
+    const wrap = el('game-settings'), card = qs('.game-settings-card');
+    const bounds = wrap.getBoundingClientRect(), anchor = el('settings-btn').getBoundingClientRect();
+    const size = card.getBoundingClientRect(), style = window.getComputedStyle(wrap);
+    const pad = side => parseFloat(style['padding' + side]) || 12;
+    const left = Math.max(pad('Left'), Math.min(anchor.left - bounds.left + anchor.width / 2 - size.width / 2, bounds.width - pad('Right') - size.width));
+    const top = Math.max(pad('Top'), Math.min(anchor.bottom - bounds.top + 8, bounds.height - pad('Bottom') - size.height));
+    card.style.left = left + 'px'; card.style.top = top + 'px';
+  }
+  function openGameSettings() {
+    if (GAME_SETTINGS || !S || S.over || activeDrag || pickerOpen || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal
+      || ['menu-modal', 'help-modal', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
+    const wrap = el('game-settings'); if (!wrap) return false;
+    GAME_SETTINGS = { background: [] }; SETTINGS_OUTSIDE = null;
+    wrap.hidden = false; wrap.classList.add('show'); el('settings-btn').setAttribute('aria-expanded', 'true');
+    // Retain the underlying chain/A1 draft. Inert plus capture guards block
+    // queued input too; no S writes, saveRun, gesture cancellation or timers.
+    for (const node of document.body.children) if (node !== wrap && node.tagName !== 'SCRIPT') {
+      GAME_SETTINGS.background.push({ node, inert: node.hasAttribute('inert'), aria: node.getAttribute('aria-hidden') });
+      node.setAttribute('inert', ''); node.setAttribute('aria-hidden', 'true');
+    }
+    positionGameSettings(); qs('#game-visual input')?.focus({ preventScroll: true });
+    syncTelegramChrome(); return true;
+  }
+  function closeGameSettings(focus = true) {
+    if (!GAME_SETTINGS) return;
+    const session = GAME_SETTINGS; GAME_SETTINGS = SETTINGS_OUTSIDE = null;
+    const wrap = el('game-settings'); wrap.classList.remove('show'); wrap.hidden = true;
+    el('settings-btn').setAttribute('aria-expanded', 'false');
+    for (const { node, inert, aria } of session.background) {
+      if (!inert) node.removeAttribute('inert');
+      if (aria === null) node.removeAttribute('aria-hidden'); else node.setAttribute('aria-hidden', aria);
+    }
+    if (focus) el('settings-btn')?.focus({ preventScroll: true });
+    syncTelegramChrome();
+  }
+  function initGameSettings() {
+    const button = el('settings-btn'), close = el('settings-close'), wrap = el('game-settings'), card = qs('.game-settings-card');
+    if (!button || !close || !wrap || !card) return;
+    bindReadOnlyDismiss(button, openGameSettings, () => RUN_ID);
+    bindReadOnlyDismiss(close, closeGameSettings, () => GAME_SETTINGS);
+    // Dismiss on CLICK, not pointerdown: keep the shield through pointerup
+    // and the synthesized click. That same tap must never touch the board,
+    // cast/confirm A1 or press another header control after closing the panel.
+    for (const kind of ['pointerdown', 'pointerup', 'click', 'dblclick', 'contextmenu']) document.addEventListener(kind, event => {
+      if (!GAME_SETTINGS || card.contains(event.target)) return;
+      if (kind === 'pointerdown' && event.isPrimary !== false && !(event.button > 0)) SETTINGS_OUTSIDE = GAME_SETTINGS;
+      const dismiss = kind === 'click' && (event.detail === 0 || SETTINGS_OUTSIDE === GAME_SETTINGS);
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (dismiss) closeGameSettings();
+    }, true);
+    document.addEventListener('pointercancel', () => { SETTINGS_OUTSIDE = null; }, true);
+    document.addEventListener('keydown', event => {
+      if (!GAME_SETTINGS) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeGameSettings(); return; }
+      if (event.key !== 'Tab') return;
+      const controls = [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled)')];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!wrap.contains(document.activeElement) || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+      }
+      event.stopImmediatePropagation(); // A1 has its OWN underlying Tab ring.
+    }, true);
+    document.addEventListener('focusin', event => {
+      if (GAME_SETTINGS && !wrap.contains(event.target)) { event.stopImmediatePropagation(); qs('#game-visual input')?.focus({ preventScroll: true }); }
+    }, true);
+    // Prevent background scroll without changing shell sizing/scrollbar width.
+    for (const kind of ['wheel', 'touchmove']) wrap.addEventListener(kind, event => {
+      if (!card.contains(event.target)) event.preventDefault();
+    }, { passive: false });
+    window.addEventListener?.('resize', positionGameSettings);
+    document.addEventListener('scroll', positionGameSettings, true);
+    if (typeof window.ResizeObserver === 'function') {
+      const observer = new window.ResizeObserver(positionGameSettings); observer.observe(wrap); observer.observe(card);
+    }
   }
 
   // --- first-entry release notes (local UI metadata, NOT a run checkpoint) ---
@@ -8186,6 +8329,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (S && (RETUNE_DRAFT || S.resolving || S.pendingModal || S.selected.length)) {
       flash('Сначала заверши цепочку и выбор наград'); return false;
     }
+    closeGameSettings(false);
     UPDATES_SESSION = { prefix: PROFILE_PREFIX, focus: opener || document.activeElement, background: [] };
     UPDATES_OPEN = true; UPDATES_SHOWN.add(`${PROFILE_PREFIX}:${UPDATES_BUILD}`);
     el('updates-build').textContent = 'Сборка ' + UPDATES_BUILD;
@@ -8277,13 +8421,14 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     initRaidAppearance();
     initVisualPreferences();
     initMaterialAudio();
+    initGameSettings();
     window.addEventListener?.('resize', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
     initInput(); initRetune();
-    window.addEventListener?.('pagehide', () => { closeRetune(false); cancelPointerGesture(); saveRun(); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeRetune(false); cancelPointerGesture(); saveRun(); } });
+    window.addEventListener?.('pagehide', () => { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
       if (event.key === profileStorage.key(RUN_HISTORY_KEY) || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
       if (event.key !== profileStorage.key(RUN_SAVE_KEY) && event.key !== null) return;

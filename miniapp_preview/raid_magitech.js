@@ -96,6 +96,7 @@
     if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
     FLOAT_FRAME = 0;
     if (FLOAT_EFFECTS.size) renderFloatEffects();
+    positionGameSettings();
   }
   function loadVisualPreferences() {
     const defaults = { shells: true, animations: true };
@@ -1657,6 +1658,7 @@
   }
   function resumeSavedRun() {
     if (UPDATES_OPEN) return false;
+    closeGameSettings(false);
     closeRetune(false);
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
@@ -2109,6 +2111,7 @@
     if (RETUNE_DRAFT) return false;
     if (S?.resolving || S?.pendingModal && S.pendingModal !== 'gameover') { flash('Сначала заверши ход и выбор наград'); return false; }
     const wrap = el('history-modal'); if (!wrap) return false;
+    closeGameSettings(false);
     HISTORY_FOCUS = document.activeElement; HISTORY_OPEN = true;
     renderRunHistory(); wrap.hidden = false; wrap.classList.add('show'); el('history-title')?.focus(); return true;
   }
@@ -3194,6 +3197,7 @@
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     if (UPDATES_OPEN) return false;
+    closeGameSettings(false);
     closeRetune(false);
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
@@ -3476,29 +3480,33 @@
       if (cell) toggleRetuneTarget(Number(cell.dataset.idx));
     });
     document.addEventListener('keydown', event => {
-      if (!RETUNE_DRAFT) return;
+      if (!RETUNE_DRAFT || GAME_SETTINGS) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRetune(); return; }
       const cell = event.target.closest?.('#board > .cell');
       if (cell && ['Enter', ' '].includes(event.key)) { event.preventDefault(); toggleRetuneTarget(Number(cell.dataset.idx)); }
       if (event.key === 'Tab') {
-        const controls = [...qsa('#retune-panel button:not(:disabled)'), ...qsa('#board .retune-eligible')];
-        const first = controls[0], last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
-          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
-        }
+        const controls = [el('settings-btn'), ...qsa('#retune-panel button:not(:disabled)'), ...qsa('#board .retune-eligible')];
+        const index = controls.indexOf(document.activeElement);
+        // Explicit order skips unrelated header/skill buttons between the
+        // settings opener and A1 panel in DOM order, in BOTH directions.
+        const next = index < 0 ? (event.shiftKey ? controls.length - 1 : 0)
+          : (index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length;
+        event.preventDefault(); controls[next]?.focus();
       }
     });
     for (const kind of ['pointerdown', 'click']) document.addEventListener(kind, event => {
       if (!RETUNE_DRAFT) return;
       if (!retuneContext(RETUNE_DRAFT)) { closeRetune(false); }
-      else if (el('retune-panel').contains(event.target) || el('board').contains(event.target)) return;
+      else if (el('retune-panel').contains(event.target) || el('board').contains(event.target)
+        || el('settings-btn').contains(event.target) || GAME_SETTINGS && el('game-settings').contains(event.target)) return;
       // Leave native vertical scrolling available outside the board. Only
       // activations are blocked; a non-control pointerdown need not cancel pan.
       if (kind === 'click' || event.target.closest?.('button,select,a,input')) event.preventDefault();
       event.stopImmediatePropagation();
     }, true);
     document.addEventListener('focusin', event => {
-      if (RETUNE_DRAFT && !el('retune-panel').contains(event.target) && !el('board').contains(event.target)) qs('[data-retune-element]')?.focus();
+      if (RETUNE_DRAFT && !GAME_SETTINGS && !el('retune-panel').contains(event.target) && !el('board').contains(event.target)
+        && !el('settings-btn').contains(event.target)) qs('[data-retune-element]')?.focus();
     });
   }
 
@@ -4974,6 +4982,8 @@
     if (body) body.scrollTop = 0;
   }
   function openModal(kind, restoredChoices = null) {
+    const hadSettings = !!GAME_SETTINGS;
+    closeGameSettings(false);
     closeRetune(false);
     const runId = RUN_ID;
     S.pendingModal = kind;
@@ -5044,6 +5054,9 @@
       achievements.addEventListener('click', () => { if (runId === RUN_ID && S.over) openAchievements(); });
       body.appendChild(history); body.appendChild(achievements); body.appendChild(restart);
     }
+    // An asynchronous reward may arrive while the transient settings are up.
+    // Hand focus to its real choice, never keep it inside a now-hidden panel.
+    if (hadSettings) body.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     queueRunSave();
   }
 
@@ -5076,6 +5089,7 @@
   }
 
   function showSkullModal(skull) {
+    closeGameSettings(false);
     const runId = RUN_ID;
     const wrap = el('modal');
     const title = el('modal-title');
@@ -6272,6 +6286,7 @@
     refresh(); return true;
   }
   function showClassPicker() {
+    closeGameSettings(false);
     closeRetune(false);
     if (S?.resolving || S?.pendingModal) return false;
     const picker = el('class-picker');
@@ -6333,7 +6348,7 @@
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
-    const back = UPDATES_OPEN || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
+    const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
@@ -6347,6 +6362,7 @@
   }
   function requestTelegramClose(discard = false) {
     if (!TELEGRAM_APP) return false;
+    closeGameSettings(false);
     closeRetune(false);
     cancelPointerGesture();
     // A pending reward is a resumable checkpoint, not a reason to forbid exit.
@@ -6372,6 +6388,7 @@
   function telegramBack() {
     // A read-only notice has no gesture/reward to cancel underneath it.
     if (UPDATES_OPEN) { closeUpdateNotice(); return; }
+    if (GAME_SETTINGS) { closeGameSettings(); return; }
     if (RETUNE_DRAFT) { closeRetune(); return; }
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
@@ -6410,6 +6427,7 @@
           root.setProperty('--raid-tg-safe-' + side, inset(tg.safeAreaInset?.[side]) + 'px');
           root.setProperty('--raid-tg-content-' + side, inset(tg.contentSafeAreaInset?.[side]) + 'px');
         }
+        positionGameSettings();
       }
       telegramCall(tg, 'ready'); telegramCall(tg, 'expand');
       let canDisable = typeof tg.disableVerticalSwipes === 'function';
@@ -6419,14 +6437,14 @@
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
       telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -6439,6 +6457,86 @@
     sdk.onload = connect;
     sdk.onerror = () => { clearTimeout(timeout); telegramNotice('Telegram SDK недоступен. Без профиля игра не сохраняется, жесты Telegram не защищены.'); };
     document.head.appendChild(sdk);
+  }
+
+  // --- direct board settings (transient UI, NOT a pause/checkpoint) ----------
+  let GAME_SETTINGS = null, SETTINGS_OUTSIDE = null;
+  function positionGameSettings() {
+    if (!GAME_SETTINGS) return;
+    const wrap = el('game-settings'), card = qs('.game-settings-card');
+    const bounds = wrap.getBoundingClientRect(), anchor = el('settings-btn').getBoundingClientRect();
+    const size = card.getBoundingClientRect(), style = window.getComputedStyle(wrap);
+    const pad = side => parseFloat(style['padding' + side]) || 12;
+    const left = Math.max(pad('Left'), Math.min(anchor.left - bounds.left + anchor.width / 2 - size.width / 2, bounds.width - pad('Right') - size.width));
+    const top = Math.max(pad('Top'), Math.min(anchor.bottom - bounds.top + 8, bounds.height - pad('Bottom') - size.height));
+    card.style.left = left + 'px'; card.style.top = top + 'px';
+  }
+  function openGameSettings() {
+    if (GAME_SETTINGS || !S || S.over || activeDrag || pickerOpen || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal
+      || ['menu-modal', 'help-modal', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
+    const wrap = el('game-settings'); if (!wrap) return false;
+    GAME_SETTINGS = { background: [] }; SETTINGS_OUTSIDE = null;
+    wrap.hidden = false; wrap.classList.add('show'); el('settings-btn').setAttribute('aria-expanded', 'true');
+    // Retain the underlying chain/A1 draft. Inert plus capture guards block
+    // queued input too; no S writes, saveRun, gesture cancellation or timers.
+    for (const node of document.body.children) if (node !== wrap && node.tagName !== 'SCRIPT') {
+      GAME_SETTINGS.background.push({ node, inert: node.hasAttribute('inert'), aria: node.getAttribute('aria-hidden') });
+      node.setAttribute('inert', ''); node.setAttribute('aria-hidden', 'true');
+    }
+    positionGameSettings(); qs('#game-visual input')?.focus({ preventScroll: true });
+    syncTelegramChrome(); return true;
+  }
+  function closeGameSettings(focus = true) {
+    if (!GAME_SETTINGS) return;
+    const session = GAME_SETTINGS; GAME_SETTINGS = SETTINGS_OUTSIDE = null;
+    const wrap = el('game-settings'); wrap.classList.remove('show'); wrap.hidden = true;
+    el('settings-btn').setAttribute('aria-expanded', 'false');
+    for (const { node, inert, aria } of session.background) {
+      if (!inert) node.removeAttribute('inert');
+      if (aria === null) node.removeAttribute('aria-hidden'); else node.setAttribute('aria-hidden', aria);
+    }
+    if (focus) el('settings-btn')?.focus({ preventScroll: true });
+    syncTelegramChrome();
+  }
+  function initGameSettings() {
+    const button = el('settings-btn'), close = el('settings-close'), wrap = el('game-settings'), card = qs('.game-settings-card');
+    if (!button || !close || !wrap || !card) return;
+    bindReadOnlyDismiss(button, openGameSettings, () => RUN_ID);
+    bindReadOnlyDismiss(close, closeGameSettings, () => GAME_SETTINGS);
+    // Dismiss on CLICK, not pointerdown: keep the shield through pointerup
+    // and the synthesized click. That same tap must never touch the board,
+    // cast/confirm A1 or press another header control after closing the panel.
+    for (const kind of ['pointerdown', 'pointerup', 'click', 'dblclick', 'contextmenu']) document.addEventListener(kind, event => {
+      if (!GAME_SETTINGS || card.contains(event.target)) return;
+      if (kind === 'pointerdown' && event.isPrimary !== false && !(event.button > 0)) SETTINGS_OUTSIDE = GAME_SETTINGS;
+      const dismiss = kind === 'click' && (event.detail === 0 || SETTINGS_OUTSIDE === GAME_SETTINGS);
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (dismiss) closeGameSettings();
+    }, true);
+    document.addEventListener('pointercancel', () => { SETTINGS_OUTSIDE = null; }, true);
+    document.addEventListener('keydown', event => {
+      if (!GAME_SETTINGS) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeGameSettings(); return; }
+      if (event.key !== 'Tab') return;
+      const controls = [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled)')];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!wrap.contains(document.activeElement) || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+      }
+      event.stopImmediatePropagation(); // A1 has its OWN underlying Tab ring.
+    }, true);
+    document.addEventListener('focusin', event => {
+      if (GAME_SETTINGS && !wrap.contains(event.target)) { event.stopImmediatePropagation(); qs('#game-visual input')?.focus({ preventScroll: true }); }
+    }, true);
+    // Prevent background scroll without changing shell sizing/scrollbar width.
+    for (const kind of ['wheel', 'touchmove']) wrap.addEventListener(kind, event => {
+      if (!card.contains(event.target)) event.preventDefault();
+    }, { passive: false });
+    window.addEventListener?.('resize', positionGameSettings);
+    document.addEventListener('scroll', positionGameSettings, true);
+    if (typeof window.ResizeObserver === 'function') {
+      const observer = new window.ResizeObserver(positionGameSettings); observer.observe(wrap); observer.observe(card);
+    }
   }
 
   // --- first-entry release notes (local UI metadata, NOT a run checkpoint) ---
@@ -6462,6 +6560,7 @@
     if (S && (RETUNE_DRAFT || S.resolving || S.pendingModal || S.selected.length)) {
       flash('Сначала заверши цепочку и выбор наград'); return false;
     }
+    closeGameSettings(false);
     UPDATES_SESSION = { prefix: PROFILE_PREFIX, focus: opener || document.activeElement, background: [] };
     UPDATES_OPEN = true; UPDATES_SHOWN.add(`${PROFILE_PREFIX}:${UPDATES_BUILD}`);
     el('updates-build').textContent = 'Сборка ' + UPDATES_BUILD;
@@ -6553,13 +6652,14 @@
     initRaidAppearance();
     initVisualPreferences();
     initMaterialAudio();
+    initGameSettings();
     window.addEventListener?.('resize', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
     initInput(); initRetune();
-    window.addEventListener?.('pagehide', () => { closeRetune(false); cancelPointerGesture(); saveRun(); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeRetune(false); cancelPointerGesture(); saveRun(); } });
+    window.addEventListener?.('pagehide', () => { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
       if (event.key === profileStorage.key(RUN_HISTORY_KEY) || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
       if (event.key !== profileStorage.key(RUN_SAVE_KEY) && event.key !== null) return;

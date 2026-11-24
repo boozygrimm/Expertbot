@@ -23,7 +23,32 @@
 > алхимии — тогда этот файл главный. Остальные `LUNAPARK_*.md` частично
 > устарели.**
 
-**V0 настроек и M0 мехов/пилотов реализованы, QA завершён — подготовка нового выпуска:**
+**Прямые настройки на игровом экране реализованы; QA завершён — отдельный выпуск после135:**
+шестерёнка44px занимает прежнее место звука в шапке, открывает округлую
+полупрозрачную панель272px с **кружками/анимациями/звуком** без перехода в меню.
+Высота шапки/поле/доступные hit-targets прежние; Escape/Back/крестик/тап снаружи
+закрывают только панель, без click-through. A1 draft сохраняется, Tab/ShiftTab
+проходят его и settings в обоих направлениях. Это UI, не пауза/новый save.
+**6a5e7b06b6c1 /4034510B /SHA256
+731b8212b04693447e4fe197b9c0456dff1b81f801b5df1bc02ae5eba394805d**.
+Свежие **804npm PASS/0fail/0skip**, **274Python+48subtests PASS** (9 целевых
+модулей). Chromium153:
+**48 paired phases с exact releasedd784 +6genuine upgrades +20direct UI cases
++4A1/viewport +2trusted WebAudio +4real multitouch**, errors[]. Actual первый
+«Что нового», краткая история, help/COMMANDS обновлены. AGENTS и весь
+LUNA1–5451 прочитаны до правок, узкий запрос записан §4 до runtime.
+Создан **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**, product
+**03f4667313114abf9e6c8ae59e1f10fe68f0ccca**. Эта Git-запись pre-merge;
+фактические merge/Pages/public и ограничения — в
+**[release-протоколе7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652)**,
+обновляемом после операций. Pages/live Render нельзя выводить из local PASS. Предыдущий
+**[PR135](https://github.com/boozygrimm/Expertbot/pull/135) MERGED**,
+main **e32b147d3ef231dd131c85d867d92e43c0cd401f**, Pages45317427019 SUCCESS/
+publicd784 — [завершённый протокол7120790567](https://github.com/boozygrimm/Expertbot/pull/135#issuecomment-7120790567).
+Та же assigned-ветка, Arena `pr_open` не перезаписывает факты GH. M1/B/C/bossD/
+парк/облако/рассылка/второй poller не включены. Ниже — исторические сводки135 и раньше.
+
+**Историческая pre-merge сводка PR135 — V0/M0, QA был завершён:**
 владелец **«Согласен, действуй»** одобрил ровно два независимых переключателя и
 адаптацию существующих пакетов без новых бонусов (§4/§5). «Вид и движение» на
 подготовке/в меню: оболочка on/off и анимации on/off,4 сочетания, текущий default,
@@ -242,7 +267,29 @@ auto-main для существующего бота; Pages не доказыв�
 
 ## 2. Где мы сейчас (короткая сводка)
 
-- **V0/M0 по «Согласен, действуй» реализованы; новый выпуск готовится:**
+- **Прямые настройки на поле реализованы, QA завершён, готовится отдельный выпуск после135:**
+  - Шестерёнка44×44 на прежнем месте звука, небольшой rounded/translucent popup
+    до272px/radius28, три прежних тумблера: оболочка, анимации, звук. Шапка не
+    выросла, модели/ячейки/лейблы не пересоздаются. Резервные controls подготовки/
+    меню синхронны. Визуал — прежний per-profile key/default/OS priority; звук —
+    прежний единственный checkbox/session default/instant mute/no replay.
+  - Inert+capture shield до click, session guard закрытия, Tab/ShiftTab/focus/
+    Escape/SDK Back. A1 не отменяется первым закрытием; обратный Tab к шестерёнке
+    нативно проверен и исправлен. Незавершённый drag не прерывается открытием,
+    обязательная награда убирает панель и получает фокус; фон/SDK deactivation
+    не оставляют inert. Нет записи checkpoint/новой паузы/ускорения420/550.
+  - **6a5e7b06b6c1 /4034510B /SHA731b8212…805d**. Свежие804npm,274Python+48
+    subtests; native48 phase pairs↔exactd784/6genuine upgrades/20UI/4A1+viewport/
+    2WebAudio/4multitouch, errors[]. First-entry текущего выпуска/help/history/
+    COMMANDS актуальны; ниже результаты135 исторические, не новая доставка.
+  - До правок полностью AGENTS/LUNA1–5451; consent§4 до runtime. Ветка
+    arena/4dac0ee2-expertbot, base=фактический merge135=e32b147; **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**,
+    [release-протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652), не135.
+    M1/B/C/bossD/парк/облако/рассылка не включены. До фактического merge/Pages
+    эта Git-запись не означает публикацию; Render/physicalTelegram/FPS/батарея
+    остаются отдельно неподтверждёнными. Не очищать прогресс/не начинать заново.
+
+- **Историческая pre-merge сводка135 — V0/M0 реализованы:**
   - AGENTS и весь актуальный LUNA1–5329 прочитаны до правок. Согласие записано §4
     до runtime. Существующие8 путей, новых файлов проекта/зависимостей нет; branch
     arena/4dac0ee2-expertbot от merge134=d957c70. Старый134 MERGED; создан новый
@@ -1105,6 +1152,27 @@ auto-main для существующего бота; Pages не доказыв�
 не бухгалтерией: игрок всегда видит цель, стоимость действия и что получит.
 
 ## 4. Принятые решения и открытые вопросы
+
+**После PR135 — настройки должны быть прямо на игровом экране:**
+
+- Прямое поручение: «надо небольшую кнопку с небольшим овальным можно
+  полупрозрачным попап окном с настройками именно на игровой экран. А там
+  тумблеры настроек все, которые есть. А то в меню неинтересно».
+- Разрешена компактная кнопка/округлая полупрозрачная панель для **нынешних**
+  оболочки, анимаций и звука. Не добавлять «качество»/темы/новые опции/состояния,
+  не менять локацию/сложность/меха/пилота текущего рейда и не начинать M1.
+  Это уточнение расположения UI, не отмена contracts V0/M0/сохранений/таймеров.
+- Высота шапки прежняя: звуковой checkbox переезжает в панель, компактная кнопка
+  занимает его место. Клавиатура/доступные labels/44px hit-targets, явное закрытие,
+  Escape/SDK Back и тап снаружи без click-through. Резервные visual controls
+  подготовки/меню остаются синхронными; звук не получает новой схемы/механики.
+- Панель UI-only: не S.pendingModal/сохранение/продолжение/пауза боя. Оболочка/
+  движение используют прежние profile prefs/default/OS priority/visual cleanup,
+  sound — прежний checkbox/немедленный mute/no replay. Выделение/A1 draft/RNG/
+  checkpoint/420/550/reward order/старые Continue/classic/profiles не менять.
+- Проверенный шаг можно выпустить по прежнему контракту, с актуальным первым
+  «Что нового», краткой историей, документацией и отдельными фактами Pages/Render.
+  M1/B/C/bossD/парк/облако/настоящая рассылка вне этого запроса.
 
 **Ответ после проекта V0/M0 — утверждено, можно реализовать:**
 
@@ -2236,6 +2304,93 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   `ALCHEMY_MINI_APP_PLAN.md` и `FREE_CAPACITY_OPTIONS.md` (оценки от 12.11).
 
 ## 7. Журнал работы (дописывать сверху, новые записи выше старых)
+
+### Прямая панель на игровом экране — реализована и проверена; подготовка отдельного выпуска после135
+
+- Узкое прямое поручение владельца записано §4 до runtime. AGENTS/fullLUNA1–5451
+  прочитаны до правок. Clean ff-only до actual merge135=e32b147 на той же
+  arena/4dac0ee2-expertbot;135 MERGED/open-headPRs[] перепроверены. Ни смены ветки,
+  ни повторного merge135, ни нового игрового scope.
+- `#settings-btn` занял прежний sound slot: в шапке остаются3 controls44px.
+  `#game-settings` — небольшой272px/radius28 panel с мягкой прозрачностью/локальным
+  blur и непрозрачным fallback. Тумблеры оболочки/анимаций повторно используют
+  прежние prefs/OS priority и синхронны с picker/menu. `#sound-on` в единственном
+  экземпляре перенесён внутрь: audio engine/activation/mute/no queued replay
+  байтово прежние, звук не получил нового persistence или настройки громкости.
+- Panel transient, не `S.pendingModal`, не checkpoint/пауза. Snapshot inert/ARIA
+  восстанавливается, Tab/focus в панели, Escape/SDK Back закрывает верхний слой
+  первым. Outside pointerdown не закрывает shield до синтезированного click;
+  старый click не закрывает новую session и не выбирает клетку/навык/награду.
+  Active drag не теряется вторым пальцем на gear; новый обязательный reward
+  закрывает popup/получает фокус, resize/stableSDK safe areas/фон работают.
+- A1 element/1–3 targets/доступность Apply/raw checkpoint сохраняются через
+  открытие/все toggles/первое Escape/Back. Нативный QA нашёл настоящий UI-недочёт:
+  reverse Tab из A1 упирался в посторонний skill/focus bounce; явный замкнутый
+  A1 tab order исправлен, regression добавлен. Это input-only, не cast/цена/таймер.
+- Финальный **6a5e7b06b6c1 /4034510B /SHA256
+  731b8212b04693447e4fe197b9c0456dff1b81f801b5df1bc02ae5eba394805d**.
+  Новые17DOM+1source tests: actual RED17→GREEN17; старые sound/header/current
+  notice assertions сознательно обновлены под approved UI. Итоговый **804npm
+  PASS/0fail/0skip/519686.239468ms**, subprocess/npm exit0 записан отдельно.
+  Первая3da-сборка/804 PASS до A1 Tab fix не выдаётся за финальную.
+- **Python274+48subtests PASS/23.90s**: alchemy_logic/lunapark_sandbox/
+  sandbox_production/miniapp_backend/crafting/isolated_store/production/sessions/
+  owner_control_panel, plugin autoload off/pytest_asyncio. При разработке на3da
+  дополнительно9 owner-focused modules **149+68 PASS/29.71s**, набор частично пересекается,
+  суммы не складывать/не весь bot suite. Неверные имена файлов первого запуска
+  дали0tests и исправлены; baseline loop-scope deprecation осталась.
+- Chromium153 финального build: **48 paired phases↔exact releasedd784**
+  (SHA2579402b…ee3 из Git, не mutable query), web/SDK×v1/v2/v3×цепи3/36×4
+  сочетания; popup открыт во время фаз. State/объекты/ресурсы/очереди/все RNG/
+  420+550/final enemy once равны. **6genuine upgrades** из releasedv1/78dv2/2dv3:
+  raw до Continue/старые reward offers/RNG/rules/frozenOrc/nextHuman сохранены;
+  после выбора обязательной награды прямые настройки доступны без новой игры.
+- **20native UI cases** на320×568web/375×812SDK/844×390SDK/1024×768web:
+  16 четырёхсочетаний+4keyboard/outside/OS/error scenes, реальный touch/click,
+  тот же DOM/картинки/метрики поля и высота шапки, hit-targets≥44, notes bounded/
+  scrollable, фокус и SDKBack. Финальные PNG просмотрены (включая320/375 и
+  landscape notes), не промежуточный fade. **4A1+stableviewport**, **2trusted
+  native WebAudio** (mute/unmute/background no replay), **4CDP multitouch**
+  (secondary gear/primary release/cancel, web/SDK), errors[] во всех harness.
+- QA-fixture исправления не маскируются runtime: same-element fire не цель A1;
+  shop full bar штатно списывается при открытии; sound только с3-го узла. CDP
+  TouchEnd требует[] — для снятия второго пальца использован active-list move.
+  Для недетерминированной под CPU нагрузкой250ms voice проверка native pending
+  tails запланировала источники+60s **только в harness**; немедленный stop()
+  настоящий/без сдвига. Это не замер слышимого PCM/качества на телефоне.
+- Actual current notice теперь о прямой панели/трёх тумблерах, V0/M0 перенесены
+  в краткую историю; help/COMMANDS описывают вход/закрытие/Continue/границы.
+  Runtime/данные/арт/модели/classic/bot/builders/deps вне UI не расширялись.
+  Финальные guards **PASS**: повторный build байт-в-байт/source+inline syntax/
+  preview с внешним Host200 и точными bytes/diff; ESLint0errors/13baseline
+  warnings, tests0/0. **353 прежних функций + все остальные source bytes**
+  после точного удаления только4UI helpers/14wiring deltas/A1 input guards
+  совпадают с135; audio byte-identical. **561 прочий tracked blob** (classic,
+  art, оружие, bot, builders, deps) byte-identical135. Полный QA выше локальный,
+  не публикация. Логи/fixtures/harness `/tmp/raid-quick-settings-*`,
+  снимки `.arena/raid-quick-settings` (вне Git).
+- Создан отдельный **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**,
+  product **03f4667313114abf9e6c8ae59e1f10fe68f0ccca**,8 существующих файлов; GH OPEN/base135,
+  checks[] не означает greenCI. Docs-only follow-up добавляет эту ссылку и
+  **[release-протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652)**.
+  До реальных операций эта Git-запись pre-merge: main/Pages/public подтверждаются по SHA/Pages API,
+  Render-revision/physicalTelegram/FPS/батарея отдельно не проверены. Не очищать
+  данные; свежий `/raid_test` после существующего auto-main rollout. Никаких
+  объявлений/второго poller/M1/B/C/bossD/парка/облака/импорта классики.
+
+### Историческая запись начала — принято поручение прямых настроек после135
+
+- Прямой запрос: небольшая кнопка/овальная полупрозрачная панель/все нынешние
+  тумблеры на самом игровом экране, не только в меню. Трактовка/границы записаны
+  §4 до runtime; AGENTS и весь актуальный LUNA1–5451 прочитаны последовательно.
+- На входе чистая arena/4dac0ee2-expertbot, GH135 MERGED/e32b147, assigned-head
+  openPRs[]. Fetch main/merge --ff-only до фактического135 без смены ветки/повтора
+  gh merge. Его Pages45317427019/publicd784 и786/274/native — прежний выпуск.
+- Точный Git-releasedd784/SHA2579402b…ee3 сохранён `/tmp/raid-quick-settings-released-d784.html`.
+  Дальше небольшой UI-only popup с оболочкой/анимациями/звуком, mirrored prefs,
+  Escape/Back/outside protection/focus/A1/старая фаза боя/узкий экран. Новый код/
+  QA/build/PR/публикация ещё не выполнены на момент записи. M1/баланс/новый звук/
+  парк/облако/рассылка не разрешены и не выполняются.
 
 ### V0/M0 реализованы: два переключателя/прежние мех+пилот,786npm/274Python/native PASS; выпуск готовится
 

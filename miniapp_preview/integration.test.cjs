@@ -2691,23 +2691,19 @@ test('magitech item motion: only coin/content has slow 3D rotation; frozen items
   } finally { b.dom.window.close(); }
 });
 
-test('magitech sound control: the existing checkbox is keyboard-focusable and its mute icon updates without synthetic audio activation', async () => {
+test('magitech sound control: the existing checkbox is a keyboard-focusable popup switch without synthetic audio activation', async () => {
   let contexts = 0;
   const b = await openMagitech({ setup(w) { w.AudioContext = class { constructor() { contexts++; } }; } });
   try {
     const doc = b.dom.window.document, input = doc.querySelector('#sound-on');
     assert.equal(input.hidden, false); assert.equal(input.type, 'checkbox'); assert.equal(input.checked, true);
     assert.equal(input.getAttribute('aria-label'), 'Звуковые эффекты');
+    doc.querySelector('#settings-btn').click();
+    assert.ok(doc.querySelector('#game-settings').contains(input)); assert.equal(input.getAttribute('role'), 'switch');
     input.focus(); assert.equal(doc.activeElement, input);
-    const mute = doc.querySelector('.sound-mute-line'), waves = doc.querySelector('.sound-waves');
-    assert.equal(b.dom.window.getComputedStyle(mute).display, 'none');
-    // jsdom 26 caches :checked-dependent SVG computed styles until an
-    // attribute invalidates them. Native immediate toggling is also verified
-    // in Chromium, without this no-op attribute refresh.
-    const refreshStyle = () => input.parentNode.setAttribute('class', input.parentNode.className);
-    input.click(); assert.equal(input.checked, false); refreshStyle();
-    assert.notEqual(b.dom.window.getComputedStyle(mute).display, 'none'); assert.equal(b.dom.window.getComputedStyle(waves).display, 'none');
-    input.click(); assert.equal(input.checked, true); refreshStyle(); assert.equal(b.dom.window.getComputedStyle(mute).display, 'none');
+    input.click(); assert.equal(input.checked, false);
+    input.click(); assert.equal(input.checked, true);
+    doc.querySelector('#settings-close').click();
     doc.dispatchEvent(new b.dom.window.Event('pointerdown')); doc.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: ' ' }));
     b.raid.tryExtendChain(0); b.raid.tryExtendChain(1); b.raid.tryExtendChain(2);
     assert.equal(contexts, 0, 'jsdom/synthetic inputs must not masquerade as a trusted user activation');
@@ -2754,11 +2750,11 @@ test('magitech material SFX: SDK deactivation silences pending voices and drops 
 });
 
 // Compact controls and immutable per-run scenery, exercised on the built page.
-test('magitech compact header: only sound, character and menu remain; help and confirmed restart still work from the menu', async () => {
+test('magitech compact header: settings replace sound without a fourth action; help and confirmed restart still work from the menu', async () => {
   const b = await openMagitech();
   try {
     const doc = b.dom.window.document, before = JSON.stringify(b.raid.state);
-    assert.deepEqual([...doc.querySelectorAll('.brand-actions > *')].map(n => n.matches('label') ? n.querySelector('input').id : n.id), ['sound-on', 'stats-btn', 'menu-btn']);
+    assert.deepEqual([...doc.querySelectorAll('.brand-actions > *')].map(n => n.id), ['settings-btn', 'stats-btn', 'menu-btn']);
     assert.equal(doc.querySelector('.skills-head .run-actions'), null);
     assert.equal(doc.querySelector('.shell .raid-run-heading'), null);
     assert.equal(doc.querySelector('.shell #help'), null); assert.equal(doc.querySelector('.shell #restart'), null);
@@ -3199,12 +3195,17 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /Два независимых переключателя/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Настройки прямо на игровом экране/);
+    assert.match(doc.querySelector('#updates-current').textContent, /шестерёнкой/);
+    assert.match(doc.querySelector('#updates-current').textContent, /полупрозрачную/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Все три тумблера/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Кружки.*анимации и звук/);
     assert.match(doc.querySelector('#updates-current').textContent, /четыре сочетания/);
     assert.match(doc.querySelector('#updates-current').textContent, /системное уменьшение движения/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Мех и пилот/);
-    assert.match(doc.querySelector('#updates-current').textContent, /смертным врагом/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Новых бонусов.*нет/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Цели «Перенастройки» сохраняются/);
+    assert.match(doc.querySelector('#updates-history').textContent, /мех и пилот/);
+    assert.match(doc.querySelector('#updates-history').textContent, /смертным врагом/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Новых бонусов.*нет/);
     assert.doesNotMatch(doc.querySelector('#updates-current').textContent, /Новый модуль|Новых? портрет/);
     assert.match(doc.querySelector('#updates-history').textContent, /по порядку выбора/);
     assert.match(doc.querySelector('#updates-history').textContent, /от первой выбранной к последней/);
@@ -4246,4 +4247,203 @@ test('magitech visual settings: static recipient numbers expire without a RAF lo
     await until(() => !d.querySelector('#raid-effects .float-fx'));
     assert.equal(made, 0); assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
+});
+
+// Direct board settings: a transient UI layer, never a reward/checkpoint/pause.
+const gameSettings = b => b.dom.window.document.querySelector('#game-settings');
+const openGameSettings = b => b.dom.window.document.querySelector('#settings-btn').click();
+const closeGameSettings = b => b.dom.window.document.querySelector('#settings-close').click();
+function settingsKey(b, key, extra = {}) {
+  const w = b.dom.window;
+  return w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
+}
+
+test('magitech gameplay settings: three existing toggles live in one labelled compact dialog, replacing sound in the three-action header', async () => {
+  const b = await openMagitech({ start: false });
+  try {
+    const d = b.dom.window.document, layer = gameSettings(b), button = d.querySelector('#settings-btn');
+    assert.ok(layer && button);
+    assert.equal(layer.hidden, true); assert.equal(layer.getAttribute('role'), 'dialog');
+    assert.equal(layer.getAttribute('aria-modal'), 'true'); assert.ok(d.getElementById(layer.getAttribute('aria-labelledby')));
+    assert.equal(button.getAttribute('aria-haspopup'), 'dialog'); assert.equal(button.getAttribute('aria-controls'), layer.id);
+    assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.deepEqual([...d.querySelectorAll('.brand-actions > *')].map(n => n.id), ['settings-btn','stats-btn','menu-btn']);
+    assert.deepEqual([...layer.querySelectorAll('input')].map(n => n.dataset.raidVisual || n.id), ['shells','animations','sound-on']);
+    assert.ok([...layer.querySelectorAll('input')].every(n => n.type === 'checkbox' && n.getAttribute('role') === 'switch' && n.checked && n.labels.length));
+    assert.equal(d.querySelectorAll('#sound-on').length, 1);
+    openGameSettings(b); assert.equal(layer.hidden, true, 'not a preparation/hidden-board settings route');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: opening/closing changes no game object, selection, checkpoint, metadata or image', async () => {
+  const b = await orbFixture();
+  try {
+    const d = b.dom.window.document, r = b.raid;
+    showOrbFixture(b, () => ({ type:'sword' })); [0,1,2].forEach(i => r.tryExtendChain(i));
+    const state = JSON.stringify(r.state), saved = raidStorage(b.dom.window), objects = [...r.state.board];
+    const nodes = [...d.querySelectorAll('#board > .cell')], orbs = nodes.map(n=>n.firstElementChild), images = orbs.map(n=>n.querySelector('img'));
+    for (let i=0;i<3;i++) {
+      openGameSettings(b); assert.equal(gameSettings(b).hidden, false);
+      assert.equal(d.querySelector('#settings-btn').getAttribute('aria-expanded'), 'true');
+      assert.equal(d.querySelector('#menu-modal').classList.contains('show'), false);
+      assert.equal(r.state.pendingModal, null); closeGameSettings(b);
+      assert.equal(gameSettings(b).hidden, true); assert.equal(d.activeElement.id, 'settings-btn');
+    }
+    assert.equal(JSON.stringify(r.state), state); assert.deepEqual(raidStorage(b.dom.window), saved);
+    nodes.forEach((n,i)=>{assert.equal(d.querySelector(`.cell[data-idx="${i}"]`),n);assert.equal(n.firstElementChild,orbs[i]);assert.equal(orbs[i].querySelector('img'),images[i]);assert.equal(r.state.board[i],objects[i]);});
+    assert.equal(d.querySelectorAll('.cell.selected').length, 3); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const shells of [true,false]) for (const animations of [true,false]) test(`magitech gameplay settings: ${shells}/${animations} uses existing synchronized per-profile choices, not a new save format`, async () => {
+  const b = await orbFixture();
+  try {
+    const d = b.dom.window.document, state = JSON.stringify(b.raid.state), raw = retuneRaw(b), seen = b.dom.window.localStorage.getItem(updatesKey);
+    openGameSettings(b); visualToggle(b,'shells',shells,'game'); visualToggle(b,'animations',animations,'game');
+    for (const scope of ['picker','menu','game']) for (const key of ['shells','animations']) assert.equal(d.querySelector(`#${scope}-visual [data-raid-visual="${key}"]`).checked,key==='shells'?shells:animations);
+    assert.equal(d.documentElement.dataset.raidShell,shells?'on':'off'); assert.equal(d.documentElement.dataset.raidMotion,animations?'on':'off');
+    assert.equal(b.dom.window.localStorage.getItem(visualKey),visualRecord(shells,animations));
+    assert.equal(JSON.stringify(b.raid.state),state); assert.equal(retuneRaw(b),raw); assert.equal(b.dom.window.localStorage.getItem(updatesKey),seen);
+    assert.equal(d.querySelector('#sound-on').checked,true); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: Escape and Tab belong to this layer; pre-existing inert/ARIA attributes are restored exactly', async () => {
+  const b = await orbFixture();
+  try {
+    const d = b.dom.window.document, menu = d.querySelector('#menu-modal'), shell = d.querySelector('.shell');
+    menu.setAttribute('inert',''); menu.setAttribute('aria-hidden','false'); shell.setAttribute('aria-hidden','false');
+    openGameSettings(b); assert.equal(shell.hasAttribute('inert'),true); assert.equal(shell.getAttribute('aria-hidden'),'true');
+    assert.ok(gameSettings(b).contains(d.activeElement));
+    d.querySelector('#settings-close').focus(); settingsKey(b,'Tab',{shiftKey:true}); assert.equal(d.activeElement.id,'sound-on');
+    settingsKey(b,'Tab'); assert.equal(d.activeElement.id,'settings-close');
+    d.querySelector('#menu-btn').focus(); assert.ok(gameSettings(b).contains(d.activeElement),'even synthetic focus cannot escape');
+    assert.equal(settingsKey(b,'Escape'),false); assert.equal(gameSettings(b).hidden,true);
+    assert.equal(menu.hasAttribute('inert'),true); assert.equal(menu.getAttribute('aria-hidden'),'false');
+    assert.equal(shell.hasAttribute('inert'),false); assert.equal(shell.getAttribute('aria-hidden'),'false');
+    assert.equal(d.activeElement.id,'settings-btn'); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: outside dismissal consumes the whole tap and never starts a chain, opens stats or activates a skill', async () => {
+  const b = await orbFixture();
+  try {
+    const w = b.dom.window, d = w.document, r = b.raid;
+    assert.equal(r.installSkillOption(r.prepareSkillOption('volley')),true);
+    showOrbFixture(b, () => ({ type:'sword' })); const before=JSON.stringify(r.state),raw=retuneRaw(b);
+    openGameSettings(b);
+    // An old synthetic click, without a pointerdown in THIS popup session,
+    // must not close a layer newly exposed by that old pointerup.
+    gameSettings(b).dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true})); assert.equal(gameSettings(b).hidden,false);
+    const cell=d.querySelector('.cell[data-idx="0"]'); raidPointer(w,cell,'pointerdown',41); raidPointer(w,cell,'pointerup',41);
+    cell.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true})); assert.equal(gameSettings(b).hidden,true);
+    assert.equal(JSON.stringify(r.state),before); assert.equal(retuneRaw(b),raw);
+    for (const selector of ['#stats-btn','#menu-btn','.skill']) {
+      openGameSettings(b); d.querySelector(selector).click(); assert.equal(gameSettings(b).hidden,true);
+      assert.equal(r.state.pendingModal,null); assert.equal(d.querySelector('#menu-modal').classList.contains('show'),false);
+    }
+    assert.equal(JSON.stringify(r.state),before); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: stale pointer close cannot dismiss a newer session and a non-primary touch cannot open during a board drag', async () => {
+  const b = await orbFixture();
+  try {
+    const w=b.dom.window,d=w.document;
+    showOrbFixture(b,()=>({type:'sword'})); raidDrag(b,11);
+    raidPointer(w,d.querySelector('#settings-btn'),'pointerdown',12,{isPrimary:false}); d.querySelector('#settings-btn').click();
+    assert.equal(gameSettings(b).hidden,true); assert.deepEqual(Array.from(b.raid.state.selected),[0,1,2]);
+    raidPointer(w,w,'pointercancel',11);
+    openGameSettings(b); const close=d.querySelector('#settings-close'); raidPointer(w,close,'pointerdown',13);
+    settingsKey(b,'Escape'); openGameSettings(b);
+    close.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true})); assert.equal(gameSettings(b).hidden,false);
+    raidPointer(w,close,'pointerdown',14); close.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true})); assert.equal(gameSettings(b).hidden,true);
+    assert.equal(b.raid.state.turn,0); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: the unpaid A1 element/targets survive toggles and first Escape, never accidentally apply or cancel', async () => {
+  const b = await retuneFixture();
+  try {
+    const d=b.dom.window.document,r=b.raid; r.activateSkill('retune'); retunePick(b,'fire',[0,1,2]);
+    const state=JSON.stringify(r.state),raw=retuneRaw(b);
+    d.querySelector('[data-retune-element="fire"]').focus(); settingsKey(b,'Tab',{shiftKey:true});
+    assert.equal(d.activeElement.id,'settings-btn','A1 reverse Tab reaches settings, not an unrelated skill or a focus bounce');
+    openGameSettings(b); assert.equal(gameSettings(b).hidden,false);
+    visualToggle(b,'shells',false,'game');visualToggle(b,'animations',false,'game');
+    settingsKey(b,'Escape'); assert.equal(gameSettings(b).hidden,true); assert.equal(d.querySelector('#retune-panel').hidden,false);
+    assert.equal(d.querySelector('[data-retune-element="fire"]').getAttribute('aria-pressed'),'true');
+    assert.deepEqual([...d.querySelectorAll('.retune-chosen')].map(n=>+n.dataset.idx),[0,1,2]);
+    assert.equal(d.querySelector('#retune-apply').disabled,false);assert.equal(JSON.stringify(r.state),state);assert.equal(retuneRaw(b),raw);
+    openGameSettings(b); d.querySelector('#retune-apply').click(); assert.equal(gameSettings(b).hidden,true);
+    assert.equal(d.querySelector('#retune-panel').hidden,false); assert.equal(JSON.stringify(r.state),state);
+    settingsKey(b,'Escape'); assert.equal(d.querySelector('#retune-panel').hidden,true); assert.equal(JSON.stringify(r.state),state);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech gameplay settings: an ongoing wave keeps original 420/550 waits and finishes enemy once with the popup still open', async () => {
+  const b=await orbFixture();
+  try {
+    const w=b.dom.window,d=w.document,r=b.raid,held=[],timeout=w.setTimeout.bind(w);
+    showOrbFixture(b,i=>({type:[31,30,24].includes(i)?'coin':'sword'}));
+    w.setTimeout=(fn,delay,...args)=>{if(delay===420||delay===550){const id=timeout(()=>{},2147483647);held.push({delay,fn:()=>fn(...args)});return id;}return timeout(fn,delay,...args);};
+    [31,30,24].forEach(i=>r.tryExtendChain(i));r.resolveChain();
+    openGameSettings(b);assert.equal(gameSettings(b).hidden,false);assert.deepEqual(held.map(n=>n.delay),[420]);
+    const state=JSON.stringify(r.state);visualToggle(b,'animations',false,'game');assert.equal(JSON.stringify(r.state),state);assert.equal(r.state.hero.gold,0);
+    held[0].fn();assert.deepEqual(held.map(n=>n.delay),[420,550]);assert.equal(r.state.turn,0);
+    held[1].fn();assert.equal(r.state.turn,1);assert.equal(gameSettings(b).hidden,false);
+    assert.equal(d.querySelectorAll('#board > .cell').length,36);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech gameplay settings: a newly due reward dismisses only the transient panel, restores background and focuses its real choices', async () => {
+  const b=await orbFixture();
+  try {
+    const d=b.dom.window.document,r=b.raid;openGameSettings(b);assert.equal(gameSettings(b).hidden,false);
+    r.state.hero.gold=100;r.checkGoldBox();assert.equal(gameSettings(b).hidden,true);assert.equal(r.state.pendingModal,'gold');
+    assert.equal(d.querySelector('.shell').hasAttribute('inert'),false);assert.equal(d.querySelector('#modal').hasAttribute('inert'),false);
+    assert.ok(d.querySelector('#modal-body').contains(d.activeElement));assert.equal(r.state.hero.gold,0,'the normal full-bar payment occurred once, not an extra settings charge');
+    const choices=JSON.stringify(r.state.menuCandidates);openGameSettings(b);assert.equal(gameSettings(b).hidden,true);
+    assert.equal(JSON.stringify(r.state.menuCandidates),choices);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech gameplay settings: SDK Back closes settings before A1, returns to native Close at root and never closes the host', async () => {
+  const stub=raidTelegramStub();
+  const b=await openMagitech({url:testerRaidUrl,setup(w){w.Telegram={WebApp:stub.tg};}});
+  try {
+    const d=b.dom.window.document;assert.equal(stub.tg.BackButton.isVisible,false);
+    openGameSettings(b);assert.equal(gameSettings(b).hidden,false);assert.equal(stub.tg.BackButton.isVisible,true);
+    const state=JSON.stringify(b.raid.state),saved=raidStorage(b.dom.window);
+    stub.back();assert.equal(gameSettings(b).hidden,true);assert.equal(stub.tg.BackButton.isVisible,false);
+    assert.equal(JSON.stringify(b.raid.state),state);assert.deepEqual(raidStorage(b.dom.window),saved);assert.equal(d.activeElement.id,'settings-btn');
+    assert.equal(stub.calls.includes('close'),false);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+for(const lifecycle of ['deactivated','hidden','pagehide'])test(`magitech gameplay settings: ${lifecycle} cannot leave an inert or stale popup after returning`,async()=>{
+  const stub=raidTelegramStub(),b=await openMagitech({url:testerRaidUrl,setup(w){w.Telegram={WebApp:stub.tg};}});
+  try{
+    const w=b.dom.window,d=w.document;openGameSettings(b);assert.equal(gameSettings(b).hidden,false);
+    if(lifecycle==='deactivated')stub.fire(lifecycle);
+    else if(lifecycle==='pagehide')w.dispatchEvent(new w.Event('pagehide'));
+    else {Object.defineProperty(d,'visibilityState',{value:'hidden',configurable:true});d.dispatchEvent(new w.Event('visibilitychange'));}
+    assert.equal(gameSettings(b).hidden,true);assert.equal(d.querySelector('.shell').hasAttribute('inert'),false);
+    assert.equal(d.querySelector('#settings-btn').getAttribute('aria-expanded'),'false');assert.equal(b.raid.state.turn,0);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech gameplay settings: OS priority and failed-write notices reach the direct controls; reload sound remains its previous session-only default',async()=>{
+  const b=await orbFixture();
+  try{
+    const w=b.dom.window,d=w.document,raw=retuneRaw(b);openGameSettings(b);w.__orbTest.reduce(true);
+    assert.equal(d.querySelector('#game-settings [data-raid-motion-note]').hidden,false);
+    visualToggle(b,'animations',true,'game');assert.equal(d.documentElement.dataset.raidMotion,'off');
+    const set=w.Storage.prototype.setItem;w.Storage.prototype.setItem=function(key,...args){if(key===visualKey)throw Error('Denied prefs');return set.call(this,key,...args);};
+    visualToggle(b,'shells',false,'game');const status=d.querySelector('#game-settings [data-raid-visual-status]');assert.equal(status.hidden,false);assert.match(status.textContent,/только в этом окне/);
+    d.querySelector('#sound-on').click();assert.equal(d.querySelector('#sound-on').checked,false);
+    closeGameSettings(b);openGameSettings(b);assert.equal(d.querySelector('#sound-on').checked,false);assert.equal(retuneRaw(b),raw);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
 });
