@@ -3199,11 +3199,16 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /Перенастройка/);
-    assert.match(doc.querySelector('#updates-current').textContent, /12 ходов/);
-    assert.match(doc.querySelector('#updates-current').textContent, /1–3/);
-    assert.match(doc.querySelector('#updates-current').textContent, /короче/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Плавнее массовое падение/);
+    assert.match(doc.querySelector('#updates-current').textContent, /по порядку выбора/);
+    assert.match(doc.querySelector('#updates-current').textContent, /от первой выбранной к последней/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Выжившие враги не взрываются/);
+    assert.match(doc.querySelector('#updates-current').textContent, /не добавляет ожидание/);
+    assert.match(doc.querySelector('#updates-current').textContent, /уменьшении движения/);
+    assert.doesNotMatch(doc.querySelector('#updates-current').textContent, /Новый модуль|Новых? портрет/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Перенастройка/);
+    assert.match(doc.querySelector('#updates-history').textContent, /12 ходов/);
+    assert.match(doc.querySelector('#updates-history').textContent, /1–3/);
+    assert.match(doc.querySelector('#updates-history').textContent, /короче/);
     assert.match(doc.querySelector('#updates-history').textContent, /31.*4/);
     assert.match(doc.querySelector('#updates-history').textContent, /четыр[её]х.*стихи/);
     assert.match(doc.querySelector('#updates-history').textContent, /без общей временной замены/);
@@ -3850,4 +3855,158 @@ test('magitech retune: a colour-only cast preserves fresh/frozen enemy metadata 
     const after=JSON.parse(retuneRaw(b));assert.deepEqual(after.rng,before.rng);assert.deepEqual(after.combat,before.combat);
     assert.equal(after.state.skillCooldowns.retune,12);assert.equal(r.state.turn,12);assert.deepEqual(b.errors,[]);
   } finally {b.dom.window.close();}
+});
+
+// Bounded presentation experiment: only confirmed disappearing chain members
+// have a gesture order. Geometry is simulated here; native compositor follows.
+const chainWaveAnimations = b => b.dom.window.__orbTest.created.filter(a => a.frames.at(-1)?.transform === 'scale(.08)');
+const chainSnake = Array.from({length:36}, (_,i) => Math.floor(i/6)*6 + (Math.floor(i/6)%2 ? 5-i%6 : i%6));
+for (const path of [[31,30,24], [24,30,31], [0,7,14,15,20,27,28,35], chainSnake.slice(0,12), chainSnake]) {
+  test(`magitech chain wave: ${path.length} nodes ${path[0]} to ${path.at(-1)} burst in selection order, not grid order`, async () => {
+    const b=await orbFixture();
+    try {
+      showOrbFixture(b, i => ({type:path.includes(i)?'coin':'sword'}));
+      const r=b.raid,h=b.dom.window.__orbTest,orbs=path.map(i=>orbAt(b,i));h.created.length=0;
+      for(const i of path) r.tryExtendChain(i);
+      assert.deepEqual([...r.state.selected],path);r.resolveChain();
+      assert.equal(chainWaveAnimations(b).length,0,'do not predict destruction before the existing 420ms settlement');
+      assert.equal(r.state.hero.gold,0);
+      await until(()=>r.state.hero.gold>=path.length*2);
+      const bursts=chainWaveAnimations(b),ordered=orbs.map(n=>bursts.find(a=>a.target===n));
+      assert.equal(bursts.length,path.length);assert.ok(ordered.every(Boolean));
+      const step=Math.min(32,120/(path.length-1));
+      for(const [i,a] of ordered.entries()) {
+        assert.ok(Math.abs(a.options.delay-i*step)<.00001,`node${i} follows the actual gesture`);
+        assert.equal(a.options.duration,120);assert.equal(a.options.fill,'both','untriggered ghost holds its real image');
+        assert.equal(a.startTime,null,'native next-frame start, never backdated');
+        assert.equal(a.frames[0].opacity,1);assert.equal(a.frames.at(-1).opacity,0);
+        const burst=a.target.parentElement;assert.ok(burst.classList.contains('orb-burst'));
+        assert.equal(parseFloat(burst.style.getPropertyValue('--burst-delay')),a.options.delay,'ring/shards use the same stagger');
+        const fade=h.created.find(other=>other.target===burst);
+        assert.equal(fade.options.delay,a.options.delay);assert.ok(fade.options.delay+fade.options.duration<=480);
+      }
+      const end=ordered.at(-1).options.delay+120,drops=h.created.filter(a=>a.target.dataset.motion);
+      assert.ok(drops.length);assert.equal(new Set(drops.map(a=>a.options.delay)).size,1);
+      for(const a of drops) {
+        assert.ok(a.options.delay>=end,'fall starts only when all chain cores are gone');
+        assert.ok(a.options.delay+a.options.duration<=510,'keep at least 40ms before the old enemy wait ends');
+        assert.equal(a.frames.length,2);assert.equal(a.frames.at(-1).transform,'translate(0,0)');
+        assert.equal(a.options.easing,'cubic-bezier(.22,.61,.36,1)');
+      }
+      const before=orbGameplay(b);h.finish();assert.equal(orbGameplay(b),before,'animation completion never pays or advances');
+      assert.deepEqual(b.errors,[]);
+    } finally {b.dom.window.close();}
+  });
+}
+
+test('magitech chain wave: arrow-skipped resource, surviving enemy and backtracked tail never receive a false explosion', async()=>{
+  const b=await orbFixture();
+  try {
+    const r=b.raid,survivor=Object.assign(r.makeSkull(false,false,0),{hp:99,maxHp:99,def:99,atk:0,enteredTurn:-1});
+    showOrbFixture(b,i=>i===3?{type:'skull',skull:survivor}:{type:i===0?'arrow':i===1?'coin':'sword'});
+    const originals=[0,1,2,3,9].map(i=>orbAt(b,i)),img=originals[3].querySelector('img');
+    for(const i of [0,1,2,8,2,3])r.tryExtendChain(i);
+    assert.deepEqual([...r.state.selected],[0,1,2,3]);r.resolveChain();
+    await until(()=>chainWaveAnimations(b).length>0);
+    const bursts=chainWaveAnimations(b);assert.equal(bursts.length,2);
+    assert.equal(bursts.find(a=>a.target===originals[0]).options.delay,0);
+    assert.equal(bursts.find(a=>a.target===originals[2]).options.delay,32);
+    for(const n of [originals[1],originals[3],orbAt(b,8)])assert.ok(!bursts.some(a=>a.target===n));
+    assert.equal(originals[3].querySelector('img'),img);assert.ok(originals[3].isConnected);
+    assert.equal(r.state.hero.gold,0);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech chain wave: collateral Kamikaze victims retain un-ordered bursts and do not overlap solid ghosts with the falling batch',async()=>{
+  const b=await orbFixture();
+  try {
+    const r=b.raid,bomb=Object.assign(r.makeSkull(false,true,10),{hp:1,maxHp:1,def:0,atk:0,enteredTurn:-1});
+    showOrbFixture(b,i=>i===2?{type:'skull',skull:bomb}:{type:i<2?'sword':'potion'});
+    const path=[2,1,0],ordered=path.map(i=>orbAt(b,i)),extra=orbAt(b,3);
+    for(const i of path)r.tryExtendChain(i);r.resolveChain();
+    await until(()=>r.state.skullsKilled===1);
+    const bursts=chainWaveAnimations(b);
+    assert.deepEqual(ordered.map(n=>bursts.find(a=>a.target===n).options.delay),[0,32,64]);
+    const collateral=bursts.find(a=>a.target===extra);assert.ok(collateral);assert.equal(collateral.options.delay,0);
+    assert.equal(collateral.options.duration,240,'do not invent a selection order for area effects');
+    for(const a of b.dom.window.__orbTest.created.filter(a=>a.target.dataset.motion)){
+      assert.ok(a.options.delay>=240);assert.ok(a.options.delay+a.options.duration<=510);
+    }
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+for(const cancel of ['resize','reduced','hidden','restart'])test(`magitech chain wave: ${cancel} clears even not-yet-started bursts, with stale callbacks harmless`,async()=>{
+  const b=await orbFixture();
+  try {
+    showOrbFixture(b,i=>({type:[24,30,31].includes(i)?'coin':'sword'}));
+    for(const i of [31,30,24])b.raid.tryExtendChain(i);b.raid.resolveChain();
+    await until(()=>b.raid.state.hero.gold===6);
+    const stale=b.dom.window.__orbTest.created.filter(a=>a.playState==='running').map(a=>a.onfinish);
+    assert.ok(chainWaveAnimations(b).some(a=>a.options.delay>0));
+    const before=orbGameplay(b),w=b.dom.window;
+    if(cancel==='resize')w.dispatchEvent(new w.Event('resize'));
+    else if(cancel==='reduced')w.__orbTest.reduce(true);
+    else if(cancel==='hidden'){Object.defineProperty(w.document,'visibilityState',{value:'hidden',configurable:true});w.document.dispatchEvent(new w.Event('visibilitychange'));}
+    else b.raid.newGame(991);
+    const after=orbGameplay(b),fresh=orbAt(b,0);if(cancel!=='restart')assert.equal(after,before);
+    for(const fn of stale)fn?.();
+    assert.equal(orbGameplay(b),after);assert.equal(orbAt(b,0),fresh);assert.ok(fresh.isConnected);
+    assert.equal(w.document.querySelectorAll('.orb-burst,[data-motion],.primed').length,0);assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech chain wave: Rune interior has no invented gesture index; magic weight is still one physical burst', async()=>{
+  const b=await orbFixture();
+  try {
+    const r=b.raid,path=[7,8,9,15,21,20,19,13];
+    r.state.runeActive=1;
+    showOrbFixture(b,i=>({type:path.includes(i)||i===14?'coin':'sword'}));
+    const nodes=path.map(i=>orbAt(b,i)),inside=orbAt(b,14);
+    for(const i of path)r.tryExtendChain(i);r.resolveChain();
+    await until(()=>chainWaveAnimations(b).length===9);
+    const bursts=chainWaveAnimations(b);
+    assert.deepEqual(nodes.map(n=>bursts.find(a=>a.target===n).options.delay),path.map((_,i)=>i*120/7));
+    const interior=bursts.find(a=>a.target===inside);assert.equal(interior.options.delay,0);assert.equal(interior.options.duration,240);
+    b.dom.window.__orbTest.finish();await until(()=>!r.state.resolving);
+    r.newGame(2718);showOrbFixture(b,i=>({type:'sword',...(i===0?{magicSword:true}:{})}));
+    const magic=[0,1,2].map(i=>orbAt(b,i));b.dom.window.__orbTest.created.length=0;
+    for(const i of [0,1,2])r.tryExtendChain(i);r.resolveChain();
+    await until(()=>chainWaveAnimations(b).length>0);
+    assert.deepEqual(magic.map(n=>chainWaveAnimations(b).find(a=>a.target===n).options.delay),[0,32,64],'magic ×5 is not five animation entries');
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech chain wave: a lethal Lich transforms on the same UID rather than exploding its still-living phylactery',async()=>{
+  const b=await orbFixture();
+  try{
+    const r=b.raid,lich=Object.assign(r.makeSkull(false,true,32),{hp:1,maxHp:1,def:0,atk:0,enteredTurn:-1});
+    showOrbFixture(b,i=>i===2?{type:'skull',skull:lich}:{type:'sword'});
+    const alive=orbAt(b,2),img=alive.querySelector('img'),weapons=[orbAt(b,0),orbAt(b,1)];
+    for(const i of [2,1,0])r.tryExtendChain(i);r.resolveChain();
+    await until(()=>chainWaveAnimations(b).length===2);
+    assert.equal(r.state.board.find(c=>c.type==='skull'&&c.skull.uid===lich.uid).skull.phylactery,true);
+    assert.ok(alive.isConnected);assert.equal(alive.querySelector('img'),img);
+    assert.ok(!chainWaveAnimations(b).some(a=>a.target===alive));
+    assert.equal(chainWaveAnimations(b).find(a=>a.target===weapons[1]).options.delay,0);
+    assert.equal(chainWaveAnimations(b).find(a=>a.target===weapons[0]).options.delay,32);
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+for(const removed of [0,1])test(`magitech chain wave: ${removed} actual disappearances among three selected nodes handles survivors without an empty timing range`,async()=>{
+  const b=await orbFixture();
+  try{
+    const r=b.raid,skulls=Array.from({length:3},()=>Object.assign(r.makeSkull(false,false,0),{hp:99,maxHp:99,def:99,atk:0,enteredTurn:-1}));
+    showOrbFixture(b,i=>i<3&&!(removed===1&&i===0)?{type:'skull',skull:skulls[i]}:{type:'sword'});
+    const original=[0,1,2].map(i=>orbAt(b,i));
+    for(const i of [0,1,2])r.tryExtendChain(i);r.resolveChain();
+    await until(()=>JSON.parse(retuneRaw(b)).next?.phase==='enemy');
+    const bursts=chainWaveAnimations(b);assert.equal(bursts.length,removed);
+    if(removed){assert.equal(bursts[0].target,original[0]);assert.equal(bursts[0].options.delay,0);assert.equal(bursts[0].options.duration,120);}
+    for(const n of original.slice(removed))assert.ok(n.isConnected&&!bursts.some(a=>a.target===n));
+    for(const a of b.dom.window.__orbTest.created.filter(a=>a.target.dataset.motion))assert.ok(Number.isFinite(a.options.delay)&&Number.isFinite(a.options.duration)&&a.options.delay+a.options.duration<=510);
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
 });

@@ -2600,7 +2600,7 @@
       if (cell && cell.type !== 'empty') ORB_VIEWS.get(orbIdentity(cell))?.node.classList.add('primed');
     }
   }
-  function burstOrb(view, rect, boardRect) {
+  function burstOrb(view, rect, boardRect, delay = 0, duration = 240) {
     view.motion?.cancel(); view.node.classList.remove('primed');
     if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
     const board = el('board');
@@ -2611,7 +2611,7 @@
     }
     const burst = document.createElement('div'); burst.className = 'orb-burst';
     burst.dataset.orbId = view.node.dataset.orbId;
-    burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')}`;
+    burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
     for (let i = 0; i < 4; i++) {
       const shard = document.createElement('i'); shard.className = 'orb-shard';
@@ -2620,15 +2620,17 @@
       burst.appendChild(shard);
     }
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node); layer.appendChild(burst);
-    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration: 240, easing: 'ease-out', fill: 'forwards' }, () => view.node.remove());
-    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360 }, () => burst.remove());
+    // Backwards fill holds an untriggered ghost in its original socket. Its
+    // ring/shards stay hidden until the same delay (CSS forwards fill only).
+    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
   }
-  function moveOrb(view, dx, dy, incoming, delay) {
+  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390) {
     if (Math.abs(dx) + Math.abs(dy) < 1) return;
     view.motion?.cancel();
     view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
     const falling = Math.abs(dx) < 1 && dy < 0;
-    const duration = falling ? 390 : 300;
+    const duration = Math.min(falling ? 390 : 300, maxDuration);
     let animation;
     animation = animateOrb(view.node, [
       { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .6 : 1 },
@@ -2716,7 +2718,7 @@
     view.frozen = frozen; view.initialized = true;
   }
 
-  function renderBoard() {
+  function renderBoard(chainOrder = []) {
     const board = qs('#board');
     if (!board) return;
     if (!board.dataset.cellsReady) {
@@ -2733,8 +2735,19 @@
     // FIRST: capture the actual, possibly interrupted on-screen positions before
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
-    for (const [key, view] of previous) if (!keys.includes(key)) {
-      burstOrb(view, rects.get(key), boardRect);
+    const removed = [...previous].filter(([key]) => !keys.includes(key));
+    // Gesture order is local presentation data captured before settlement.
+    // Only actual disappearances participate: never burst a surviving target
+    // or an arrow-skipped resource. Area/Rune victims have no gesture order.
+    const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
+    const step = ordered.length > 1 ? Math.min(32, 120 / (ordered.length - 1)) : 0;
+    const delays = new Map(ordered.map((key, index) => [key, index * step]));
+    // Fit the entire visible wave + one monotone fall inside the EXISTING
+    // 550ms enemy wait. Long chains compress the stagger, never extend a turn.
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
+    const maxDuration = ordered.length ? Math.min(390, 510 - fallDelay) : 390;
+    for (const [key, view] of removed) {
+      burstOrb(view, rects.get(key), boardRect, delays.get(key) || 0, delays.has(key) ? 120 : 240);
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
     const incoming = Array(COLS).fill(0);
@@ -2772,11 +2785,11 @@
       // skip the beginning (or all) of a fall on a slow device.
       for (const { view, idx, old, moved, rect } of plans) {
         if (!rect.width) continue;
-        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, 65);
+        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, fallDelay, maxDuration);
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
-          if (row < count) moveOrb(view, 0, -pitch * count, true, 65);
-          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260 });
+          if (row < count) moveOrb(view, 0, -pitch * count, true, fallDelay, maxDuration);
+          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, maxDuration), delay: ordered.length ? fallDelay : 0, fill: 'both' });
         }
       }
     }
@@ -4612,6 +4625,9 @@
 
   function settleChain(snapshot) {
     const { committed, rune, skulls, swords } = snapshot;
+    // Capture identities before damage/collection/gravity, not refilled slots.
+    // This short-lived array is neither a save field nor a gameplay timer.
+    const burstOrder = snapshot.effective.map(idx => S.board[idx]).filter(cell => cell && cell.type !== 'empty').map(orbIdentity);
     const result = withResourceBatch(batch => {
       // Rune deliberately precedes minimum-chain validation and the normal
       // MatchTiles counter reset. Interior ordinary skulls are COLLECTION,
@@ -4657,7 +4673,7 @@
       if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
       return batch.result;
     });
-    renderBoard(); renderHUD();
+    renderBoard(burstOrder); renderHUD();
     continueAfterRewards({ phase: 'chain', committed, result });
   }
 
