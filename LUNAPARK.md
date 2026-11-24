@@ -37,8 +37,11 @@
 +4A1/viewport +2trusted WebAudio +4real multitouch**, errors[]. Actual первый
 «Что нового», краткая история, help/COMMANDS обновлены. AGENTS и весь
 LUNA1–5451 прочитаны до правок, узкий запрос записан §4 до runtime.
-Это pre-merge запись: новый PR/его финальный release-протокол будут привязаны
-после создания; Pages/live Render нельзя выводить из local PASS. Предыдущий
+Создан **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**, product
+**03f4667313114abf9e6c8ae59e1f10fe68f0ccca**. Эта Git-запись pre-merge;
+фактические merge/Pages/public и ограничения — в
+**[release-протоколе7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652)**,
+обновляемом после операций. Pages/live Render нельзя выводить из local PASS. Предыдущий
 **[PR135](https://github.com/boozygrimm/Expertbot/pull/135) MERGED**,
 main **e32b147d3ef231dd131c85d867d92e43c0cd401f**, Pages45317427019 SUCCESS/
 publicd784 — [завершённый протокол7120790567](https://github.com/boozygrimm/Expertbot/pull/135#issuecomment-7120790567).
@@ -280,7 +283,8 @@ auto-main для существующего бота; Pages не доказыв�
     2WebAudio/4multitouch, errors[]. First-entry текущего выпуска/help/history/
     COMMANDS актуальны; ниже результаты135 исторические, не новая доставка.
   - До правок полностью AGENTS/LUNA1–5451; consent§4 до runtime. Ветка
-    arena/4dac0ee2-expertbot, base=фактический merge135=e32b147; новый PR, не135.
+    arena/4dac0ee2-expertbot, base=фактический merge135=e32b147; **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**,
+    [release-протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652), не135.
     M1/B/C/bossD/парк/облако/рассылка не включены. До фактического merge/Pages
     эта Git-запись не означает публикацию; Render/physicalTelegram/FPS/батарея
     остаются отдельно неподтверждёнными. Не очищать прогресс/не начинать заново.
@@ -2365,8 +2369,11 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   art, оружие, bot, builders, deps) byte-identical135. Полный QA выше локальный,
   не публикация. Логи/fixtures/harness `/tmp/raid-quick-settings-*`,
   снимки `.arena/raid-quick-settings` (вне Git).
-- Новый PR и его release-протокол создаются отдельно от135. До реальных операций
-  эта Git-запись pre-merge: main/Pages/public подтверждаются по SHA/Pages API,
+- Создан отдельный **[PR136](https://github.com/boozygrimm/Expertbot/pull/136)**,
+  product **03f4667313114abf9e6c8ae59e1f10fe68f0ccca**,8 существующих файлов; GH OPEN/base135,
+  checks[] не означает greenCI. Docs-only follow-up добавляет эту ссылку и
+  **[release-протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652)**.
+  До реальных операций эта Git-запись pre-merge: main/Pages/public подтверждаются по SHA/Pages API,
   Render-revision/physicalTelegram/FPS/батарея отдельно не проверены. Не очищать
   данные; свежий `/raid_test` после существующего auto-main rollout. Никаких
   объявлений/второго poller/M1/B/C/bossD/парка/облака/импорта классики.
