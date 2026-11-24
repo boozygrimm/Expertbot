@@ -4918,6 +4918,8 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   assert.match(css, /\.mech-detail-portrait \{ overflow: hidden; \}/);
   assert.match(css, /\.mech-detail-portrait img \{ width: 100%; height: 100%;/);
   assert.match(css, /\.picker-main \.picker-tools \.btn \{ min-height: 32px/);
+  assert.match(css, /mech-detail-actions\.mech-garage-side-actions \{ position: absolute;[^]*left: 5%;[^]*width: 23%/);
+  assert.match(css, /mech-detail-body\.mech-garage-home > \.mech-go-button \{ position: absolute;[^]*bottom: 10%/);
 });
 
 test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {
