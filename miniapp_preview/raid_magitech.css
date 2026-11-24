@@ -136,7 +136,32 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-sword .ic { color: #e8d8c0; }
 .cell.type-shield .ic { color: #7fd0e8; }
 .cell.type-coin .ic { color: #ffd97a; }
-.cell.type-potion .ic { color: #ff8ed4; }
+.cell.type-potion .ic { color: #ff8ed4; overflow: visible; }
+/* A fine-glass potion set: the vessel rocks slowly while each liquid slips
+   against the glass. All motion is decorative and obeys the global motion policy. */
+.cell.type-potion .potion-vessel {
+  transform-box: view-box; transform-origin: 24px 35px;
+  animation: potion-rock 5.8s cubic-bezier(.45,.05,.55,.95) infinite;
+  filter: drop-shadow(0 1px 1px #020b0a99);
+}
+.cell.type-potion .potion-wave { transform-box: fill-box; transform-origin: center; }
+.cell.type-potion .potion-wave-back { animation: potion-slosh-back 3.7s ease-in-out infinite; }
+.cell.type-potion .potion-wave-front { animation: potion-slosh-front 2.9s ease-in-out infinite; }
+.cell.type-potion .potion-bubble { fill: #fff8df; fill-opacity: .8; animation: potion-bubble-rise 2.8s ease-in-out infinite; }
+.cell.type-potion .potion-bubble-delay { animation-delay: -1.35s; }
+.cell.type-potion .potion-mark { filter: drop-shadow(0 0 1px #fff8dfaa); }
+.cell.type-potion.acid .potion-vessel { filter: drop-shadow(0 0 3px #b9e95a88); }
+.cell.type-potion.acid .potion-bubble { fill: #efffa6; }
+.cell.type-potion.mana .potion-vessel { filter: drop-shadow(0 0 3px #76c6ff88); }
+.cell.type-potion.mana .potion-mark { filter: drop-shadow(0 0 2px #d9f3ff); }
+.cell.type-potion.explosive .potion-vessel { filter: drop-shadow(0 0 3px #ffac5688); }
+.cell.type-potion.frozen .potion-vessel,
+.cell.type-potion.frozen .potion-wave,
+.cell.type-potion.frozen .potion-bubble { animation-play-state: paused; }
+@keyframes potion-rock { 0%,100% { transform: rotate(-1.8deg); } 50% { transform: rotate(1.8deg); } }
+@keyframes potion-slosh-back { 0%,100% { transform: translate(-1.2px,.2px) rotate(-2deg); } 50% { transform: translate(1.2px,-.4px) rotate(2deg); } }
+@keyframes potion-slosh-front { 0%,100% { transform: translate(1px,0) rotate(1.6deg); } 50% { transform: translate(-1px,-.3px) rotate(-1.6deg); } }
+@keyframes potion-bubble-rise { 0%,100% { transform: translateY(1px); opacity: .45; } 50% { transform: translateY(-1.5px); opacity: .9; } }
 .cell.type-skull .ic { color: #d6c8e0; }
 .cell.type-arrow .ic { color: #f5d28a; }
 /* concept-art skull sprites (from the catalog) */

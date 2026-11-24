@@ -4614,6 +4614,47 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
 
+test('magitech potion glass: health, acid, mana and explosive fills get clipped slosh and premium rocking', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  assert.match(js, /cell\.acid \? 'acid' : cell\.mana \? 'mana' : cell\.explosive \? 'explosive' : 'health'/);
+  for (const kind of ['health', 'acid', 'mana', 'explosive']) assert.ok(js.includes(`${kind}: '#`), kind + ' liquid palette');
+  assert.match(js, /raid-potion-fill-\$\{cellIdx\}/);
+  assert.match(js, /class="potion-vessel" data-potion="\$\{kind\}"/);
+  assert.match(js, /class="potion-wave potion-wave-back"/);
+  assert.match(js, /class="potion-wave potion-wave-front"/);
+  assert.match(js, /!!cell\.explosive.*cell\.magicSword/);
+  assert.match(css, /@keyframes potion-rock/);
+  assert.match(css, /@keyframes potion-slosh-back/);
+  assert.match(css, /@keyframes potion-slosh-front/);
+  assert.match(css, /\.cell\.type-potion\.frozen[^]*animation-play-state: paused/);
+  assert.match(css, /html\[data-raid-motion="off"\][^]*animation: none !important/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test('magitech potion renderer: each fill state creates a unique clipped bottle and its own liquid/accent', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const from = js.indexOf('  function tileSymbol('), to = js.indexOf('\n  // Alchemy reference:', from);
+  assert.ok(from >= 0 && to > from);
+  const render = vm.runInNewContext('(' + js.slice(from, to).trim() + ')', {
+    start: '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end: '</svg>',
+  });
+  const variants = [
+    [{ type: 'potion' }, 'health', '#d75b78'],
+    [{ type: 'potion', acid: true }, 'acid', '#b4d53b'],
+    [{ type: 'potion', mana: true }, 'mana', '#4d9fe6'],
+    [{ type: 'potion', explosive: true }, 'explosive', '#e98b3c'],
+  ];
+  for (const [cell, kind, colour] of variants) {
+    const index = variants.findIndex(item => item[1] === kind), svg = render(cell, index);
+    assert.match(svg, new RegExp(`data-potion="${kind}"`));
+    assert.match(svg, new RegExp(`raid-potion-fill-${index}`));
+    assert.ok(svg.includes(`fill="${colour}"`), kind + ' liquid color');
+    assert.ok(svg.includes('class="potion-wave potion-wave-front"'));
+  }
+  assert.notEqual(render(variants[0][0], 0), render(variants[3][0], 3));
+});
+
 test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {
   const source = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
   const skillSection = source.slice(source.indexOf('  const SKILLS = ['), source.indexOf('  // 7 уровней'));
