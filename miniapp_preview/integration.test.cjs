@@ -3199,12 +3199,15 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /по порядку выбора/);
-    assert.match(doc.querySelector('#updates-current').textContent, /от первой выбранной к последней/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Выжившие враги не взрываются/);
-    assert.match(doc.querySelector('#updates-current').textContent, /не добавляет ожидание/);
-    assert.match(doc.querySelector('#updates-current').textContent, /уменьшении движения/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Два независимых переключателя/);
+    assert.match(doc.querySelector('#updates-current').textContent, /четыре сочетания/);
+    assert.match(doc.querySelector('#updates-current').textContent, /системное уменьшение движения/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Мех и пилот/);
+    assert.match(doc.querySelector('#updates-current').textContent, /смертным врагом/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Новых бонусов.*нет/);
     assert.doesNotMatch(doc.querySelector('#updates-current').textContent, /Новый модуль|Новых? портрет/);
+    assert.match(doc.querySelector('#updates-history').textContent, /по порядку выбора/);
+    assert.match(doc.querySelector('#updates-history').textContent, /от первой выбранной к последней/);
     assert.match(doc.querySelector('#updates-history').textContent, /Перенастройка/);
     assert.match(doc.querySelector('#updates-history').textContent, /12 ходов/);
     assert.match(doc.querySelector('#updates-history').textContent, /1–3/);
@@ -4009,4 +4012,238 @@ for(const removed of [0,1])test(`magitech chain wave: ${removed} actual disappea
     for(const a of b.dom.window.__orbTest.created.filter(a=>a.target.dataset.motion))assert.ok(Number.isFinite(a.options.delay)&&Number.isFinite(a.options.duration)&&a.options.delay+a.options.duration<=510);
     assert.deepEqual(b.errors,[]);
   }finally{b.dom.window.close();}
+});
+
+// V0 preferences are local presentation metadata, never a checkpoint/migration.
+const visualKey = magitechKey('raid:visualPreferences');
+function visualToggle(b, key, value, scope = 'menu') {
+  const input = b.dom.window.document.querySelector(`#${scope}-visual [data-raid-visual="${key}"]`);
+  assert.ok(input, `visible preference control: ${scope}/${key}`);
+  input.checked = value;
+  input.dispatchEvent(new b.dom.window.Event('change', { bubbles: true }));
+}
+const visualRecord = (shells, animations) => JSON.stringify({ version: 1, shells, animations });
+
+test('magitech visual settings: exactly two independent choices, old appearance by default, no eager storage writes', async () => {
+  const b = await openMagitech({ start: false });
+  try {
+    const d = b.dom.window.document;
+    for (const scope of ['picker', 'menu']) {
+      const inputs = [...d.querySelectorAll(`#${scope}-visual input`)];
+      assert.deepEqual(inputs.map(n => n.dataset.raidVisual), ['shells', 'animations']);
+      assert.ok(inputs.every(n => n.type === 'checkbox' && n.checked && n.labels.length));
+    }
+    assert.equal(d.documentElement.dataset.raidShell, 'on'); assert.equal(d.documentElement.dataset.raidMotion, 'on');
+    assert.equal(b.dom.window.localStorage.getItem(visualKey), null);
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const shells of [true, false]) for (const animations of [true, false]) test(`magitech visual settings: ${shells}/${animations} retains chain, sockets, objects, images, semantics, RNG and raw saves`, async () => {
+  const b = await orbFixture();
+  try {
+    const r = b.raid, d = b.dom.window.document;
+    showOrbFixture(b, i => i === 8 ? { type: 'skull', skull: Object.assign(r.makeSkull(true), { atk: 0, hp: 99, maxHp: 99, countdown: 3 }) }
+      : { type: 'sword', ...(i === 9 ? { frozen: true } : i === 10 ? { broken: true } : i === 11 ? { burn: true } : i === 12 ? { explosive: true } : {}) });
+    [0, 1, 2].forEach(i => r.tryExtendChain(i));
+    const state = JSON.stringify(r.state), raw = retuneRaw(b), marker = b.dom.window.localStorage.getItem(updatesKey);
+    const objects = [...r.state.board], sockets = [...d.querySelectorAll('#board .cell')], orbs = sockets.map(n => n.firstElementChild);
+    const images = orbs.map(n => n.querySelector('img')), labels = sockets.map(n => n.getAttribute('aria-label'));
+    visualToggle(b, 'shells', shells); visualToggle(b, 'animations', animations);
+    assert.equal(d.documentElement.dataset.raidShell, shells ? 'on' : 'off');
+    assert.equal(d.documentElement.dataset.raidMotion, animations ? 'on' : 'off');
+    assert.equal(JSON.stringify(r.state), state); assert.equal(retuneRaw(b), raw); assert.equal(b.dom.window.localStorage.getItem(updatesKey), marker);
+    assert.equal(b.dom.window.localStorage.getItem(visualKey), visualRecord(shells, animations));
+    objects.forEach((c, i) => {
+      assert.equal(r.state.board[i], c); assert.equal(d.querySelector(`.cell[data-idx="${i}"]`), sockets[i]);
+      assert.equal(orbAt(b, i), orbs[i]); assert.equal(orbs[i].querySelector('img'), images[i]);
+      assert.equal(sockets[i].getAttribute('aria-label'), labels[i]);
+    });
+    for (const key of ['shells', 'animations']) assert.equal(d.querySelector(`#picker-visual [data-raid-visual="${key}"]`).checked, key === 'shells' ? shells : animations);
+    assert.equal(d.querySelectorAll('.cell.selected').length, 3); assert.ok(d.querySelector('#chain-line').children.length);
+    assert.equal(b.dom.window.getComputedStyle(orbs[8].querySelector('.skull-badge')).display, 'block');
+    assert.notEqual(b.dom.window.getComputedStyle(orbs[9].querySelector('.orb-ice')).opacity, '0');
+    assert.notEqual(b.dom.window.getComputedStyle(orbs[10].querySelector('.orb-crack')).opacity, '0');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: OS reduced motion overrides only effective motion and manual on never defeats it', async () => {
+  const b = await orbFixture();
+  try {
+    const d = b.dom.window.document, h = b.dom.window.__orbTest, raw = retuneRaw(b);
+    h.reduce(true);
+    assert.equal(d.documentElement.dataset.raidMotion, 'off');
+    assert.equal(d.querySelector('[data-raid-visual="animations"]').checked, true);
+    assert.match(d.querySelector('[data-raid-motion-note]').textContent, /систем|устройств/i);
+    assert.equal(d.querySelector('[data-raid-motion-note]').hidden, false);
+    visualToggle(b, 'animations', false); h.reduce(false);
+    assert.equal(d.documentElement.dataset.raidMotion, 'off');
+    visualToggle(b, 'animations', true); assert.equal(d.documentElement.dataset.raidMotion, 'on');
+    assert.equal(retuneRaw(b), raw); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: cancelling an active ordered wave finishes only visuals, never a phase or reward continuation', async () => {
+  const held = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    orbAnimationHarness(w);
+    const timeout = w.setTimeout.bind(w);
+    w.setTimeout = (fn, delay, ...args) => {
+      if (delay === 420 || delay === 550) { held.push({ delay, fn: () => fn(...args) }); return timeout(() => {}, 100000); }
+      return timeout(fn, delay, ...args);
+    };
+  } });
+  try {
+    b.dom.window.document.querySelector('.picker-card-btn:not(.locked)').click(); b.raid.newGame(2718);
+    showOrbFixture(b, i => ({ type: i < 3 ? 'coin' : 'sword' }));
+    [2, 1, 0].forEach(i => b.raid.tryExtendChain(i)); b.raid.resolveChain();
+    assert.deepEqual(held.map(n => n.delay), [420]); held[0].fn();
+    assert.deepEqual(held.map(n => n.delay), [420, 550]);
+    const h = b.dom.window.__orbTest, all = [...h.created], state = JSON.stringify(b.raid.state), raw = retuneRaw(b);
+    assert.equal(chainWaveAnimations(b).length, 3); assert.ok(all.some(n => n.playState === 'running'));
+    visualToggle(b, 'animations', false);
+    assert.ok(all.every(n => n.playState === 'idle')); assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion],.primed').length, 0);
+    assert.equal(JSON.stringify(b.raid.state), state); assert.equal(retuneRaw(b), raw);
+    all.forEach(a => { a.onfinish?.(); a.oncancel?.(); });
+    visualToggle(b, 'animations', true); assert.equal(h.created.length, all.length, 'no replay of ended effects');
+    assert.equal(b.raid.state.turn, 0); assert.deepEqual(held.map(n => n.delay), [420, 550]);
+    visualToggle(b, 'animations', false); held[1].fn(); assert.equal(b.raid.state.turn, 1);
+    assert.equal(h.created.length, all.length); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: A1 targeting draft and free cancellation survive all four combinations', async () => {
+  const b = await retuneFixture();
+  try {
+    const r = b.raid, d = b.dom.window.document; r.activateSkill('retune'); retunePick(b, 'fire', [0, 1, 2]);
+    const state = JSON.stringify(r.state), raw = retuneRaw(b), status = d.querySelector('#retune-status').textContent;
+    const chosen = [...d.querySelectorAll('.retune-chosen')];
+    for (const shells of [true, false]) for (const motion of [true, false]) {
+      visualToggle(b, 'shells', shells); visualToggle(b, 'animations', motion);
+      assert.equal(JSON.stringify(r.state), state); assert.equal(retuneRaw(b), raw);
+      assert.equal(d.querySelector('#retune-panel').hidden, false); assert.equal(d.querySelector('#retune-status').textContent, status);
+      assert.deepEqual([...d.querySelectorAll('.retune-chosen')], chosen); assert.equal(d.querySelector('#retune-apply').disabled, false);
+    }
+    d.querySelector('#retune-cancel').click(); assert.equal(retuneRaw(b), raw); assert.equal(r.state.skillCooldowns.retune, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const operation of ['getItem', 'setItem']) test(`magitech visual settings: denied ${operation} is session-only and never touches progress`, async () => {
+  const b = await openMagitech({ start: false, setup(w) {
+    const native = w.Storage.prototype[operation];
+    w.Storage.prototype[operation] = function (key, ...args) {
+      if (key === visualKey) throw Error('blocked visual metadata');
+      return native.call(this, key, ...args);
+    };
+  } });
+  try {
+    const before = raidStorage(b.dom.window); visualToggle(b, 'animations', false, 'picker');
+    assert.equal(b.dom.window.document.documentElement.dataset.raidMotion, 'off');
+    const status = b.dom.window.document.querySelector('#picker-visual [data-raid-visual-status]');
+    if (operation === 'setItem') { assert.equal(status.hidden, false); assert.match(status.textContent, /не.*сохран|не.*запом|окн/i); }
+    const after = raidStorage(b.dom.window); delete before[visualKey]; delete after[visualKey]; assert.deepEqual(after, before);
+    assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: malformed/oversized/foreign metadata uses safe defaults without repairing storage or executing text', async () => {
+  for (const raw of ['{bad', 'null', '[]', 'false', '"false"', '{"version":2,"shells":false,"animations":false}', '{"version":1,"shells":"false","animations":0}', '{"__proto__":{"animations":false},"version":1}', 'x'.repeat(1100)]) {
+    const b = await openMagitech({ start: false, saved: { [visualKey]: raw } });
+    try {
+      const root = b.dom.window.document.documentElement;
+      assert.equal(root.dataset.raidShell, 'on', raw); assert.equal(root.dataset.raidMotion, 'on', raw);
+      assert.equal(b.dom.window.localStorage.getItem(visualKey), raw); assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+    } finally { b.dom.window.close(); }
+  }
+});
+
+test('magitech visual settings: reload and storage events change only this profile; classic, browser and each SDK ID stay separate', async () => {
+  const sdk = localAccountSDK(1701), accountKey = magitechAccountKey(1701, 'raid:visualPreferences');
+  const saved = { [visualKey]: visualRecord(false, false), 'raid:visualPreferences': 'classic', [magitechAccountKey(1702, 'raid:visualPreferences')]: visualRecord(false, false) };
+  let b = await openMagitech({ start: false, saved, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: sdk }; } });
+  try {
+    const d = b.dom.window.document; assert.equal(d.documentElement.dataset.raidMotion, 'on');
+    visualToggle(b, 'shells', false, 'picker'); const persisted = raidStorage(b.dom.window);
+    for (const [key, value] of Object.entries(saved)) assert.equal(persisted[key], value);
+    assert.equal(persisted[accountKey], visualRecord(false, true));
+    b.dom.window.close(); b = await openMagitech({ start: false, saved: persisted, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: sdk }; } });
+    assert.equal(b.dom.window.document.documentElement.dataset.raidShell, 'off');
+    b.dom.window.localStorage.setItem(accountKey, visualRecord(true, false));
+    b.dom.window.dispatchEvent(new b.dom.window.StorageEvent('storage', { key: accountKey, newValue: visualRecord(true, false) }));
+    assert.equal(b.dom.window.document.documentElement.dataset.raidShell, 'on'); assert.equal(b.dom.window.document.documentElement.dataset.raidMotion, 'off');
+    const before = raidStorage(b.dom.window); sdk.initDataUnsafe.user.id = 1702;
+    visualToggle(b, 'animations', true); assert.deepEqual(raidStorage(b.dom.window), before);
+    assert.equal(b.dom.window.document.querySelector('[data-raid-visual-status]').hidden, false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: late SDK loads its own choices, unknown identity never copies browser or anonymous choices', async () => {
+  const saved = { [visualKey]: visualRecord(false, false), [magitechAccountKey(1703, 'raid:visualPreferences')]: visualRecord(true, false) };
+  const b = await openMagitech({ start: false, saved, url: testerRaidUrl });
+  try {
+    const d = b.dom.window.document; assert.equal(d.documentElement.dataset.raidMotion, 'on');
+    visualToggle(b, 'shells', false, 'picker'); assert.deepEqual(raidStorage(b.dom.window), saved);
+    b.dom.window.Telegram = { WebApp: localAccountSDK(1703) }; d.querySelector('script[src="https://telegram.org/js/telegram-web-app.js"]').onload();
+    assert.equal(d.documentElement.dataset.raidShell, 'on'); assert.equal(d.documentElement.dataset.raidMotion, 'off');
+    assert.deepEqual(raidStorage(b.dom.window), saved); assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const version of [1, 2, 3]) test(`magitech visual settings: reading/toggling before Continue v${version} never rewrites the run or frozen mech/pilot`, async () => {
+  let b = await orbFixture();
+  try {
+    const key = magitechKey('raid:activeRun'), data = JSON.parse(retuneRaw(b));
+    if (version === 2) { data.version = 2; data.combat.rules = 'elements-v1'; }
+    const raw = JSON.stringify(version === 1 ? releasedMagitechCheckpoint(data) : data), saved = { ...raidStorage(b.dom.window), [key]: raw };
+    b.dom.window.close(); b = await openMagitech({ start: false, saved });
+    visualToggle(b, 'shells', false, 'picker'); visualToggle(b, 'animations', false, 'picker');
+    assert.equal(retuneRaw(b), raw); assert.equal(b.raid.state, null);
+    assert.equal(b.raid.resumeSavedRun(), true);
+    const after = JSON.parse(retuneRaw(b)); assert.equal(after.version, version);
+    assert.deepEqual(after.state.classConfig, data.state.classConfig); assert.deepEqual(after.rng, data.rng);
+    assert.equal(Object.isFrozen(b.raid.state.classConfig), true); assert.equal(b.dom.window.document.documentElement.dataset.raidMotion, 'off');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech mech and pilot: preparation, editor and summary identify distinct existing sources; next-run choice cannot change a live pilot', async () => {
+  const ids = ['adventurer', 'barbarian', 'mage', 'ranger', 'rogue', 'paladin', 'priest', 'raider', 'warrior', 'assassin'];
+  const b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: JSON.stringify(Object.fromEntries(ids.map(id => [id, 10]))) } });
+  try {
+    const r = b.raid, d = b.dom.window.document;
+    assert.ok([...d.querySelectorAll('.pick-race')].every(n => /Пилот/.test(n.textContent)));
+    assert.match(d.querySelector('.pick-race-desc').textContent, /Без расового бонуса/);
+    assert.equal(r.openClassEditor('warrior'), true);
+    const pilot = d.querySelector('[data-config-source="pilot"]'), mech = d.querySelector('[data-config-source="mech"]');
+    assert.ok(pilot && mech); assert.match(pilot.textContent, /Пилот|пилот/); assert.match(pilot.textContent, /Смертный враг/);
+    const select = pilot.querySelector('select'); select.value = 'Human'; select.dispatchEvent(new b.dom.window.Event('change'));
+    assert.match(pilot.textContent, /Без расового бонуса/); d.querySelector('#class-editor-save').click();
+    r.setSelectedClassId('warrior'); r.newGame(2718); const config = r.state.classConfig;
+    assert.equal(r.clsRace(), 'Human'); assert.equal(r.hasPerk('Tough'), true); assert.equal(Object.isFrozen(config), true);
+    assert.equal(r.showClassPicker(), true); assert.equal(r.openClassEditor('warrior'), true);
+    const next = d.querySelector('[data-config-source="pilot"] select'); next.value = 'Orc'; next.dispatchEvent(new b.dom.window.Event('change')); d.querySelector('#class-editor-save').click();
+    assert.equal(r.getClassConfig('warrior').race, 'Orc'); assert.equal(r.state.classConfig, config); assert.equal(r.clsRace(), 'Human');
+    const before = JSON.stringify(r.state), raw = retuneRaw(b), panel = d.createElement('div'); r.renderCharacterSummary(panel);
+    assert.match(panel.textContent, /Пилот/); assert.match(panel.textContent, /Человек/); assert.doesNotMatch(panel.textContent, /Орк/);
+    assert.match(panel.textContent, /Пассивы меха/); assert.match(panel.textContent, /Изъяны меха/); assert.match(panel.textContent, /смертный враг/i);
+    assert.equal(JSON.stringify(r.state), before); assert.equal(retuneRaw(b), raw); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech visual settings: static recipient numbers expire without a RAF loop; sound choice stays independent', async () => {
+  let made = 0;
+  const b = await openMagitech({ saved: { [visualKey]: visualRecord(false, false) }, setup(w) {
+    orbAnimationHarness(w);
+    const raf = w.requestAnimationFrame.bind(w); w.requestAnimationFrame = fn => { made++; return raf(fn); };
+  } });
+  try {
+    const d = b.dom.window.document, sound = d.querySelector('#sound-on').checked;
+    b.raid.damageHero(3); const label = d.querySelector('#raid-effects .float-fx');
+    assert.ok(label); assert.match(label.textContent, /3/); assert.equal(made, 0, 'static feedback requires no positioning frames');
+    visualToggle(b, 'shells', true); assert.equal(made, 0); assert.equal(d.querySelector('#sound-on').checked, sound);
+    await until(() => !d.querySelector('#raid-effects .float-fx'));
+    assert.equal(made, 0); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
 });

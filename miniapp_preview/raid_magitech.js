@@ -56,7 +56,7 @@
       // relabel an anonymous live run or copy it into an existing account.
       PROFILE_ID = id; PROFILE_PREFIX = localProfilePrefix(id);
       classLevels = loadClassLevels(); classConfigs = loadClassConfigs(); selectedClassId = loadStoredClassId();
-      loadRaidAppearance();
+      loadRaidAppearance(); loadVisualPreferences();
       RUN_SAVE_BASE = undefined;
       readRunSlot(); readRunHistory();
       if (HISTORY_OPEN) renderRunHistory();
@@ -64,6 +64,75 @@
     }
     profileNotice(`Профиль Telegram ${PROFILE_ID} · свой прогресс на этом устройстве. Между устройствами не синхронизируется.`);
     maybeShowUpdateNotice();
+  }
+
+  // V0: two independent LOCAL presentation choices, outside the active run,
+  // next-run class config and release acknowledgement. Never migrate a save or
+  // copy browser/anonymous choices into a late or changed Telegram identity.
+  const VISUAL_KEY = 'raid:visualPreferences';
+  let VISUAL_PREFERENCES = { shells: true, animations: true };
+  let VISUAL_STATUS = '';
+  function systemReducedMotion() {
+    try { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches; }
+    catch (ignored) { return false; }
+  }
+  function applyVisualPreferences() {
+    const reduced = systemReducedMotion();
+    document.documentElement?.setAttribute('data-raid-shell', VISUAL_PREFERENCES.shells ? 'on' : 'off');
+    document.documentElement?.setAttribute('data-raid-motion', orbReducedMotion() ? 'off' : 'on');
+    for (const input of document.querySelectorAll('[data-raid-visual]')) {
+      input.checked = VISUAL_PREFERENCES[input.dataset.raidVisual];
+    }
+    for (const node of document.querySelectorAll('[data-raid-motion-note]')) {
+      node.textContent = 'В устройстве включено уменьшение движения: анимации отключены независимо от переключателя.';
+      node.hidden = !reduced;
+    }
+    for (const node of document.querySelectorAll('[data-raid-visual-status]')) {
+      node.textContent = VISUAL_STATUS; node.hidden = !VISUAL_STATUS;
+    }
+    // Only cancel visual effects, never a gameplay timer/gesture/target draft.
+    // Surviving orbs already occupy their FINAL sockets; cleanup reveals them.
+    if (orbReducedMotion()) finishOrbAnimations();
+    if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
+    FLOAT_FRAME = 0;
+    if (FLOAT_EFFECTS.size) renderFloatEffects();
+  }
+  function loadVisualPreferences() {
+    const defaults = { shells: true, animations: true };
+    VISUAL_PREFERENCES = defaults; VISUAL_STATUS = '';
+    try {
+      const raw = profileStorage.getItem(VISUAL_KEY);
+      if (raw !== null) {
+        if (raw.length > 1024) throw new Error('Visual metadata too large');
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== 'object' || Array.isArray(data) || data.version !== 1) throw new Error('Unknown visual metadata');
+        for (const key of ['shells', 'animations']) if (Object.hasOwn(data, key) && typeof data[key] === 'boolean') defaults[key] = data[key];
+      }
+    } catch (ignored) {
+      VISUAL_STATUS = 'Не удалось прочитать настройки вида этого профиля. Используется обычный вид; сохранение рейда не меняется.';
+    }
+    // Reading even malformed preferences is read-only. No eager repair/write.
+    applyVisualPreferences();
+  }
+  function initVisualPreferences() {
+    loadVisualPreferences();
+    for (const input of document.querySelectorAll('[data-raid-visual]')) input.addEventListener('change', () => {
+      const key = input.dataset.raidVisual;
+      if (!['shells', 'animations'].includes(key)) return;
+      VISUAL_PREFERENCES[key] = !!input.checked;
+      try {
+        profileStorage.setItem(VISUAL_KEY, JSON.stringify({ version: 1, ...VISUAL_PREFERENCES }));
+        VISUAL_STATUS = '';
+      } catch (ignored) {
+        VISUAL_STATUS = 'Не удалось сохранить настройки вида этого профиля. Выбор действует только в этом окне; прогресс не меняется.';
+      }
+      applyVisualPreferences();
+    });
+    try { window.matchMedia?.('(prefers-reduced-motion: reduce)')?.addEventListener?.('change', applyVisualPreferences); }
+    catch (ignored) { /* CSS still honours OS reduced motion on older clients. */ }
+    window.addEventListener?.('storage', event => {
+      if (event.key === null || event.key === profileStorage.key(VISUAL_KEY)) loadVisualPreferences();
+    });
   }
 
   // ============================================================
@@ -310,9 +379,11 @@
     const h = S.hero, st = h.stats;
     const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
     const rows = [
-      ['Мех', cls.name + ' · ' + RACE_INFO[clsRace()].name],
-      ['Пассивы', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
-      ['Изъяны', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
+      ['Мех', cls.name + ' · специализация и модули'],
+      ['Пилот', RACE_INFO[clsRace()].name + ' · прежний расовый пакет'],
+      ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
+      ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
+      ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
       ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
       ['Броня', `${fmt(h.armor)} / ${fmt(h.maxArmor)}`],
       ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
@@ -327,7 +398,7 @@
       ['Навыки', S.skills.length ? S.skills.map(id => (SKILL_BY_ID[id] || {}).name || id).join(', ') : 'пока нет'],
       ...((S.equipment || []).map(it => [it.slotName, it.name + ' — ' + itemModsText(it)])),
     ];
-    panel.innerHTML = '<p class="summary-hint">Итоговые параметры с учётом выбранных улучшений и снаряжения.</p>';
+    panel.innerHTML = '<p class="summary-hint">Конфигурация этого рейда закреплена при старте: пары и пул модулей — от меха, особенность и смертный враг — от одного пилота. Это прежние классовый и расовый пакеты, не дополнительный слой бонусов. Ниже итог с улучшениями и снаряжением.</p>';
     const list = document.createElement('div');
     list.className = 'character-summary-list';
     rows.forEach(([label, value]) => {
@@ -1650,7 +1721,7 @@
     const cls = CLASSES.find(entry => entry.native === id);
     ACHIEVEMENTS[id] = { title: `Мех «${cls.name}»`, description: `Открыть мех «${cls.name}» трофеем.` };
     ACHIEVEMENTS[id + 9] = { title: RACE_INFO[ACHIEVEMENT_RACES[id - 1]].name,
-      description: `Поднять до уровня меха 5 мех с этим родным бойцом. Выбранный в редакторе боец не учитывается.` };
+      description: `Поднять до уровня меха 5 мех с этим родным пилотом. Выбранный в редакторе пилот не учитывается.` };
     ACHIEVEMENTS[id + 18] = { title: `Мастер: ${cls.name}`, description: `Довести мех «${cls.name}» до уровня 10.` };
   }
   [
@@ -2548,7 +2619,7 @@
     return ORB_ELEMENTS.get(cell);
   }
   function orbIdentity(cell) { return cell.type === 'skull' ? 'skull:' + cell.skull.uid : cell; }
-  function orbReducedMotion() { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; }
+  function orbReducedMotion() { return !VISUAL_PREFERENCES.animations || systemReducedMotion(); }
   function animateOrb(node, frames, options, cleanup) {
     if (!node || orbReducedMotion() || typeof node.animate !== 'function') { cleanup?.(); return null; }
     let animation;
@@ -4267,15 +4338,17 @@
   // One short burst per recipient/sign/kind is summed rather than overprinted.
   // A selector survives renderSkills/board redraw; no center-screen fallback.
   const FLOAT_EFFECTS = new Set();
-  let FLOAT_FRAME = 0;
+  let FLOAT_FRAME = 0, FLOAT_TIMER = null;
   function clearFloatEffects() {
     if (FLOAT_FRAME) window.cancelAnimationFrame?.(FLOAT_FRAME);
+    clearTimeout(FLOAT_TIMER); FLOAT_TIMER = null;
     FLOAT_FRAME = 0;
     for (const effect of FLOAT_EFFECTS) effect.node.remove();
     FLOAT_EFFECTS.clear();
   }
   function renderFloatEffects() {
     FLOAT_FRAME = 0;
+    clearTimeout(FLOAT_TIMER); FLOAT_TIMER = null;
     const now = Date.now(), shell = qs('.shell')?.getBoundingClientRect();
     const top = Math.max(0, shell?.top || 0), left = Math.max(0, shell?.left || 0);
     const right = Math.min(window.innerWidth, shell?.right || window.innerWidth);
@@ -4302,7 +4375,12 @@
       if (node.style.left !== x) node.style.left = x;
       if (node.style.top !== y) node.style.top = y;
     }
-    if (FLOAT_EFFECTS.size) FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+    if (FLOAT_EFFECTS.size) {
+      // Motion off still shows readable static numbers at the actual recipient,
+      // but does not run a positioning RAF loop. One expiry timer is UI-only.
+      if (orbReducedMotion()) FLOAT_TIMER = setTimeout(renderFloatEffects, Math.max(1, Math.min(...[...FLOAT_EFFECTS].map(effect => effect.until)) - now));
+      else FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+    }
   }
   function floatOn(amount, kind, target, label) {
     if (!Number.isFinite(amount) || !amount) return;
@@ -6059,11 +6137,11 @@
       const desc = [];
       for (const kind of ['perks', 'flaws']) {
         const names = config[kind].filter(Boolean).map(name => CLASS_TRAITS[kind][name].name), positive = kind === 'perks';
-        if (names.length) desc.push(`<span class="${positive ? 'pick-perk' : 'pick-flaw'}">${positive ? '+' : '−'} ${names.join(' · ')}</span>`);
+        if (names.length) desc.push(`<span class="${positive ? 'pick-perk' : 'pick-flaw'}">Мех · ${positive ? '+' : '−'} ${names.join(' · ')}</span>`);
       }
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег</span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
-      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}</span><span class="pick-identity"><span class="pick-model">КОМПЛЕКТ ${String(cls.native).padStart(2, '0')}</span><span class="pick-name">${cls.name}</span><span class="pick-race">Боец · ${RACE_INFO[config.race].name}</span></span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}</span></span>${desc.join('')}<span class="pick-race-desc">${RACE_INFO[config.race].desc}</span><span class="pick-unique">Модуль: ${cls.uniqueSkillDesc}</span>${status}`;
+      btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}</span><span class="pick-identity"><span class="pick-model">МЕХ ${String(cls.native).padStart(2, '0')}</span><span class="pick-name">${cls.name}</span><span class="pick-race">Пилот · ${RACE_INFO[config.race].name}</span></span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}</span></span>${desc.join('')}<span class="pick-race-desc">Пилот: ${RACE_INFO[config.race].desc}</span><span class="pick-unique">Модуль меха: ${cls.uniqueSkillDesc}</span>${status}`;
       btn.addEventListener('click', () => {
         if (!current()) return;
         if (!isClassUnlocked(cls.id)) { flash('⚠ Мех закрыт: подбери трофей после победы над особыми черепами'); return; }
@@ -6072,7 +6150,7 @@
       row.appendChild(btn);
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
-      edit.textContent = classRules(cls.id).editable ? 'Настроить мех' : 'О мехе и развитии';
+      edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
       edit.setAttribute('aria-label', edit.textContent + ': ' + cls.name);
       edit.addEventListener('click', () => { if (current()) openClassEditor(cls.id); });
       row.appendChild(edit); grid.appendChild(row);
@@ -6095,9 +6173,9 @@
     const current = () => pickerOpen && classEditor === session && RUN_ID === session.runId;
     el('class-picker-main').hidden = true; el('class-editor').hidden = false;
     el('picker-card').classList.add('editor-open');
-    const title = el('class-editor-title'); title.textContent = 'Мех «' + info.name + '»'; title.focus();
+    const title = el('class-editor-title'); title.textContent = 'Мех «' + info.name + '» и пилот'; title.focus();
     el('class-editor-hint').textContent = !info.editable
-      ? id === 'adventurer' ? 'Авантюрист не настраивается: Человек, без пассивов и изъянов; пул — все открытые навыки.'
+      ? id === 'adventurer' ? 'Авантюрист не настраивается: пилот Человек, без пассивов и изъянов меха; пул — все открытые навыки.'
         : 'Мех закрыт. Можно посмотреть правила; настройка откроется после трофея.'
       : `Уровень меха: ${info.level}. Это не уровень героя в забеге. Сохранение действует только на следующие забеги.`;
     fields.innerHTML = '';
@@ -6130,16 +6208,17 @@
       });
       return input;
     }
-    const raceSection = block('Боец');
-    select(raceSection, 'Боец следующего забега', 'race', null,
+    const raceSection = block('Пилот · прежний расовый пакет'); raceSection.dataset.configSource = 'pilot';
+    note(raceSection, 'Один пакет целиком: особенность и взаимодействие со смертным врагом. Он заменяет прежнюю расу, а не добавляет третий слой бонусов.');
+    select(raceSection, 'Пилот следующего забега', 'race', null,
       Object.entries(RACE_INFO).map(([race, data]) => {
         const donor = CLASSES.find(c => c.race === race);
         const locked = !isRaceUnlocked(race);
         return { value: race, label: data.name + (locked ? ` · ${donor.name}, ур. 5` : ''), locked };
       }), !info.canChangeRace);
-    note(raceSection, info.canChangeRace ? 'Доступны Человек и родные бойцы мехов, достигших уровня 5.' : 'Независимый выбор бойца — с уровня меха 5.');
+    note(raceSection, id === 'adventurer' ? 'У Авантюриста всегда пилот Человек.' : info.canChangeRace ? 'Доступны Человек и родные пилоты мехов-доноров, достигших уровня 5.' : 'Независимый выбор пилота — с уровня меха 5; родной пакет другого меха открывается при уровне меха-донора 5.');
     const raceDesc = note(raceSection, RACE_INFO[draft.race].desc);
-    const traits = block('Пассивы и изъяны');
+    const traits = block('Мех · пассивы и изъяны'); traits.dataset.configSource = 'mech';
     note(traits, 'Первая пара фиксирована. Новые пары — на уровнях меха 3, 7 и 9. Пассиву нужен изъян в той же паре; повторы не складываются.');
     for (let i = 0; i < 4; i++) {
       const pair = document.createElement('div'); pair.className = 'class-config-pair'; traits.appendChild(pair);
@@ -6149,7 +6228,7 @@
           value: name, label: data.name + ' — ' + data.desc + (isTraitUnlocked(kind, name) ? '' : ' · мех ещё закрыт'), locked: !isTraitUnlocked(kind, name),
         }))], !info.editable || i === 0 || !info.pairSlots[i]);
     }
-    const skillSection = block(id === 'adventurer' ? 'Все открытые навыки' : 'Пул навыков: 20 позиций');
+    const skillSection = block(id === 'adventurer' ? 'Мех · все открытые модули' : 'Мех · пул модулей: 20 позиций'); skillSection.dataset.configSource = 'mech';
     const count = note(skillSection, ''); count.id = 'class-replacement-count'; count.setAttribute('role', 'status');
     note(skillSection, 'Это возможные награды уровня, не стартовые умения. Первый навык меха фиксирован. Повторы не увеличивают шанс выпадения.');
     if (id === 'adventurer') note(skillSection, activeSkillDefinitions(true).filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
@@ -6161,7 +6240,7 @@
         }))], !info.editable || i === 0 || info.replacementLimit === 0);
     }
     const growth = block('Развитие меха');
-    note(growth, '1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор бойца и открытие родного бойца другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
+    note(growth, '1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
     const status = el('class-editor-status'), save = el('class-editor-save');
     const back = el('class-editor-back'), defaults = el('class-editor-reset');
     save.hidden = !info.editable; defaults.hidden = !info.editable;
@@ -6472,9 +6551,9 @@
   // --- init -----------------------------------------------------------------
   function init() {
     initRaidAppearance();
+    initVisualPreferences();
     initMaterialAudio();
     window.addEventListener?.('resize', finishOrbAnimations);
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
@@ -6542,7 +6621,7 @@
       if (!pickerOpen || NEW_RUN_REQUEST) return;
       if (event.key === 'Escape') { event.preventDefault(); if (classEditor) closeClassEditor(); else resumeFromClassPicker(); }
       if (event.key !== 'Tab') return;
-      const controls = [...picker.querySelectorAll('button:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(node => node.getClientRects().length);
+      const controls = [...picker.querySelectorAll('button:not(:disabled), select:not(:disabled), input:not(:disabled), summary, [tabindex="0"]')].filter(node => node.getClientRects().length);
       const target = event.shiftKey ? controls[controls.length - 1] : controls[0];
       if (controls.length && (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls[controls.length - 1])) { event.preventDefault(); target.focus(); }
     });

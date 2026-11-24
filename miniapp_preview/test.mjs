@@ -5600,3 +5600,86 @@ test('magitech A1 save: a pending normal level reward containing retune and two 
   assert.deepEqual(raidJSON(next.raid.state.levelDraft),saved.menu.picked);
   assert.deepEqual(magitechSave(next).menu,saved.menu);assert.deepEqual(magitechSave(next).rng,saved.rng);
 });
+
+// M0 is a role/source adaptation, NOT a third layer or a new balance formula.
+test('magitech mech and pilot: unchanged progression/configuration functions are identical to the classic control', () => {
+  const classic = readFileSync(new URL('./raid.js', import.meta.url), 'utf8');
+  const current = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  for (const name of ['defaultClassConfig', 'classRules', 'isRaceUnlocked', 'isTraitUnlocked', 'classEditorInfo',
+    'normaliseClassConfig', 'loadClassConfigs', 'getClassConfig', 'saveClassConfig', 'runClassConfig']) {
+    const re = new RegExp(`^  function ${name}\\([^]*?^  }`, 'm');
+    assert.equal(current.match(re)?.[0], classic.match(re)?.[0], name);
+    assert.ok(current.match(re), name);
+  }
+  const visual = current.slice(current.indexOf('  const VISUAL_KEY'), current.indexOf('  // ============================================================'));
+  assert.ok(visual.includes("'raid:visualPreferences'"));
+  assert.doesNotMatch(visual, /\b(?:saveRun|newGame|resumeSavedRun|scheduleRunStep|ACTION_TIMER|RNG_SEEDS|RUN_SAVE_KEY|UPDATES_KEY)\b|\bS\./);
+});
+
+test('magitech mech and pilot: original level gates, donor thresholds and fixed first unique remain unchanged at levels 1–10', () => {
+  const r = raidBrowser({ variant: 'magitech', classId: 'warrior' }).raid;
+  assert.equal(r.isRaceUnlocked('Human'), true); assert.equal(r.isRaceUnlocked('Changeling'), false);
+  r.unlockClass('mage'); assert.equal(r.isTraitUnlocked('perks', 'Gifted'), true);
+  for (let level = 1; level <= 10; level++) {
+    while (r.classLevelOf('warrior') < level) r.levelUpClass('warrior');
+    while (r.classLevelOf('mage') < level) r.levelUpClass('mage');
+    const rules = r.classRules('warrior');
+    assert.equal(rules.canChangeRace, level >= 5); assert.equal(rules.replacementLimit, 2 * Math.floor(level / 2));
+    assert.deepEqual(Array.from(rules.pairSlots), [true, level >= 3, level >= 7, level >= 9]);
+    assert.equal(r.isRaceUnlocked('Changeling'), level >= 5); assert.equal(r.isSkillUnlocked('rune'), level >= 10);
+    const draft = r.defaultClassConfig('warrior'); draft.race = 'Changeling'; draft.replacements.fill('rune');
+    assert.equal(r.saveClassConfig('warrior', draft), true);
+    const clean = r.getClassConfig('warrior');
+    assert.equal(clean.race, level >= 5 ? 'Changeling' : 'Dwarf'); assert.equal(clean.replacements[0], null);
+    assert.equal(clean.replacements.filter(Boolean).length, level >= 10 ? 10 : 0);
+  }
+  assert.equal(r.saveClassConfig('adventurer', { race: 'Orc' }), false);
+  r.setSelectedClassId('adventurer'); r.newGame(2718);
+  assert.equal(r.clsRace(), 'Human'); assert.deepEqual(raidJSON(r.state.classConfig.perks), [null, null, null, null]);
+  assert.equal(r.state.skills.length, 0); assert.equal(r.classSkillPool().includes('retune'), true);
+});
+
+test('magitech mech and pilot: all 91 unlocked pairings match inherited classic packages/RNG through a real nemesis turn and Continue', () => {
+  const pilots = { adventurer: 'Human', barbarian: 'Orc', mage: 'Changeling', ranger: 'Elf', rogue: 'Sauren', paladin: 'Dragonkin', priest: 'Faun', raider: 'Halfling', warrior: 'Dwarf', assassin: 'Werewolf' };
+  const nemesis = { Human: 0, Orc: 12, Changeling: 19, Elf: 9, Sauren: 13, Dragonkin: 8, Faun: 16, Halfling: 5, Dwarf: 14, Werewolf: 20 };
+  let count = 0;
+  for (const [classId, nativePilot] of Object.entries(pilots)) {
+    const a = raidBrowser({ classId, menus: true, seed: 2718 }), b = legacyMagitechBrowser({ classId, menus: true, seed: 2718 });
+    for (const x of [a, b]) raidMasterClasses(x.raid);
+    assert.equal(b.raid.defaultClassConfig(classId).race, nativePilot);
+    for (const pilot of classId === 'adventurer' ? ['Human'] : Object.values(pilots)) {
+      for (const x of [a, b]) {
+        const r = x.raid, config = r.defaultClassConfig(classId); config.race = pilot;
+        if (classId !== 'adventurer') {
+          config.perks[1] = 'Unexpected'; config.flaws[1] = 'Confused'; config.replacements[1] = 'heal';
+          assert.equal(r.saveClassConfig(classId, config), true);
+        }
+        r.newGame(2718);
+      }
+      // Test-only v1 fixture: M0 must not change ANY inherited package, even
+      // without elemental combat/A1. Production never converts/downgrades runs.
+      assert.equal(b.raid.saveRun(), true);
+      b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(legacyMagitechSave(JSON.parse(b.storage.get(MAGITECH_RUN_KEY)))));
+      assert.equal(b.raid.resumeSavedRun(), true);
+      assert.equal(b.raid.clsRace(), pilot); assert.equal(Object.isFrozen(b.raid.state.classConfig), true);
+      assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${pilot}/start`);
+      assert.deepEqual(raidJSON(b.raid.classSkillPool()), raidJSON(a.raid.classSkillPool()), `${classId}/${pilot}/pool`);
+      for (const x of [a, b]) {
+        const r = x.raid, s = r.state; s.turn = 100; s.hero.hp = s.hero.maxHp = 5000;
+        s.hero.armor = s.hero.maxArmor = 30; s.poison = 3; s.trophyRemaining = 30;
+        raidBoard(r, 'shield'); raidOld(r, 0, { atk: 1, hp: 1, maxHp: 1, def: 0 });
+        s.board[1] = { type: 'sword' }; s.board[2] = { type: 'sword' };
+        if (nemesis[pilot]) raidOld(r, 30, { atk: 3, hp: 60, maxHp: 60, def: 3, countdown: 1 }, nemesis[pilot]);
+        raidSelect(r, [0, 1, 2]); r.resolveChain(); settleMagitechFixture(x);
+      }
+      assert.deepEqual(magitechSnapshot(b.raid), magitechSnapshot(a.raid), `${classId}/${pilot}/nemesis-turn`);
+      const frozen = JSON.stringify(b.raid.state.classConfig);
+      assert.equal(b.raid.saveRun(), true, `${classId}/${pilot}: ${b.raid.saveStatus.message}`);
+      assert.equal(b.raid.resumeSavedRun(), true);
+      assert.equal(JSON.stringify(b.raid.state.classConfig), frozen); assert.equal(b.raid.clsRace(), pilot);
+      assert.equal(a.raid.saveRun(), true);
+      assert.deepEqual(magitechSave(b).rng, JSON.parse(a.storage.get('raid:activeRun')).rng); count++;
+    }
+  }
+  assert.equal(count, 91, 'controlled package parity, not a balance simulation or a new roster');
+});
