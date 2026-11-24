@@ -37,8 +37,10 @@ Chromium153: **32 пары current/exact-a3 +4fallback +4live +6 настоящ�
 v1/v2/v3 +40 проверок нового попапа**, errors[]. Три presentation-функции изменены;
 после удаления UI-capture/call в settle весь остальной JS побайтово прежний.
 QA не доказывает60FPS/физический Telegram/улучшение субъективного восприятия.
-Новый PR/фактические merge/Pages и публичный build фиксируются отдельно при доставке,
-локальные PASS не считаются публикацией. Не отправлять рассылку без owner preview/Send.
+Доставка — **[PR134](https://github.com/boozygrimm/Expertbot/pull/134)** и
+**[release-протокол7119379699](https://github.com/boozygrimm/Expertbot/pull/134#issuecomment-7119379699)**.
+Этот Git-текст pre-merge; фактические head/merge/Pages/public build дополняются
+в протоколе, local PASS не считается публикацией. Рассылку без owner preview/Send не отправлять.
 PR133 уже MERGED **e5632af1f347ad5c3c96d9c1219e4458d09d511b**,
 [Pages45300691860](https://github.com/boozygrimm/Expertbot/actions/runs/45300691860) SUCCESS,
 [протокол7118493326](https://github.com/boozygrimm/Expertbot/pull/133#issuecomment-7118493326)
@@ -269,8 +271,11 @@ auto-main для существующего бота; Pages не доказыв�
     changed paths guards PASS. Весь JS вне3 presentation-функций и UI capture/call
     в settle побайтово e563; классика63b4/art140/6 weapon payloads/builder/bot прежние.
     Native stages3 и8/0,64,128мс +actual new popup web/SDK320 просмотрены.
-  - Доставка ещё не объявляется по local PASS; новый PR/merge/Pages/public build
-    будут в отдельном release-протоколе. B/C не включены, bossD отложен, парк не начат.
+  - **[PR134](https://github.com/boozygrimm/Expertbot/pull/134)** открыт на product
+    `c11657b20961abb352d89543a0159d07a6513b36`, только7existing paths. Git-запись
+    pre-merge; actual final head/merge/Pages/public content — в
+    [release-протоколе7119379699](https://github.com/boozygrimm/Expertbot/pull/134#issuecomment-7119379699),
+    не выводить их из local PASS. B/C не включены, bossD отложен, парк не начат.
 
 - **История pre-merge PR133 — A1 с12 и два visual fixes:**
   - Обычный1из4 модуль `retune`: common level pool у Adventurer/существующий editor
@@ -2119,8 +2124,11 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   физический телефон, новый bossD/парк/рассылка не проверены/не выполнялись.
 - Артефакты QA в /tmp/raid-chain-wave-{final-*.log,native-results.json,guards.json,
   math.json}; native images .arena/raid-chain-wave исключены из Git. В assigned
-  ветке только7 существующих файлов. Новый PR/протокол доставки будет добавлен
-  после создания; local PASS не назван merge/Pages. Далее дизайн B (рекомендация)
+  ветке только7 существующих файлов. Открыт **PR134**, product commit
+  `c11657b20961abb352d89543a0159d07a6513b36`/tree16b3ea74b4263a73ec425d6cfd9e0f345c9879ea.
+  [Release-протокол7119379699](https://github.com/boozygrimm/Expertbot/pull/134#issuecomment-7119379699)
+  будет дополнен фактическими final head/merge/Pages/public build после операций;
+  это pre-merge Git-запись, не обещание публикации. Далее дизайн B (рекомендация)
   либо C, только после отдельного согласования; никаких новых runtime mechanics.
 
 
