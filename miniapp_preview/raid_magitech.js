@@ -1557,10 +1557,10 @@
   }
   function saveStatus(state, message) {
     RUN_SAVE_STATUS = { state, message };
-    for (const id of ['picker-save-status', 'menu-save-status', 'save-status']) {
+    for (const id of ['picker-save-status', 'menu-save-status', 'save-status', 'run-save-status']) {
       const node = el(id); if (!node) continue;
       node.textContent = message;
-      if (id === 'save-status') node.hidden = !['unavailable', 'invalid', 'conflict'].includes(state);
+      if (id === 'save-status' || id === 'run-save-status') node.hidden = !['unavailable', 'invalid', 'conflict'].includes(state);
     }
   }
   function readRunSlot() {
@@ -5029,30 +5029,39 @@
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? 'ПОБЕДА!' : 'РЕЙД ОКОНЧЕН';
-      body.innerHTML = `<p class="modal-hint">${S.won ? 'Спринт пройден: 100 ходов!' : 'Герой погиб на ходу <strong>' + S.turn + '</strong>'}</p>
-        <div class="stats-grid">
-          <div><span class="result-glyph">${raidModuleIcon('slash')}</span><small>убито черепов</small><strong>${S.skullsKilled}</strong></div>
-          <div><span class="result-glyph">${raidModuleIcon('enchant')}</span><small>максимальный уровень</small><strong>${S.maxLevel}</strong></div>
-          <div><span class="result-glyph">${raidModuleIcon('goldtouch')}</span><small>золота собрано</small><strong>${S.goldEarned}</strong></div>
-          <div><span class="result-glyph">${raidItemIcon('accessory')}</span><small>трофеев забрано</small><strong>${S.trophiesThisRun || 0}</strong></div>
-        </div>`;
-      const restart = document.createElement('button');
-      restart.type = 'button';
-      restart.className = 'btn secondary';
-      restart.textContent = '↻ Ещё раз';
-      restart.addEventListener('click', () => {
-        if (runId !== RUN_ID || !S.over) return;
-        if (hasPendingProgress()) requestNewGame();
-        else { closeModal(); newGame(); }
-      });
+      wrap.classList.add('gameover');
+      body.innerHTML = `<p class="modal-hint">${S.won ? 'Спринт пройден: 100 ходов!' : 'Герой погиб на ходу <strong>' + S.turn + '</strong>'}</p>`;
+      const actions = document.createElement('div'); actions.className = 'gameover-actions';
+      const picker = document.createElement('button'); picker.type = 'button'; picker.id = 'gameover-picker'; picker.className = 'btn'; picker.textContent = 'К выбору меха';
+      const current = () => runId === RUN_ID && finishedRunView() && el('gameover-picker') === picker;
+      bindReadOnlyDismiss(picker, () => { if (current()) leaveFinishedRun(); });
+      const exit = document.createElement('button'); exit.type = 'button'; exit.id = 'gameover-close'; exit.className = 'btn secondary'; exit.textContent = 'Закрыть Mini App'; exit.hidden = !TELEGRAM_APP;
+      bindReadOnlyDismiss(exit, () => { if (current() && !exit.hidden && !exit.disabled) requestTelegramClose(); });
+      actions.appendChild(picker); actions.appendChild(exit); body.appendChild(actions);
+      const saveNote = document.createElement('p'); saveNote.id = 'run-save-status'; saveNote.className = 'save-note';
+      saveNote.setAttribute('role', 'status'); saveNote.setAttribute('aria-live', 'polite'); saveNote.textContent = RUN_SAVE_STATUS.message;
+      saveNote.hidden = !['unavailable', 'invalid', 'conflict'].includes(RUN_SAVE_STATUS.state); body.appendChild(saveNote);
       const historyNote = document.createElement('p'); historyNote.id = 'run-history-status'; historyNote.className = 'save-note';
       historyNote.setAttribute('role', 'status'); historyNote.setAttribute('aria-live', 'polite'); historyNote.textContent = HISTORY_STATUS.message;
       body.appendChild(historyNote);
+      const telegramNote = document.createElement('p'); telegramNote.id = 'run-telegram-status'; telegramNote.className = 'telegram-status';
+      telegramNote.setAttribute('role', 'status'); telegramNote.setAttribute('aria-live', 'polite'); telegramNote.hidden = true; body.appendChild(telegramNote);
+      const stats = document.createElement('div'); stats.className = 'stats-grid';
+      stats.innerHTML = `<div><span class="result-glyph">${raidModuleIcon('slash')}</span><small>убито черепов</small><strong>${S.skullsKilled}</strong></div>
+          <div><span class="result-glyph">${raidModuleIcon('enchant')}</span><small>максимальный уровень</small><strong>${S.maxLevel}</strong></div>
+          <div><span class="result-glyph">${raidModuleIcon('goldtouch')}</span><small>золота собрано</small><strong>${S.goldEarned}</strong></div>
+          <div><span class="result-glyph">${raidItemIcon('accessory')}</span><small>трофеев забрано</small><strong>${S.trophiesThisRun || 0}</strong></div>`;
+      body.appendChild(stats);
       const history = document.createElement('button'); history.type = 'button'; history.className = 'btn secondary'; history.textContent = 'Рекорды и статистика';
-      history.addEventListener('click', () => { if (runId === RUN_ID && S.over) openRunRecords(); });
+      bindReadOnlyDismiss(history, () => { if (current()) openRunRecords(); });
       const achievements = document.createElement('button'); achievements.type = 'button'; achievements.className = 'btn secondary'; achievements.textContent = 'Достижения';
-      achievements.addEventListener('click', () => { if (runId === RUN_ID && S.over) openAchievements(); });
+      bindReadOnlyDismiss(achievements, () => { if (current()) openAchievements(); });
+      const restart = document.createElement('button'); restart.type = 'button'; restart.id = 'gameover-restart'; restart.className = 'btn secondary'; restart.textContent = '↻ Ещё раз';
+      bindReadOnlyDismiss(restart, () => { if (current()) requestNewGame(); });
       body.appendChild(history); body.appendChild(achievements); body.appendChild(restart);
+      // The default action leaves the result; Enter must never auto-restart.
+      picker.focus?.({ preventScroll: true });
+      syncTelegramChrome();
     }
     // An asynchronous reward may arrive while the transient settings are up.
     // Hand focus to its real choice, never keep it inside a now-hidden panel.
@@ -5075,6 +5084,43 @@
     drainArrivals();
     if (!S.resolving && !S.pendingModal && !S.over) checkTrophy();
     saveRun();
+  }
+
+  // Finished results are navigation, NOT a mandatory reward or surrender.
+  function finishedRunView() {
+    return !!S?.over && S.pendingModal === 'gameover' && telegramLayer('modal') && !pickerOpen
+      && !UPDATES_OPEN && !HISTORY_OPEN && !NEW_RUN_REQUEST && !TELEGRAM_EXIT
+      && !['menu-modal', 'help-modal'].some(telegramLayer);
+  }
+  function leaveFinishedRun() {
+    if (!finishedRunView() || !el('class-picker')) return false;
+    // Do not use closeModal/resumeRewards: the terminal receipt, pending
+    // history retry, S.over and every combat/RNG value stay exactly as earned.
+    S.pendingModal = null;
+    el('modal').classList.remove('show');
+    showClassPicker();
+    el('picker-title')?.focus();
+    syncTelegramChrome();
+    return true;
+  }
+  function initFinishedRunNavigation() {
+    const wrap = el('modal'); if (!wrap) return;
+    wrap.addEventListener('keydown', event => {
+      if (!finishedRunView()) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leaveFinishedRun(); return; }
+      if (event.key !== 'Tab') return;
+      const controls = [...wrap.querySelectorAll('button:not(:disabled)')].filter(node => !node.hidden);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!controls.includes(document.activeElement) || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+      }
+    });
+    document.addEventListener('focusin', event => {
+      if (finishedRunView() && !wrap.contains(event.target)) el('gameover-picker')?.focus({ preventScroll: true });
+    });
+    for (const kind of ['click', 'pointerdown']) document.addEventListener(kind, event => {
+      if (finishedRunView() && !wrap.contains(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
   }
 
   // --- особые черепа: особенности по тапу на спец/босс ---
@@ -6156,11 +6202,13 @@
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег</span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
       btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}</span><span class="pick-identity"><span class="pick-model">МЕХ ${String(cls.native).padStart(2, '0')}</span><span class="pick-name">${cls.name}</span><span class="pick-race">Пилот · ${RACE_INFO[config.race].name}</span></span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}</span></span>${desc.join('')}<span class="pick-race-desc">Пилот: ${RACE_INFO[config.race].desc}</span><span class="pick-unique">Модуль меха: ${cls.uniqueSkillDesc}</span>${status}`;
-      btn.addEventListener('click', () => {
+      // A synthesized click from closing results must not start the mech
+      // underneath. A pointer activation has to BEGIN on this picker generation.
+      bindReadOnlyDismiss(btn, () => {
         if (!current()) return;
         if (!isClassUnlocked(cls.id)) { flash('⚠ Мех закрыт: подбери трофей после победы над особыми черепами'); return; }
         requestNewGame(cls.id);
-      });
+      }, () => generation);
       row.appendChild(btn);
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
@@ -6338,19 +6386,20 @@
     return false;
   }
   function telegramNotice(text) {
-    for (const id of ['picker-telegram-status', 'menu-telegram-status']) {
+    for (const id of ['picker-telegram-status', 'menu-telegram-status', 'run-telegram-status']) {
       const node = el(id); if (node) { node.textContent = text; node.hidden = false; }
     }
   }
   function telegramLayer(id) { return !!el(id)?.classList.contains('show'); }
   function syncTelegramChrome() {
     if (!TELEGRAM_APP) return;
+    const exit = el('gameover-close'); if (exit) exit.hidden = false; // also a late SDK connection
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
-      || ['stats', 'skull'].includes(S?.pendingModal);
+      || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
@@ -6373,13 +6422,18 @@
       const wrap = el('exit-modal');
       if (!wrap) return false;
       TELEGRAM_EXIT = { runId: RUN_ID, focus: document.activeElement };
-      el('exit-confirm-text').textContent = 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
+      el('exit-confirm-text').textContent = S?.over
+        ? 'Результат завершённого забега не удалось надёжно сохранить. После закрытия результат или достижения могут потеряться. Остаться и повторить запись или всё равно закрыть?'
+        : 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
       wrap.hidden = false; wrap.classList.add('show'); el('exit-cancel')?.focus();
       syncTelegramChrome();
       return false;
     }
     cancelTelegramExit(false);
-    if (telegramCall(TELEGRAM_APP, 'close')) return true;
+    if (telegramCall(TELEGRAM_APP, 'close')) {
+      const exit = el('gameover-close'); if (exit) exit.disabled = true;
+      return true;
+    }
     telegramNotice('Команда закрытия недоступна. Вернись в игру и используй кнопку закрытия Telegram в шапке.');
     flash('Для выхода используй кнопку закрытия Telegram в шапке');
     syncTelegramChrome();
@@ -6399,6 +6453,7 @@
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+    else if (finishedRunView()) leaveFinishedRun();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
     syncTelegramChrome();
   }
@@ -6657,7 +6712,7 @@
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
-    initInput(); initRetune();
+    initInput(); initRetune(); initFinishedRunNavigation();
     window.addEventListener?.('pagehide', () => { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
