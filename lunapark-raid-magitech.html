@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="6a5e7b06b6c1">
+<meta name="raid-build" content="cac8221e1021">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -337,6 +337,12 @@ body { display: flex; align-items: stretch; justify-content: center; }
   text-align: center; letter-spacing: 0.02em;
 }
 .modal-hint { text-align: center; font-size: 11.5px; color: #cdb8d0; margin: 4px 0; line-height: 1.35; }
+/* Finished-run exits precede statistics, including in short/safe-area views. */
+.gameover-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 10px 0; }
+.gameover-actions .btn, .gameover #modal-body > .btn { display: block; width: 100%; min-height: 44px; white-space: normal; }
+.gameover-actions .btn { margin: 0; }
+.gameover #modal-body { scroll-padding-top: 8px; }
+
 /* --- LEVEL UP / SHOP / UPGRADE modals (classic parity) --- */
 .lv-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 6px 0 4px; }
 .lv-status { text-align: center; font-size: 13px; font-weight: 800; color: #b9f0a8; margin: 6px 0 8px; }
@@ -1468,8 +1474,8 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
-    <h3 class="picker-title">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка 6a5e7b06b6c1</p>
+    <h3 class="picker-title" id="picker-title" tabindex="-1">Выбери <em>мех.</em></h3>
+    <p class="build-label">Сборка cac8221e1021</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот — один прежний расовый пакет: особенность и взаимодействие со смертным врагом, без нового слоя бонусов. Выбери мех или продолжи свой рейд.</p>
@@ -1620,7 +1626,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 6a5e7b06b6c1</p>
+    <p class="build-label">Сборка cac8221e1021</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1654,19 +1660,20 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 6a5e7b06b6c1</p>
+      <p class="build-label" id="updates-build">Сборка cac8221e1021</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
       <h4>В этом обновлении</h4>
       <ul id="updates-current">
-        <li><b>Настройки прямо на игровом экране.</b> Небольшая кнопка с шестерёнкой открывает компактную округлую полупрозрачную панель — без перехода в меню и без увеличения шапки.</li>
-        <li><b>Все три тумблера рядом.</b> Кружки / стеклянная оболочка, анимации и звук. Прежние независимые настройки вида дают четыре сочетания и запоминаются для своего профиля; звук, как раньше, действует в этом окне. По умолчанию всё включено, системное уменьшение движения важнее анимаций.</li>
-        <li><b>Закрыл — играешь дальше.</b> Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только панель; закрывающий тап не выбирает клетку под ней. Цели «Перенастройки» сохраняются. Панель не ускоряет и не приостанавливает ход; урон, случайность и награды прежние.</li>
+        <li><b>Выход после поражения.</b> Вверху итогов появилась кнопка «К выбору меха»: вернуться к подготовке можно без нового старта. Escape и Telegram «Назад» делают то же самое; из рекордов сначала возвращают к итогам.</li>
+        <li><b>Закрыть Mini App.</b> В подключённом Telegram рядом есть отдельная кнопка закрытия. В обычном браузере она не показывается — вкладку закрывают средствами браузера. «Ещё раз», рекорды и достижения остаются.</li>
+        <li><b>Результат остаётся своим.</b> Возврат не оживляет героя и не стирает итог. При ошибке записи видна причина; «Повторить запись» доступно в рекордах, новый старт предупреждает о незаписанном результате. Если перед закрытием не удалось записать резервную копию, есть выбор остаться или явно закрыть без гарантии сохранения.</li>
       </ul>
-      <p class="updates-important"><b>Важно:</b> шестерёнка доступна и после «Продолжить»; заново начинать не нужно. Мех, пилот и конфигурация начатого рейда не меняются. Старые забеги v1/v2/v3 продолжаются по своим правилам без сброса или миграции; «Перенастройка» по-прежнему только в новых v3. Не очищай данные. «Понятно» лишь закрывает это окно, не запускает новый забег.</p>
+      <p class="updates-important"><b>Важно:</b> это выход из уже завершённого рейда, не сдача живого героя. Активный забег по-прежнему продолжается через «Продолжить»; начинать заново или очищать данные не нужно. Старые v1/v2/v3 сохраняют свои правила, меха и пилота без миграции. Настройки на поле и «Перенастройка» с базовыми 12 ходами прежние. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>
       <ol id="updates-history">
+        <li><b>Настройки прямо на игровом экране.</b> Небольшая шестерёнка открывает компактную округлую полупрозрачную панель без увеличения шапки. Кружки / стеклянная оболочка, анимации и звук рядом. Крестик, тап снаружи, Escape и Telegram «Назад» закрывают только панель; закрывающий тап не выбирает поле. Цели «Перенастройки» сохраняются, ход не ставится на паузу. По умолчанию всё включено; системное уменьшение движения важнее анимаций.</li>
         <li><b>Вид и движение; мех и пилот.</b> Два независимых переключателя вида: кружки и анимации, с сохранением игровых меток и приоритетом системного уменьшения движения. Резервный доступ на подготовке и в меню остаётся. В карточках, редакторе и сводке разделены прежние роли меха и пилота, включая расовый пакет со смертным врагом. Новых бонусов нет; независимый пилот — с уровня меха 5.</li>
         <li><b>Взрыв цепочки — по порядку выбора.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней, выжившие враги не взрываются. Длинная цепь уплотняет волну, не добавляет ожидание; падение остаётся общим и плавным. Теперь эффекты также подчиняются переключателю анимаций.</li>
         <li><b>«Перенастройка» и плавное падение.</b> В новых забегах добавлен модуль: стихия → 1–3 целых незамороженных меча/стрелы → отдельное применение, базовая перезарядка 12 ходов, один из четырёх слотов, без общей выдачи на старте. Оружие в плитках стало немного короче, массовое падение — плавнее и без подпрыгивания.</li>
@@ -1725,7 +1732,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 </div>
 
 <!-- generic modal (level / gold / armor / gameover) -->
-<div class="modal" id="modal" role="dialog" aria-modal="true">
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-card">
     <h3 class="modal-title" id="modal-title">УРОВЕНЬ!</h3>
     <div id="modal-body"></div>
@@ -1736,8 +1743,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 <div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
   <div class="help-card">
     <h3>RAID / Как играть</h3>
+    <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 6a5e7b06b6c1.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка cac8221e1021.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -3326,10 +3334,10 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function saveStatus(state, message) {
     RUN_SAVE_STATUS = { state, message };
-    for (const id of ['picker-save-status', 'menu-save-status', 'save-status']) {
+    for (const id of ['picker-save-status', 'menu-save-status', 'save-status', 'run-save-status']) {
       const node = el(id); if (!node) continue;
       node.textContent = message;
-      if (id === 'save-status') node.hidden = !['unavailable', 'invalid', 'conflict'].includes(state);
+      if (id === 'save-status' || id === 'run-save-status') node.hidden = !['unavailable', 'invalid', 'conflict'].includes(state);
     }
   }
   function readRunSlot() {
@@ -6798,30 +6806,39 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? 'ПОБЕДА!' : 'РЕЙД ОКОНЧЕН';
-      body.innerHTML = `<p class="modal-hint">${S.won ? 'Спринт пройден: 100 ходов!' : 'Герой погиб на ходу <strong>' + S.turn + '<\/strong>'}<\/p>
-        <div class="stats-grid">
-          <div><span class="result-glyph">${raidModuleIcon('slash')}<\/span><small>убито черепов<\/small><strong>${S.skullsKilled}<\/strong><\/div>
-          <div><span class="result-glyph">${raidModuleIcon('enchant')}<\/span><small>максимальный уровень<\/small><strong>${S.maxLevel}<\/strong><\/div>
-          <div><span class="result-glyph">${raidModuleIcon('goldtouch')}<\/span><small>золота собрано<\/small><strong>${S.goldEarned}<\/strong><\/div>
-          <div><span class="result-glyph">${raidItemIcon('accessory')}<\/span><small>трофеев забрано<\/small><strong>${S.trophiesThisRun || 0}<\/strong><\/div>
-        <\/div>`;
-      const restart = document.createElement('button');
-      restart.type = 'button';
-      restart.className = 'btn secondary';
-      restart.textContent = '↻ Ещё раз';
-      restart.addEventListener('click', () => {
-        if (runId !== RUN_ID || !S.over) return;
-        if (hasPendingProgress()) requestNewGame();
-        else { closeModal(); newGame(); }
-      });
+      wrap.classList.add('gameover');
+      body.innerHTML = `<p class="modal-hint">${S.won ? 'Спринт пройден: 100 ходов!' : 'Герой погиб на ходу <strong>' + S.turn + '<\/strong>'}<\/p>`;
+      const actions = document.createElement('div'); actions.className = 'gameover-actions';
+      const picker = document.createElement('button'); picker.type = 'button'; picker.id = 'gameover-picker'; picker.className = 'btn'; picker.textContent = 'К выбору меха';
+      const current = () => runId === RUN_ID && finishedRunView() && el('gameover-picker') === picker;
+      bindReadOnlyDismiss(picker, () => { if (current()) leaveFinishedRun(); });
+      const exit = document.createElement('button'); exit.type = 'button'; exit.id = 'gameover-close'; exit.className = 'btn secondary'; exit.textContent = 'Закрыть Mini App'; exit.hidden = !TELEGRAM_APP;
+      bindReadOnlyDismiss(exit, () => { if (current() && !exit.hidden && !exit.disabled) requestTelegramClose(); });
+      actions.appendChild(picker); actions.appendChild(exit); body.appendChild(actions);
+      const saveNote = document.createElement('p'); saveNote.id = 'run-save-status'; saveNote.className = 'save-note';
+      saveNote.setAttribute('role', 'status'); saveNote.setAttribute('aria-live', 'polite'); saveNote.textContent = RUN_SAVE_STATUS.message;
+      saveNote.hidden = !['unavailable', 'invalid', 'conflict'].includes(RUN_SAVE_STATUS.state); body.appendChild(saveNote);
       const historyNote = document.createElement('p'); historyNote.id = 'run-history-status'; historyNote.className = 'save-note';
       historyNote.setAttribute('role', 'status'); historyNote.setAttribute('aria-live', 'polite'); historyNote.textContent = HISTORY_STATUS.message;
       body.appendChild(historyNote);
+      const telegramNote = document.createElement('p'); telegramNote.id = 'run-telegram-status'; telegramNote.className = 'telegram-status';
+      telegramNote.setAttribute('role', 'status'); telegramNote.setAttribute('aria-live', 'polite'); telegramNote.hidden = true; body.appendChild(telegramNote);
+      const stats = document.createElement('div'); stats.className = 'stats-grid';
+      stats.innerHTML = `<div><span class="result-glyph">${raidModuleIcon('slash')}<\/span><small>убито черепов<\/small><strong>${S.skullsKilled}<\/strong><\/div>
+          <div><span class="result-glyph">${raidModuleIcon('enchant')}<\/span><small>максимальный уровень<\/small><strong>${S.maxLevel}<\/strong><\/div>
+          <div><span class="result-glyph">${raidModuleIcon('goldtouch')}<\/span><small>золота собрано<\/small><strong>${S.goldEarned}<\/strong><\/div>
+          <div><span class="result-glyph">${raidItemIcon('accessory')}<\/span><small>трофеев забрано<\/small><strong>${S.trophiesThisRun || 0}<\/strong><\/div>`;
+      body.appendChild(stats);
       const history = document.createElement('button'); history.type = 'button'; history.className = 'btn secondary'; history.textContent = 'Рекорды и статистика';
-      history.addEventListener('click', () => { if (runId === RUN_ID && S.over) openRunRecords(); });
+      bindReadOnlyDismiss(history, () => { if (current()) openRunRecords(); });
       const achievements = document.createElement('button'); achievements.type = 'button'; achievements.className = 'btn secondary'; achievements.textContent = 'Достижения';
-      achievements.addEventListener('click', () => { if (runId === RUN_ID && S.over) openAchievements(); });
+      bindReadOnlyDismiss(achievements, () => { if (current()) openAchievements(); });
+      const restart = document.createElement('button'); restart.type = 'button'; restart.id = 'gameover-restart'; restart.className = 'btn secondary'; restart.textContent = '↻ Ещё раз';
+      bindReadOnlyDismiss(restart, () => { if (current()) requestNewGame(); });
       body.appendChild(history); body.appendChild(achievements); body.appendChild(restart);
+      // The default action leaves the result; Enter must never auto-restart.
+      picker.focus?.({ preventScroll: true });
+      syncTelegramChrome();
     }
     // An asynchronous reward may arrive while the transient settings are up.
     // Hand focus to its real choice, never keep it inside a now-hidden panel.
@@ -6844,6 +6861,43 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     drainArrivals();
     if (!S.resolving && !S.pendingModal && !S.over) checkTrophy();
     saveRun();
+  }
+
+  // Finished results are navigation, NOT a mandatory reward or surrender.
+  function finishedRunView() {
+    return !!S?.over && S.pendingModal === 'gameover' && telegramLayer('modal') && !pickerOpen
+      && !UPDATES_OPEN && !HISTORY_OPEN && !NEW_RUN_REQUEST && !TELEGRAM_EXIT
+      && !['menu-modal', 'help-modal'].some(telegramLayer);
+  }
+  function leaveFinishedRun() {
+    if (!finishedRunView() || !el('class-picker')) return false;
+    // Do not use closeModal/resumeRewards: the terminal receipt, pending
+    // history retry, S.over and every combat/RNG value stay exactly as earned.
+    S.pendingModal = null;
+    el('modal').classList.remove('show');
+    showClassPicker();
+    el('picker-title')?.focus();
+    syncTelegramChrome();
+    return true;
+  }
+  function initFinishedRunNavigation() {
+    const wrap = el('modal'); if (!wrap) return;
+    wrap.addEventListener('keydown', event => {
+      if (!finishedRunView()) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leaveFinishedRun(); return; }
+      if (event.key !== 'Tab') return;
+      const controls = [...wrap.querySelectorAll('button:not(:disabled)')].filter(node => !node.hidden);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!controls.includes(document.activeElement) || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+      }
+    });
+    document.addEventListener('focusin', event => {
+      if (finishedRunView() && !wrap.contains(event.target)) el('gameover-picker')?.focus({ preventScroll: true });
+    });
+    for (const kind of ['click', 'pointerdown']) document.addEventListener(kind, event => {
+      if (finishedRunView() && !wrap.contains(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); }
+    }, true);
   }
 
   // --- особые черепа: особенности по тапу на спец/босс ---
@@ -7925,11 +7979,13 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег<\/span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле<\/span>';
       btn.innerHTML = `<span class="pick-head"><span class="pick-icon">${mechEmblem(cls.native)}<\/span><span class="pick-identity"><span class="pick-model">МЕХ ${String(cls.native).padStart(2, '0')}<\/span><span class="pick-name">${cls.name}<\/span><span class="pick-race">Пилот · ${RACE_INFO[config.race].name}<\/span><\/span><span class="pick-go" aria-hidden="true">${unlocked ? '↗' : '◇'}<\/span><\/span>${desc.join('')}<span class="pick-race-desc">Пилот: ${RACE_INFO[config.race].desc}<\/span><span class="pick-unique">Модуль меха: ${cls.uniqueSkillDesc}<\/span>${status}`;
-      btn.addEventListener('click', () => {
+      // A synthesized click from closing results must not start the mech
+      // underneath. A pointer activation has to BEGIN on this picker generation.
+      bindReadOnlyDismiss(btn, () => {
         if (!current()) return;
         if (!isClassUnlocked(cls.id)) { flash('⚠ Мех закрыт: подбери трофей после победы над особыми черепами'); return; }
         requestNewGame(cls.id);
-      });
+      }, () => generation);
       row.appendChild(btn);
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
@@ -8107,19 +8163,20 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     return false;
   }
   function telegramNotice(text) {
-    for (const id of ['picker-telegram-status', 'menu-telegram-status']) {
+    for (const id of ['picker-telegram-status', 'menu-telegram-status', 'run-telegram-status']) {
       const node = el(id); if (node) { node.textContent = text; node.hidden = false; }
     }
   }
   function telegramLayer(id) { return !!el(id)?.classList.contains('show'); }
   function syncTelegramChrome() {
     if (!TELEGRAM_APP) return;
+    const exit = el('gameover-close'); if (exit) exit.hidden = false; // also a late SDK connection
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
-      || ['stats', 'skull'].includes(S?.pendingModal);
+      || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
@@ -8142,13 +8199,18 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const wrap = el('exit-modal');
       if (!wrap) return false;
       TELEGRAM_EXIT = { runId: RUN_ID, focus: document.activeElement };
-      el('exit-confirm-text').textContent = 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
+      el('exit-confirm-text').textContent = S?.over
+        ? 'Результат завершённого забега не удалось надёжно сохранить. После закрытия результат или достижения могут потеряться. Остаться и повторить запись или всё равно закрыть?'
+        : 'Текущий момент не удалось сохранить. После закрытия последние действия могут потеряться; продолжение не гарантируется. Остаться и повторить запись или всё равно закрыть?';
       wrap.hidden = false; wrap.classList.add('show'); el('exit-cancel')?.focus();
       syncTelegramChrome();
       return false;
     }
     cancelTelegramExit(false);
-    if (telegramCall(TELEGRAM_APP, 'close')) return true;
+    if (telegramCall(TELEGRAM_APP, 'close')) {
+      const exit = el('gameover-close'); if (exit) exit.disabled = true;
+      return true;
+    }
     telegramNotice('Команда закрытия недоступна. Вернись в игру и используй кнопку закрытия Telegram в шапке.');
     flash('Для выхода используй кнопку закрытия Telegram в шапке');
     syncTelegramChrome();
@@ -8168,6 +8230,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+    else if (finishedRunView()) leaveFinishedRun();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
     syncTelegramChrome();
   }
@@ -8426,7 +8489,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
-    initInput(); initRetune();
+    initInput(); initRetune(); initFinishedRunNavigation();
     window.addEventListener?.('pagehide', () => { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeGameSettings(false); closeRetune(false); cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {

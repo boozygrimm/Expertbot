@@ -3195,14 +3195,17 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /Настройки прямо на игровом экране/);
-    assert.match(doc.querySelector('#updates-current').textContent, /шестерёнкой/);
-    assert.match(doc.querySelector('#updates-current').textContent, /полупрозрачную/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Все три тумблера/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Кружки.*анимации и звук/);
-    assert.match(doc.querySelector('#updates-current').textContent, /четыре сочетания/);
-    assert.match(doc.querySelector('#updates-current').textContent, /системное уменьшение движения/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Цели «Перенастройки» сохраняются/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Выход после поражения/);
+    assert.match(doc.querySelector('#updates-current').textContent, /К выбору меха/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Закрыть Mini App/);
+    assert.match(doc.querySelector('#updates-current').textContent, /без нового старта/);
+    assert.match(doc.querySelector('#updates-current').textContent, /ошибке записи/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Повторить запись/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Настройки прямо на игровом экране/);
+    assert.match(doc.querySelector('#updates-history').textContent, /шестерёнк/);
+    assert.match(doc.querySelector('#updates-history').textContent, /полупрозрачн/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Кружки.*анимации и звук/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Цели «Перенастройки» сохраняются/);
     assert.match(doc.querySelector('#updates-history').textContent, /мех и пилот/);
     assert.match(doc.querySelector('#updates-history').textContent, /смертным врагом/);
     assert.match(doc.querySelector('#updates-history').textContent, /Новых бонусов.*нет/);
@@ -4446,4 +4449,237 @@ test('magitech gameplay settings: OS priority and failed-write notices reach the
     d.querySelector('#sound-on').click();assert.equal(d.querySelector('#sound-on').checked,false);
     closeGameSettings(b);openGameSettings(b);assert.equal(d.querySelector('#sound-on').checked,false);assert.equal(retuneRaw(b),raw);assert.deepEqual(b.errors,[]);
   }finally{b.dom.window.close();}
+});
+
+// Finished-run navigation must never be another way to start/surrender a run.
+const defeatButton = (b, id) => b.dom.window.document.getElementById('gameover-' + id);
+const defeatKey = (b, sdk = false) => sdk ? 'raid:magitech:tg:701:activeRun' : magitechKey('raid:activeRun');
+async function finishMagitechRaid(b) {
+  endBuiltRaid(b.raid);
+  await until(() => b.raid.state.pendingModal === 'gameover');
+  await new Promise(resolve => setTimeout(resolve, 40)); // terminal UI's ordinary queued save
+}
+for (const sdk of [false, true]) test(`magitech defeat exit: ${sdk ? 'Telegram' : 'browser'} returns to preparation without restart, resurrection, extra records or foreign writes`, async () => {
+  const stub = raidTelegramStub(), foreign = { 'raid:activeRun': 'classic', 'raid:tg:701:history': 'classic account', 'raid:magitech:tg:702:activeRun': 'another account' };
+  const b = await openMagitech({ saved: foreign, url: sdk ? testerRaidUrl : 'https://raid.test/', setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const r = b.raid, d = b.dom.window.document;
+    await finishMagitechRaid(b);
+    const state = r.state, frozen = JSON.stringify({ ...state, pendingModal: null }), saved = raidStorage(b.dom.window), selected = r.getSelectedClassId();
+    const back = defeatButton(b, 'picker'), close = defeatButton(b, 'close');
+    assert.ok(back); assert.equal(back.textContent, 'К выбору меха'); assert.ok(close);
+    assert.equal(close.hidden, !sdk); assert.equal(d.activeElement, back);
+    assert.equal(d.querySelector('#modal').getAttribute('aria-labelledby'), 'modal-title');
+    assert.ok(d.querySelector('.gameover-actions').compareDocumentPosition(d.querySelector('.stats-grid')) & b.dom.window.Node.DOCUMENT_POSITION_FOLLOWING, 'exit actions come before the tall statistics');
+    back.click(); back.click();
+    assert.equal(d.querySelector('#class-picker').classList.contains('show'), true);
+    assert.equal(d.querySelector('#modal').classList.contains('show'), false);
+    assert.equal(d.activeElement.id, 'picker-title'); assert.equal(d.querySelector('#picker-resume').hidden, true);
+    assert.equal(r.state, state); assert.equal(state.over, true); assert.equal(state.hero.hp, 0); assert.equal(state.pendingModal, null);
+    assert.equal(JSON.stringify(state), frozen); assert.equal(r.getSelectedClassId(), selected);
+    assert.deepEqual(raidStorage(b.dom.window), saved); assert.equal(r.savedRunInfo(), null);
+    assert.equal(r.getLocalHistory().classes.adventurer.games, 1); assert.equal(stub.calls.includes('close'), false);
+    if (sdk) { await until(() => !stub.tg.BackButton.isVisible); assert.equal(stub.tg.isClosingConfirmationEnabled, false); }
+    else assert.deepEqual(stub.calls, []);
+    for (const [key, raw] of Object.entries(foreign)) assert.equal(b.dom.window.localStorage.getItem(key), raw);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const action of ['escape', 'sdk-back']) test(`magitech defeat exit: ${action} leaves the result, but nested records return to it first`, async () => {
+  const stub = raidTelegramStub(), sdk = action === 'sdk-back';
+  const b = await openMagitech({ url: sdk ? testerRaidUrl : 'https://raid.test/', setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const d = b.dom.window.document;
+    await finishMagitechRaid(b);
+    const records = [...d.querySelectorAll('#modal-body button')].find(n => n.textContent === 'Рекорды и статистика');
+    records.focus(); records.click();
+    const goBack = () => sdk ? stub.back() : d.activeElement.dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    goBack();
+    assert.equal(d.querySelector('#history-modal').hidden, true); assert.equal(d.activeElement, records);
+    assert.equal(b.raid.state.pendingModal, 'gameover');
+    if (sdk) { await until(() => stub.tg.BackButton.isVisible); assert.equal(stub.tg.isClosingConfirmationEnabled, false); }
+    goBack(); goBack();
+    assert.equal(d.querySelector('#class-picker').classList.contains('show'), true); assert.equal(b.raid.state.over, true);
+    assert.equal(b.raid.state.pendingModal, null); assert.equal(d.activeElement.id, 'picker-title');
+    assert.equal(stub.calls.includes('close'), false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: Tab/focus stays on non-destructive result controls, background and old touch clicks cannot start a game', async () => {
+  const b = await openMagitech();
+  try {
+    const w = b.dom.window, d = w.document;
+    await finishMagitechRaid(b);
+    const state = b.raid.state, back = defeatButton(b, 'picker'), restart = defeatButton(b, 'restart');
+    const tab = shiftKey => d.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true }));
+    assert.equal(d.activeElement, back); tab(true); assert.equal(d.activeElement, restart);
+    tab(false); assert.equal(d.activeElement, back);
+    d.querySelector('#menu-btn').focus(); assert.equal(d.activeElement, back);
+    d.querySelector('#menu-restart').click(); d.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(b.raid.state, state); assert.equal(d.querySelector('#restart-modal').classList.contains('show'), false);
+    back.dispatchEvent(new w.MouseEvent('click', { detail: 1, bubbles: true }));
+    assert.equal(state.pendingModal, 'gameover', 'the old opening tap did not start on this exit');
+    back.click();
+    const pick = d.querySelector('.picker-card-btn:not(.locked)');
+    pick.dispatchEvent(new w.MouseEvent('click', { detail: 1, bubbles: true }));
+    assert.equal(b.raid.state, state, 'a synthesized click after dismissing results must not start the mech underneath');
+    back.click(); restart.click(); defeatButton(b, 'close').click();
+    assert.equal(b.raid.state, state); assert.equal(state.over, true); assert.equal(d.querySelector('#class-picker').classList.contains('show'), true);
+    raidPointer(w, pick, 'pointerdown'); pick.dispatchEvent(new w.MouseEvent('click', { detail: 1, bubbles: true }));
+    assert.notEqual(b.raid.state, state, 'a NEW gesture on a chosen mech still starts normally');
+    const next = b.raid.state; back.click(); restart.click();
+    assert.equal(b.raid.state, next); assert.equal(next.over, false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: history quota preserves the terminal backup, pending warning and idempotent retry from preparation', async () => {
+  const b = await openMagitech({ setup(w) {
+    w.blockHistory = true;
+    const set = w.Storage.prototype.setItem;
+    w.Storage.prototype.setItem = function(key, value) { if (w.blockHistory && key === magitechKey('raid:history')) throw Error('Quota'); return set.call(this, key, value); };
+  } });
+  try {
+    const w = b.dom.window, d = w.document;
+    await finishMagitechRaid(b);
+    const terminal = w.localStorage.getItem(defeatKey(b)), id = b.raid.state.historyId;
+    assert.equal(JSON.parse(terminal).status, 'finished'); assert.match(d.querySelector('#run-history-status').textContent, /пока не записан/);
+    defeatButton(b, 'picker').click();
+    assert.equal(w.localStorage.getItem(defeatKey(b)), terminal); assert.equal(d.querySelector('#picker-history-status').hidden, false);
+    d.querySelector('.picker-card-btn:not(.locked)').click();
+    assert.equal(d.querySelector('#restart-modal').classList.contains('show'), true); assert.match(d.querySelector('#restart-confirm-text').textContent, /резервную запись/);
+    d.querySelector('#restart-cancel').click(); assert.equal(b.raid.state.historyId, id);
+    d.querySelector('#picker-history').click(); assert.equal(d.querySelector('#history-retry').hidden, false);
+    w.blockHistory = false; d.querySelector('#history-retry').click(); d.querySelector('#history-retry').click();
+    const history = w.localStorage.getItem(magitechKey('raid:history'));
+    assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1); assert.equal(d.querySelector('#history-retry').hidden, true);
+    d.querySelector('#history-close').click(); w.dispatchEvent(new w.Event('pagehide'));
+    assert.equal(w.localStorage.getItem(defeatKey(b)), terminal); assert.equal(w.localStorage.getItem(magitechKey('raid:history')), history);
+    assert.equal(b.raid.state.over, true); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: Telegram Close with a saved terminal backup recovers failed history once after reopening, never Continue', async () => {
+  let stub = raidTelegramStub(), b = await openMagitech({ url: testerRaidUrl, setup(w) {
+    w.Telegram = { WebApp: stub.tg };
+    const set = w.Storage.prototype.setItem;
+    w.Storage.prototype.setItem = function(key, value) { if (key === 'raid:magitech:tg:701:history') throw Error('Quota'); return set.call(this, key, value); };
+  } });
+  try {
+    await finishMagitechRaid(b);
+    const close = defeatButton(b, 'close'); close.click(); close.click();
+    assert.equal(stub.calls.filter(n => n === 'close').length, 1); assert.equal(close.disabled, true);
+    assert.equal(b.dom.window.document.querySelector('#exit-modal').hidden, true);
+    const saved = raidStorage(b.dom.window), terminal = saved[defeatKey(b, true)]; b.dom.window.close();
+    stub = raidTelegramStub();
+    b = await openMagitech({ start: false, saved, url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+    assert.equal(b.raid.state, null); assert.equal(b.dom.window.document.querySelector('#picker-resume').hidden, true);
+    assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1); assert.equal(b.raid.retryRunHistory(), true);
+    assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1); assert.equal(b.dom.window.localStorage.getItem(defeatKey(b, true)), terminal);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const cancel of ['button', 'escape', 'sdk-back']) test(`magitech defeat exit: a failed terminal write needs explicit close confirmation and ${cancel} restores the result`, async () => {
+  const stub = raidTelegramStub();
+  const b = await openMagitech({ url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const w = b.dom.window, d = w.document, set = w.Storage.prototype.setItem;
+    let blocked = true;
+    w.Storage.prototype.setItem = function(key, value) { if (blocked && /:(activeRun|history)$/.test(key)) throw Error('Denied'); return set.call(this, key, value); };
+    await finishMagitechRaid(b);
+    const close = defeatButton(b, 'close'), state = b.raid.state;
+    assert.equal(d.querySelector('#run-save-status').hidden, false); assert.match(d.querySelector('#run-save-status').textContent, /Не удалось сохранить/);
+    close.focus(); close.click();
+    assert.equal(d.querySelector('#exit-modal').hidden, false); assert.equal(d.activeElement.id, 'exit-cancel');
+    assert.match(d.querySelector('#exit-confirm-text').textContent, /результат|Результат/);
+    assert.equal(stub.calls.includes('close'), false);
+    if (cancel === 'button') d.querySelector('#exit-cancel').click();
+    else if (cancel === 'sdk-back') stub.back();
+    else d.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(d.querySelector('#exit-modal').hidden, true); assert.equal(d.activeElement, close);
+    assert.equal(state.pendingModal, 'gameover'); assert.equal(state.over, true);
+    if (cancel === 'button') {
+      close.click(); d.querySelector('#exit-confirm').click(); d.querySelector('#exit-confirm').click(); close.click();
+      assert.equal(stub.calls.filter(n => n === 'close').length, 1, 'explicit discard is one native request');
+    } else {
+      blocked = false; close.click();
+      assert.equal(stub.calls.filter(n => n === 'close').length, 1); assert.equal(d.querySelector('#run-save-status').hidden, true);
+      assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1);
+    }
+    assert.equal(b.raid.state, state); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const failure of ['missing', 'throwing']) test(`magitech defeat exit: ${failure} SDK close gives a visible result hint and usable mech exit`, async () => {
+  const stub = raidTelegramStub({ overrides: { close: failure === 'missing' ? undefined : () => { throw Error('Unsupported'); } } });
+  const b = await openMagitech({ url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const d = b.dom.window.document;
+    await finishMagitechRaid(b); defeatButton(b, 'close').click();
+    assert.equal(d.querySelector('#run-telegram-status').hidden, false); assert.match(d.querySelector('#run-telegram-status').textContent, /закрытия.*Telegram/);
+    assert.equal(defeatButton(b, 'close').disabled, false);
+    defeatButton(b, 'picker').click(); assert.equal(d.querySelector('#class-picker').classList.contains('show'), true);
+    assert.equal(b.raid.state.over, true); assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: late SDK exposes Close without rewriting or adopting the anonymous terminal result', async () => {
+  const b = await openMagitech({ url: testerRaidUrl });
+  try {
+    const w = b.dom.window, d = w.document;
+    await finishMagitechRaid(b);
+    assert.equal(defeatButton(b, 'close').hidden, true);
+    const state = b.raid.state, saved = raidStorage(w), stub = raidTelegramStub();
+    w.Telegram = { WebApp: stub.tg }; d.querySelector('script[src]').onload();
+    assert.equal(defeatButton(b, 'close').hidden, false); assert.equal(b.raid.state, state);
+    assert.deepEqual(raidStorage(w), saved); assert.equal(b.raid.saveRun(), false);
+    defeatButton(b, 'close').click(); assert.equal(d.querySelector('#exit-modal').hidden, false); assert.equal(stub.calls.includes('close'), false);
+    d.querySelector('#exit-cancel').click(); defeatButton(b, 'picker').click();
+    assert.equal(d.querySelector('#class-picker').classList.contains('show'), true); assert.deepEqual(raidStorage(w), saved); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: returning and pagehide never overwrite a peer active checkpoint or a switched Telegram account', async () => {
+  const stub = raidTelegramStub(), b = await openMagitech({ url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const w = b.dom.window, key = defeatKey(b, true), peer = JSON.parse(w.localStorage.getItem(key));
+    peer.state.historyId = 'run-peer-finished-ui'; peer.revision++;
+    await finishMagitechRaid(b);
+    const terminal = w.localStorage.getItem(key), history = w.localStorage.getItem('raid:magitech:tg:701:history'), active = JSON.stringify(peer);
+    w.localStorage.setItem(key, active); w.dispatchEvent(new w.StorageEvent('storage', { key, oldValue: terminal, newValue: active, storageArea: w.localStorage }));
+    assert.equal(b.raid.saveStatus.state, 'conflict');
+    defeatButton(b, 'picker').click(); w.dispatchEvent(new w.Event('pagehide'));
+    assert.equal(w.localStorage.getItem(key), active); assert.equal(w.localStorage.getItem('raid:magitech:tg:701:history'), history);
+    stub.tg.initDataUnsafe.user.id = 702; w.dispatchEvent(new w.Event('pagehide'));
+    assert.equal(w.localStorage.getItem(key), active); assert.equal(w.localStorage.getItem('raid:magitech:tg:702:activeRun'), null);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech defeat exit: an explicit retry still starts exactly once, old result controls cannot act on it', async () => {
+  const b = await openMagitech();
+  try {
+    await finishMagitechRaid(b);
+    const w = b.dom.window, d = w.document, old = b.raid.state, restart = defeatButton(b, 'restart'), back = defeatButton(b, 'picker');
+    assert.match(restart.textContent, /Ещё раз/); restart.click(); restart.click(); back.click();
+    assert.notEqual(b.raid.state, old); assert.equal(b.raid.state.over, false); assert.equal(b.raid.state.turn, 0);
+    assert.equal(b.raid.getLocalHistory().classes.adventurer.games, 1); assert.equal(d.querySelector('#class-picker').classList.contains('show'), false);
+    assert.equal(JSON.parse(w.localStorage.getItem(defeatKey(b))).status, 'active'); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+for (const kind of ['level', 'gold', 'armor']) test(`magitech defeat exit: live ${kind} reward is not a finished run or a new surrender mechanism`, async () => {
+  const stub = raidTelegramStub(), b = await openMagitech({ url: testerRaidUrl, setup(w) { w.Telegram = { WebApp: stub.tg }; } });
+  try {
+    const r = b.raid, d = b.dom.window.document;
+    if (kind === 'level') { r.state.hero.xp = 100; r.checkLevelUp(); }
+    else if (kind === 'gold') { r.state.hero.gold = 100; r.checkGoldBox(); }
+    else { r.state.upgradeBar = 100; r.checkUpgradeBar(); }
+    const before = JSON.stringify(r.state);
+    assert.equal(defeatButton(b, 'picker'), null); assert.equal(r.showClassPicker(), false);
+    d.querySelector('#modal').dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); stub.back();
+    assert.equal(JSON.stringify(r.state), before); assert.equal(r.state.pendingModal, kind); assert.equal(r.state.over, false);
+    assert.equal(stub.calls.includes('close'), false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
 });

@@ -23,7 +23,32 @@
 > алхимии — тогда этот файл главный. Остальные `LUNAPARK_*.md` частично
 > устарели.**
 
-**Прямые настройки на игровом экране реализованы; QA завершён — отдельный выпуск после135:**
+**После136 — выход после поражения реализован и проверен, готовится отдельный выпуск:**
+владелец заметил: «нет нормального способа выйти после проигрыша в забеге.
+Только кнопка заново». Вверху итогов теперь **«К выбору меха»**, а в SDK —
+**«Закрыть Mini App»**. Возврат без старта/воскрешения/дублей результата;
+терминальные record/backup/retry и предупреждения об ошибке сохранены. Escape/
+Back и фокус,44px, старые/двойные действия защищены; живые награды не обходятся.
+Полностью прочитаны AGENTS и актуальный LUNA1–5606 до правок; границы §4 до runtime.
+**cac8221e1021 /4041376B /SHA256 6d506dc0fcda3adcb32d83dfcea54863d7b77bb57ceb4d0491b7aea4f1bcb228**.
+Свежие focused **20PASS** (19 новых+актуализированный notice), RED16→GREEN;
+Chromium153 **2 exact6a terminal/history pairs +4native UI viewports +6genuine
+released v1/v2/v3 upgrades +4storage/SDK failures**, errors[]. Python9 целевых
+модулей **272PASS+48subtests/30.26s**; полный npm **823PASS/0fail/0skip,
+381650.93805ms/exit0**; ESLint0errors/13baselinewarnings. Guard:363functions и все
+остальные source bytes вне3UI helpers/8UI wiring точек идентичны136; terminal/
+history/save/бой/settings/audio/A1 прежние,561other tracked blobs unchanged,
+repeat build/inline syntax/preview external Host200/full bytes/diff PASS.
+Новый PR/merge/Pages ещё впереди;804/274 ниже — исторический136.
+[PR136](https://github.com/boozygrimm/Expertbot/pull/136) фактически **MERGED**,
+merge/main **f9529ffa29eb0de7a2b00c43f8d84d1d9effdec3**, Pages45328324590 SUCCESS,
+public **6a5e7b06b6c1** —
+[завершённый протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652).
+Та же arena/4dac0ee2-expertbot clean ff-only до merge136; новый инкремент требует
+нового PR, не повторного136. Это **не** разрешение добровольной сдачи живого
+рейда/новых наград/баланса/M1/парка/облака/рассылки/второго poller.
+
+**Историческая pre-merge сводка136 — прямые настройки, QA был завершён:**
 шестерёнка44px занимает прежнее место звука в шапке, открывает округлую
 полупрозрачную панель272px с **кружками/анимациями/звуком** без перехода в меню.
 Высота шапки/поле/доступные hit-targets прежние; Escape/Back/крестик/тап снаружи
@@ -267,7 +292,28 @@ auto-main для существующего бота; Pages не доказыв�
 
 ## 2. Где мы сейчас (короткая сводка)
 
-- **Прямые настройки на поле реализованы, QA завершён, готовится отдельный выпуск после135:**
+- **После136 — явный выход после поражения реализован и проверен, готовится выпуск:**
+  - Прямое замечание владельца о тупике «только заново». На итоговом экране
+    добавить заметное «К выбору меха» без автоматического старта; Telegram
+    получает явное «Закрыть Mini App» через прежний save/SDK close/error flow.
+  - Escape/SDK Back с результата возвращают к подготовке, не запускают рейд;
+    история/достижения/повторная игра остаются. Основные действия достижимы
+    на маленьком/коротком экране, focus/Tab/44px/защита stale и закрывающего тапа.
+  - Терминальный результат уже пишется штатно. Выход не снимает `S.over`, не
+    создаёт новый record/ID/слот/награду и не возрождает героя; failed history
+    сохраняет backup/retry/предупреждение при новом старте. Ошибки закрытия
+    показываются прямо в итогах; при отказе записи остаётся явное подтверждение.
+  - AGENTS/fullLUNA1–5606 прочитаны до правок; согласие/трактовка §4 до runtime.
+    На той же assigned ветке ff-only до actual136=f9529ff, exact6a/SHA731b…805d
+    закреплён в /tmp. Код/notice/help/COMMANDS/cac8221e1021 готовы; focused20PASS,
+    native2pairs+4UI+6upgrades+4failures/errors[], Python272+48subtestsPASS.
+    Финальный полный **823npm/0fail/0skip/exit0**,363unchangedfunctions/остальные
+    sourcebytes/terminal+history+save/settings/audio/A1/combat/561blobs/repeatbuild/
+    syntax/Host200exactbytes/diff guards PASS. Новые PR/merge/Pages ещё впереди;
+    факты доставки будут в отдельном release-протоколе, не в результатах136.
+    Добровольная сдача **живого** рейда и прочие M1/B/C/bossD/парк/облако не входят.
+
+- **Историческая pre-merge сводка136 — прямые настройки реализованы:**
   - Шестерёнка44×44 на прежнем месте звука, небольшой rounded/translucent popup
     до272px/radius28, три прежних тумблера: оболочка, анимации, звук. Шапка не
     выросла, модели/ячейки/лейблы не пересоздаются. Резервные controls подготовки/
@@ -1152,6 +1198,29 @@ auto-main для существующего бота; Pages не доказыв�
 не бухгалтерией: игрок всегда видит цель, стоимость действия и что получит.
 
 ## 4. Принятые решения и открытые вопросы
+
+**После136 — выход после уже состоявшегося поражения:**
+
+- Прямой отчёт: «Хорошо. Я заметил, что нет нормального способа выйти после
+  проигрыша в забеге. Только кнопка заново». Это приоритетная корректировка UI,
+  не просьба начать следующий механический этап.
+- Объявлено в чате: явное **«К выбору меха»** на итоговом экране, а при
+  подключённом Telegram — **«Закрыть Mini App»**. Возврат не начинает новый рейд
+  и не заменяет finished record; прежние «Ещё раз», рекорды/достижения остаются.
+  Escape/SDK Back из итогов ведёт к подготовке; из вложенной истории — сначала
+  обратно к итогам. На корневой подготовке остаётся нативное Close клиента.
+- Основные кнопки видимы/доступны на малых экранах без уменьшения44px целей;
+  фокус/Tab, stale/double/detached callbacks и старый синтезированный click
+  не должны запускать следующий рейд. Нельзя снимать gate живых наград/резолва
+  или превращать закрытие/возврат в терминальную сдачу ещё живого героя.
+- Терминальная запись/receipt/retry/профиль остаются прежними. При storage failure
+  не обещать сохранность невозможного: backup/retry/видимая ошибка и существующее
+  явное подтверждение закрытия; новый старт всё ещё предупреждает о незаписанном
+  результате. При SDK close failure доступен возврат к мехам и подсказка в итогах.
+- No combat/RNG/таймеры/сейв-форматы/баланс/классика/импорт/очистка/облако/парк.
+  В частности, это **не** контракт добровольного окончания незавершённого рейда.
+  Проверенный UI-шаг можно выпустить по прежнему разрешению, с actual first-entry
+  changes/history/help/COMMANDS и раздельной проверкой Pages/Render.
 
 **После PR135 — настройки должны быть прямо на игровом экране:**
 
@@ -2304,6 +2373,70 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   `ALCHEMY_MINI_APP_PLAN.md` и `FREE_CAPACITY_OPTIONS.md` (оценки от 12.11).
 
 ## 7. Журнал работы (дописывать сверху, новые записи выше старых)
+
+### После136 — выход после поражения: финальная QA PASS,823npm/272Python+48subtests; готовится выпуск
+
+- В итогах выше статистики добавлены «К выбору меха»/SDK-only «Закрыть Mini App»;
+  результат остаётся завершённым, без `newGame`/снятия `S.over`/перезаписи receipt
+  при возврате. Повторная игра/рекорды/достижения прежние. Escape и SDK Back
+  возвращают к мехам; вложенная история сначала закрывается к итогам. Фокус
+  выбирает безопасный выход, Tab замкнут, старые callbacks/закрывающий touchclick
+  и скрытые фоновые активации заблокированы. Новая кнопка меха требует нового
+  pointerdown своего поколения, keyboard/AT click0 сохраняется.
+- Save/history/достижения/форматы/все боевые функции не изменены. В итогах видны
+  save/conflict/SDK close ошибки; pending history остаётся резервной finished
+  записью и доступен retry с подготовки. Неуспешное terminal сохранение перед
+  SDK close использует прежнее явное discard-окно, текст соответствует итогу,
+  отмена возвращает фокус; двойной close не отправляет повторную команду.
+- Actual «Что нового» описывает этот шаг, прошлые настройки перемещены в краткую
+  историю; help/COMMANDS обновлены. **cac8221e1021/4041376B/SHA256 6d506dc0fcda3adcb32d83dfcea54863d7b77bb57ceb4d0491b7aea4f1bcb228**.
+- Test-first:19новых→RED16/прежние live-gate3PASS→GREEN19; вместе с текущим notice
+  **20focusedPASS**. NativeChromium153: **2paired current↔exactGit6a** сохраняют
+  одинаковые state/terminal/history bytes до выхода; **4UI**320×568web/375×812SDK/
+  844×390SDK/1024×768web, реальные touch/Tab/Enter/Escape, оба выхода/44px/noauto;
+  **6genuine released v1/v2/v3 upgrades** (web/SDK) сохраняют raw до Continue,
+  HP7/замороженный config/свою terminal version, settings и выход работают;
+  **4ошибки**history-only/all-writes/missing SDK close/throwing close проверяют
+  recovery-once/explicit discard/видимую подсказку/рабочий возврат. errors[].
+  Phone/landscape/failed-confirm/return PNG просмотрены; toast достижений временно
+  перекрывает часть заголовка на малых экранах, первичные выходы доступны.
+- Python **272PASS+48subtests/30.26s**,9 существующих целевых модулей (включая
+  backend/sessions/crafting/production/isolation/sandbox/alchemy/owner-navigation),
+  не весь бот; baseline pytest_asyncio warning. ESLint0errors/13старыхwarnings,
+  tests0/0. Финальный `NODE_PATH=/tmp/raid-update-tools/node_modules
+  MINIAPP_PYTHON=/tmp/raid-update-venv/bin/python npm test --prefix miniapp_preview`
+  → **823PASS/0fail/0skip/381650.93805ms**, явный npm subprocess **exit0**.
+  Старые804/274 не приписываются новому продукту.
+- GuardPASS: **363из371 прежних functions** и все source bytes вне3новых UI helpers/
+  8точек UI wiring идентичны136. В частности live reward code, terminal/history/
+  achievement/save/decode/ownership/Continue/newGame/requestNewGame/settings/audio/
+  retune/combat неизменны. Closing protocol отличается только текстом при S.over
+  и disable кнопки после успешной SDK-команды, не алгоритмом save/discard.
+  CSS — только finished-actions;561other tracked blobs/classic/art/weapons/scenes/
+  bot/builders/deps byte-identical. Genuine fixtures всех4releases сверены с Git.
+  Repeat builder byte-identical, source/весь inline JS syntax, preview external
+  Host200/full4041376bytes, `git diff --check` PASS. Evidence только /tmp и
+  .arena/raid-defeat-exit, не новые проектные файлы.
+- Только8 существующих файлов; классика/арт/бот/профили/баланс/парк/облако не
+  расширялись. Эта запись до нового PR/merge/Pages. Live Render/физический Telegram/
+  FPS/батарея не доказаны; second poller/рассылка/M1/добровольная сдача не делались.
+
+### После136 — принято исправление выхода после поражения; начало UI-шага
+
+- Новый отрицательный отчёт владельца: из проигранного рейда нет нормального
+  выхода, видна лишь повторная игра. Объявлены «К выбору меха» и при SDK «Закрыть
+  Mini App», без auto-start/потери/дублирования результата. Scope записан §4 до
+  runtime; AGENTS и **весь** LUNA1–5606 прочитаны последовательно до первой правки.
+- На входе чистая arena/4dac0ee2-expertbot, GH136 MERGED/f9529ff/open-headPRs[].
+  Fetch main/ff-only b443654→f9529ff на той же ветке; не повторный merge136/не
+  исправление Arena UI. Exact released6a/SHA731b…805d из Git закреплён /tmp.
+- Read-only найдено: gameover рисует history/achievements/restart, но нет возврата;
+  общий showClassPicker отвергает pendingModal=gameover. SDK Back тоже трактует
+  конец как незавершённую награду. Переход нужно делать только для S.over, без
+  generic reward continuation/нового старта; terminal/history/retry уже штатные.
+- Новый runtime/QA/build/PR/deploy ещё не выполнены на момент этой записи. Старые
+  804npm/274Python/native — выпущенный136, не проверка ещё не написанного выхода.
+  Нет добровольной сдачи живого рейда/M1/ребаланса/парка/облака/рассылки/poller.
 
 ### Прямая панель на игровом экране — реализована и проверена; подготовка отдельного выпуска после135
 

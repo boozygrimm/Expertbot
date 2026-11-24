@@ -5701,3 +5701,15 @@ test('magitech direct settings source: compact board overlay reuses preferences/
   assert.match(css, /\.settings-row\s*\{[^}]*min-height:\s*48px/);
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none !important;\s*\}\s*$/);
 });
+
+
+test('magitech defeat exit source: navigation clears only the terminal UI, never saves, starts or advances a run', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const leave = js.match(/^  function leaveFinishedRun\([^]*?^  }/m)?.[0];
+  assert.ok(leave); assert.match(leave, /finishedRunView\(\)/); assert.match(leave, /showClassPicker\(\)/);
+  assert.doesNotMatch(leave, /\b(?:newGame|saveRun|queueRunSave|resumeRewards|closeModal|recordFinishedRun|setTimeout|randInt)\s*\(|RNG_SEEDS/);
+  assert.match(html, /id="picker-title"[^>]*tabindex="-1"/);
+  assert.match(html, /id="modal"[^>]*aria-labelledby="modal-title"/);
+  assert.match(html, /<b>После поражения\.<\/b>/);
+});
