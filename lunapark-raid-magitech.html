@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="32c8128ce1bf">
+<meta name="raid-build" content="4323f06e7483">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1188,6 +1188,26 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   .mech-go-button { width: 72%; min-height: 40px; margin-top: 0; font-size: 13px; }
   .mech-detail-body .mech-tab-title { font-size: 17px; }
 }
+/* The garage home view follows the owner's marked layout: large mech, left-side tabs, shaped launch below. */
+.mech-detail-body.mech-garage-home { position: relative; overflow: hidden; justify-content: initial; padding: 0; gap: 0; }
+.mech-garage-hero { position: absolute; z-index: 1; top: 5%; left: 29%; width: 68%; height: 69%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0; }
+.mech-garage-hero .mech-detail-portrait { width: clamp(155px,48vw,235px); height: auto; aspect-ratio: 1; flex: 0 0 auto; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.mech-garage-hero .mech-detail-portrait img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 9px #000b); }
+.mech-garage-hero h3 { margin-top: -2px; text-align: center; font-size: clamp(19px,5vw,27px); }
+.mech-detail-actions.mech-garage-side-actions { position: absolute; z-index: 2; left: 4%; top: 34%; width: 24%; display: flex; flex-direction: column; gap: 8px; }
+.mech-garage-side-actions .mech-detail-topic { min-height: 48px; padding: 5px 3px; border-radius: 9px 3px 9px 3px; font-size: 11px; }
+.mech-detail-body.mech-garage-home > .mech-go-button { position: absolute; z-index: 3; left: 17%; bottom: 8%; width: 66%; min-height: 42px; margin: 0; clip-path: polygon(0 9px,9px 0,calc(100% - 9px) 0,100% 9px,100% calc(100% - 9px),calc(100% - 9px) 100%,9px 100%,0 calc(100% - 9px)); border: 1px solid #f0d68c; border-radius: 0; background: linear-gradient(120deg,#dac27b,#a88b45 48%,#d9c37d); color: #111810; box-shadow: 0 6px 18px #0008; font: 700 14px/1 system-ui,sans-serif; letter-spacing: .06em; }
+.mech-detail-body.mech-garage-home > .mech-go-button:active { transform: translateY(2px); filter: brightness(.92); }
+.mech-detail-body.mech-garage-home > .mech-go-button:disabled { opacity: .42; }
+.mech-detail-body.mech-info-view { justify-content: flex-start; }
+@media (max-width: 720px) {
+  .mech-garage-hero { top: 5%; left: 29%; width: 68%; height: 68%; }
+  .mech-garage-hero .mech-detail-portrait { width: clamp(145px,48vw,180px); }
+  .mech-garage-hero h3 { font-size: clamp(18px,5vw,23px); }
+  .mech-detail-actions.mech-garage-side-actions { left: 4%; top: 35%; width: 24%; gap: 7px; }
+  .mech-garage-side-actions .mech-detail-topic { min-height: 45px; font-size: 10px; }
+  .mech-detail-body.mech-garage-home > .mech-go-button { left: 17%; bottom: 8%; width: 66%; min-height: 39px; font-size: 12px; }
+}
 /* Mobile garage polish: keep the full miniature inside its frame and compact controls. */
 .mech-detail-portrait { overflow: hidden; }
 .mech-detail-portrait img { width: 100%; height: 100%; animation-duration: 4.5s; }
@@ -1597,7 +1617,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 32c8128ce1bf</p>
+    <p class="build-label">Сборка 4323f06e7483</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1748,7 +1768,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 32c8128ce1bf</p>
+    <p class="build-label">Сборка 4323f06e7483</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1782,7 +1802,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 32c8128ce1bf</p>
+      <p class="build-label" id="updates-build">Сборка 4323f06e7483</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
@@ -1794,7 +1814,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <li><b>Понятнее описания экипировки.</b> Уточнили, когда срабатывает снижение атаки врагов и другие свойства предметов. Правила боя не менялись.</li>
         <li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>
         <li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>
-        <li><b>Гараж мехов.</b> Нажми на фигурку, чтобы открыть круглую карточку с портретом и именем. Кнопки «О пилоте» и «О мехе» показывают подробности; «Поехали!» запускает выбранный мех. Закрыть карточку можно нажатием вне круга. Фигурки слегка парят, кольца вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>
+        <li><b>Гараж мехов.</b> В круглой карточке мех показан крупно; сбоку — кнопки «Пилот» и «Мех», снизу фигурная кнопка «Поехали!». Подробности открываются отдельно, карточка закрывается нажатием вне круга. Фигурки слегка парят, кольца вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>
       </ul>
       <p class="updates-important"><b>Важно:</b> если рейд уже начат, он продолжится по прежним правилам — без склонности. Склонность можно выбрать перед следующим рейдом. Ничего удалять не нужно. Просмотр другого рейда и рост уровня меха не меняют уже начатый рейд; «Продолжить» восстановит его прежний выбор. «Перенастройка» сохраняет базовые 12 ходов и один из четырёх слотов. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>
@@ -1872,7 +1892,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 32c8128ce1bf.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 4323f06e7483.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -8213,7 +8233,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег<\/span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле<\/span>';
       btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"><\/span><\/span><span class="pick-name">${cls.name}<\/span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}<\/span>`;
-      btn.title = unlocked ? `Начать рейд за меха «${cls.name}»` : `Мех «${cls.name}» закрыт`;
+      btn.title = `Открыть карточку меха «${cls.name}»`;
       btn.setAttribute('aria-haspopup', 'dialog');
       const line = (label, text) => {
         const p = document.createElement('p'); p.className = 'mech-detail-line';
@@ -8222,13 +8242,15 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       };
       const openGarage = () => {
         if (!current()) return;
-        restoreDetailControls(); detailOwner = row; detailBody.replaceChildren();
+        restoreDetailControls(); detailOwner = row; detailBody.classList.remove('mech-info-view'); detailBody.classList.add('mech-garage-home'); detailBody.replaceChildren();
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
         const heading = document.createElement('h3'); heading.textContent = cls.name;
-        const actions = document.createElement('div'); actions.className = 'mech-detail-actions';
+        const hero = document.createElement('div'); hero.className = 'mech-garage-hero';
+        hero.append(portrait, heading);
+        const actions = document.createElement('div'); actions.className = 'mech-detail-actions mech-garage-side-actions';
         const detailsView = (kind) => {
-          restoreDetailControls(); detailBody.replaceChildren();
+          restoreDetailControls(); detailBody.classList.remove('mech-garage-home'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
           const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = '‹ Назад'; back.addEventListener('click', openGarage);
           const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? 'О пилоте' : 'О мехе';
           detailBody.append(back, portrait.cloneNode(true), tabTitle);
@@ -8249,9 +8271,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
             if (configButton) detailBody.appendChild(configButton);
           }
         };
-        for (const [kind, text] of [['pilot', 'О пилоте'], ['mech', 'О мехе']]) {
+        for (const [kind, text, label] of [['pilot', 'Пилот', 'О пилоте'], ['mech', 'Мех', 'О мехе']]) {
           const action = document.createElement('button'); action.type = 'button'; action.className = 'mech-detail-topic'; action.textContent = text;
-          action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
+          action.setAttribute('aria-label', label); action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
         }
         const go = document.createElement('button'); go.type = 'button'; go.className = 'mech-go-button'; go.textContent = 'Поехали!';
         go.disabled = !isClassUnlocked(cls.id);
@@ -8259,7 +8281,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
           if (!current() || !isClassUnlocked(cls.id)) return;
           closeDetail(); requestNewGame(cls.id);
         });
-        detailBody.append(portrait, heading, actions, go);
+        detailBody.append(hero, actions, go);
         detail.hidden = false; go.focus();
       };
       // Selecting any mech opens its circular garage card; launch is a deliberate second action.

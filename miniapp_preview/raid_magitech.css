@@ -1179,6 +1179,26 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   .mech-go-button { width: 72%; min-height: 40px; margin-top: 0; font-size: 13px; }
   .mech-detail-body .mech-tab-title { font-size: 17px; }
 }
+/* The garage home view follows the owner's marked layout: large mech, left-side tabs, shaped launch below. */
+.mech-detail-body.mech-garage-home { position: relative; overflow: hidden; justify-content: initial; padding: 0; gap: 0; }
+.mech-garage-hero { position: absolute; z-index: 1; top: 5%; left: 29%; width: 68%; height: 69%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0; }
+.mech-garage-hero .mech-detail-portrait { width: clamp(155px,48vw,235px); height: auto; aspect-ratio: 1; flex: 0 0 auto; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.mech-garage-hero .mech-detail-portrait img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 9px #000b); }
+.mech-garage-hero h3 { margin-top: -2px; text-align: center; font-size: clamp(19px,5vw,27px); }
+.mech-detail-actions.mech-garage-side-actions { position: absolute; z-index: 2; left: 4%; top: 34%; width: 24%; display: flex; flex-direction: column; gap: 8px; }
+.mech-garage-side-actions .mech-detail-topic { min-height: 48px; padding: 5px 3px; border-radius: 9px 3px 9px 3px; font-size: 11px; }
+.mech-detail-body.mech-garage-home > .mech-go-button { position: absolute; z-index: 3; left: 17%; bottom: 8%; width: 66%; min-height: 42px; margin: 0; clip-path: polygon(0 9px,9px 0,calc(100% - 9px) 0,100% 9px,100% calc(100% - 9px),calc(100% - 9px) 100%,9px 100%,0 calc(100% - 9px)); border: 1px solid #f0d68c; border-radius: 0; background: linear-gradient(120deg,#dac27b,#a88b45 48%,#d9c37d); color: #111810; box-shadow: 0 6px 18px #0008; font: 700 14px/1 system-ui,sans-serif; letter-spacing: .06em; }
+.mech-detail-body.mech-garage-home > .mech-go-button:active { transform: translateY(2px); filter: brightness(.92); }
+.mech-detail-body.mech-garage-home > .mech-go-button:disabled { opacity: .42; }
+.mech-detail-body.mech-info-view { justify-content: flex-start; }
+@media (max-width: 720px) {
+  .mech-garage-hero { top: 5%; left: 29%; width: 68%; height: 68%; }
+  .mech-garage-hero .mech-detail-portrait { width: clamp(145px,48vw,180px); }
+  .mech-garage-hero h3 { font-size: clamp(18px,5vw,23px); }
+  .mech-detail-actions.mech-garage-side-actions { left: 4%; top: 35%; width: 24%; gap: 7px; }
+  .mech-garage-side-actions .mech-detail-topic { min-height: 45px; font-size: 10px; }
+  .mech-detail-body.mech-garage-home > .mech-go-button { left: 17%; bottom: 8%; width: 66%; min-height: 39px; font-size: 12px; }
+}
 /* Mobile garage polish: keep the full miniature inside its frame and compact controls. */
 .mech-detail-portrait { overflow: hidden; }
 .mech-detail-portrait img { width: 100%; height: 100%; animation-duration: 4.5s; }
