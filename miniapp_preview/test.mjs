@@ -4611,6 +4611,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.match(html, /если рейд уже начат, он продолжится по прежним правилам — без склонности\. Склонность можно выбрать перед следующим рейдом\. Ничего удалять не нужно\./);
   assert.ok(html.includes('<li><b>Понятнее описания экипировки.</b> Уточнили, когда срабатывает снижение атаки врагов и другие свойства предметов. Правила боя не менялись.</li>'));
   assert.ok(html.includes('<li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>'));
+  assert.ok(html.includes('<li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>'));
   assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после этого залпа снижает силу атаки черепов, уже стоявших на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
@@ -4841,6 +4842,43 @@ test('magitech weapon fog: the selection-only two-thirds body stays quiet, froze
   assert.match(js, /raidItemIcon\(item\.slot, item\)/); assert.match(js, /raidItemIcon\(opt\.slot, item\)/);
 });
 
+
+test('magitech shields: five transparent shield models match shop and equipped board art, and update in place on purchase', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const artBlock = js.match(/const RAID_SHIELD_ART = \[([^]*?)^  \];/m)?.[1];
+  assert.ok(artBlock);
+  const models = [...artBlock.matchAll(/id: '([a-z-]+)', src: '([^']+)'/g)];
+  assert.deepEqual(models.map(match => match[1]), ['plank-splinter', 'bronze-buckler', 'sun-tower', 'emerald-fortress', 'rune-barrier']);
+  assert.equal(models.length, 5);
+  const context = { ITEM_NAMES: { shield: ['a', 'b', 'c', 'd', 'e'] }, RAID_SHIELD_ART: models.map(match => ({ id: match[1], src: match[2] })), S: { equipment: [{ slot: 'shield', suffixIndex: 0, appearance: 160 }] } };
+  const visualSource = js.match(/^  function raidShieldVisual\([^]*?^  }/m)?.[0];
+  const syncSource = js.match(/^  function syncRaidShieldTexture\([^]*?^  }/m)?.[0];
+  assert.ok(visualSource); assert.ok(syncSource);
+  const visual = vm.runInNewContext('(' + visualSource + ')', context);
+  const sync = vm.runInNewContext('(' + syncSource + ')', { raidShieldVisual: visual });
+  const bySuffix = models.map((_, suffixIndex) => visual({ slot: 'shield', suffixIndex, appearance: 160 + suffixIndex }));
+  assert.equal(new Set(bySuffix.map(item => item.id)).size, 5);
+  assert.notEqual(visual({ suffixIndex: 0, appearance: 160 }).key, visual({ suffixIndex: 0, appearance: 239 }).key);
+  assert.match(js, /if \(slot === 'shield'\) return raidShieldTexture\('equipment-glyph', item\)/);
+  assert.match(js, /if \(cell\.type === 'shield'\) return raidShieldTexture\('shield-texture'\)/);
+  assert.match(js, /if \(cell\.type === 'shield'\) syncRaidShieldTexture\(orb\.querySelector\('\.shield-texture'\)\)/);
+  const image = { dataset: {}, attributes: {}, getAttribute(name) { return this.attributes[name] || null; }, setAttribute(name, value) { this.attributes[name] = value; } };
+  context.S.equipment[0] = { slot: 'shield', suffixIndex: 0, appearance: 160 };
+  sync(image);
+  const originalImage = image;
+  assert.equal(image.getAttribute('src'), bySuffix[0].src);
+  context.S.equipment[0] = { slot: 'shield', suffixIndex: 4, appearance: 228 };
+  sync(image);
+  assert.equal(image, originalImage, 'purchase updates the same board image node like sword equipment');
+  assert.equal(image.getAttribute('src'), bySuffix[4].src);
+  assert.equal(image.dataset.shieldKey, visual({ suffixIndex: 4, appearance: 228 }).key);
+  for (let index = 0; index < 5; index++) {
+    const png = readFileSync(new URL(`./assets/raid_shield_${index}.png`, import.meta.url));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(png[25], 6, `shield ${index} has true RGBA alpha`);
+    assert.equal(png.readUInt32BE(16), 256);
+  }
+});
 
 test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');

@@ -1104,6 +1104,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .skill-slot-empty { color: #91a88b; opacity: .6; font: 300 25px/1 Georgia,serif; }
 .lv-icon { display: block; width: 26px; height: 26px; }
 .lv-chip .equipment-glyph, .shop-icon .equipment-glyph { display: block; width: 90%; height: 90%; }
+.shield-texture { object-fit: contain; filter: var(--shield-finish,brightness(1)) drop-shadow(0 1px 1.5px #020b11b3); }
+.lv-chip .shield-texture, .shop-icon .shield-texture { width: 94%; height: 94%; }
+.cell.type-shield .shield-texture { width: 78%; height: 78%; align-self: center; object-fit: contain; }
+.raid-orb[data-type="shield"] .orb-core > .shield-texture { width: 92%; height: 92%; }
 .result-glyph { width: 24px; height: 26px; margin: 0 auto; }
 .result-glyph .equipment-glyph { width: 100%; height: 100%; }
 #hud-hp .hud-label > span:first-child::before { content: ''; display: inline-block; width: 6px; height: 6px; background: #d59176; margin-right: 5px; transform: rotate(45deg); }
