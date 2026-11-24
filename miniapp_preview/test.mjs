@@ -4591,7 +4591,7 @@ test('magitech source: unchanged combat/resource/generator functions remain byte
     'processEnemyAttack', 'endEnemyTurn', 'enemyGetAttack',
     'perShield', 'bonusPct', 'addResource', 'makeItem', 'makeUpgradeOffer',
     'applyUpgradeOffer', 'equipItem', 'updateEquipmentStats', 'classicScrollWord',
-    'classRules', 'runClassConfig', 'chooseLevelOptions', 'specialSpawnCount'];
+    'classRules', 'runClassConfig', 'specialSpawnCount'];
   for (const name of names) {
     const expression = new RegExp(`^  function ${name}\\([^]*?^  }`, 'm');
     const a = original.match(expression)?.[0], b = fork.match(expression)?.[0];
@@ -5158,6 +5158,12 @@ const raidElements = ['fire', 'air', 'earth', 'water'];
 const elementalEighths = [[8,10,8,6], [6,8,10,8], [8,6,8,10], [10,8,6,8]];
 function elementalCombat(options = {}) {
   const b = raidCombat({ ...options, variant: 'magitech', menus: true });
+  // Pin the already-released elements-v1/v2 contract. A1/v3 has its own DOM
+  // coverage below/in integration.test; never call a new pool 'unchanged v2'.
+  assert.equal(b.raid.saveRun(), true);
+  const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1';
+  b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(released));
+  assert.equal(b.raid.resumeSavedRun(), true);
   b.raid.state.forceCoins = 1; b.raid.state.pierce = 0;
   return b;
 }
@@ -5171,13 +5177,13 @@ function elementalPair({ classId = 'adventurer', types = [0,0], defence = 4, lee
   return { ...b, targets };
 }
 
-test('magitech elemental saves: new runs use explicit v2 rules and independent RNG, without altering a classic start or profile', () => {
+test('magitech elemental saves: new runs use explicit v3/A1 rules and independent RNG, without altering a classic start or profile', () => {
   for (const seed of [0,1,71,2718,0xffffffff]) {
     const old = raidBrowser({ seed }), b = raidBrowser({ variant: 'magitech', seed });
     const saved = magitechSave(b);
-    assert.equal(saved.version, 2); assert.equal(saved.combat.rules, 'elements-v1');
+    assert.equal(saved.version, 3); assert.equal(saved.combat.rules, 'elements-retune-v1');
     assert.ok(Number.isInteger(saved.combat.rng) && saved.combat.rng >= 0 && saved.combat.rng <= 0xffffffff);
-    assert.equal(b.raid.savedRunInfo().combatRules, 'elements-v1');
+    assert.equal(b.raid.savedRunInfo().combatRules, 'elements-retune-v1');
     const neutral = magitechSnapshot(b.raid);
     for (const cell of neutral.board) delete cell.element;
     assert.deepEqual(neutral, magitechSnapshot(old.raid), `same starting resources/6 RNG at seed${seed}`);
@@ -5306,7 +5312,7 @@ test('magitech elemental preview: lethal highlights use final hit rounding, not 
   q.resolveChain(); c.advance(420); assert.deepEqual(targets.map(t => t.hp), [97,97,97]);
 });
 
-test('magitech elemental saves: a v1 Continue stays classical through combat/new enemies and only explicit newGame opts into v2', () => {
+test('magitech elemental saves: a v1 Continue stays classical through combat/new enemies and only explicit newGame opts into v3', () => {
   const b = legacyMagitechBrowser({ menus: true, seed: 2718 }), r = b.raid;
   raidBoard(r); r.state.forceCoins = 1; r.state.pierce = 0;
   for (const slot of [0,1,2]) r.state.board[slot] = { type: 'sword' };
@@ -5317,7 +5323,7 @@ test('magitech elemental saves: a v1 Continue stays classical through combat/new
   const saved = magitechSave(b); assert.equal(saved.version, 1); assert.equal(saved.combat, undefined);
   assert.equal(r.makeSkull(true).element, undefined); assert.equal(r.makeSkull(false, true, 4).element, undefined);
   const next = raidReload(b, { variant: 'magitech' }); assert.equal(next.raid.savedRunInfo().combatRules, 'classic-v1');
-  next.raid.newGame(2718); assert.equal(magitechSave(next).version, 2); assert.equal(next.raid.savedRunInfo().combatRules, 'elements-v1');
+  next.raid.newGame(2718); assert.equal(magitechSave(next).version, 3); assert.equal(next.raid.savedRunInfo().combatRules, 'elements-retune-v1');
 });
 
 for (const phase of ['match-chain','enemy','level','gold','armor']) test(`magitech elemental saves: ${phase} checkpoint restores elements/rules/RNG/rolled choices and executes no duplicate action`, () => {
@@ -5443,7 +5449,7 @@ for (const invalid of ['missing-combat','unknown-rules','extra-combat','missing-
   if (invalid === 'nonboss-secondary') data.state.board[2].skull.secondaryElement = 'fire';
   if (invalid === 'v1-with-elements') { data.version = 1; delete data.combat; }
   if (invalid === 'v1-with-combat') { const old = legacyMagitechSave(data); Object.assign(data, old); }
-  if (invalid === 'unknown-version') data.version = 3;
+  if (invalid === 'unknown-version') data.version = 99;
   const state = r.state, before = raidJSON(state), raw = JSON.stringify(data); b.storage.set(MAGITECH_RUN_KEY, raw);
   assert.equal(r.resumeSavedRun(), false); assert.equal(r.state, state); assert.deepEqual(raidJSON(r.state), before);
   assert.equal(b.storage.get(MAGITECH_RUN_KEY), raw); assert.equal(r.saveStatus.state, 'invalid');
@@ -5469,6 +5475,8 @@ test('magitech elemental secondary: all 42 skills keep classical effects/6 RNG a
   for (const [index, id] of ids.entries()) {
     const options = { classId: raidClassIds[index % 10], difficulty: index % 3, menus: true, seed: 8801 };
     const old = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
+    const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1';
+    b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(released)); assert.equal(b.raid.resumeSavedRun(), true);
     for (const browser of [old, b]) {
       const r = browser.raid, s = r.state;
       s.turn = 80; s.hero.hp = 900; s.hero.maxHp = 1000; s.hero.armor = 20; s.hero.maxArmor = 30;
@@ -5537,4 +5545,58 @@ test('magitech elemental transformations: Hack preserves existing weapons; Big G
     assert.ok(raidElements.includes(boss.secondaryElement));
     r.state.board[0] = { type: 'skull', skull: boss }; assert.equal(r.saveRun(), true);
   }
+});
+
+test('magitech A1 pools: one common module, four slots, fixed class-first skill and gated next-run replacements', () => {
+  const b=raidBrowser({variant:'magitech',menus:true,seed:2718}),r=b.raid;
+  assert.deepEqual(raidJSON(r.state.skills),[],'never automatically granted');
+  assert.equal(r.classSkillPool().includes('retune'),true); assert.equal(r.prepareSkillOption('retune').duration,12);
+  let seen=false; r.state.hero.level=3;
+  for(let n=0;n<200;n++) if(r.chooseLevelOptions().some(o=>o.id==='retune')) seen=true;
+  assert.equal(seen,true,'reachable through normal level reward draws');
+  for(const id of ['heal','repair','treasure','retune']) assert.equal(r.installSkillOption(r.prepareSkillOption(id)),true);
+  assert.equal(r.state.skills.length,4); assert.equal(r.installSkillOption(r.prepareSkillOption('freeze')),false);
+  for(let n=0;n<80;n++) for(const offer of r.makeShopOffers()) assert.notEqual(offer.scroll?.id,'retune','no native/I1 scroll');
+  r.unlockClass('warrior'); const config=r.defaultClassConfig('warrior');config.replacements[1]='retune';
+  assert.equal(r.saveClassConfig('warrior',config),true);
+  assert.equal(r.getClassConfig('warrior').replacements[1],null,'level1 grants no replacements');
+  r.levelUpClass('warrior'); assert.equal(r.saveClassConfig('warrior',config),true);
+  assert.equal(r.getClassConfig('warrior').replacements[1],'retune');
+  r.setSelectedClassId('warrior');r.newGame(2718);
+  assert.equal(r.state.skills.length,0);assert.equal(r.classSkillPool().includes('retune'),true);
+  r.state.hero.level=2;assert.equal(r.chooseLevelOptions()[0].id,'charge','class-first skill unchanged');
+  const frozen=JSON.stringify(r.state.classConfig);r.saveClassConfig('warrior',r.defaultClassConfig('warrior'));
+  assert.equal(JSON.stringify(r.state.classConfig),frozen,'editing next-run pool never rewrites live config');
+});
+test('magitech A1 cooldown: Cunning applies only as the fourth skill and the ordinary upgrade preserves charge', () => {
+  const b=raidBrowser({variant:'magitech',classId:'assassin',menus:true,seed:2718}),r=b.raid;
+  for(const id of ['heal','repair','treasure','retune']) assert.equal(r.installSkillOption(r.prepareSkillOption(id)),true);
+  assert.equal(r.skillDuration('retune'),11);assert.equal(r.state.cooldownAdjust.retune,-1);
+  r.state.skillCooldowns.retune=5;
+  const option=r.prepareSkillOption('retune');assert.equal(option.duration,10);assert.equal(option.charge,6);
+  r.installSkillOption(option);assert.equal(r.state.skillCooldowns.retune,4);assert.equal(r.skillDuration('retune'),10);
+  assert.equal(r.saveRun(),true);assert.equal(r.resumeSavedRun(),true);assert.equal(r.state.skillCooldowns.retune,4);
+});
+
+test('magitech A1 save: a pending normal level reward containing retune and two marks resumes without learning or rerolling it', () => {
+  const b=raidBrowser({variant:'magitech',menus:true,seed:2718}),r=b.raid;
+  let beforeRng,choices;
+  for(let n=0;n<300;n++) {
+    beforeRng=Array.from(r.state.rngSeeds);choices=r.chooseLevelOptions();
+    if(choices.some(o=>o.id==='retune'))break;
+  }
+  assert.ok(choices.some(o=>o.id==='retune'));
+  // rngSeeds is a display snapshot, not the generator. Rewind the real
+  // stream through the same strict checkpoint loader used by Continue.
+  assert.equal(r.saveRun(),true);const rewind=magitechSave(b);rewind.rng=beforeRng;
+  b.storage.set(MAGITECH_RUN_KEY,JSON.stringify(rewind));assert.equal(r.resumeSavedRun(),true);
+  r.state.hero.xp=100;r.checkLevelUp();
+  assert.equal(r.state.pendingModal,'level');
+  const index=r.state.menuCandidates.findIndex(o=>o.id==='retune');assert.ok(index>=0);
+  r.state.levelDraft=[index,index===0?1:0];assert.equal(r.saveRun(),true);
+  const saved=magitechSave(b);assert.equal(saved.version,3);assert.equal(saved.menu.choices[index].id,'retune');
+  const next=raidReload(b,{variant:'magitech',menus:true});
+  assert.equal(next.raid.state.pendingModal,'level');assert.deepEqual(raidJSON(next.raid.state.skills),[]);
+  assert.deepEqual(raidJSON(next.raid.state.levelDraft),saved.menu.picked);
+  assert.deepEqual(magitechSave(next).menu,saved.menu);assert.deepEqual(magitechSave(next).rng,saved.rng);
 });

@@ -2263,7 +2263,7 @@ function orbAnimationHarness(window, { reduced = false, webAnimations = true } =
   };
   if (webAnimations) window.Element.prototype.animate = function (frames, options) {
     const animation = {
-      target: this, frames: JSON.parse(JSON.stringify(frames)), options: { ...options }, playState: 'running',
+      target: this, frames: JSON.parse(JSON.stringify(frames)), options: { ...options }, playState: 'running', startTime: null,
       cancel() { if (this.playState === 'idle') return; this.playState = 'idle'; this.oncancel?.(); },
       finish() { if (this.playState !== 'running') return; this.playState = 'finished'; this.onfinish?.(); },
     };
@@ -2335,7 +2335,8 @@ test('magitech orbs: the real chain drops the SAME identical-looking nodes down 
     const fall = b.dom.window.__orbTest.created.find(a => a.target === original[0]);
     assert.match(fall.frames[0].transform, /^translate\(0px,/);
     assert.ok(Math.abs(parseFloat(fall.frames[0].transform.split(',')[1]) + 120) < .001, 'preserve subpixel geometry, not an integer-only string');
-    assert.equal(fall.frames.at(-1).transform, 'translate(0,0) scale(1)');
+    assert.equal(fall.frames.at(-1).transform, 'translate(0,0)');
+    assert.equal(fall.frames.length, 2, 'no terminal bounce or squash');
     const refill = b.dom.window.__orbTest.created.find(a => a.target === orbAt(b, 0));
     assert.equal(refill.frames[0].transform, 'translate(0px,-120px)'); assert.equal(orbAt(b, 0).dataset.motion, 'refill');
     for (const id of victims) assert.ok(b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${id}"]`));
@@ -3060,7 +3061,7 @@ test('magitech monster readability: falling survivors retain the same UID orb/im
 
 // New combat is exercised on the GENERATED page, with explicit assigned
 // elements. Legacy tests below use a complete v1 shape, never a partial downgrade.
-for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Close' : 'browser reload'} during a mixed-target hit restores v2 elements/RNG and commits neutral secondaries exactly once`, async () => {
+for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Close' : 'browser reload'} during a mixed-target hit restores v3 elements/RNG and commits neutral secondaries exactly once`, async () => {
   const stub = raidTelegramStub();
   const setup = w => { orbAnimationHarness(w); if (sdk) w.Telegram = { WebApp: stub.tg }; };
   const key = sdk ? magitechAccountKey(701, 'raid:activeRun') : magitechKey('raid:activeRun');
@@ -3083,7 +3084,7 @@ for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Clo
     assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).next.phase, 'match-chain');
     if (sdk) { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click(); assert.equal(stub.calls.filter(c => c === 'close').length, 1); }
     b = await reopenMagitech(b, { setup, ...(sdk ? { url: telegramRaidUrl } : {}) }); r = b.raid; doc = b.dom.window.document;
-    assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-v1');
+    assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-retune-v1');
     assert.match(doc.querySelector('#picker-resume').textContent, /стихии/);
     doc.querySelector('#picker-resume').click();
     assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, rng);
@@ -3136,7 +3137,7 @@ for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK' : 
     assert.equal(r.state.turn, 11); assert.equal(r.savedRunInfo().combatRules, 'classic-v1');
     doc.querySelector('.picker-card-btn:not(.locked)').click(); doc.querySelector('#restart-confirm').click();
     assert.equal(r.state.turn, 0); assert.equal(r.classLevelOf('ranger'), 2);
-    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).version, 2); assert.equal(r.savedRunInfo().combatRules, 'elements-v1');
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).version, 3); assert.equal(r.savedRunInfo().combatRules, 'elements-retune-v1');
     assert.equal(doc.querySelector('[data-raid-combat-title]').textContent, 'RAID / СТИХИИ');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
@@ -3198,12 +3199,16 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /31\s*(?:из|\/)\s*31/);
-    assert.match(doc.querySelector('#updates-current').textContent, /четыр[её]х.*стихи/);
-    assert.doesNotMatch(doc.querySelector('#updates-current').textContent, /Лич пока|30\s*(?:из|\/)\s*31/);
-    assert.match(doc.querySelector('#updates-current').textContent, /без общей временной замены/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Перенастройка/);
+    assert.match(doc.querySelector('#updates-current').textContent, /12 ходов/);
+    assert.match(doc.querySelector('#updates-current').textContent, /1–3/);
+    assert.match(doc.querySelector('#updates-current').textContent, /короче/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Плавнее массовое падение/);
+    assert.match(doc.querySelector('#updates-history').textContent, /31.*4/);
+    assert.match(doc.querySelector('#updates-history').textContent, /четыр[её]х.*стихи/);
+    assert.match(doc.querySelector('#updates-history').textContent, /без общей временной замены/);
     assert.match(doc.querySelector('#updates-history').textContent, /10.*образ/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Лич/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Лич/);
     assert.ok(doc.querySelectorAll('#updates-history li').length >= 3);
     assert.match(doc.querySelector('#updates-history').textContent, /Стихи|стихи/);
     assert.match(doc.querySelector('#updates-boundary').textContent, /интеграция.*не начиналась/i);
@@ -3508,19 +3513,21 @@ test('magitech special details: touch compatibility click cannot immediately dis
 });
 
 
-for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete catalogue: ${region} Lich keeps its own art in details, phylactery, Continue and revival under both v1/v2`, async () => {
-  for (const version of [1, 2]) {
+for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete catalogue: ${region} Lich keeps its own art in details, phylactery, Continue and revival under v1/v2/v3`, async () => {
+  for (const version of [1, 2, 3]) {
     let b = await orbFixture({ region, reduced: true }), r = b.raid;
     const savedRun = () => JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')));
     try {
       showOrbFixture(b, idx => idx === 0
         ? { type: 'skull', skull: Object.assign(r.makeSkull(false, true, 32), { element: region, atk: 0, def: 0, hp: 1, maxHp: 1 }) }
         : { type: 'coin' });
-      if (version === 1) {
+      if (version !== 3) {
         // Explicit legacy fixture ONLY. Genuine released-v1 runtime remains a
         // separate native check, not this test-only metadata conversion.
         const saved = raidStorage(b.dom.window), key = magitechKey('raid:activeRun');
-        saved[key] = JSON.stringify(releasedMagitechCheckpoint(JSON.parse(saved[key])));
+        const raw = JSON.parse(saved[key]);
+        if (version === 2) { raw.version = 2; raw.combat.rules = 'elements-v1'; }
+        saved[key] = JSON.stringify(version === 1 ? releasedMagitechCheckpoint(raw) : raw);
         b.dom.window.close();
         b = await openMagitech({ saved, start: false, setup(w) { orbAnimationHarness(w, { reduced: true }); } });
         r = b.raid; assert.equal(r.resumeSavedRun(), true);
@@ -3559,7 +3566,7 @@ for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete 
       r.applySpecialAbilities();
       assert.equal(r.state.board[0].skull.phylactery, false);
       assert.equal(r.state.board[0].skull.type, 32);
-      assert.equal(r.state.board[0].skull.element, version === 2 ? region : undefined);
+      assert.equal(r.state.board[0].skull.element, version >= 2 ? region : undefined);
       assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
       assert.equal(doc.querySelector('.cell[data-idx="0"] img.skull-art').src, art);
       assert.deepEqual(savedRun().combat, checkpoint.combat, 'revival does not reroll an element');
@@ -3567,4 +3574,280 @@ for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete 
       assert.deepEqual(b.errors, []);
     } finally { b.dom.window.close(); }
   }
+});
+
+// Approved A1: deterministic, explicitly confirmed recolouring; no fifth slot.
+async function retuneFixture(options = {}) {
+  const b = await orbFixture(options), r = b.raid;
+  assert.equal(r.installSkillOption(r.prepareSkillOption('retune')), true);
+  showOrbFixture(b, i => i === 1 ? { type: 'arrow', element: 'air' }
+    : i === 2 ? { type: 'sword', element: 'earth', magicSword: true }
+    : i === 4 ? { type: 'sword', element: 'water', broken: true }
+    : i === 5 ? { type: 'sword', element: 'water', frozen: true }
+    : i === 6 ? { type: 'coin' } : { type: 'sword', element: 'water' });
+  return b;
+}
+const retuneRaw = b => b.dom.window.localStorage.getItem(magitechKey('raid:activeRun'));
+const retunePick = (b, element, slots) => {
+  const d = b.dom.window.document;
+  d.querySelector(`[data-retune-element="${element}"]`).click();
+  slots.forEach(i => d.querySelector(`.cell[data-idx="${i}"]`).click());
+};
+test('magitech retune: v3 module changes only 1–3 explicitly chosen weapons, charges twelve turns once and preserves identities/RNG', async () => {
+  const b = await retuneFixture();
+  try {
+    const r = b.raid, d = b.dom.window.document, before = JSON.stringify(r.state), raw = retuneRaw(b);
+    const combat = JSON.parse(raw).combat, cells=[...r.state.board],orbs=Array.from({length:36},(_,i)=>orbAt(b,i)),images=orbs.map(n=>n?.querySelector('img'));
+    assert.equal(JSON.parse(raw).version, 3); assert.equal(combat.rules, 'elements-retune-v1');
+    r.activateSkill('retune'); assert.equal(d.querySelector('#retune-panel').hidden, false);
+    retunePick(b, 'fire', [0,1,2,3,4,5,6]);
+    assert.equal(d.querySelectorAll('.retune-chosen').length, 3);
+    assert.equal(JSON.stringify(r.state), before); assert.equal(retuneRaw(b), raw, 'draft is read-only');
+    const apply = d.querySelector('#retune-apply'); assert.equal(apply.disabled, false); apply.click(); apply.click();
+    assert.equal(d.querySelector('#retune-panel').hidden, true);
+    assert.deepEqual(Array.from(r.state.board.slice(0,4), c => c.element), ['fire','fire','fire','water']);
+    assert.equal(r.state.board[1].type, 'arrow'); assert.equal(r.state.board[2].magicSword, true);
+    assert.equal(r.state.skillCooldowns.retune, 12); assert.equal(r.state.turn, JSON.parse(before).turn);
+    assert.deepEqual(Array.from(r.state.rngSeeds), JSON.parse(before).rngSeeds);
+    assert.deepEqual(JSON.parse(retuneRaw(b)).combat, combat);
+    for(let i=0;i<36;i++) {assert.equal(r.state.board[i],cells[i]);assert.equal(orbAt(b,i),orbs[i]);assert.equal(orbAt(b,i)?.querySelector('img'),images[i]);}
+    assert.equal(r.resumeSavedRun(), true); assert.equal(r.state.skillCooldowns.retune, 12);
+    assert.deepEqual(Array.from(r.state.board.slice(0,3), c => c.element), ['fire','fire','fire']);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech retune: cancel, Escape and pagehide discard the unpaid draft without changing a checkpoint', async () => {
+  const b = await retuneFixture();
+  try {
+    const r = b.raid, d = b.dom.window.document, before = JSON.stringify(r.state);
+    for (const cancel of ['button','escape','pagehide','hidden']) {
+      r.activateSkill('retune'); retunePick(b,'fire',[0,1]);
+      if (cancel === 'button') d.querySelector('#retune-cancel').click();
+      else if (cancel === 'escape') d.dispatchEvent(new b.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+      else if (cancel === 'pagehide') b.dom.window.dispatchEvent(new b.dom.window.Event('pagehide'));
+      else {Object.defineProperty(d,'visibilityState',{value:'hidden',configurable:true});d.dispatchEvent(new b.dom.window.Event('visibilitychange'));Object.defineProperty(d,'visibilityState',{value:'visible',configurable:true});}
+      assert.equal(d.querySelector('#retune-panel').hidden,true,cancel);
+      assert.equal(JSON.stringify(r.state),before,cancel);
+      assert.equal(JSON.parse(retuneRaw(b)).state.skillCooldowns.retune,0);
+    }
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech retune: released v2 remains v2 without the new skill; only a confirmed new start uses v3', async () => {
+  let b = await orbFixture();
+  try {
+    const old = JSON.parse(retuneRaw(b)); old.version=2; old.combat.rules='elements-v1';
+    const saved = raidStorage(b.dom.window); saved[magitechKey('raid:activeRun')]=JSON.stringify(old);
+    b.dom.window.close(); b = await openMagitech({saved,start:false}); const r=b.raid;
+    assert.equal(r.resumeSavedRun(),true); assert.equal(r.classSkillPool().includes('retune'),false);
+    assert.equal(r.installSkillOption(r.prepareSkillOption('retune')),false);
+    r.activateSkill('retune'); assert.equal(b.dom.window.document.querySelector('#retune-panel').hidden,true);
+    assert.equal(r.saveRun(),true); assert.equal(JSON.parse(retuneRaw(b)).version,2);
+    assert.equal(JSON.parse(retuneRaw(b)).combat.rules,'elements-v1');
+    r.newGame(2718); assert.equal(JSON.parse(retuneRaw(b)).version,3);
+    assert.equal(r.classSkillPool().includes('retune'),true); assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+test('magitech smooth fall: a mass removal batches all final geometry reads before one shared monotone animation', async () => {
+  const b=await orbFixture();
+  try {
+    showOrbFixture(b, i => ({type:i>=18 ? 'coin':'sword'}));
+    const r=b.raid, h=b.dom.window.__orbTest;
+    r.state.skills=['treasure']; r.state.skillLevels={treasure:1}; r.state.skillCooldowns={treasure:0};
+    // An old frame timestamp must not be forced onto a new animation after a
+    // long input task. WAAPI's pending-ready batch supplies the next frame.
+    Object.defineProperty(b.dom.window.document,'timeline',{value:{currentTime:-10000}});
+    const operations=[], proto=b.dom.window.Element.prototype, rect=proto.getBoundingClientRect, animate=proto.animate;
+    proto.getBoundingClientRect=function(){operations.push('rect');return rect.call(this);};
+    proto.animate=function(frames,options){if(options.delay===65)operations.push('drop');return animate.call(this,frames,options);};
+    h.created.length=0; r.activateSkill('treasure');
+    const first=operations.indexOf('drop'),last=operations.lastIndexOf('drop');
+    assert.ok(first>=0 && last>first);
+    assert.ok(operations.slice(first,last+1).every(kind=>kind==='drop'),'no read/write/read layout loop between starts');
+    const drops=h.created.filter(a => a.target.dataset.motion && a.options.delay===65);
+    assert.ok(drops.length>=18); assert.equal(new Set(drops.map(a=>a.options.duration)).size,1);
+    for (const a of drops) {
+      assert.equal(a.startTime,null,'do not backdate to the previous document.timeline frame');
+      assert.equal(a.frames.length,2,'no stop/overshoot/squash restart before landing');
+      assert.equal(a.frames.at(-1).transform,'translate(0,0)');
+      assert.equal(a.options.easing,'cubic-bezier(.22,.61,.36,1)');
+    }
+    const state=orbGameplay(b); h.finish(); assert.equal(orbGameplay(b),state);
+  } finally { b.dom.window.close(); }
+});
+
+for (const element of magitechElements) test(`magitech retune: ${element} selection is explicit, rejects frozen/broken/nonweapon/no-op and changes no stats`, async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document;
+    r.activateSkill('retune'); assert.equal(d.querySelector('#retune-apply').disabled,true);
+    retunePick(b,element,[4,5,6]); assert.equal(d.querySelectorAll('.retune-chosen').length,0);
+    assert.equal(d.querySelector('#retune-apply').disabled,true);
+    const slot=r.state.board.findIndex(c => ['sword','arrow'].includes(c.type) && !c.frozen && !c.broken && c.element!==element);
+    const copy=JSON.parse(JSON.stringify(r.state.board)),hero=JSON.stringify(r.state.hero),turn=r.state.turn;
+    retunePick(b,element,[slot]);
+    d.querySelector(`.cell[data-idx="${slot}"]`).click(); assert.equal(d.querySelector('#retune-apply').disabled,true,'toggle off');
+    d.querySelector(`.cell[data-idx="${slot}"]`).dispatchEvent(new b.dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+    assert.equal(d.querySelector(`.cell[data-idx="${slot}"]`).getAttribute('aria-pressed'),'true');
+    d.querySelector('#retune-apply').click();
+    copy[slot].element=element; assert.deepEqual(JSON.parse(JSON.stringify(r.state.board)),copy);
+    assert.equal(JSON.stringify(r.state.hero),hero); assert.equal(r.state.turn,turn);
+    assert.equal(d.querySelectorAll('#board [role="button"]').length,0,'temporary keyboard roles removed');
+    assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+test('magitech retune: the unpaid chooser blocks chain/reward/menu/skill inputs and has a keyboard return path', async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document; r.activateSkill('retune'); retunePick(b,'fire',[0]);
+    const before=JSON.stringify(r.state);
+    r.tryExtendChain(0); r.resolveChain(); r.activateSkill('earthquake');
+    assert.equal(r.openRunHistory(),false); d.querySelector('#menu-btn').click(); d.querySelector('#stats-btn').click();
+    assert.equal(JSON.stringify(r.state),before); assert.equal(d.querySelector('#menu-modal').classList.contains('show'),false);
+    d.querySelector('#menu-btn').focus(); assert.ok(d.activeElement.hasAttribute('data-retune-element'));
+    d.dispatchEvent(new b.dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    assert.equal(d.activeElement.dataset.skillId,'retune'); assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+for (const invalidation of ['stale-slot','replaced-cell','cooldown','removed-skill']) test(`magitech retune: ${invalidation} invalidates a queued confirmation without paying or changing weapons`, async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document; r.activateSkill('retune'); retunePick(b,'fire',[0]);
+    if(invalidation==='stale-slot') { const saved=JSON.parse(retuneRaw(b)); saved.revision++; b.dom.window.localStorage.setItem(magitechKey('raid:activeRun'),JSON.stringify(saved)); }
+    if(invalidation==='replaced-cell') r.state.board[0]={...r.state.board[0]};
+    if(invalidation==='cooldown') r.state.skillCooldowns.retune=2;
+    if(invalidation==='removed-skill') r.state.skills=[];
+    const state=JSON.stringify(r.state),raw=retuneRaw(b); d.querySelector('#retune-apply').click();
+    assert.equal(JSON.stringify(r.state),state); assert.equal(retuneRaw(b),raw);
+    assert.equal(d.querySelector('#retune-panel').hidden,true); assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+test('magitech retune: SDK Back cancels, and an account switch cannot apply or overwrite either profile', async () => {
+  const stub=raidTelegramStub();
+  const b=await openMagitech({start:false,url:telegramRaidUrl,setup(w){orbAnimationHarness(w);w.Telegram={WebApp:stub.tg};}});
+  try {
+    const r=b.raid,d=b.dom.window.document; d.querySelector('.picker-card-btn:not(.locked)').click();
+    r.installSkillOption(r.prepareSkillOption('retune'));
+    showOrbFixture(b,()=>({type:'sword',element:'water'}));
+    const key=magitechAccountKey(701,'raid:activeRun'),before=JSON.stringify(r.state);
+    r.activateSkill('retune'); retunePick(b,'fire',[0]); stub.back();
+    assert.equal(d.querySelector('#retune-panel').hidden,true); assert.equal(JSON.stringify(r.state),before);
+    r.activateSkill('retune'); retunePick(b,'fire',[0]); stub.fire('deactivated');
+    assert.equal(d.querySelector('#retune-panel').hidden,true); assert.equal(JSON.stringify(r.state),before);
+    r.activateSkill('retune'); retunePick(b,'fire',[0]);
+    const raw=b.dom.window.localStorage.getItem(key); stub.tg.initDataUnsafe.user.id=702;
+    d.querySelector('#retune-apply').click();
+    assert.equal(JSON.stringify(r.state),before); assert.equal(b.dom.window.localStorage.getItem(key),raw);
+    assert.equal(b.dom.window.localStorage.getItem(magitechAccountKey(702,'raid:activeRun')),null);
+    assert.match(d.querySelector('#menu-profile-status').textContent,/смен|заново/); assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+for (const corrupt of ['v1-owned','v1-map','v1-config','v1-level-offer','v2-owned','v2-map','v2-config','v2-level-offer','v3-shop-scroll','v3-old-rules','v2-new-rules']) test(`magitech retune: strict save rejects ${corrupt} without migration or overwriting data`, async () => {
+  let b=await orbFixture();
+  try {
+    const r=b.raid; let raw=JSON.parse(retuneRaw(b));
+    if(corrupt.startsWith('v1')) raw=releasedMagitechCheckpoint(raw);
+    if(corrupt.startsWith('v2')) {raw.version=2;raw.combat.rules='elements-v1';}
+    if(corrupt.endsWith('-owned')) raw.state.skills=['retune'];
+    if(corrupt.endsWith('-map')) raw.state.skillCooldowns.retune=0;
+    if(corrupt.endsWith('-config')) {raw.state.classId='warrior';raw.state.classConfig=r.defaultClassConfig('warrior');raw.state.classConfig.replacements[1]='retune';}
+    if(corrupt.endsWith('-level-offer')) {raw.menu={kind:'level',picked:[],choices:Array.from({length:4},()=>({kind:'skill',id:'retune',level:1,duration:12,charge:12,upgrade:false}))};}
+    if(corrupt==='v3-shop-scroll') {const item=r.makeShopOffers()[0]; raw.menu={kind:'gold',picked:[],choices:[item,item,item].map(i=>JSON.parse(JSON.stringify(i)))}; for(const i of raw.menu.choices) {delete i.slotName;delete i.icon; i.scroll={kind:'skill',id:'retune',level:1,duration:12,charge:12,upgrade:false};}}
+    if(corrupt==='v3-old-rules') raw.combat.rules='elements-v1';
+    if(corrupt==='v2-new-rules') raw.combat.rules='elements-retune-v1';
+    const saved=raidStorage(b.dom.window),bad=JSON.stringify(raw);saved[magitechKey('raid:activeRun')]=bad;
+    b.dom.window.close(); b=await openMagitech({saved,start:false});
+    assert.equal(b.raid.saveStatus.state,'invalid'); assert.equal(b.raid.resumeSavedRun(),false);
+    assert.equal(b.raid.state,null); assert.equal(retuneRaw(b),bad); assert.deepEqual(b.errors,[]);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech retune: Quicken, upgrades, Mage suppression and mana use the existing cooldown pipeline', async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document;
+    r.state.equipment.find(i=>i.slot==='accessory').mods.quicken=1; r.updateEquipmentStats();
+    assert.equal(r.skillDuration('retune'),11);
+    assert.equal(r.installSkillOption(r.prepareSkillOption('retune')),true); assert.equal(r.skillDuration('retune'),10);
+    r.activateSkill('retune');retunePick(b,'fire',[0]);d.querySelector('#retune-apply').click();
+    assert.equal(r.state.skillCooldowns.retune,10); r.endEnemyTurn(); assert.equal(r.state.skillCooldowns.retune,9);
+    r.state.board[7]={type:'skull',skull:Object.assign(r.makeSkull(false,true,15),{atk:0,hp:100,maxHp:100,def:0})};
+    r.endEnemyTurn(); assert.equal(r.state.skillCooldowns.retune,9,'Mage still suppresses natural recovery');
+    r.refillRandomSkill(2); await until(()=>r.state.skillCooldowns.retune===7);
+    assert.equal(r.saveRun(),true);assert.equal(r.resumeSavedRun(),true);assert.equal(r.skillDuration('retune'),10);
+    assert.deepEqual(b.errors,[]);
+  } finally {b.dom.window.close();}
+});
+test('magitech retune: normal Dragonkin reaction fires once on confirmation, never on draft/cancel/double tap', async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document;
+    r.state.classId='warrior'; r.state.classConfig={...r.defaultClassConfig('warrior'),race:'Dragonkin'};
+    r.state.board[7]={type:'skull',skull:Object.assign(r.makeSkull(false),{atk:0,hp:100,maxHp:100,def:0})};
+    assert.equal(r.saveRun(),true);assert.equal(r.resumeSavedRun(),true);
+    const rng=Array.from(r.state.rngSeeds); const enemy=r.state.board[7].skull;
+    r.activateSkill('retune');retunePick(b,'fire',[0]);d.querySelector('#retune-cancel').click();
+    assert.deepEqual(Array.from(r.state.rngSeeds),rng);assert.equal(!!enemy.burn,false);
+    r.activateSkill('retune');retunePick(b,'fire',[0]);const apply=d.querySelector('#retune-apply');apply.click();apply.click();
+    const expected=[...rng];expected[5]=Math.imul(expected[5],16807)>>>0;
+    assert.deepEqual(Array.from(r.state.rngSeeds),expected);assert.equal(enemy.burn,true);assert.equal(enemy.fireDamage,r.baseDamage());
+    assert.equal(r.state.skillCooldowns.retune,12);assert.deepEqual(b.errors,[]);
+  } finally {b.dom.window.close();}
+});
+
+for(const version of [1,2,3]) test(`magitech retune: v${version} finished record validates its own skill domain and history remains compatible`,async()=>{
+  let b=await retuneFixture();
+  try{
+    const r=b.raid;
+    r.state.hero.hp=0;r.enemyPhase();
+    assert.equal(JSON.parse(retuneRaw(b)).status,'finished');
+    const raw=JSON.parse(retuneRaw(b));raw.version=version;
+    const saved=raidStorage(b.dom.window),bad=JSON.stringify(raw);saved[magitechKey('raid:activeRun')]=bad;
+    b.dom.window.close();b=await openMagitech({saved,start:false});
+    assert.equal(b.raid.saveStatus.state,version===3?'empty':'invalid');
+    assert.equal(retuneRaw(b),bad,'merely reading a terminal checkpoint never rewrites it');
+    if(version===3){
+      const history=b.raid.getLocalHistory();
+      assert.ok(history.records.flat().some(row=>row.skills.some(skill=>skill.id==='retune')),'new module is named in normal local history');
+      assert.equal(b.raid.openRunHistory(),true);
+      assert.match(b.dom.window.document.querySelector('#history-modal').textContent,/Перенастройка/);
+    }
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+for(const secondary of [null,'earth','water']) test(`magitech retune: the next real chain keeps magic weight, armour/one-rounding and ${secondary||'single'}-element target arithmetic`,async()=>{
+  const b=await retuneFixture();
+  try{
+    const r=b.raid,d=b.dom.window.document;
+    const enemy=Object.assign(r.makeSkull(!!secondary),{hp:100,maxHp:100,atk:0,def:4,element:'air',...(secondary?{secondaryElement:secondary}:{})});
+    showOrbFixture(b,i=>i===3?{type:'skull',skull:enemy}:i===0?{type:'sword',element:'water',magicSword:true}:i===1?{type:'arrow',element:'water'}:i===2?{type:'sword',element:'earth'}:{type:'shield'});
+    r.activateSkill('retune');retunePick(b,'fire',[0,1]);d.querySelector('#retune-apply').click();
+    [0,1,2,3].forEach(i=>r.tryExtendChain(i));
+    const k=secondary==='earth'?1.125:secondary==='water'?1:1.25;
+    const oldSwordK=secondary==='earth'?(.75+1)/2:secondary==='water'?(.75+1.25)/2:.75;
+    const expected=r.baseDamage()+r.state.hero.weaponDamage*(6*k+oldSwordK);
+    assert.equal(r.chainPreview().skulls[0].damage,expected);
+    r.resolveChain();await until(()=>r.state.swordsHits===r.swordDamage(7));
+    assert.equal(r.state.board.find(c=>c.skull?.uid===enemy.uid).skull.hp,100-Math.max(0,Math.round(expected)-4));
+    await until(()=>!r.state.resolving && r.state.turn===1);
+    assert.equal(r.state.skillCooldowns.retune,11);assert.equal(r.saveRun(),true);
+    assert.deepEqual(b.errors,[]);
+  }finally{b.dom.window.close();}
+});
+
+test('magitech retune: a colour-only cast preserves fresh/frozen enemy metadata and every other cell, not generic transformation housekeeping', async () => {
+  const b=await retuneFixture();
+  try {
+    const r=b.raid,d=b.dom.window.document;r.state.turn=12;
+    showOrbFixture(b,i=>i===7 || i===8
+      ? {type:'skull',skull:Object.assign(r.makeSkull(false),{enteredTurn:12,element:'earth',hp:100,maxHp:100}),...(i===8?{frozen:true}:{})}
+      : {type:i===1?'arrow':'sword',element:'water',...(i===2?{magicSword:true,burn:true,fireDamage:3,fireSafe:true}:{})});
+    const cells=[...r.state.board],expected=JSON.parse(JSON.stringify(r.state.board)),before=JSON.parse(retuneRaw(b));
+    r.activateSkill('retune');retunePick(b,'fire',[0,1,2]);d.querySelector('#retune-apply').click();
+    for(const i of [0,1,2])expected[i].element='fire';
+    assert.deepEqual(JSON.parse(JSON.stringify(r.state.board)),expected,'do not age/thaw/rebuild other enemies');
+    cells.forEach((cell,i)=>assert.equal(r.state.board[i],cell));
+    const after=JSON.parse(retuneRaw(b));assert.deepEqual(after.rng,before.rng);assert.deepEqual(after.combat,before.combat);
+    assert.equal(after.state.skillCooldowns.retune,12);assert.equal(r.state.turn,12);assert.deepEqual(b.errors,[]);
+  } finally {b.dom.window.close();}
 });

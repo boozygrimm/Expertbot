@@ -1151,7 +1151,9 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .raid-orb[data-type="arrow"] .orb-core > .ic {
   filter: drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd)) drop-shadow(1px 1px 0 #020b11);
 }
-.raid-orb[data-type="sword"] .orb-core { inset: 7%; }
+/* Shorter BOARD-only silhouette: the diagonal and its 1px bevel stay inside
+   the round clip even at the broadside phase. Shop/summary art is unchanged. */
+.raid-orb[data-type="sword"] .orb-core { inset: 14%; }
 .raid-orb[data-type="skull"] .orb-core { inset: 3% 2% 16%; }
 #board .cell .skull-art, .raid-orb .skull-art { width: 100%; height: 100%; max-height: 100%; margin: 0; object-fit: contain; filter: drop-shadow(0 2px 2px #00142180); }
 /* Element is readable on the weapon itself. The earlier two-thirds body
@@ -1341,6 +1343,23 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
   .updates-modal .updates-card { padding: 12px; gap: 7px; }
   .updates-heading .raid-eyebrow, .updates-actions p { display: none; }
 }
+
+
+/* Unpaid A1 targeting mode: same hit sockets, no fifth active-skill slot. */
+.retune-panel { width: 100%; margin: 0 0 10px; padding: 10px; border: 1px solid #adbd90; border-radius: 6px; background: #102b2d; }
+.retune-panel h3 { font-size: 14px; margin: 0 0 7px; color: #e9e1bd; }
+.retune-elements { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 5px; }
+.retune-elements button { min-width: 0; min-height: 44px; padding: 5px 2px; border: 1px solid #7d9997; border-radius: 5px; background: #10252a; color: #e1e7d6; font: inherit; font-size: 12px; }
+.retune-elements button[aria-pressed="true"] { background: #31514c; border-color: #eee1a3; outline: 1px solid #eee1a3; }
+.retune-panel p { min-height: 2.5em; margin: 7px 0; font-size: 12px; line-height: 1.3; color: #d2dfcf; }
+.retune-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.retune-actions .btn { min-height: 44px; }
+/* Targeting uses taps, not a chain drag: scroll to offscreen rows normally. */
+#board.retuning { touch-action: pan-y; cursor: pointer; }
+#board.retuning .cell:not(.retune-eligible) .raid-orb { opacity: .4; }
+#board.retuning .retune-eligible .raid-orb { border-color: #c2d8ad; }
+#board.retuning .retune-chosen .raid-orb { outline: 3px solid #f2d58e; outline-offset: -3px; background: #d4c68a22; }
+#board.retuning .cell:focus-visible { outline: 2px solid #fff0bd; outline-offset: -1px; }
 
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
