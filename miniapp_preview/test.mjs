@@ -4569,6 +4569,11 @@ const magitechSnapshot = raid => {
   const state = raidJSON(raid.state);
   delete state.historyId; // Independent, non-gameplay UUID.
   delete state.log; // Terminology is presentation (class -> mech).
+  // Item-offer wording is presentation too; the redesign may clarify it without
+  // making a legacy Continue acquire different gameplay state.
+  for (const offer of state.menuCandidates || []) {
+    delete offer.name; delete offer.label; delete offer.desc;
+  }
   return state;
 };
 function settleMagitechFixture(browser) {
@@ -4598,6 +4603,14 @@ test('magitech source: unchanged combat/resource/generator functions remain byte
     assert.ok(a && b, name);
     assert.equal(b, a, `Elemental integration must not rebalance ${name}`);
   }
+});
+
+test('magitech player copy explains old runs and the weakening shield modifier in plain language', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  assert.match(html, /если рейд уже начат, он продолжится по прежним правилам — без склонности\. Склонность можно выбрать перед следующим рейдом\. Ничего удалять не нужно\./);
+  assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после этого залпа снижает силу атаки черепов, уже стоявших на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
+  assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
 
 test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {
