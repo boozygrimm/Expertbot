@@ -37,8 +37,10 @@
 дополнительно **8real touch +3editor**; errors[]. В91 открытой паре проверен
 паритет унаследованных пакетов/немезис-хода/Continue с классическим контролем,
 не симуляция баланса или естественная прокачка. Попап/краткая история/справка/
-COMMANDS актуальны. Это локальная QA; merge/Pages/public URL ещё предстоят.
-Стихии/грейды M1/B/C/bossD/парк/облако/реальная рассылка не включались.
+COMMANDS актуальны. Создан **[PR135](https://github.com/boozygrimm/Expertbot/pull/135)**;
+эта Git-запись pre-merge. Фактические merge/Pages/public build и ограничения —
+в **[release-протоколе7120790567](https://github.com/boozygrimm/Expertbot/pull/135#issuecomment-7120790567)**,
+обновляемом после операций. Стихии/грейды M1/B/C/bossD/парк/облако/рассылка не включались.
 
 **На момент этой pre-merge записи последний опубликованный шаг — PR134:**
 **[PR134](https://github.com/boozygrimm/Expertbot/pull/134) MERGED**, merge
@@ -243,7 +245,10 @@ auto-main для существующего бота; Pages не доказыв�
 - **V0/M0 по «Согласен, действуй» реализованы; новый выпуск готовится:**
   - AGENTS и весь актуальный LUNA1–5329 прочитаны до правок. Согласие записано §4
     до runtime. Существующие8 путей, новых файлов проекта/зависимостей нет; branch
-    arena/4dac0ee2-expertbot от merge134=d957c70. Старый134 MERGED, новый PR отдельно.
+    arena/4dac0ee2-expertbot от merge134=d957c70. Старый134 MERGED; создан новый
+    **[PR135](https://github.com/boozygrimm/Expertbot/pull/135)**. Эта сводка pre-merge,
+    [release-протокол](https://github.com/boozygrimm/Expertbot/pull/135#issuecomment-7120790567)
+    дополняется только фактическими результатами Git/Pages/public/ограничениями.
   - «Вид и движение» в существующих подготовке и меню: два checkbox/4 сочетания,
     default true/true, OS reduce приоритетен. `raid:visualPreferences` через тот же
     изолированный profileStorage, version1/boolean whitelist/≤1024B, read-only load;
@@ -2287,8 +2292,13 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
 - Actual first-entry popup описывает V0/M0, wave/A1/catalogue в истории;
   help/COMMANDS обновлены. Логи/нативные harness/evidence в `/tmp/raid-visual-mech-*`,
   просмотренные PNG в `.arena/raid-visual-mech` (вне Git). Локальная QA не равна
-  публикации/live Render/physical Telegram/FPS/батарее. Мёрдж/Pages/публичный build
-  фиксировать в release-протоколе отдельно; новый PR не создан на момент записи.
+  публикации/live Render/physical Telegram/FPS/батарее. Создан отдельный
+  **[PR135](https://github.com/boozygrimm/Expertbot/pull/135)**, product
+  **5a373c38528037376c04ac9d42982e5033502248**; base134=d957,8files,OPEN/CLEAN,
+  checks[] означает нет CI, не greenCI. Docs-only коммит добавляет эту ссылку.
+  Эта запись pre-merge: конкретные merge/Pages/public результаты и ограничения —
+  **[release-протокол7120790567](https://github.com/boozygrimm/Expertbot/pull/135#issuecomment-7120790567)**,
+  обновляемый после фактических операций;134 не переоткрывается/не мержится снова.
 - Следующий этап **согласовать M1**, не выбирать стихийные эффекты/грейды/стоимости
   самостоятельно. B/C не выбраны, bossD «не сейчас», парк/облако/рассылка не входят.
 
