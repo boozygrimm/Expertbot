@@ -1,7 +1,7 @@
 // miniapp_preview/raid_magitech.js
 // Separate RAID design prototype, forked from classic build 63b4ca81a10e.
 // Approved elemental combat for NEW runs only; released v1 Continue stays classic.
-// Separate element RNG/save-v2; classic URL, source, art and profiles stay untouched.
+// Separate element RNG; v1/v2 Continue retain their rules, new A1 runs use v3.
 'use strict';
 (function () {
   // A local namespace, NOT authentication. The public Pages client never
@@ -651,7 +651,11 @@
     { id: 'awe', name: 'Благоговение', icon: '🌀', cooldown: 14, native: 41, nativeOnly: true, desc: 'Собрать щиты и зелья в нижней половине; с «Шоком» — цепь' },
   ];
   const ALL_SKILLS = SKILLS.concat(UNIQUE_SKILLS);
-  const SKILL_BY_ID = Object.fromEntries(ALL_SKILLS.map(s => [s.id, s]));
+  // Keep the 42-ID native/I1 domain intact. This approved RAID-only module
+  // is available in NEW v3 runs, never as a native shop scroll.
+  const RETUNE_SKILL = { id: 'retune', name: 'Перенастройка', icon: '◇', native: 42,
+    cooldown: 12, desc: 'Выбрать стихию и 1–3 целых незамороженных меча/стрелы. Отдельное подтверждение; без хода врагов' };
+  const SKILL_BY_ID = Object.fromEntries([...ALL_SKILLS, RETUNE_SKILL].map(s => [s.id, s]));
 
   // --- мех выбранный пользователем (пикер в начале забега) ---
   function loadStoredClassId() {
@@ -818,7 +822,7 @@
   function hasFlaw(name, state = S) { return typeof name === 'string' && name !== '—' && !!runClassConfig(state)?.flaws.includes(name); }
   function clsRace(state = S) { return runClassConfig(state)?.race || 'Human'; }
   function classSkillPool(state = S) {
-    if (state.classId === 'adventurer') return ALL_SKILLS.filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.id);
+    if (state.classId === 'adventurer') return activeSkillDefinitions().filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.id);
     const config = runClassConfig(state), base = CLASS_BY_ID[state.classId].pool;
     return [...new Set(base.map((id, i) => config.replacements[i] || id))].sort((a,b) => SKILL_BY_ID[a].native-SKILL_BY_ID[b].native);
   }
@@ -936,6 +940,11 @@
   // Null means a released v1 run: Continue must NEVER enable new combat in it.
   // Gameplay metadata lives beside state in v2, separate from all six old RNGs.
   let ELEMENTAL_COMBAT = null;
+  const RETUNE_RULES = 'elements-retune-v1';
+  let RETUNE_DRAFT = null; // unpaid UI only; never part of a checkpoint
+  function hasRetuneRules() { return ELEMENTAL_COMBAT?.rules === RETUNE_RULES; }
+  function activeSkillDefinitions(retuning = hasRetuneRules()) { return retuning ? [...ALL_SKILLS, RETUNE_SKILL] : ALL_SKILLS; }
+  function runSaveVersion() { return hasRetuneRules() ? 3 : ELEMENTAL_COMBAT ? 2 : 1; }
   function raidPortraitKey(skull) {
     // New runs show the assigned combat element, not an independent art roll.
     // Ordinary spawns are local and share ONE common skin; legacy runs stay local.
@@ -1219,7 +1228,7 @@
     for (const n of Object.values(value)) saveNumber(n, min, max, integer);
     return value;
   }
-  function saveConfig(value, classId) {
+  function saveConfig(value, classId, retuning = false) {
     saveObject(value, ['classId', 'race', 'perks', 'flaws', 'replacements']);
     saveCheck(value.classId === classId && Object.hasOwn(RACE_INFO, value.race));
     const base = defaultClassConfig(classId);
@@ -1231,7 +1240,7 @@
     }
     saveCheck(value.perks.every((perk, i) => perk === null || value.flaws[i] !== null));
     saveArray(value.replacements, 20, 20);
-    saveCheck(value.replacements[0] === null && value.replacements.every(id => id === null || typeof id === 'string' && Object.hasOwn(SKILL_BY_ID, id) && !SKILL_BY_ID[id].nativeOnly));
+    saveCheck(value.replacements[0] === null && value.replacements.every(id => id === null || typeof id === 'string' && Object.hasOwn(SKILL_BY_ID, id) && (id !== 'retune' || retuning) && !SKILL_BY_ID[id].nativeOnly));
     if (classId === 'adventurer') saveCheck(value.race === base.race && ['perks', 'flaws', 'replacements'].every(key => value[key].every(entry => entry === null)));
     // Do not revalidate against today's donor levels/editor. This is the
     // already-started run's frozen configuration, not next-run preferences.
@@ -1240,9 +1249,9 @@
   function savedSkill(option) {
     return { kind: 'skill', id: option.id, duration: option.duration, charge: option.charge, level: option.level, upgrade: !!option.upgrade };
   }
-  function readSavedSkill(value) {
+  function readSavedSkill(value, retuning = false) {
     saveObject(value, ['kind', 'id', 'duration', 'charge', 'level', 'upgrade']);
-    saveCheck(value.kind === 'skill' && typeof value.id === 'string' && Object.hasOwn(SKILL_BY_ID, value.id));
+    saveCheck(value.kind === 'skill' && typeof value.id === 'string' && Object.hasOwn(SKILL_BY_ID, value.id) && (value.id !== 'retune' || retuning));
     saveNumber(value.duration, -64, 100000, true); saveNumber(value.charge, -64, 100000, true);
     saveNumber(value.level, 1, 10, true); saveBool(value.upgrade);
     return value;
@@ -1297,7 +1306,7 @@
     saveArray(skull.poison, 3, 3).forEach(n => saveNumber(n));
     return cell;
   }
-  function readSavedMenu(menu) {
+  function readSavedMenu(menu, retuning = false) {
     if (menu === null) return null;
     saveObject(menu, ['kind', 'choices', 'picked']); saveCheck(REWARD_KINDS.includes(menu.kind));
     const count = menu.kind === 'gold' ? 3 : 4;
@@ -1310,14 +1319,14 @@
         saveNumber(option.value, Number.MIN_VALUE);
       } else if (option?.kind === 'stat') {
         saveObject(option, ['kind', 'id']); saveCheck(STATS.some(stat => stat.id === option.id));
-      } else readSavedSkill(option);
+      } else readSavedSkill(option, retuning);
     }
     saveArray(menu.picked, menu.kind === 'level' ? 2 : 0);
     menu.picked.forEach(n => saveNumber(n, 0, count - 1, true));
     saveCheck(new Set(menu.picked).size === menu.picked.length);
     return menu;
   }
-  function readSavedState(data, legacyId, elemental) {
+  function readSavedState(data, legacyId, elemental, retuning = false) {
     const state = newGameState(), keys = Object.keys(state).filter(key => !RUN_SAVE_SKIP.has(key));
     saveCheck(data && typeof data === 'object' && !Array.isArray(data));
     // Compatible extension of released v1: keep the run and RNG; never invent
@@ -1339,7 +1348,7 @@
     saveNumber(state.difficulty, 0, 2, true); saveNumber(state.seed, 0, 0xffffffff, true);
     saveNumber(state.turn, 0, 1e12, true); saveNumber(state.trophyRemaining, 0, 30, true);
     saveCheck(!state.over && !state.won && state.scrollPolicy === 'classic-memory-v1');
-    saveConfig(state.classConfig, state.classId); readHistoryId(state.historyId); readPretzelStats(state.pretzelStats);
+    saveConfig(state.classConfig, state.classId, retuning); readHistoryId(state.historyId); readPretzelStats(state.pretzelStats);
     readAchievementRun(state.achievementRun, state.difficulty);
     const heroKeys = Object.keys(newGameState().hero);
     saveObject(state.hero, heroKeys);
@@ -1355,8 +1364,8 @@
     saveCheck(new Set(state.equipment.map(item => item.slot)).size === ITEM_SLOTS.length);
     saveObject(state.equipmentApplied, [...ITEM_KEYS, 'health']);
     Object.values(state.equipmentApplied).forEach(n => saveNumber(n));
-    const skillIds = ALL_SKILLS.map(skill => skill.id);
-    saveArray(state.skills, 4).forEach(id => saveCheck(typeof id === 'string' && Object.hasOwn(SKILL_BY_ID, id)));
+    const skillIds = activeSkillDefinitions(retuning).map(skill => skill.id);
+    saveArray(state.skills, 4).forEach(id => saveCheck(typeof id === 'string' && skillIds.includes(id)));
     saveCheck(new Set(state.skills).size === state.skills.length);
     saveMap(state.skillLevels, skillIds, 1, 10, true);
     saveMap(state.skillCooldowns, skillIds, 0, 100000, true);
@@ -1379,18 +1388,18 @@
   function decodeRunSave(raw) {
     saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
-    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2].includes(data.version));
+    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2, 3].includes(data.version));
     if (data.status === 'finished') {
       saveObject(data, ['format', 'version', 'status', 'record'], ['format', 'version', 'status']);
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
-      readHistoryRecord(data.record); return { status: 'finished', record: data.record };
+      readHistoryRecord(data.record, data.version === 3); return { status: 'finished', record: data.record };
     }
     const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
-    const elemental = data.version === 2;
+    const elemental = data.version >= 2, retuning = data.version === 3;
     saveObject(data, [...keys, 'orbElements', 'region', ...(elemental ? ['combat'] : [])], [...keys, ...(elemental ? ['region', 'combat'] : [])]);
     if (elemental) {
       saveObject(data.combat, ['rules', 'rng']);
-      saveCheck(data.combat.rules === ELEMENTAL_RULES);
+      saveCheck(data.combat.rules === (retuning ? RETUNE_RULES : ELEMENTAL_RULES));
       saveNumber(data.combat.rng, 0, 0xffffffff, true);
     }
     if (Object.hasOwn(data, 'region')) saveCheck(typeof data.region === 'string' && Object.hasOwn(RAID_REGIONS, data.region));
@@ -1398,11 +1407,11 @@
     saveCheck(data.status === 'active'); saveNumber(data.savedAt, 0, Number.MAX_SAFE_INTEGER, true);
     saveNumber(data.revision, 1, Number.MAX_SAFE_INTEGER, true);
     saveCheck(typeof data.build === 'string' && /^(?:[a-f0-9]{12}|source)$/.test(data.build));
-    data.state = readSavedState(data.state, data.state && Object.hasOwn(data.state, 'historyId') ? null : legacyHistoryId(raw, data.savedAt), elemental);
+    data.state = readSavedState(data.state, data.state && Object.hasOwn(data.state, 'historyId') ? null : legacyHistoryId(raw, data.savedAt), elemental, retuning);
     saveArray(data.rng, 6, 6).forEach(n => saveNumber(n, 0, 0xffffffff, true));
     saveNumber(data.skullUid, 1, 1e12, true);
     saveCheck(data.state.board.every(cell => cell.type !== 'skull' || cell.skull.uid < data.skullUid));
-    readSavedMenu(data.menu);
+    readSavedMenu(data.menu, retuning);
     const results = saveArray(data.results, 2048).map(result => {
       saveObject(result, Object.keys(collectionResult())); Object.values(result).forEach(n => saveNumber(n)); return result;
     });
@@ -1470,7 +1479,7 @@
     const label = S.scrollLeechLabel;
     const leechFadeMs = SCROLL_LABEL_TIMER !== null ? Math.max(0, Math.min(200, SCROLL_LABEL_DEADLINE - Date.now()))
       : label.active && !label.inFlight && !SCHEDULED_STEP ? 200 : null;
-    return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: ELEMENTAL_COMBAT ? 2 : 1, ...(ELEMENTAL_COMBAT ? { combat: { ...ELEMENTAL_COMBAT } } : {}), status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
+    return JSON.stringify({ format: 'lunapark-raid-magitech-run', version: runSaveVersion(), ...(ELEMENTAL_COMBAT ? { combat: { ...ELEMENTAL_COMBAT } } : {}), status: 'active', revision: SAVE_REVISION + 1, savedAt: Date.now(),
       build: qs('meta[name="raid-build"]')?.content || 'source', state, rng: Array.from(RNG_SEEDS), skullUid: SKULL_UID,
       menu, results, arrivals, next, leechFadeMs, orbElements: S.board.map(orbElementIndex), region: RUN_REGION || RAID_REGION });
   }
@@ -1535,7 +1544,7 @@
     try {
       if (!S.over && S.equipment.some(item => ITEM_KEYS.filter(key => itemValue(item, key) !== 0).length >= 8)) queueAchievement(72);
       if (S.over && !FINISHED_RECORD) FINISHED_RECORD = makeHistoryRecord();
-      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-magitech-run', version: ELEMENTAL_COMBAT ? 2 : 1, status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
+      raw = S.over ? JSON.stringify({ format: 'lunapark-raid-magitech-run', version: runSaveVersion(), status: 'finished', record: FINISHED_RECORD }) : encodeRunSave();
       decoded = decodeRunSave(raw);
     } catch (e) {
       saveStatus('invalid', 'Текущая точка не записана: состояние не прошло проверку. Предыдущее корректное сохранение не изменено.');
@@ -1577,6 +1586,7 @@
   }
   function resumeSavedRun() {
     if (UPDATES_OPEN) return false;
+    closeRetune(false);
     if (!readRunSlot() || !SAVED_RUN) return false;
     const data = SAVED_RUN;
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
@@ -1874,7 +1884,7 @@
       pretzel: S.mode === 'pretzel' && S.pretzelStats ? { ...S.pretzelStats } : null,
       achievements: { ...S.achievementRun.earned } };
   }
-  function readHistoryRecord(record) {
+  function readHistoryRecord(record, retuning = true) {
     const keys = ['id', 'type', 'classId', 'difficulty', 'turn', 'xp', 'gold', 'upgrade', 'score', 'kills', 'won', 'finishedAt', 'skills', 'pretzel'];
     saveObject(record, [...keys, 'achievements'], keys);
     if (Object.hasOwn(record, 'achievements')) readAchievementMap(record.achievements, record.difficulty);
@@ -1884,7 +1894,7 @@
     saveNumber(record.finishedAt, 0, 8640000000000000, true); saveBool(record.won);
     saveCheck(!record.won || record.type === 4 && record.turn >= 100);
     saveArray(record.skills, 4).forEach(skill => {
-      saveObject(skill, ['id', 'level']); saveCheck(typeof skill.id === 'string' && Object.hasOwn(SKILL_BY_ID, skill.id)); saveNumber(skill.level, 1, 10, true);
+      saveObject(skill, ['id', 'level']); saveCheck(typeof skill.id === 'string' && Object.hasOwn(SKILL_BY_ID, skill.id) && (skill.id !== 'retune' || retuning)); saveNumber(skill.level, 1, 10, true);
     });
     saveCheck(new Set(record.skills.map(skill => skill.id)).size === record.skills.length);
     readPretzelStats(record.pretzel); saveCheck(record.type === 5 || record.pretzel === null);
@@ -2025,6 +2035,7 @@
   }
   function openRunHistory() {
     if (HISTORY_OPEN) return true;
+    if (RETUNE_DRAFT) return false;
     if (S?.resolving || S?.pendingModal && S.pendingModal !== 'gameover') { flash('Сначала заверши ход и выбор наград'); return false; }
     const wrap = el('history-modal'); if (!wrap) return false;
     HISTORY_FOCUS = document.activeElement; HISTORY_OPEN = true;
@@ -2442,7 +2453,7 @@
   }
 
   function tryExtendChain(cellIdx) {
-    if (!S || UPDATES_OPEN || HISTORY_OPEN || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
     const chain = S.selected;
     const repeated = chain.indexOf(cellIdx);
     if (repeated >= 0) {
@@ -2617,14 +2628,12 @@
     view.motion?.cancel();
     view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
     const falling = Math.abs(dx) < 1 && dy < 0;
-    const duration = falling ? Math.min(390, 245 + Math.sqrt(Math.abs(dy)) * 7) : 300;
+    const duration = falling ? 390 : 300;
     let animation;
     animation = animateOrb(view.node, [
-      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .35 : 1, offset: 0, easing: 'cubic-bezier(.42,0,.76,.42)' },
-      { transform: 'translate(0,0)', opacity: 1, offset: .8 },
-      { transform: falling ? 'translateY(1px) scale(1.035,.965)' : 'translate(0,0)', opacity: 1, offset: .89 },
-      { transform: 'translate(0,0) scale(1)', opacity: 1 },
-    ], { duration, delay, fill: 'both' }, () => {
+      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .6 : 1 },
+      { transform: 'translate(0,0)', opacity: 1 },
+    ], { duration, delay, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' }, () => {
       if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
     });
     view.motion = animation;
@@ -2734,9 +2743,10 @@
       if (!key || previous.has(key)) break;
       incoming[c]++;
     }
-    // LAST: reparent the same nodes into the final fixed hit sockets, then
-    // invert that displacement for Web Animations. Physics/refill/RNG have
-    // already resolved in their original order; no animation settles rewards.
+    // LAST: batch ALL writes before ALL final geometry reads. Measuring and
+    // starting each orb in one loop forced 36 layouts and staggered animation
+    // clocks on phones. Interrupted moves still start at their on-screen rect.
+    const plans = [];
     for (let idx = 0; idx < CELL_COUNT; idx++) {
       const key = keys[idx]; let view = key && previous.get(key);
       if (key && !view) {
@@ -2744,23 +2754,31 @@
         node.style.setProperty('--orb-phase', -(ORB_VIEW_UID * 137 % 3100) + 'ms');
         view = { node, slot: idx, initialized: false, motion: null };
       }
+      const moved = previous.has(key) && view.slot !== idx;
+      if (moved) view.motion?.cancel();
       renderCell(S.board[idx], idx, view);
       if (!view) continue;
       next.set(key, view);
-      const old = rects.get(key), moved = previous.has(key) && view.slot !== idx;
-      if (moved) view.motion?.cancel();
-      const rect = view.node.getBoundingClientRect();
-      if (rect.width && !orbReducedMotion() && previous.size) {
+      if (moved || !previous.has(key)) plans.push({ view, idx, old: rects.get(key), moved });
+      view.slot = idx;
+    }
+    if (previous.size && !orbReducedMotion()) {
+      for (const plan of plans) plan.rect = plan.view.node.getBoundingClientRect();
+      const first = qs('.cell[data-idx="0"]').getBoundingClientRect();
+      const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - first.top;
+      // All animate() calls stay pending until the SAME next rendering frame.
+      // Never force startTime to document.timeline.currentTime here: during a
+      // long input/layout task it is the PREVIOUS frame's timestamp and would
+      // skip the beginning (or all) of a fall on a slow device.
+      for (const { view, idx, old, moved, rect } of plans) {
+        if (!rect.width) continue;
         if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, 65);
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
-          if (row < count) {
-            const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - qs('.cell[data-idx="0"]').getBoundingClientRect().top;
-            moveOrb(view, 0, -pitch * count, true, 65);
-          } else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260 });
+          if (row < count) moveOrb(view, 0, -pitch * count, true, 65);
+          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260 });
         }
       }
-      view.slot = idx;
     }
     ORB_VIEWS = next;
     renderSelection(); renderChainLine();
@@ -3071,8 +3089,9 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'skill' + (left > 0 ? ' on-cd' : '');
-      btn.dataset.slot = String(i);
-      btn.innerHTML = `<span class="skill-icon">${raidModuleIcon(skill.id)}</span><span class="skill-name">${skill.name}</span>${left > 0 ? `<span class="cd">${left}</span>` : (level > 1 ? `<span class="cd">ур.${level}</span>` : '')}`;
+      btn.dataset.slot = String(i); btn.dataset.skillId = skillId;
+      if (skillId === 'retune') btn.disabled = !canActivateSkill(skillId) || left > 0;
+      btn.innerHTML = `<span class="skill-icon">${raidModuleIcon(skill.id)}</span><span class="skill-name">${skillId === 'retune' ? 'Перена<wbr>стройка' : skill.name}</span>${left > 0 ? `<span class="cd">${left}</span>` : (level > 1 ? `<span class="cd">ур.${level}</span>` : '')}`;
       const duration = skillDuration(skillId);
       btn.title = skill.desc + (duration > 0 ? ' · готовность: ' + (duration - left) + '/' + duration : ' · одноразовый') + (level > 1 ? ', уровень ' + level : '');
       btn.addEventListener('click', () => activateSkill(skillId));
@@ -3091,6 +3110,7 @@
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     if (UPDATES_OPEN) return false;
+    closeRetune(false);
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
     if (hasPendingProgress()) retryRunHistory();
     RUN_ID++;
@@ -3115,7 +3135,7 @@
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
-    ELEMENTAL_COMBAT = { rules: ELEMENTAL_RULES, rng: (runSeed ^ 0x454c454d) >>> 0 };
+    ELEMENTAL_COMBAT = { rules: RETUNE_RULES, rng: (runSeed ^ 0x454c454d) >>> 0 };
     RUN_REGION = RAID_REGION;
     applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
@@ -3203,6 +3223,7 @@
       level: S.mode === 'sprint' ? 5 : Math.min(10, oldLevel + 1) };
   }
   function installSkillOption(option) {
+    if (option.id === 'retune' && !hasRetuneRules()) return false;
     const id = option.id, existing = S.skills.includes(id);
     if (!existing && S.skills.length >= 4) return false;
     let duration = option.duration;
@@ -3221,10 +3242,12 @@
     if (typeof id !== 'string' || !Object.hasOwn(SKILL_BY_ID, id)) return false;
     const skill = SKILL_BY_ID[id];
     if (!skill || skill.nativeOnly) return false;
+    if (id === 'retune') return true; // next-run editor; active saves gate it separately
     return skill.native < 31 || CLASSES.some(cls => cls.id !== 'adventurer'
       && cls.uniqueSkill === id && classLevelOf(cls.id) === 10);
   }
   function canActivateSkill(id) {
+    if (id === 'retune') return hasRetuneRules() && S.board.some(cell => retuneWeapon(cell));
     const cells = S.board.filter(cell => cell && cell.type !== 'empty' && !cell.matched);
     const any = predicate => cells.some(predicate);
     const enemy = cell => cell.type === 'skull';
@@ -3255,23 +3278,144 @@
   }
 
   function activateSkill(id) {
-    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
-    const left = S.skillCooldowns[id] || 0;
-    if (left > 0) return;
-    const skill = SKILL_BY_ID[id];
-    if (!skill) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || S.over || S.resolving || S.pendingModal || S.selected.length || !ownsRunSlot()) return;
+    if ((S.skillCooldowns[id] || 0) > 0 || !SKILL_BY_ID[id]) return;
+    if (id === 'retune') { openRetune(); return; }
+    commitSkill(id, () => applySkill(id));
+  }
+  function commitSkill(id, action) {
     S.skillDurations[id] = skillDuration(id);
     S.skillCooldowns[id] = Math.max(0, S.skillDurations[id]);
     S.resolving = true;
     fireBreathOnSkill();
     withResourceBatch(() => {
-      applySkill(id);
-      if (S.board.some(cell => !cell || cell.type === 'empty')) compactBoardAndRefill();
-      if (!S.actionCommitted) markExistingSkullsOld();
-      if (!hasLegalChain(S.board)) ensureChainable();
+      action();
+      // A1 changes colour only. It cannot change chain legality or vacancies,
+      // and must not age/thaw/shuffle any other cell as transformation cleanup.
+      // The 42 inherited casts retain their exact original housekeeping; A1
+      // still uses their charge, true-cast reaction, resource and save pipeline.
+      if (id !== 'retune') {
+        if (S.board.some(cell => !cell || cell.type === 'empty')) compactBoardAndRefill();
+        if (!S.actionCommitted) markExistingSkullsOld();
+        if (!hasLegalChain(S.board)) ensureChainable();
+      }
     });
     renderHUD(); renderBoard();
     continueAfterRewards({ phase: 'skill' });
+  }
+
+  // A1 input is an unpaid, cancellable draft, not S.pendingModal/a reward.
+  function retuneWeapon(cell, element = null) {
+    return !!cell && ['sword', 'arrow'].includes(cell.type) && !cell.frozen && !cell.stunned && !cell.broken && !cell.matched
+      && RAID_ELEMENTS.includes(cell.element) && (!element || cell.element !== element);
+  }
+  function retuneContext(draft) {
+    if (TELEGRAM_PROFILE && telegramProfileId() !== PROFILE_ID) {
+      try { profileStorageCheck(); } catch (ignored) { /* shows the identity warning */ }
+      return false;
+    }
+    return !!draft && draft === RETUNE_DRAFT && draft.runId === RUN_ID && draft.state === S
+      && draft.prefix === PROFILE_PREFIX && PROFILE_PREFIX !== null
+      && (!TELEGRAM_PROFILE || telegramProfileId() === PROFILE_ID)
+      && hasRetuneRules() && S.skills.includes('retune') && !(S.skillCooldowns.retune > 0)
+      && !S.over && !S.resolving && !S.pendingModal && !S.selected.length && !UPDATES_OPEN && !HISTORY_OPEN
+      && !pickerOpen && !['menu-modal', 'help-modal', 'exit-modal', 'restart-modal'].some(telegramLayer)
+      && S.board.every((cell, i) => cell === draft.board[i]) && ownsRunSlot();
+  }
+  function renderRetuneTargets() {
+    const draft = RETUNE_DRAFT;
+    for (const node of qsa('#board > .cell')) {
+      const idx = Number(node.dataset.idx), eligible = !!draft?.element && retuneWeapon(S.board[idx], draft.element);
+      node.classList.toggle('retune-eligible', eligible);
+      node.classList.toggle('retune-chosen', !!draft?.selected.has(idx));
+      if (draft) {
+        node.setAttribute('role', 'button'); node.tabIndex = eligible ? 0 : -1;
+        node.setAttribute('aria-disabled', String(!eligible)); node.setAttribute('aria-pressed', String(draft.selected.has(idx)));
+      } else for (const attr of ['role', 'tabindex', 'aria-disabled', 'aria-pressed']) node.removeAttribute(attr);
+    }
+    if (el('board')) el('board').classList.toggle('retuning', !!draft);
+    if (!draft) return;
+    for (const node of qsa('[data-retune-element]')) node.setAttribute('aria-pressed', String(node.dataset.retuneElement === draft.element));
+    el('retune-status').textContent = draft.element
+      ? RAID_REGIONS[draft.element].element + ' · выбрано ' + draft.selected.size + ' из 3. Отметь оружие на поле.'
+      : 'Выбери стихию, затем 1–3 целых незамороженных меча/стрелы.';
+    el('retune-apply').disabled = !draft.selected.size;
+  }
+  function closeRetune(focus = true) {
+    if (!RETUNE_DRAFT) return;
+    RETUNE_DRAFT = null;
+    if (el('retune-panel')) el('retune-panel').hidden = true;
+    renderRetuneTargets(); syncTelegramChrome();
+    if (focus) qs('[data-skill-id="retune"]')?.focus();
+  }
+  function openRetune() {
+    if (!hasRetuneRules() || !S.skills.includes('retune') || !canActivateSkill('retune')
+      || activeDrag || pickerOpen || ['menu-modal', 'help-modal', 'exit-modal', 'restart-modal'].some(telegramLayer)
+      || [...ORB_VIEWS.values()].some(view => view.motion) || !el('retune-panel')
+      || PROFILE_PREFIX === null || TELEGRAM_PROFILE && telegramProfileId() !== PROFILE_ID) return false;
+    RETUNE_DRAFT = { runId: RUN_ID, state: S, prefix: PROFILE_PREFIX, board: [...S.board], element: null, selected: new Set() };
+    el('retune-panel').hidden = false; renderRetuneTargets(); syncTelegramChrome();
+    qs('[data-retune-element]')?.focus();
+    return true;
+  }
+  function toggleRetuneTarget(idx) {
+    const draft = RETUNE_DRAFT;
+    if (!retuneContext(draft)) { closeRetune(false); return; }
+    if (!draft.element || !Number.isInteger(idx) || !retuneWeapon(S.board[idx], draft.element)) return;
+    if (draft.selected.has(idx)) draft.selected.delete(idx);
+    else if (draft.selected.size < 3) draft.selected.add(idx);
+    renderRetuneTargets();
+  }
+  function confirmRetune() {
+    const draft = RETUNE_DRAFT;
+    if (!retuneContext(draft)) { closeRetune(false); return false; }
+    const slots = [...draft.selected];
+    if (!RAID_ELEMENTS.includes(draft.element) || slots.length < 1 || slots.length > 3
+      || !slots.every(idx => retuneWeapon(S.board[idx], draft.element))) return false;
+    closeRetune(false); // invalidates queued/double clicks BEFORE any effect
+    commitSkill('retune', () => { for (const idx of slots) S.board[idx].element = draft.element; });
+    qs('[data-skill-id="retune"]')?.focus();
+    return true;
+  }
+  function initRetune() {
+    for (const button of qsa('[data-retune-element]')) button.addEventListener('click', () => {
+      const draft = RETUNE_DRAFT;
+      if (!retuneContext(draft)) { closeRetune(false); return; }
+      if (draft.element !== button.dataset.retuneElement) draft.selected.clear();
+      draft.element = button.dataset.retuneElement; renderRetuneTargets();
+    });
+    el('retune-cancel')?.addEventListener('click', () => closeRetune());
+    el('retune-apply')?.addEventListener('click', confirmRetune);
+    el('board')?.addEventListener('click', event => {
+      if (!RETUNE_DRAFT) return;
+      const cell = event.target.closest('.cell');
+      if (cell) toggleRetuneTarget(Number(cell.dataset.idx));
+    });
+    document.addEventListener('keydown', event => {
+      if (!RETUNE_DRAFT) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRetune(); return; }
+      const cell = event.target.closest?.('#board > .cell');
+      if (cell && ['Enter', ' '].includes(event.key)) { event.preventDefault(); toggleRetuneTarget(Number(cell.dataset.idx)); }
+      if (event.key === 'Tab') {
+        const controls = [...qsa('#retune-panel button:not(:disabled)'), ...qsa('#board .retune-eligible')];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); (event.shiftKey ? last : first)?.focus();
+        }
+      }
+    });
+    for (const kind of ['pointerdown', 'click']) document.addEventListener(kind, event => {
+      if (!RETUNE_DRAFT) return;
+      if (!retuneContext(RETUNE_DRAFT)) { closeRetune(false); }
+      else if (el('retune-panel').contains(event.target) || el('board').contains(event.target)) return;
+      // Leave native vertical scrolling available outside the board. Only
+      // activations are blocked; a non-control pointerdown need not cancel pan.
+      if (kind === 'click' || event.target.closest?.('button,select,a,input')) event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    document.addEventListener('focusin', event => {
+      if (RETUNE_DRAFT && !el('retune-panel').contains(event.target) && !el('board').contains(event.target)) qs('[data-retune-element]')?.focus();
+    });
   }
 
   function fireBreathOnSkill() {
@@ -4446,7 +4590,7 @@
   }
 
   function resolveChain() {
-    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
     const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
@@ -4736,6 +4880,7 @@
     if (body) body.scrollTop = 0;
   }
   function openModal(kind, restoredChoices = null) {
+    closeRetune(false);
     const runId = RUN_ID;
     S.pendingModal = kind;
     if (kind === 'level' && !restoredChoices) S.levelDraft = [];
@@ -4945,7 +5090,7 @@
     return S.board.flatMap((cell, slot) => cell.type === 'trophy' && !cell.frozen && !cell.matched ? [slot] : []);
   }
   function claimTrophy(slot) {
-    if (!S || UPDATES_OPEN || HISTORY_OPEN || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
+    if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || S.over || S.resolving || S.pendingModal || !Number.isInteger(slot) || !ownsRunSlot()) return false;
     const cell = S.board[slot];
     if (!cell || cell.type !== 'trophy' || cell.frozen || cell.matched) return false;
     // Outcome draws happen on the tap, so class state may change between drops.
@@ -4969,7 +5114,7 @@
     const owned = S.skills, sprint = S.mode === 'sprint';
     const upgradable = owned.filter(id => id !== 'wish' && (S.skillLevels[id] || 1) < 10);
     const cls = CLASS_BY_ID[S.classId];
-    const ordered = ALL_SKILLS.slice().sort((a, b) => a.native - b.native);
+    const ordered = activeSkillDefinitions().slice().sort((a, b) => a.native - b.native);
     const allowed = new Set(classSkillPool());
     let pool = ordered.filter(skill => owned.length === 4 ? owned.includes(skill.id)
       : allowed.has(skill.id)).map(skill => skill.id);
@@ -5861,7 +6006,7 @@
 
     board.addEventListener('pointerdown', e => {
       if (activeDrag || e.isPrimary === false || e.button > 0 || [...ORB_VIEWS.values()].some(view => view.motion)) return;
-      if (!S || UPDATES_OPEN || HISTORY_OPEN || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
+      if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || SAVE_CONFLICT || S.over || S.resolving || S.pendingModal) return;
       e.preventDefault();
       const cell = e.target.closest('.cell');
       if (!cell) return;
@@ -5991,11 +6136,11 @@
     const skillSection = block(id === 'adventurer' ? 'Все открытые навыки' : 'Пул навыков: 20 позиций');
     const count = note(skillSection, ''); count.id = 'class-replacement-count'; count.setAttribute('role', 'status');
     note(skillSection, 'Это возможные награды уровня, не стартовые умения. Первый навык меха фиксирован. Повторы не увеличивают шанс выпадения.');
-    if (id === 'adventurer') note(skillSection, ALL_SKILLS.filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
+    if (id === 'adventurer') note(skillSection, activeSkillDefinitions(true).filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
     else for (let i = 0; i < 20; i++) {
       const base = SKILL_BY_ID[info.baseSkills[i]];
       select(skillSection, `${i + 1}. ${base.name}` + (i === 0 ? ' · меховый' : ''), 'replacements', i,
-        [{ value: '', label: base.name + ' · по умолчанию' }, ...ALL_SKILLS.filter(s => !s.nativeOnly && s.id !== base.id).sort((a,b) => a.native-b.native).map(skill => ({
+        [{ value: '', label: base.name + ' · по умолчанию' }, ...activeSkillDefinitions(true).filter(s => !s.nativeOnly && s.id !== base.id).sort((a,b) => a.native-b.native).map(skill => ({
           value: skill.id, label: skill.name + (isSkillUnlocked(skill.id) ? '' : ' · мех-источник: ур. 10'), locked: !isSkillUnlocked(skill.id),
         }))], !info.editable || i === 0 || info.replacementLimit === 0);
     }
@@ -6032,6 +6177,7 @@
     refresh(); return true;
   }
   function showClassPicker() {
+    closeRetune(false);
     if (S?.resolving || S?.pendingModal) return false;
     const picker = el('class-picker');
     if (!picker) { newGame(); return true; }
@@ -6040,7 +6186,7 @@
     if (resume) {
       resume.hidden = !(S && !S.over || info);
       resume.textContent = S && !S.over ? 'Вернуться в забег'
-        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${info.combatRules === ELEMENTAL_RULES ? 'стихии' : 'прежние правила'}` : 'Продолжить';
+        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
@@ -6092,7 +6238,7 @@
     const live = !!S && !S.over;
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
-    const back = UPDATES_OPEN || HISTORY_OPEN || !!classEditor || pickerOpen && live
+    const back = UPDATES_OPEN || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal);
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
@@ -6106,6 +6252,7 @@
   }
   function requestTelegramClose(discard = false) {
     if (!TELEGRAM_APP) return false;
+    closeRetune(false);
     cancelPointerGesture();
     // A pending reward is a resumable checkpoint, not a reason to forbid exit.
     // close() can bypass the native closing prompt, so an unsuccessful write
@@ -6130,6 +6277,7 @@
   function telegramBack() {
     // A read-only notice has no gesture/reward to cancel underneath it.
     if (UPDATES_OPEN) { closeUpdateNotice(); return; }
+    if (RETUNE_DRAFT) { closeRetune(); return; }
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
@@ -6176,7 +6324,7 @@
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
       telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { audioHostActive = false; stopMaterialAudio(); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers
@@ -6216,7 +6364,7 @@
     // Startup never restores/starts a run. A manual reader may cover only an
     // idle view, not a chain/mandatory reward or its asynchronous continuation.
     if (automatic && S) return false;
-    if (S && (S.resolving || S.pendingModal || S.selected.length)) {
+    if (S && (RETUNE_DRAFT || S.resolving || S.pendingModal || S.selected.length)) {
       flash('Сначала заверши цепочку и выбор наград'); return false;
     }
     UPDATES_SESSION = { prefix: PROFILE_PREFIX, focus: opener || document.activeElement, background: [] };
@@ -6314,15 +6462,15 @@
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
     readRunSlot(); readRunHistory();
-    initInput();
-    window.addEventListener?.('pagehide', () => { cancelPointerGesture(); saveRun(); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { cancelPointerGesture(); saveRun(); } });
+    initInput(); initRetune();
+    window.addEventListener?.('pagehide', () => { closeRetune(false); cancelPointerGesture(); saveRun(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { closeRetune(false); cancelPointerGesture(); saveRun(); } });
     window.addEventListener?.('storage', event => {
       if (event.key === profileStorage.key(RUN_HISTORY_KEY) || event.key === null) { if (HISTORY_OPEN) renderRunHistory(); else readRunHistory(); }
       if (event.key !== profileStorage.key(RUN_SAVE_KEY) && event.key !== null) return;
       // Finished pages still own timers/pagehide callbacks: never adopt a new
       // tab's baseline and then overwrite it with our old terminal checkpoint.
-      if (S) ownsRunSlot();
+      if (S) { if (!ownsRunSlot()) closeRetune(false); }
       else { readRunSlot(); if (pickerOpen && !classEditor) showClassPicker(); }
     });
     el('picker-history')?.addEventListener('click', openRunRecords);
