@@ -1436,5 +1436,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .game-settings-card [data-raid-visual-status] { color: #f0d1a2; }
 .game-settings :focus-visible, .settings-toggle:focus-visible { outline: 2px solid #f2dc9e; outline-offset: 3px; }
 
+/* Per-raid pilot choice: outside the start button, never a persistent editor. */
+.picker-affinity-field { display:flex; flex-direction:column; gap:6px; padding:12px 14px 0; font-size:12px; color:#b9cfc4; min-width:0; }
+.picker-affinity { width:100%; min-width:0; min-height:44px; border:1px solid #657c67; border-radius:12px; padding:8px 10px; background:#102c2b; color:#e5e2cf; font:inherit; font-size:14px; }
+.picker-affinity:focus-visible { outline:2px solid #9bd3bf; outline-offset:2px; }
+.picker-affinity-note { margin:8px 14px 12px; color:#b4c3b0; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }

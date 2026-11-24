@@ -1,7 +1,7 @@
 // miniapp_preview/raid_magitech.js
 // Separate RAID design prototype, forked from classic build 63b4ca81a10e.
 // Approved elemental combat for NEW runs only; released v1 Continue stays classic.
-// Separate element RNG; v1/v2 Continue retain their rules, new A1 runs use v3.
+// Separate element RNG; released v1/v2/v3 retain their rules, new affinity runs use v4.
 'use strict';
 (function () {
   // A local namespace, NOT authentication. The public Pages client never
@@ -383,6 +383,7 @@
       ['Мех', cls.name + ' · специализация и модули'],
       ['Пилот', RACE_INFO[clsRace()].name + ' · прежний расовый пакет'],
       ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
+      ['Склонность на этот рейд', pilotAffinityDescription()],
       ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
       ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
       ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
@@ -1013,10 +1014,44 @@
   // Gameplay metadata lives beside state in v2, separate from all six old RNGs.
   let ELEMENTAL_COMBAT = null;
   const RETUNE_RULES = 'elements-retune-v1';
+  const AFFINITY_RULES = 'elements-affinity-v1';
   let RETUNE_DRAFT = null; // unpaid UI only; never part of a checkpoint
-  function hasRetuneRules() { return ELEMENTAL_COMBAT?.rules === RETUNE_RULES; }
+  function hasRetuneRules() { return [RETUNE_RULES, AFFINITY_RULES].includes(ELEMENTAL_COMBAT?.rules); }
   function activeSkillDefinitions(retuning = hasRetuneRules()) { return retuning ? [...ALL_SKILLS, RETUNE_SKILL] : ALL_SKILLS; }
-  function runSaveVersion() { return hasRetuneRules() ? 3 : ELEMENTAL_COMBAT ? 2 : 1; }
+  function runSaveVersion() { return ELEMENTAL_COMBAT?.rules === AFFINITY_RULES ? 4 : hasRetuneRules() ? 3 : ELEMENTAL_COMBAT ? 2 : 1; }
+  // A run owns this frozen snapshot. Neither current meta progression nor the
+  // preparation for another raid may alter its level, drops or damage.
+  function runPilotAffinity() { return ELEMENTAL_COMBAT?.rules === AFFINITY_RULES ? ELEMENTAL_COMBAT.affinity : null; }
+  function affinityCounterElement(element) { return RAID_ELEMENTS[(RAID_ELEMENTS.indexOf(element) + 3) % 4]; }
+  function preparedPilotAffinity(classId) {
+    const level = Math.max(1, Math.min(10, classLevelOf(classId)));
+    const choice = pickerOpen && !classEditor && !UPDATES_OPEN && !HISTORY_OPEN ? pickerAffinities.get(classId) : null;
+    return Object.freeze({ element: level >= 2 && RAID_ELEMENTS.includes(choice) ? choice : null, level });
+  }
+  function pilotAffinityDescription(affinity = runPilotAffinity()) {
+    if (!affinity) return 'Прежние правила: склонности нет; сохранённый рейд не меняется.';
+    if (!affinity.element) return 'Без склонности: по 25% каждой стихии, без бонуса и штрафа урона. Только этот рейд.';
+    const own = RAID_REGIONS[affinity.element].element, counter = RAID_REGIONS[affinityCounterElement(affinity.element)].element;
+    return `${own}: 30%; ${counter}: 20%; остальные по 25%. `
+      + (affinity.level >= 3 ? `Урон плитками: ${own} +5%, ${counter} −5%.` : 'Урон без изменений; бонус и штраф открываются с уровня меха 3.')
+      + ' Только этот рейд; следующий выбор заново.';
+  }
+  function pilotWeaponMultiplier(element) {
+    const affinity = runPilotAffinity();
+    if (!affinity?.element || affinity.level < 3) return 1;
+    return element === affinity.element ? 1.05 : element === affinityCounterElement(affinity.element) ? .95 : 1;
+  }
+  function rollWeaponElement() {
+    const roll = elementRandom(), affinity = runPilotAffinity();
+    if (!affinity?.element) return RAID_ELEMENTS[Math.floor(roll * 4)];
+    const bucket = Math.floor(roll * 100), counter = affinityCounterElement(affinity.element);
+    let ceiling = 0;
+    for (const element of RAID_ELEMENTS) {
+      ceiling += element === affinity.element ? 30 : element === counter ? 20 : 25;
+      if (bucket < ceiling) return element;
+    }
+    return RAID_ELEMENTS[3];
+  }
   function raidPortraitKey(skull) {
     // New runs show the assigned combat element, not an independent art roll.
     // Ordinary spawns are local and share ONE common skin; legacy runs stay local.
@@ -1133,7 +1168,7 @@
       // An existing weapon keeps its element through sword/arrow conversions.
       // A genuinely new weapon (including a converted coin/enemy) rolls once.
       tile.element = source && ['sword', 'arrow'].includes(source.type) && RAID_ELEMENTS.includes(source.element)
-        ? source.element : RAID_ELEMENTS[Math.floor(elementRandom() * 4)];
+        ? source.element : rollWeaponElement();
     }
     return tile;
   }
@@ -1460,19 +1495,24 @@
   function decodeRunSave(raw) {
     saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
-    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2, 3].includes(data.version));
+    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2, 3, 4].includes(data.version));
     if (data.status === 'finished') {
       saveObject(data, ['format', 'version', 'status', 'record'], ['format', 'version', 'status']);
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
-      readHistoryRecord(data.record, data.version === 3); return { status: 'finished', record: data.record };
+      readHistoryRecord(data.record, data.version >= 3); return { status: 'finished', record: data.record };
     }
     const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
-    const elemental = data.version >= 2, retuning = data.version === 3;
+    const elemental = data.version >= 2, retuning = data.version >= 3, affinity = data.version === 4;
     saveObject(data, [...keys, 'orbElements', 'region', ...(elemental ? ['combat'] : [])], [...keys, ...(elemental ? ['region', 'combat'] : [])]);
     if (elemental) {
-      saveObject(data.combat, ['rules', 'rng']);
-      saveCheck(data.combat.rules === (retuning ? RETUNE_RULES : ELEMENTAL_RULES));
+      saveObject(data.combat, ['rules', 'rng', ...(affinity ? ['affinity'] : [])]);
+      saveCheck(data.combat.rules === (affinity ? AFFINITY_RULES : retuning ? RETUNE_RULES : ELEMENTAL_RULES));
       saveNumber(data.combat.rng, 0, 0xffffffff, true);
+      if (affinity) {
+        const value = data.combat.affinity;
+        saveObject(value, ['element', 'level']); saveNumber(value.level, 1, 10, true);
+        saveCheck(value.element === null || value.level >= 2 && typeof value.element === 'string' && RAID_ELEMENTS.includes(value.element));
+      }
     }
     if (Object.hasOwn(data, 'region')) saveCheck(typeof data.region === 'string' && Object.hasOwn(RAID_REGIONS, data.region));
     if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
@@ -1674,6 +1714,7 @@
     closeRunHistory();
     S = data.state;
     ELEMENTAL_COMBAT = data.combat ? { ...data.combat } : null;
+    if (runPilotAffinity()) Object.freeze(ELEMENTAL_COMBAT.affinity);
     // Released v1 checkpoints without region use the profile's appearance once;
     // all subsequent checkpoints pin it independently from next-run preferences.
     RUN_REGION = data.region ?? RAID_REGION;
@@ -3010,7 +3051,7 @@
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
-    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
+    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
     if (res.goldGained) parts.push(`+${res.goldGained} золота`);
@@ -3101,7 +3142,7 @@
   function renderHUD() {
     for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID / ПРЕЖНИЙ БОЙ';
     for (const node of qsa('[data-raid-combat-note]')) node.textContent = ELEMENTAL_COMBAT
-      ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.'
+      ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.' + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '')
       : 'Прежний забег · классический бой без стихийных множителей. Новый старт включает стихии.';
     const h = S.hero;
     const hpPct = Math.max(0, h.hp / h.maxHp * 100);
@@ -3121,7 +3162,8 @@
       const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDamage())}`;
       damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`
-        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.');
+        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.')
+        + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '');
     }
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
@@ -3197,6 +3239,10 @@
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     if (UPDATES_OPEN) return false;
+    const affinity = NEW_RUN_REQUEST?.classId === getSelectedClassId()
+      ? NEW_RUN_REQUEST.affinity : preparedPilotAffinity(getSelectedClassId());
+    pickerAffinities.clear();
+    for (const input of qsa('select.picker-affinity')) input.value = '';
     closeGameSettings(false);
     closeRetune(false);
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
@@ -3223,7 +3269,7 @@
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
-    ELEMENTAL_COMBAT = { rules: RETUNE_RULES, rng: (runSeed ^ 0x454c454d) >>> 0 };
+    ELEMENTAL_COMBAT = { rules: AFFINITY_RULES, rng: (runSeed ^ 0x454c454d) >>> 0, affinity };
     RUN_REGION = RAID_REGION;
     applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
@@ -4591,7 +4637,7 @@
         if (!weight) continue;
         const primary = multiplier(cell.element, skull.element);
         const k = skull.boss ? (primary + multiplier(cell.element, skull.secondaryElement)) / 2 : primary;
-        delta += weight * (k - 1);
+        delta += weight * (k * pilotWeaponMultiplier(cell.element) - 1);
       }
       // B is already in D0 and stays neutral. q/Boost apply ONLY to weapons.
       damage += S.hero.weaponDamage * (S.swordBoost > 0 ? 2 : 1) * delta;
@@ -6179,14 +6225,15 @@
   // --- class picker / next-run editor ---------------------------------------
   let pickerOpen = false;
   let pickerGeneration = 0;
+  const pickerAffinities = new Map(); // unpaid preparation only; NEVER profile storage
   let classEditor = null;
 
   function renderClassPicker() {
     const grid = el('picker-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    const generation = ++pickerGeneration;
-    const current = () => pickerOpen && !classEditor && generation === pickerGeneration;
+    const generation = ++pickerGeneration; pickerAffinities.clear();
+    const current = () => pickerOpen && !classEditor && !NEW_RUN_REQUEST && !UPDATES_OPEN && !HISTORY_OPEN && generation === pickerGeneration;
     for (const cls of CLASSES) {
       const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
       const row = document.createElement('div'); row.className = 'picker-class';
@@ -6210,6 +6257,33 @@
         requestNewGame(cls.id);
       }, () => generation);
       row.appendChild(btn);
+      if (unlocked && classLevelOf(cls.id) >= 2) {
+        const label = document.createElement('label'); label.className = 'picker-affinity-field';
+        const caption = document.createElement('span'); caption.textContent = 'Склонность пилота · на этот рейд';
+        const input = document.createElement('select'); input.className = 'picker-affinity'; input.dataset.classId = cls.id;
+        input.id = `affinity-${cls.id}`; label.htmlFor = input.id;
+        const note = document.createElement('p'); note.className = 'picker-affinity-note'; note.id = `affinity-note-${cls.id}`;
+        note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite'); input.setAttribute('aria-describedby', note.id);
+        for (const element of ['', ...RAID_ELEMENTS]) {
+          const option = document.createElement('option'); option.value = element;
+          option.textContent = element ? RAID_REGIONS[element].element : 'Без склонности'; input.appendChild(option);
+        }
+        const refresh = () => { note.textContent = pilotAffinityDescription(preparedPilotAffinity(cls.id)); };
+        input.addEventListener('change', () => {
+          if (!current() || !isClassUnlocked(cls.id) || classLevelOf(cls.id) < 2 || input.value && !RAID_ELEMENTS.includes(input.value)) {
+            input.value = pickerAffinities.get(cls.id) || ''; return;
+          }
+          pickerAffinities.set(cls.id, input.value); refresh();
+        });
+        label.append(caption, input); row.append(label, note);
+        // renderClassPicker also runs just before pickerOpen is set true.
+        note.textContent = pilotAffinityDescription({ element: null, level: classLevelOf(cls.id) });
+      } else if (unlocked) {
+        // A locked mech already explains its trophy gate; only a usable level-one
+        // mech needs to say when the per-raid choice opens.
+        const note = document.createElement('p'); note.className = 'picker-affinity-note';
+        note.textContent = 'Склонность пилота — с уровня меха 2; бонус и штраф урона — с 3.'; row.appendChild(note);
+      }
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
       edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
@@ -6302,7 +6376,7 @@
         }))], !info.editable || i === 0 || info.replacementLimit === 0);
     }
     const growth = block('Развитие меха');
-    note(growth, '1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
+    note(growth, 'Склонность пилота выбирается заново перед каждым рейдом: 2 — выпадение 30/20/25/25; 3 — дополнительно урон +5%/−5%. Это не постоянная настройка меха или пилота. 1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
     const status = el('class-editor-status'), save = el('class-editor-save');
     const back = el('class-editor-back'), defaults = el('class-editor-reset');
     save.hidden = !info.editable; defaults.hidden = !info.editable;
@@ -6344,7 +6418,7 @@
     if (resume) {
       resume.hidden = !(S && !S.over || info);
       resume.textContent = S && !S.over ? 'Вернуться в забег'
-        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
+        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES, AFFINITY_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
@@ -6361,10 +6435,20 @@
   function requestNewGame(classId = getSelectedClassId()) {
     if (UPDATES_OPEN) return false;
     if (!isClassUnlocked(classId)) return false;
+    // Repeat/menu starts at level 2+ must offer a FRESH choice, never silently
+    // reuse the last run's affinity or turn a live checkpoint into a surrender.
+    if (classLevelOf(classId) >= 2 && !pickerOpen) {
+      if (finishedRunView()) leaveFinishedRun();
+      else {
+        if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return false; }
+        el('menu-modal')?.classList.remove('show'); showClassPicker();
+      }
+      return false;
+    }
     if ((!S || S.over) && !savedRunInfo() && !hasPendingProgress()) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
     if (!wrap) return false;
-    NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement };
+    NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement, affinity: preparedPilotAffinity(classId) };
     const text = el('restart-confirm-text');
     if (text) text.textContent = (hasPendingProgress() ? 'Результат или достижения ещё не записаны в историю. Новый может удалить их резервную запись. ' : '') + `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни мехов сохранятся.`;
     wrap.classList.add('show'); el('restart-cancel')?.focus();

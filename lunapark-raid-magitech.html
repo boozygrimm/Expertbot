@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="cac8221e1021">
+<meta name="raid-build" content="ed9cc968edea">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1445,6 +1445,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .game-settings-card [data-raid-visual-status] { color: #f0d1a2; }
 .game-settings :focus-visible, .settings-toggle:focus-visible { outline: 2px solid #f2dc9e; outline-offset: 3px; }
 
+/* Per-raid pilot choice: outside the start button, never a persistent editor. */
+.picker-affinity-field { display:flex; flex-direction:column; gap:6px; padding:12px 14px 0; font-size:12px; color:#b9cfc4; min-width:0; }
+.picker-affinity { width:100%; min-width:0; min-height:44px; border:1px solid #657c67; border-radius:12px; padding:8px 10px; background:#102c2b; color:#e5e2cf; font:inherit; font-size:14px; }
+.picker-affinity:focus-visible { outline:2px solid #9bd3bf; outline-offset:2px; }
+.picker-affinity-note { margin:8px 14px 12px; color:#b4c3b0; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
 
@@ -1475,11 +1481,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1">Выбери <em>мех.</em></h3>
-    <p class="build-label">Сборка cac8221e1021</p>
+    <p class="build-label">Сборка ed9cc968edea</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
-    <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот — один прежний расовый пакет: особенность и взаимодействие со смертным врагом, без нового слоя бонусов. Выбери мех или продолжи свой рейд.</p>
-    <p class="raid-prototype-note" id="raid-prototype-note"><b>Стихийный бой — в новых забегах.</b> База нейтральна, каждый меч/стрела ×1,25 / ×1 / ×0,75 по цели. Старые забеги продолжаются по прежним правилам. Прозрачные плитки пока пробные. Постоянная заливка убрана; покупка меняет модель оружия и на поле. Грейды пилотов и новые бонусы не добавлены.</p>
+    <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
+    <p class="raid-prototype-note" id="raid-prototype-note"><b>Стихийный бой — в новых забегах.</b> База нейтральна, каждый меч/стрела ×1,25 / ×1 / ×0,75 по цели. Старые забеги продолжаются по прежним правилам. Прозрачные плитки пока пробные. Постоянная заливка убрана; покупка меняет модель оружия и на поле. Склонность пилота выбирается на подготовке каждого нового рейда; грейдов и отдельной прокачки пилотов нет.</p>
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <div class="picker-tools"><button class="btn secondary" id="picker-history" type="button">Рекорды и статистика</button>
@@ -1626,7 +1632,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка cac8221e1021</p>
+    <p class="build-label">Сборка ed9cc968edea</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1660,19 +1666,20 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка cac8221e1021</p>
+      <p class="build-label" id="updates-build">Сборка ed9cc968edea</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
       <h4>В этом обновлении</h4>
       <ul id="updates-current">
-        <li><b>Выход после поражения.</b> Вверху итогов появилась кнопка «К выбору меха»: вернуться к подготовке можно без нового старта. Escape и Telegram «Назад» делают то же самое; из рекордов сначала возвращают к итогам.</li>
-        <li><b>Закрыть Mini App.</b> В подключённом Telegram рядом есть отдельная кнопка закрытия. В обычном браузере она не показывается — вкладку закрывают средствами браузера. «Ещё раз», рекорды и достижения остаются.</li>
-        <li><b>Результат остаётся своим.</b> Возврат не оживляет героя и не стирает итог. При ошибке записи видна причина; «Повторить запись» доступно в рекордах, новый старт предупреждает о незаписанном результате. Если перед закрытием не удалось записать резервную копию, есть выбор остаться или явно закрыть без гарантии сохранения.</li>
+        <li><b>Склонность пилота — перед каждым рейдом.</b> Со 2-го уровня развития меха под его карточкой можно выбрать одну стихию или «Без склонности». Это не постоянная настройка пилота или класса: следующий рейд начинается с нового выбора, а не с прежней стихии.</li>
+        <li><b>Две ранние ступени.</b> С уровня меха 2 новые мечи/стрелы получают выбранную стихию с шансом 30%, компенсирующую — 20%, остальные — по 25%. С уровня 3 вклад выбранных плиток наносит +5% урона, компенсирующих −5%; проценты дальше не растут. Без склонности — по 25% и без бонуса/штрафа.</li>
+        <li><b>Компенсация без второго боевого круга.</b> Огню — минус воде, воздуху — огню, земле — воздуху, воде — земле. База урона и вторичные эффекты прежние; свойства экипировки, навыки и смертный враг пилота не меняются. Выбор и уровень фиксируются при старте и сохраняются только в этом рейде.</li>
       </ul>
-      <p class="updates-important"><b>Важно:</b> это выход из уже завершённого рейда, не сдача живого героя. Активный забег по-прежнему продолжается через «Продолжить»; начинать заново или очищать данные не нужно. Старые v1/v2/v3 сохраняют свои правила, меха и пилота без миграции. Настройки на поле и «Перенастройка» с базовыми 12 ходами прежние. «Понятно» только закрывает это окно.</p>
+      <p class="updates-important"><b>Важно:</b> склонность действует только в новых рейдах v4. Старые v1/v2/v3 продолжаются по своим правилам без склонности и без миграции. Начинать заново или очищать данные не нужно. Предпросмотр другого рейда и рост уровня меха не меняют уже начатый; «Продолжить» восстанавливает его прежний выбор. «Перенастройка» сохраняет базовые 12 ходов и один из четырёх слотов. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>
       <ol id="updates-history">
+        <li><b>Выход после поражения.</b> «К выбору меха» возвращает к подготовке без нового старта; Escape и Telegram «Назад» тоже. В Telegram есть «Закрыть Mini App», в браузере — обычные средства вкладки. «Ещё раз», рекорды и достижения сохранены; при ошибке записи доступны предупреждение и «Повторить запись».</li>
         <li><b>Настройки прямо на игровом экране.</b> Небольшая шестерёнка открывает компактную округлую полупрозрачную панель без увеличения шапки. Кружки / стеклянная оболочка, анимации и звук рядом. Крестик, тап снаружи, Escape и Telegram «Назад» закрывают только панель; закрывающий тап не выбирает поле. Цели «Перенастройки» сохраняются, ход не ставится на паузу. По умолчанию всё включено; системное уменьшение движения важнее анимаций.</li>
         <li><b>Вид и движение; мех и пилот.</b> Два независимых переключателя вида: кружки и анимации, с сохранением игровых меток и приоритетом системного уменьшения движения. Резервный доступ на подготовке и в меню остаётся. В карточках, редакторе и сводке разделены прежние роли меха и пилота, включая расовый пакет со смертным врагом. Новых бонусов нет; независимый пилот — с уровня меха 5.</li>
         <li><b>Взрыв цепочки — по порядку выбора.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней, выжившие враги не взрываются. Длинная цепь уплотняет волну, не добавляет ожидание; падение остаётся общим и плавным. Теперь эффекты также подчиняются переключателю анимаций.</li>
@@ -1684,7 +1691,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <li><b>Локальный прогресс и вход тестеров.</b> Автосохранение, рекорды, статистика, достижения и отдельные профили. Классический пробник и его данные сохранены отдельно.</li>
         <li><b>Игровая основа.</b> Поле 6×6, цепочки, классы и расы, навыки, особые враги, предметы и награды по мотивам Dungeon Raid. Это своя реализация, не подтверждённая полная копия оригинала.</li>
       </ol>
-      <p class="updates-boundary" id="updates-boundary"><b>Граница прототипа:</b> интеграция в Луна-парк ещё не начиналась. Лаборатория, общая экономика и награды парка не подключены. Стихии и грейды пилотов, новые бонусы и стихийные способности боссов в этот выпуск не входят.</p>
+      <p class="updates-boundary" id="updates-boundary"><b>Граница прототипа:</b> интеграция в Луна-парк ещё не начиналась. Лаборатория, общая экономика и награды парка не подключены. Академия пилотов, отдельная прокачка и грейды пилотов, предметные стихийные бонусы и новые способности боссов не подключены.</p>
       <p class="save-note" id="updates-storage-note" role="status" hidden>Не удалось прочитать отметку этого профиля. При недоступном хранилище или неопределённом Telegram ID прочтение может не запомниться; рейд это окно не меняет.</p>
     </div>
     <footer class="updates-actions">
@@ -1745,11 +1752,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка cac8221e1021.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка ed9cc968edea.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
-    <p><b>Прозрачные плитки — проба оформления по умолчанию.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; только золотая монета и надетое оружие медленно поворачиваются, оружие — вокруг продольной оси рукоятки. Заморозка сохраняет лёд и останавливает движение, переключатель анимаций или системное уменьшение движения отключает её. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мех и пилот наследуют исходные класс и расовый пакет; нового слоя силы, грейдов, заданий и музыки нет. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
+    <p><b>Прозрачные плитки — проба оформления по умолчанию.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; только золотая монета и надетое оружие медленно поворачиваются, оружие — вокруг продольной оси рукоятки. Заморозка сохраняет лёд и останавливает движение, переключатель анимаций или системное уменьшение движения отключает её. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мех и пилот наследуют исходные класс и полный расовый пакет. В новых рейдах v4 доступна небольшая склонность пилота, выбранная только на этот забег; грейдов, заданий и музыки нет. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
     <ul>
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
       <li>Новый стихийный бой: Огонь → Воздух → Земля → Вода → Огонь. Вклад каждого меча/стрелы ×1,25 против следующей стихии, ×0,75 против предыдущей, ×1 против своей и противоположной. База нейтральна. Смешанные вклады складываются; сломанный меч даёт 0, магический — силу 5. Boost удваивает только оружие. У босса две разные стихии: множитель каждого меча — их арифметическое среднее; противоположная пара нейтральна. Прежние ограничения целей остаются; округление один раз перед защитой, затем HP и броски разрушения брони. Общий показанный урон — нейтральный, подсветка убийств учитывает цель. Предпросмотр не тратит случайность и не обещает случайные награды.</li>
@@ -1761,12 +1768,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       <li>Мех — исходный класс: специализация, пары пассив/изъян, пул модулей и уникальное умение. Пилот — один исходный расовый пакет целиком, с особенностью и смертным врагом; не третья прибавка поверх класса и расы. Трофеи открывают мех или повышают его уровень до 10. Первая пара фиксирована, следующие — на уровнях меха 3/7/9; замены модулей — 2 × floor(уровень меха / 2), первый уникальный фиксирован. Независимый выбор пилота — с уровня меха 5: Человек всегда доступен, другие родные пилоты — при уровне меха-донора 5. Чужой уникальный модуль — от донора уровня 10. Авантюрист всегда с Человеком, без пар и с общим открытым пулом. Уровень меха — не XP-уровень героя. Конфигурация рейда закреплена при старте: редактор меняет только следующий. Старое «Продолжить» не меняет мех, пилота, их пакет или правила.</li>
       <li>42 прежних навыка и 31 особый тип врагов сохраняют исходные эффекты. Под портретом только числа: атака · броня · HP; число сверху — отсчёт способности. Лёд останавливает анимацию материала и показывает уже существующую заморозку, не меняя её правил. Тап по особому или боссу показывает текущие параметры и способности. Выбор портрета не добавляет ему новую механику. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
       <li>Урон, лечение и ресурсы всплывают у реального получателя, не в центре экрана. Подробности вещей и сводка персонажа ничего не покупают, не перебрасывают предложения и не применяют награду.</li>
-      <li>«Перенастройка» — новый общий модуль только для новых рейдов v3. У стартового меха он в пуле наград уровня, у остальных доступен через редактор с прежними ограничениями. Занимает 1 из 4 слотов. Выбери стихию, 1–3 целых незамороженных меча/стрелы в любых местах и отдельно нажми «Применить». Магический меч сохраняет вес 5; остальные свойства и модель не меняются. Отмена бесплатна, перезарядка после применения — базовые 12 ходов с обычными сокращениями. Применение не тратит ход, обычные реакции на навык сохраняются. В магазине свитка этого модуля пока нет.</li>
+      <li>Склонность пилота выбирается перед каждым новым рейдом, не навсегда: со 2-го уровня развития меха — шанс выбранной стихии 30%, её контрстихии 20%, остальных по 25%; с 3-го дополнительно +5%/−5% к вкладу соответствующих мечей/стрел. Компенсация: огонь→вода, воздух→огонь, земля→воздух, вода→земля. Это не XP-уровень героя. «Без склонности» оставляет 25% каждой и прежний урон. Старые особенности и смертный враг сохраняются. Ни яд, ни поджог, ни базовый урон не усиливаются; одно округление суммы перед бронёй. Выбор фиксируется при старте; трофеи и подготовка следующего рейда его не меняют. Повторный старт с уровня 2 сначала возвращает к подготовке с новым выбором.</li>
+      <li>«Перенастройка» — общий модуль рейдов v3/v4; v1/v2 его не получают. У стартового меха он в пуле наград уровня, у остальных доступен через редактор с прежними ограничениями. Занимает 1 из 4 слотов. Выбери стихию, 1–3 целых незамороженных меча/стрелы в любых местах и отдельно нажми «Применить». Магический меч сохраняет вес 5; остальные свойства и модель не меняются. Отмена бесплатна, перезарядка после применения — базовые 12 ходов с обычными сокращениями. Применение не тратит ход, обычные реакции на навык сохраняются. В магазине свитка этого модуля пока нет.</li>
       <li>Свиток при покупке разово применяет навык, не занимая слот. Сохранена модель классического ошибочного фильтра I1: занятость слотов, счётчики и история надписи лечения, не правило «ещё не выучен». Неинициализированные слова свежей страницы — нули по политике совместимости, а не доказанный факт памяти оригинала. «Продолжить» восстанавливает историю сохранённого рейда.</li>
-      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: локация забега, доска, назначенные стихии, герой, шесть прежних потоков случайности, отдельный поток стихий, предложения и отметки наград восстанавливаются без переброса. Новые забеги используют сейв v3 с «Перенастройкой»; прежние v1/v2 продолжают по своим правилам и пулу без сброса или перехода посреди рейда. Падение, перестановка и превращение меча в стрелу или магический меч сохраняют стихию; просмотр, покупка и апгрейд не перебрасывают её. Изгнание и продвижение уже появившегося врага сохраняют его основную стихию. Анимации не управляют наградами; при выключенных анимациях или системном уменьшении движения эффекты и падение выключены. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
+      <li>Автосохранение отдельное от классики. После перезагрузки нажми «Продолжить»: локация забега, доска, назначенные стихии, герой, шесть прежних потоков случайности, отдельный поток стихий, предложения и отметки наград восстанавливаются без переброса. Новые забеги используют сейв v4 со склонностью и «Перенастройкой»; прежние v1/v2/v3 продолжают по своим правилам и пулу без новой склонности без сброса или перехода посреди рейда. Падение, перестановка и превращение меча в стрелу или магический меч сохраняют стихию; просмотр, покупка и апгрейд не перебрасывают её. Изгнание и продвижение уже появившегося врага сохраняют его основную стихию. Анимации не управляют наградами; при выключенных анимациях или системном уменьшении движения эффекты и падение выключены. Новый рейд заменяет прежний только после подтверждения. Ошибка записи видна. Не играй одним профилем одновременно в двух вкладках. Очистка хранилища удалит данные.</li>
       <li>Рекорды и статистика локальные, без общей телеметрии, лаборатории, серверной игровой базы, облачной синхронизации и наград парка. Наследованный каталог достижений ещё не адаптирован целиком: условия Sprint/Pretzel/Harder в этом режиме недоступны, их не заменяли придуманными. «Я всё вижу» также остаётся неподтверждённым.</li>
       <li>Новый вход /raid_test в текущем боте открывает эту магитех-версию после обновления процесса бота. Запроси свежую кнопку: старые сообщения по-прежнему ведут в прежний тест. В SDK-оболочке с telegram=1 профиль выбирается отдельно по ID, не авторизуется сервером и не читает классический или legacy-профиль владельца. При неизвестном/сменившемся ID запись отключена. «Закрыть Mini App» сохраняет продолжение, а не заканчивает рейд; при ошибке записи нужен явный выбор. Отдельное добровольное завершение ещё не реализовано.</li>
-      <li>Иконки временно вырезаны из присланных скриншотов, не из исходного атласа. Фоны созданы для этого визуального прототипа; названия мест рабочие. Стихийная роль пилотов, грейды, новый баланс и полная замена всех текстур — следующие согласуемые шаги.</li>
+      <li>Иконки временно вырезаны из присланных скриншотов, не из исходного атласа. Фоны созданы для этого визуального прототипа; названия мест рабочие. Склонность пилота — единственное новое стихийное дополнение этого выпуска. Академия, грейды и другие новые механики отдельно согласуются позже.</li>
     </ul>
     <button class="btn" id="help-close" type="button">Понятно</button>
   </div>
@@ -1778,7 +1786,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
 // miniapp_preview/raid_magitech.js
 // Separate RAID design prototype, forked from classic build 63b4ca81a10e.
 // Approved elemental combat for NEW runs only; released v1 Continue stays classic.
-// Separate element RNG; v1/v2 Continue retain their rules, new A1 runs use v3.
+// Separate element RNG; released v1/v2/v3 retain their rules, new affinity runs use v4.
 'use strict';
 (function () {
   // A local namespace, NOT authentication. The public Pages client never
@@ -2160,6 +2168,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       ['Мех', cls.name + ' · специализация и модули'],
       ['Пилот', RACE_INFO[clsRace()].name + ' · прежний расовый пакет'],
       ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
+      ['Склонность на этот рейд', pilotAffinityDescription()],
       ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
       ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
       ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
@@ -2790,10 +2799,44 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   // Gameplay metadata lives beside state in v2, separate from all six old RNGs.
   let ELEMENTAL_COMBAT = null;
   const RETUNE_RULES = 'elements-retune-v1';
+  const AFFINITY_RULES = 'elements-affinity-v1';
   let RETUNE_DRAFT = null; // unpaid UI only; never part of a checkpoint
-  function hasRetuneRules() { return ELEMENTAL_COMBAT?.rules === RETUNE_RULES; }
+  function hasRetuneRules() { return [RETUNE_RULES, AFFINITY_RULES].includes(ELEMENTAL_COMBAT?.rules); }
   function activeSkillDefinitions(retuning = hasRetuneRules()) { return retuning ? [...ALL_SKILLS, RETUNE_SKILL] : ALL_SKILLS; }
-  function runSaveVersion() { return hasRetuneRules() ? 3 : ELEMENTAL_COMBAT ? 2 : 1; }
+  function runSaveVersion() { return ELEMENTAL_COMBAT?.rules === AFFINITY_RULES ? 4 : hasRetuneRules() ? 3 : ELEMENTAL_COMBAT ? 2 : 1; }
+  // A run owns this frozen snapshot. Neither current meta progression nor the
+  // preparation for another raid may alter its level, drops or damage.
+  function runPilotAffinity() { return ELEMENTAL_COMBAT?.rules === AFFINITY_RULES ? ELEMENTAL_COMBAT.affinity : null; }
+  function affinityCounterElement(element) { return RAID_ELEMENTS[(RAID_ELEMENTS.indexOf(element) + 3) % 4]; }
+  function preparedPilotAffinity(classId) {
+    const level = Math.max(1, Math.min(10, classLevelOf(classId)));
+    const choice = pickerOpen && !classEditor && !UPDATES_OPEN && !HISTORY_OPEN ? pickerAffinities.get(classId) : null;
+    return Object.freeze({ element: level >= 2 && RAID_ELEMENTS.includes(choice) ? choice : null, level });
+  }
+  function pilotAffinityDescription(affinity = runPilotAffinity()) {
+    if (!affinity) return 'Прежние правила: склонности нет; сохранённый рейд не меняется.';
+    if (!affinity.element) return 'Без склонности: по 25% каждой стихии, без бонуса и штрафа урона. Только этот рейд.';
+    const own = RAID_REGIONS[affinity.element].element, counter = RAID_REGIONS[affinityCounterElement(affinity.element)].element;
+    return `${own}: 30%; ${counter}: 20%; остальные по 25%. `
+      + (affinity.level >= 3 ? `Урон плитками: ${own} +5%, ${counter} −5%.` : 'Урон без изменений; бонус и штраф открываются с уровня меха 3.')
+      + ' Только этот рейд; следующий выбор заново.';
+  }
+  function pilotWeaponMultiplier(element) {
+    const affinity = runPilotAffinity();
+    if (!affinity?.element || affinity.level < 3) return 1;
+    return element === affinity.element ? 1.05 : element === affinityCounterElement(affinity.element) ? .95 : 1;
+  }
+  function rollWeaponElement() {
+    const roll = elementRandom(), affinity = runPilotAffinity();
+    if (!affinity?.element) return RAID_ELEMENTS[Math.floor(roll * 4)];
+    const bucket = Math.floor(roll * 100), counter = affinityCounterElement(affinity.element);
+    let ceiling = 0;
+    for (const element of RAID_ELEMENTS) {
+      ceiling += element === affinity.element ? 30 : element === counter ? 20 : 25;
+      if (bucket < ceiling) return element;
+    }
+    return RAID_ELEMENTS[3];
+  }
   function raidPortraitKey(skull) {
     // New runs show the assigned combat element, not an independent art roll.
     // Ordinary spawns are local and share ONE common skin; legacy runs stay local.
@@ -2910,7 +2953,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       // An existing weapon keeps its element through sword/arrow conversions.
       // A genuinely new weapon (including a converted coin/enemy) rolls once.
       tile.element = source && ['sword', 'arrow'].includes(source.type) && RAID_ELEMENTS.includes(source.element)
-        ? source.element : RAID_ELEMENTS[Math.floor(elementRandom() * 4)];
+        ? source.element : rollWeaponElement();
     }
     return tile;
   }
@@ -3237,19 +3280,24 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function decodeRunSave(raw) {
     saveCheck(typeof raw === 'string' && raw.length <= RUN_SAVE_LIMIT);
     const data = JSON.parse(raw, (key, value) => { saveCheck(!['__proto__', 'constructor', 'prototype'].includes(key)); return value; });
-    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2, 3].includes(data.version));
+    saveCheck(data && data.format === 'lunapark-raid-magitech-run' && [1, 2, 3, 4].includes(data.version));
     if (data.status === 'finished') {
       saveObject(data, ['format', 'version', 'status', 'record'], ['format', 'version', 'status']);
       if (!Object.hasOwn(data, 'record')) return null; // original v1 tombstone
-      readHistoryRecord(data.record, data.version === 3); return { status: 'finished', record: data.record };
+      readHistoryRecord(data.record, data.version >= 3); return { status: 'finished', record: data.record };
     }
     const keys = ['format', 'version', 'status', 'revision', 'savedAt', 'build', 'state', 'rng', 'skullUid', 'menu', 'results', 'arrivals', 'next', 'leechFadeMs'];
-    const elemental = data.version >= 2, retuning = data.version === 3;
+    const elemental = data.version >= 2, retuning = data.version >= 3, affinity = data.version === 4;
     saveObject(data, [...keys, 'orbElements', 'region', ...(elemental ? ['combat'] : [])], [...keys, ...(elemental ? ['region', 'combat'] : [])]);
     if (elemental) {
-      saveObject(data.combat, ['rules', 'rng']);
-      saveCheck(data.combat.rules === (retuning ? RETUNE_RULES : ELEMENTAL_RULES));
+      saveObject(data.combat, ['rules', 'rng', ...(affinity ? ['affinity'] : [])]);
+      saveCheck(data.combat.rules === (affinity ? AFFINITY_RULES : retuning ? RETUNE_RULES : ELEMENTAL_RULES));
       saveNumber(data.combat.rng, 0, 0xffffffff, true);
+      if (affinity) {
+        const value = data.combat.affinity;
+        saveObject(value, ['element', 'level']); saveNumber(value.level, 1, 10, true);
+        saveCheck(value.element === null || value.level >= 2 && typeof value.element === 'string' && RAID_ELEMENTS.includes(value.element));
+      }
     }
     if (Object.hasOwn(data, 'region')) saveCheck(typeof data.region === 'string' && Object.hasOwn(RAID_REGIONS, data.region));
     if (Object.hasOwn(data, 'orbElements')) saveArray(data.orbElements, CELL_COUNT, CELL_COUNT).forEach(n => saveNumber(n, 0, 3, true));
@@ -3451,6 +3499,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     closeRunHistory();
     S = data.state;
     ELEMENTAL_COMBAT = data.combat ? { ...data.combat } : null;
+    if (runPilotAffinity()) Object.freeze(ELEMENTAL_COMBAT.affinity);
     // Released v1 checkpoints without region use the profile's appearance once;
     // all subsequent checkpoints pin it independently from next-run preferences.
     RUN_REGION = data.region ?? RAID_REGION;
@@ -4787,7 +4836,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
-    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
+    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
     if (res.goldGained) parts.push(`+${res.goldGained} золота`);
@@ -4878,7 +4927,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function renderHUD() {
     for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID / ПРЕЖНИЙ БОЙ';
     for (const node of qsa('[data-raid-combat-note]')) node.textContent = ELEMENTAL_COMBAT
-      ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.'
+      ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.' + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '')
       : 'Прежний забег · классический бой без стихийных множителей. Новый старт включает стихии.';
     const h = S.hero;
     const hpPct = Math.max(0, h.hp / h.maxHp * 100);
@@ -4898,7 +4947,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDamage())}`;
       damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`
-        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.');
+        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.')
+        + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '');
     }
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
@@ -4974,6 +5024,10 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   // --- main flow -----------------------------------------------------------
   function newGame(seed) {
     if (UPDATES_OPEN) return false;
+    const affinity = NEW_RUN_REQUEST?.classId === getSelectedClassId()
+      ? NEW_RUN_REQUEST.affinity : preparedPilotAffinity(getSelectedClassId());
+    pickerAffinities.clear();
+    for (const input of qsa('select.picker-affinity')) input.value = '';
     closeGameSettings(false);
     closeRetune(false);
     const runSeed = Number.isFinite(Number(seed)) ? (Number(seed) >>> 0) : (Math.floor(Date.now() / 1000) >>> 0);
@@ -5000,7 +5054,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
-    ELEMENTAL_COMBAT = { rules: RETUNE_RULES, rng: (runSeed ^ 0x454c454d) >>> 0 };
+    ELEMENTAL_COMBAT = { rules: AFFINITY_RULES, rng: (runSeed ^ 0x454c454d) >>> 0, affinity };
     RUN_REGION = RAID_REGION;
     applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
@@ -6368,7 +6422,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
         if (!weight) continue;
         const primary = multiplier(cell.element, skull.element);
         const k = skull.boss ? (primary + multiplier(cell.element, skull.secondaryElement)) / 2 : primary;
-        delta += weight * (k - 1);
+        delta += weight * (k * pilotWeaponMultiplier(cell.element) - 1);
       }
       // B is already in D0 and stays neutral. q/Boost apply ONLY to weapons.
       damage += S.hero.weaponDamage * (S.swordBoost > 0 ? 2 : 1) * delta;
@@ -7956,14 +8010,15 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   // --- class picker / next-run editor ---------------------------------------
   let pickerOpen = false;
   let pickerGeneration = 0;
+  const pickerAffinities = new Map(); // unpaid preparation only; NEVER profile storage
   let classEditor = null;
 
   function renderClassPicker() {
     const grid = el('picker-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    const generation = ++pickerGeneration;
-    const current = () => pickerOpen && !classEditor && generation === pickerGeneration;
+    const generation = ++pickerGeneration; pickerAffinities.clear();
+    const current = () => pickerOpen && !classEditor && !NEW_RUN_REQUEST && !UPDATES_OPEN && !HISTORY_OPEN && generation === pickerGeneration;
     for (const cls of CLASSES) {
       const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
       const row = document.createElement('div'); row.className = 'picker-class';
@@ -7987,6 +8042,33 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
         requestNewGame(cls.id);
       }, () => generation);
       row.appendChild(btn);
+      if (unlocked && classLevelOf(cls.id) >= 2) {
+        const label = document.createElement('label'); label.className = 'picker-affinity-field';
+        const caption = document.createElement('span'); caption.textContent = 'Склонность пилота · на этот рейд';
+        const input = document.createElement('select'); input.className = 'picker-affinity'; input.dataset.classId = cls.id;
+        input.id = `affinity-${cls.id}`; label.htmlFor = input.id;
+        const note = document.createElement('p'); note.className = 'picker-affinity-note'; note.id = `affinity-note-${cls.id}`;
+        note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite'); input.setAttribute('aria-describedby', note.id);
+        for (const element of ['', ...RAID_ELEMENTS]) {
+          const option = document.createElement('option'); option.value = element;
+          option.textContent = element ? RAID_REGIONS[element].element : 'Без склонности'; input.appendChild(option);
+        }
+        const refresh = () => { note.textContent = pilotAffinityDescription(preparedPilotAffinity(cls.id)); };
+        input.addEventListener('change', () => {
+          if (!current() || !isClassUnlocked(cls.id) || classLevelOf(cls.id) < 2 || input.value && !RAID_ELEMENTS.includes(input.value)) {
+            input.value = pickerAffinities.get(cls.id) || ''; return;
+          }
+          pickerAffinities.set(cls.id, input.value); refresh();
+        });
+        label.append(caption, input); row.append(label, note);
+        // renderClassPicker also runs just before pickerOpen is set true.
+        note.textContent = pilotAffinityDescription({ element: null, level: classLevelOf(cls.id) });
+      } else if (unlocked) {
+        // A locked mech already explains its trophy gate; only a usable level-one
+        // mech needs to say when the per-raid choice opens.
+        const note = document.createElement('p'); note.className = 'picker-affinity-note';
+        note.textContent = 'Склонность пилота — с уровня меха 2; бонус и штраф урона — с 3.'; row.appendChild(note);
+      }
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
       edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
@@ -8079,7 +8161,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
         }))], !info.editable || i === 0 || info.replacementLimit === 0);
     }
     const growth = block('Развитие меха');
-    note(growth, '1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
+    note(growth, 'Склонность пилота выбирается заново перед каждым рейдом: 2 — выпадение 30/20/25/25; 3 — дополнительно урон +5%/−5%. Это не постоянная настройка меха или пилота. 1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
     const status = el('class-editor-status'), save = el('class-editor-save');
     const back = el('class-editor-back'), defaults = el('class-editor-reset');
     save.hidden = !info.editable; defaults.hidden = !info.editable;
@@ -8121,7 +8203,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (resume) {
       resume.hidden = !(S && !S.over || info);
       resume.textContent = S && !S.over ? 'Вернуться в забег'
-        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
+        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES, AFFINITY_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
@@ -8138,10 +8220,20 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function requestNewGame(classId = getSelectedClassId()) {
     if (UPDATES_OPEN) return false;
     if (!isClassUnlocked(classId)) return false;
+    // Repeat/menu starts at level 2+ must offer a FRESH choice, never silently
+    // reuse the last run's affinity or turn a live checkpoint into a surrender.
+    if (classLevelOf(classId) >= 2 && !pickerOpen) {
+      if (finishedRunView()) leaveFinishedRun();
+      else {
+        if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return false; }
+        el('menu-modal')?.classList.remove('show'); showClassPicker();
+      }
+      return false;
+    }
     if ((!S || S.over) && !savedRunInfo() && !hasPendingProgress()) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
     if (!wrap) return false;
-    NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement };
+    NEW_RUN_REQUEST = { classId, runId: RUN_ID, focus: document.activeElement, affinity: preparedPilotAffinity(classId) };
     const text = el('restart-confirm-text');
     if (text) text.textContent = (hasPendingProgress() ? 'Результат или достижения ещё не записаны в историю. Новый может удалить их резервную запись. ' : '') + `Текущий забег будет заменён новым: «${CLASS_BY_ID[classId].name}». Вернуть его после этого не получится. Настройки и уровни мехов сохранятся.`;
     wrap.classList.add('show'); el('restart-cancel')?.focus();

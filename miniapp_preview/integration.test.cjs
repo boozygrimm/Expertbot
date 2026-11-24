@@ -3057,7 +3057,7 @@ test('magitech monster readability: falling survivors retain the same UID orb/im
 
 // New combat is exercised on the GENERATED page, with explicit assigned
 // elements. Legacy tests below use a complete v1 shape, never a partial downgrade.
-for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Close' : 'browser reload'} during a mixed-target hit restores v3 elements/RNG and commits neutral secondaries exactly once`, async () => {
+for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Close' : 'browser reload'} during a mixed-target hit restores v4 elements/RNG and commits neutral secondaries exactly once`, async () => {
   const stub = raidTelegramStub();
   const setup = w => { orbAnimationHarness(w); if (sdk) w.Telegram = { WebApp: stub.tg }; };
   const key = sdk ? magitechAccountKey(701, 'raid:activeRun') : magitechKey('raid:activeRun');
@@ -3080,7 +3080,7 @@ for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Clo
     assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).next.phase, 'match-chain');
     if (sdk) { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click(); assert.equal(stub.calls.filter(c => c === 'close').length, 1); }
     b = await reopenMagitech(b, { setup, ...(sdk ? { url: telegramRaidUrl } : {}) }); r = b.raid; doc = b.dom.window.document;
-    assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-retune-v1');
+    assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-affinity-v1');
     assert.match(doc.querySelector('#picker-resume').textContent, /стихии/);
     doc.querySelector('#picker-resume').click();
     assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, rng);
@@ -3133,7 +3133,7 @@ for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK' : 
     assert.equal(r.state.turn, 11); assert.equal(r.savedRunInfo().combatRules, 'classic-v1');
     doc.querySelector('.picker-card-btn:not(.locked)').click(); doc.querySelector('#restart-confirm').click();
     assert.equal(r.state.turn, 0); assert.equal(r.classLevelOf('ranger'), 2);
-    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).version, 3); assert.equal(r.savedRunInfo().combatRules, 'elements-retune-v1');
+    assert.equal(JSON.parse(b.dom.window.localStorage.getItem(key)).version, 4); assert.equal(r.savedRunInfo().combatRules, 'elements-affinity-v1');
     assert.equal(doc.querySelector('[data-raid-combat-title]').textContent, 'RAID / СТИХИИ');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
@@ -3195,12 +3195,11 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /Выход после поражения/);
-    assert.match(doc.querySelector('#updates-current').textContent, /К выбору меха/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Закрыть Mini App/);
-    assert.match(doc.querySelector('#updates-current').textContent, /без нового старта/);
-    assert.match(doc.querySelector('#updates-current').textContent, /ошибке записи/);
-    assert.match(doc.querySelector('#updates-current').textContent, /Повторить запись/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Склонность пилота.*перед каждым рейдом/s);
+    assert.match(doc.querySelector('#updates-current').textContent, /30%.*20%.*25%/s);
+    assert.match(doc.querySelector('#updates-current').textContent, /уровня 3.*5%/s);
+    assert.match(doc.querySelector('#updates-current').textContent, /не постоянная/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Выход после поражения.*К выбору меха.*Закрыть Mini App/s);
     assert.match(doc.querySelector('#updates-history').textContent, /Настройки прямо на игровом экране/);
     assert.match(doc.querySelector('#updates-history').textContent, /шестерёнк/);
     assert.match(doc.querySelector('#updates-history').textContent, /полупрозрачн/);
@@ -3525,20 +3524,21 @@ test('magitech special details: touch compatibility click cannot immediately dis
 });
 
 
-for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete catalogue: ${region} Lich keeps its own art in details, phylactery, Continue and revival under v1/v2/v3`, async () => {
-  for (const version of [1, 2, 3]) {
+for (const region of ['fire', 'air', 'earth', 'water']) test(`magitech complete catalogue: ${region} Lich keeps its own art in details, phylactery, Continue and revival under v1/v2/v3/v4`, async () => {
+  for (const version of [1, 2, 3, 4]) {
     let b = await orbFixture({ region, reduced: true }), r = b.raid;
     const savedRun = () => JSON.parse(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')));
     try {
       showOrbFixture(b, idx => idx === 0
         ? { type: 'skull', skull: Object.assign(r.makeSkull(false, true, 32), { element: region, atk: 0, def: 0, hp: 1, maxHp: 1 }) }
         : { type: 'coin' });
-      if (version !== 3) {
+      if (version !== 4) {
         // Explicit legacy fixture ONLY. Genuine released-v1 runtime remains a
         // separate native check, not this test-only metadata conversion.
         const saved = raidStorage(b.dom.window), key = magitechKey('raid:activeRun');
         const raw = JSON.parse(saved[key]);
-        if (version === 2) { raw.version = 2; raw.combat.rules = 'elements-v1'; }
+        if (version === 2) { raw.version = 2; raw.combat.rules = 'elements-v1'; delete raw.combat.affinity; }
+        if (version === 3) { raw.version = 3; raw.combat.rules = 'elements-retune-v1'; delete raw.combat.affinity; }
         saved[key] = JSON.stringify(version === 1 ? releasedMagitechCheckpoint(raw) : raw);
         b.dom.window.close();
         b = await openMagitech({ saved, start: false, setup(w) { orbAnimationHarness(w, { reduced: true }); } });
@@ -3610,7 +3610,7 @@ test('magitech retune: v3 module changes only 1–3 explicitly chosen weapons, c
   try {
     const r = b.raid, d = b.dom.window.document, before = JSON.stringify(r.state), raw = retuneRaw(b);
     const combat = JSON.parse(raw).combat, cells=[...r.state.board],orbs=Array.from({length:36},(_,i)=>orbAt(b,i)),images=orbs.map(n=>n?.querySelector('img'));
-    assert.equal(JSON.parse(raw).version, 3); assert.equal(combat.rules, 'elements-retune-v1');
+    assert.equal(JSON.parse(raw).version, 4); assert.equal(combat.rules, 'elements-affinity-v1');
     r.activateSkill('retune'); assert.equal(d.querySelector('#retune-panel').hidden, false);
     retunePick(b, 'fire', [0,1,2,3,4,5,6]);
     assert.equal(d.querySelectorAll('.retune-chosen').length, 3);
@@ -3645,10 +3645,10 @@ test('magitech retune: cancel, Escape and pagehide discard the unpaid draft with
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
-test('magitech retune: released v2 remains v2 without the new skill; only a confirmed new start uses v3', async () => {
+test('magitech retune: released v2 remains v2 without the new skill; only a confirmed new start uses v4', async () => {
   let b = await orbFixture();
   try {
-    const old = JSON.parse(retuneRaw(b)); old.version=2; old.combat.rules='elements-v1';
+    const old = JSON.parse(retuneRaw(b)); old.version=2; old.combat.rules='elements-v1'; delete old.combat.affinity;
     const saved = raidStorage(b.dom.window); saved[magitechKey('raid:activeRun')]=JSON.stringify(old);
     b.dom.window.close(); b = await openMagitech({saved,start:false}); const r=b.raid;
     assert.equal(r.resumeSavedRun(),true); assert.equal(r.classSkillPool().includes('retune'),false);
@@ -3656,7 +3656,7 @@ test('magitech retune: released v2 remains v2 without the new skill; only a conf
     r.activateSkill('retune'); assert.equal(b.dom.window.document.querySelector('#retune-panel').hidden,true);
     assert.equal(r.saveRun(),true); assert.equal(JSON.parse(retuneRaw(b)).version,2);
     assert.equal(JSON.parse(retuneRaw(b)).combat.rules,'elements-v1');
-    r.newGame(2718); assert.equal(JSON.parse(retuneRaw(b)).version,3);
+    r.newGame(2718); assert.equal(JSON.parse(retuneRaw(b)).version,4);
     assert.equal(r.classSkillPool().includes('retune'),true); assert.deepEqual(b.errors,[]);
   } finally { b.dom.window.close(); }
 });
@@ -3759,7 +3759,8 @@ for (const corrupt of ['v1-owned','v1-map','v1-config','v1-level-offer','v2-owne
   try {
     const r=b.raid; let raw=JSON.parse(retuneRaw(b));
     if(corrupt.startsWith('v1')) raw=releasedMagitechCheckpoint(raw);
-    if(corrupt.startsWith('v2')) {raw.version=2;raw.combat.rules='elements-v1';}
+    if(corrupt.startsWith('v3')) {raw.version=3;raw.combat.rules='elements-retune-v1';delete raw.combat.affinity;}
+    if(corrupt.startsWith('v2')) {raw.version=2;raw.combat.rules='elements-v1';delete raw.combat.affinity;}
     if(corrupt.endsWith('-owned')) raw.state.skills=['retune'];
     if(corrupt.endsWith('-map')) raw.state.skillCooldowns.retune=0;
     if(corrupt.endsWith('-config')) {raw.state.classId='warrior';raw.state.classConfig=r.defaultClassConfig('warrior');raw.state.classConfig.replacements[1]='retune';}
@@ -3807,7 +3808,7 @@ test('magitech retune: normal Dragonkin reaction fires once on confirmation, nev
   } finally {b.dom.window.close();}
 });
 
-for(const version of [1,2,3]) test(`magitech retune: v${version} finished record validates its own skill domain and history remains compatible`,async()=>{
+for(const version of [1,2,3,4]) test(`magitech retune: v${version} finished record validates its own skill domain and history remains compatible`,async()=>{
   let b=await retuneFixture();
   try{
     const r=b.raid;
@@ -3816,9 +3817,9 @@ for(const version of [1,2,3]) test(`magitech retune: v${version} finished record
     const raw=JSON.parse(retuneRaw(b));raw.version=version;
     const saved=raidStorage(b.dom.window),bad=JSON.stringify(raw);saved[magitechKey('raid:activeRun')]=bad;
     b.dom.window.close();b=await openMagitech({saved,start:false});
-    assert.equal(b.raid.saveStatus.state,version===3?'empty':'invalid');
+    assert.equal(b.raid.saveStatus.state,version>=3?'empty':'invalid');
     assert.equal(retuneRaw(b),bad,'merely reading a terminal checkpoint never rewrites it');
-    if(version===3){
+    if(version>=3){
       const history=b.raid.getLocalHistory();
       assert.ok(history.records.flat().some(row=>row.skills.some(skill=>skill.id==='retune')),'new module is named in normal local history');
       assert.equal(b.raid.openRunHistory(),true);
@@ -4195,11 +4196,12 @@ test('magitech visual settings: late SDK loads its own choices, unknown identity
   } finally { b.dom.window.close(); }
 });
 
-for (const version of [1, 2, 3]) test(`magitech visual settings: reading/toggling before Continue v${version} never rewrites the run or frozen mech/pilot`, async () => {
+for (const version of [1, 2, 3, 4]) test(`magitech visual settings: reading/toggling before Continue v${version} never rewrites the run or frozen mech/pilot`, async () => {
   let b = await orbFixture();
   try {
     const key = magitechKey('raid:activeRun'), data = JSON.parse(retuneRaw(b));
-    if (version === 2) { data.version = 2; data.combat.rules = 'elements-v1'; }
+    if (version === 2) { data.version = 2; data.combat.rules = 'elements-v1'; delete data.combat.affinity; }
+    if (version === 3) { data.version = 3; data.combat.rules = 'elements-retune-v1'; delete data.combat.affinity; }
     const raw = JSON.stringify(version === 1 ? releasedMagitechCheckpoint(data) : data), saved = { ...raidStorage(b.dom.window), [key]: raw };
     b.dom.window.close(); b = await openMagitech({ start: false, saved });
     visualToggle(b, 'shells', false, 'picker'); visualToggle(b, 'animations', false, 'picker');
@@ -4681,5 +4683,279 @@ for (const kind of ['level', 'gold', 'armor']) test(`magitech defeat exit: live 
     d.querySelector('#modal').dispatchEvent(new b.dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); stub.back();
     assert.equal(JSON.stringify(r.state), before); assert.equal(r.state.pendingModal, kind); assert.equal(r.state.over, false);
     assert.equal(stub.calls.includes('close'), false); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+// Approved per-raid pilot affinity: existing class progression, never a preference.
+const affinityRules = 'elements-affinity-v1';
+const affinityCounter = { fire: 'water', air: 'fire', earth: 'air', water: 'earth' };
+const affinitySelect = (b, id = 'adventurer') => b.dom.window.document.querySelector(`select.picker-affinity[data-class-id="${id}"]`);
+async function affinityFixture({ level = 3, element = 'fire', id = 'adventurer', ...options } = {}) {
+  const b = await openMagitech({ start: false, ...options, saved: { ...options.saved, [magitechKey('raid:classLevels')]: JSON.stringify({ [id]: level }) } });
+  if (level >= 2) {
+    const input = affinitySelect(b, id); assert.ok(input, 'a fresh per-run choice is visible before starting');
+    input.value = element || ''; input.dispatchEvent(new b.dom.window.Event('change', { bubbles: true }));
+  }
+  b.raid.setSelectedClassId(id); b.raid.newGame(2718);
+  return b;
+}
+const affinityCombat = b => JSON.parse(retuneRaw(b)).combat;
+for (const level of [1, 2, 3, 10]) test(`magitech affinity: class level ${level} freezes the exact per-raid tier, not hero XP or future trophies`, async () => {
+  const b = await affinityFixture({ level });
+  try {
+    const { raid: r } = b, data = JSON.parse(retuneRaw(b));
+    assert.equal(data.version, 4); assert.equal(data.combat.rules, affinityRules);
+    assert.deepEqual(data.combat.affinity, { element: level >= 2 ? 'fire' : null, level });
+    assert.equal(Object.hasOwn(r.state.classConfig, 'affinity'), false);
+    assert.equal(r.getClassConfig('adventurer').race, 'Human');
+    const before = JSON.stringify(data.combat.affinity);
+    r.levelUpClass('adventurer'); r.state.hero.level = 99; assert.equal(r.saveRun(), true);
+    assert.equal(JSON.stringify(affinityCombat(b).affinity), before);
+    r.showClassPicker();
+    if (r.classLevelOf('adventurer') >= 2) assert.equal(affinitySelect(b).value, '', 'preparation never remembers the previous raid');
+    b.dom.window.document.querySelector('#picker-resume').click();
+    assert.equal(JSON.stringify(affinityCombat(b).affinity), before);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+for (const element of magitechElements) test(`magitech affinity: ${element} choice is unpaid UI only, not class config, storage, RNG or a live-run edit`, async () => {
+  const b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: '{"adventurer":3}' } });
+  try {
+    const r = b.raid, doc = b.dom.window.document, input = affinitySelect(b);
+    assert.ok(input); assert.equal(input.value, ''); assert.equal(input.options.length, 5);
+    const before = JSON.stringify(raidStorage(b.dom.window)), config = JSON.stringify(r.getClassConfig('adventurer'));
+    input.value = element; input.dispatchEvent(new b.dom.window.Event('change', { bubbles: true }));
+    assert.equal(JSON.stringify(raidStorage(b.dom.window)), before); assert.equal(r.state, null);
+    assert.equal(JSON.stringify(r.getClassConfig('adventurer')), config);
+    assert.match(doc.querySelector('#affinity-note-adventurer').textContent, /30%.*20%.*5%/);
+    doc.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    assert.deepEqual(affinityCombat(b).affinity, { element, level: 3 });
+    const live = JSON.stringify(affinityCombat(b));
+    input.value = affinityCounter[element]; input.dispatchEvent(new b.dom.window.Event('change', { bubbles: true }));
+    assert.equal(JSON.stringify(affinityCombat(b)), live, 'detached/background input cannot change a committed run');
+    r.showClassPicker(); assert.equal(affinitySelect(b).value, '');
+    const next = affinitySelect(b); next.value = 'water'; next.dispatchEvent(new b.dom.window.Event('change', { bubbles: true }));
+    doc.querySelector('#picker-resume').click(); assert.equal(JSON.stringify(affinityCombat(b)), live);
+    assert.equal(JSON.stringify(r.getClassConfig('adventurer')), config);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: replacement captures one prepared choice; cancel, hidden changes and repeat cannot silently reuse it', async () => {
+  const b = await affinityFixture();
+  try {
+    const r = b.raid, doc = b.dom.window.document, original = retuneRaw(b), historyId = r.state.historyId;
+    r.showClassPicker(); let input = affinitySelect(b); input.value = 'air'; input.dispatchEvent(new b.dom.window.Event('change'));
+    doc.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    assert.equal(doc.querySelector('#restart-modal').classList.contains('show'), true);
+    assert.equal(retuneRaw(b), original); doc.querySelector('#restart-cancel').click(); assert.equal(retuneRaw(b), original);
+    doc.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    input.value = 'water'; input.dispatchEvent(new b.dom.window.Event('change'));
+    doc.querySelector('#restart-confirm').click(); doc.querySelector('#restart-confirm').click();
+    assert.deepEqual(affinityCombat(b).affinity, { element: 'air', level: 3 }); assert.notEqual(r.state.historyId, historyId);
+    doc.querySelector('#menu-btn').click(); const run = retuneRaw(b); doc.querySelector('#menu-restart').click();
+    assert.equal(doc.querySelector('#class-picker').classList.contains('show'), true, 'repeat first returns to fresh preparation');
+    assert.equal(affinitySelect(b).value, ''); assert.equal(retuneRaw(b), run);
+    doc.querySelector('.picker-card-btn[data-class-id="adventurer"]').click(); doc.querySelector('#restart-confirm').click();
+    assert.deepEqual(affinityCombat(b).affinity, { element: null, level: 3 });
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: a genuine new choice resets on preparation reload and never writes persistent affinity keys', async () => {
+  let b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: '{"adventurer":3}', 'raid:activeRun': 'classic sentinel', [magitechAccountKey(702, 'raid:classLevels')]: '{"mage":10}' } });
+  try {
+    const input = affinitySelect(b); assert.ok(input); input.value = 'fire'; input.dispatchEvent(new b.dom.window.Event('change'));
+    b = await reopenMagitech(b); assert.equal(affinitySelect(b).value, ''); assert.equal(b.raid.state, null);
+    assert.ok(!Object.keys(raidStorage(b.dom.window)).some(key => /affinity/i.test(key)));
+    assert.equal(b.dom.window.localStorage.getItem('raid:activeRun'), 'classic sentinel');
+    assert.equal(b.dom.window.localStorage.getItem(magitechAccountKey(702, 'raid:classLevels')), '{"mage":10}');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: one weighted draw per new weapon keeps all six original RNG streams and enemy assignments identical', async () => {
+  const a = await affinityFixture({ element: null }), b = await affinityFixture();
+  try {
+    assert.deepEqual(Array.from(b.raid.state.rngSeeds), Array.from(a.raid.state.rngSeeds));
+    assert.equal(affinityCombat(a).rng, affinityCombat(b).rng);
+    let word = affinityCombat(b).rng, weapons = 0;
+    const counts = Object.fromEntries(magitechElements.map(e => [e, 0]));
+    for (let i = 0; i < 4000; i++) {
+      const x = a.raid.createTile(), y = b.raid.createTile(); assert.equal(y.type, x.type);
+      if (!['sword', 'arrow'].includes(y.type)) { assert.equal(Object.hasOwn(y, 'element'), false); continue; }
+      weapons++; word = (word + 0x6d2b79f5) >>> 0;
+      let z = Math.imul(word ^ word >>> 15, word | 1); z ^= z + Math.imul(z ^ z >>> 7, z | 61);
+      const roll = ((z ^ z >>> 14) >>> 0) / 4294967296, bucket = Math.floor(roll * 100);
+      const expected = bucket < 30 ? 'fire' : bucket < 55 ? 'air' : bucket < 80 ? 'earth' : 'water';
+      assert.equal(y.element, expected); assert.equal(x.element, magitechElements[Math.floor(roll * 4)]); counts[y.element]++;
+    }
+    assert.ok(weapons > 700); assert.ok(counts.fire > counts.water);
+    a.raid.saveRun(); b.raid.saveRun(); assert.equal(affinityCombat(b).rng, word, 'exactly one element draw per genuinely new weapon');
+    for (let i = 0; i < 32; i++) assert.deepEqual(JSON.parse(JSON.stringify(b.raid.makeSkull(false, true))), JSON.parse(JSON.stringify(a.raid.makeSkull(false, true))));
+    assert.deepEqual(Array.from(b.raid.state.rngSeeds), Array.from(a.raid.state.rngSeeds));
+    a.raid.saveRun(); b.raid.saveRun(); assert.equal(affinityCombat(a).rng, affinityCombat(b).rng);
+    assert.deepEqual(a.errors, []); assert.deepEqual(b.errors, []);
+  } finally { a.dom.window.close(); b.dom.window.close(); }
+});
+const affinityTargetFactor = (from, to) => (magitechElements.indexOf(from) + 1) % 4 === magitechElements.indexOf(to) ? 1.25
+  : (magitechElements.indexOf(to) + 1) % 4 === magitechElements.indexOf(from) ? .75 : 1;
+for (const element of magitechElements) test(`magitech affinity: ${element} multiplies only the primary weapon contribution, every single/dual target and Boost`, async () => {
+  const b = await affinityFixture({ element });
+  try {
+    const r = b.raid, s = r.state, counter = affinityCounter[element], other = magitechElements.find(e => e !== element && e !== counter);
+    s.hero.weaponDamage = 7; s.hero.stats.strength = 4; s.hero.stats.damage = 2; s.pierce = 0;
+    const target = r.makeSkull(false, false); target.hp = target.maxHp = 10000; target.def = 5;
+    s.board = Array.from({ length: 36 }, () => ({ type: 'coin' }));
+    s.board[0] = { type: 'sword', element, magicSword: true }; s.board[1] = { type: 'arrow', element: counter };
+    s.board[2] = { type: 'sword', element: other }; s.board[3] = { type: 'sword', element, broken: true };
+    s.board[4] = { type: 'skull', skull: target }; s.selected = [0, 1, 2, 3, 4]; s.chainType = 'sword';
+    for (const boost of [0, 1]) for (let i = 0; i < 4; i++) for (const j of [-1, ...Array.from({ length: 3 - i }, (_, k) => i + 1 + k)]) {
+      s.swordBoost = boost; target.element = magitechElements[i]; target.boss = j >= 0; target.special = false; target.type = target.boss ? 1 : 0;
+      if (target.boss) target.secondaryElement = magitechElements[j]; else delete target.secondaryElement;
+      const factor = e => target.boss ? (affinityTargetFactor(e, target.element) + affinityTargetFactor(e, target.secondaryElement)) / 2 : affinityTargetFactor(e, target.element);
+      const expected = r.baseDamage() + 7 * (boost ? 2 : 1) * (5 * 1.05 * factor(element) + .95 * factor(counter) + factor(other));
+      const before = JSON.stringify([s, affinityCombat(b)]), preview = r.chainPreview();
+      assert.ok(Math.abs(preview.skulls[0].damage - expected) < 1e-9, `${element}/${target.element}/${target.secondaryElement}/${boost}`);
+      assert.equal(JSON.stringify([s, affinityCombat(b)]), before, 'preview cannot roll, save or mutate');
+    }
+    target.boss = false; target.type = 0; target.element = other; delete target.secondaryElement; s.swordBoost = 0;
+    const expected = r.chainPreview().skulls[0].damage;
+    r.resolveChain(); await until(() => !s.resolving);
+    assert.equal(target.hp, 10000 - Math.max(0, Math.round(expected) - 5), 'one rounding after mixed/magic sum, then armour');
+    const secondary = { hp: 100, def: 0, type: 0 }; r.damageSkull(secondary, 11, { direct: false }); assert.equal(secondary.hp, 89);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: tier one changes drops but never damage; neutral choice has no hidden multiplier', async () => {
+  for (const [level, element] of [[2, 'fire'], [3, null], [10, null]]) {
+    const b = await affinityFixture({ level, element });
+    try {
+      const r = b.raid, s = r.state, skull = r.makeSkull(false, false); skull.element = 'air'; skull.hp = 100; skull.def = 0;
+      s.board = Array.from({ length: 36 }, () => ({ type: 'coin' })); s.board[0] = { type: 'sword', element: 'fire' }; s.board[1] = { type: 'sword', element: 'water' }; s.board[2] = { type: 'skull', skull };
+      s.selected = [0, 1, 2]; s.chainType = 'sword';
+      assert.equal(r.chainPreview().skulls[0].damage, r.baseDamage() + s.hero.weaponDamage * 2.25);
+      assert.deepEqual(b.errors, []);
+    } finally { b.dom.window.close(); }
+  }
+});
+test('magitech affinity: frozen selection and tier survive reload without consulting current class levels or rewriting the raw checkpoint', async () => {
+  let b = await affinityFixture({ level: 3, element: 'earth' });
+  try {
+    b.raid.state.hero.hp = 7; assert.equal(b.raid.saveRun(), true);
+    const raw = retuneRaw(b), saved = raidStorage(b.dom.window); b.dom.window.close();
+    saved[magitechKey('raid:classLevels')] = '{"adventurer":1}';
+    b = await openMagitech({ start: false, saved }); assert.equal(retuneRaw(b), raw); assert.equal(b.raid.savedRunInfo().combatRules, affinityRules);
+    assert.equal(b.raid.resumeSavedRun(), true); assert.equal(b.raid.state.hero.hp, 7);
+    assert.deepEqual(affinityCombat(b).affinity, { element: 'earth', level: 3 });
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: strict v4 decoding rejects corrupt or downgraded affinity without erasing raw progress', async () => {
+  const a = await affinityFixture(); const valid = JSON.parse(retuneRaw(a)); a.dom.window.close();
+  const edits = [d => { d.combat.affinity.level = 1; }, d => { d.combat.affinity.level = 11; }, d => { d.combat.affinity.element = 'ice'; },
+    d => { d.combat.affinity.extra = true; }, d => { delete d.combat.affinity; }, d => { d.combat.rules = 'elements-retune-v1'; },
+    d => { d.version = 3; d.combat.rules = 'elements-retune-v1'; }, d => { d.combat.affinity.level = 2.5; }];
+  for (const edit of edits) {
+    const data = JSON.parse(JSON.stringify(valid)); edit(data); const raw = JSON.stringify(data);
+    const b = await openMagitech({ start: false, saved: { [magitechKey('raid:activeRun')]: raw } });
+    try { assert.equal(b.raid.saveStatus.state, 'invalid'); assert.equal(b.raid.state, null); assert.equal(retuneRaw(b), raw); assert.deepEqual(b.errors, []); }
+    finally { b.dom.window.close(); }
+  }
+});
+
+test('magitech affinity: A1 retains the chosen raid affinity, and Dragonkin fire remains the inherited neutral secondary reaction', async () => {
+  const b = await affinityFixture({ id: 'paladin', element: 'earth' });
+  try {
+    const r = b.raid; assert.equal(r.installSkillOption(r.prepareSkillOption('retune')), true);
+    const enemy = Object.assign(r.makeSkull(false, false), { hp: 100, maxHp: 100, def: 0, atk: 0 });
+    showOrbFixture(b, i => i === 7 ? { type: 'skull', skull: enemy } : { type: 'sword', element: 'water' });
+    const s = r.state, liveEnemy = s.board[7].skull, combat = affinityCombat(b), rng = Array.from(s.rngSeeds);
+    r.activateSkill('retune'); retunePick(b, 'earth', [0]); b.dom.window.document.querySelector('#retune-apply').click();
+    assert.equal(s.board[0].element, 'earth'); assert.equal(s.skillCooldowns.retune, 12);
+    assert.equal(liveEnemy.fireDamage, r.baseDamage()); assert.equal(liveEnemy.burn, true);
+    assert.deepEqual(affinityCombat(b), combat, 'recolouring uses no elemental draws and never changes raid affinity');
+    const expected = [...rng]; expected[5] = Math.imul(expected[5], 16807) >>> 0;
+    assert.deepEqual(Array.from(s.rngSeeds), expected, 'the inherited single random target reaction is retained');
+    assert.equal(r.saveRun(), true); assert.equal(r.resumeSavedRun(), true);
+    assert.deepEqual(affinityCombat(b).affinity, { element: 'earth', level: 3 }); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: Uppercut stays an unboosted neutral W and Confused/Armoured/Chaotic/Meat Shield keep original gate priority', async () => {
+  const b = await affinityFixture({ id: 'warrior' });
+  try {
+    const r = b.raid, s = r.state; s.turn = 10; s.hero.weaponDamage = 10; s.swordBoost = 1;
+    s.board = Array.from({ length: 36 }, () => ({ type: 'coin' }));
+    const target = Object.assign(r.makeSkull(false, false), { hp: 1000, maxHp: 1000, def: 0, atk: 0, element: 'air' });
+    s.board[12] = { type: 'sword', element: 'fire' }; s.board[0] = { type: 'sword', element: 'fire' }; s.board[6] = { type: 'skull', skull: target };
+    s.selected = [12, 6, 0]; s.chainType = 'sword';
+    const raw = r.baseDamage() + 2 * 10 * 2 * 1.25 * 1.05;
+    assert.equal(r.chainPreview().skulls[0].damage, raw + 10);
+    target.type = 27; assert.equal(r.chainPreview().skulls[0].damage, raw, 'Armoured exits before Uppercut');
+    s.selected = [0, 6, 12]; assert.equal(r.chainPreview().skulls[0].damage, 0);
+    target.type = 14; assert.equal(r.chainPreview().skulls[0].damage, 0, 'Chaotic resists non-Uppercut');
+    s.selected = [12, 6, 0]; assert.equal(r.chainPreview().skulls[0].damage, raw + 10);
+    s.board[35] = { type: 'skull', skull: Object.assign(r.makeSkull(false, true, 30), { hp: 1000 }) };
+    assert.equal(r.chainPreview().skulls[0].damage, raw + 10, 'Uppercut still precedes off-chain Meat Shield gate');
+    s.selected = [0, 6, 12]; target.type = 0; assert.equal(r.chainPreview().skulls[0].damage, 0);
+    s.classConfig = { ...s.classConfig, perks: [...s.classConfig.perks], flaws: [s.classConfig.flaws[0], 'Confused', null, null] }; s.turn = 0; s.selected = [12, 6, 0];
+    assert.equal(r.chainPreview().skulls[0].damage, 0); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+for (const version of [1, 2, 3]) test(`magitech affinity: released-format v${version} Continue never adopts a new tier even with meta level ten`, async () => {
+  let b = await affinityFixture({ level: 10 });
+  try {
+    let data = JSON.parse(retuneRaw(b));
+    if (version === 1) data = releasedMagitechCheckpoint(data);
+    else { data.version = version; delete data.combat.affinity; data.combat.rules = version === 2 ? 'elements-v1' : 'elements-retune-v1'; }
+    const raw = JSON.stringify(data), saved = { ...raidStorage(b.dom.window), [magitechKey('raid:activeRun')]: raw };
+    b.dom.window.close(); b = await openMagitech({ saved, start: false });
+    assert.equal(retuneRaw(b), raw); const input = affinitySelect(b); assert.ok(input); input.value = 'water'; input.dispatchEvent(new b.dom.window.Event('change'));
+    assert.equal(retuneRaw(b), raw); assert.equal(b.raid.resumeSavedRun(), true);
+    const after = JSON.parse(retuneRaw(b)); assert.equal(after.version, version); assert.deepEqual(after.combat, data.combat); assert.deepEqual(after.state, data.state);
+    assert.deepEqual(after.rng, data.rng); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: stale preparation, history and update overlays cannot change the choice; the editor cannot persist it', async () => {
+  const b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: '{"adventurer":3,"warrior":5}' } });
+  try {
+    const r = b.raid, d = b.dom.window.document, old = affinitySelect(b); assert.ok(old);
+    old.value = 'fire'; old.dispatchEvent(new b.dom.window.Event('change'));
+    d.querySelector('#picker-history').click(); old.value = 'air'; old.dispatchEvent(new b.dom.window.Event('change')); assert.equal(old.value, 'fire'); d.querySelector('#history-close').click();
+    d.querySelector('#picker-updates').click(); old.value = 'water'; old.dispatchEvent(new b.dom.window.Event('change')); assert.equal(old.value, 'fire'); acknowledgeUpdate(b);
+    r.openClassEditor('warrior'); assert.equal(d.querySelector('#class-editor select.picker-affinity'), null); d.querySelector('#class-editor-save').click();
+    old.value = 'earth'; old.dispatchEvent(new b.dom.window.Event('change'));
+    assert.equal(affinitySelect(b).value, '');
+    assert.ok(!b.dom.window.localStorage.getItem(magitechKey('raid:classConfigs')).includes('affinity'));
+    d.querySelector('.picker-card-btn[data-class-id="adventurer"]').click(); assert.deepEqual(affinityCombat(b).affinity, { element: null, level: 3 });
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: defeat retry offers a fresh preparation choice without reviving or duplicating the finished run', async () => {
+  const b = await affinityFixture();
+  try {
+    const r = b.raid, d = b.dom.window.document; await finishMagitechRaid(b);
+    const raw = retuneRaw(b), state = JSON.stringify(r.state), history = JSON.stringify(r.getLocalHistory());
+    d.querySelector('#gameover-restart').click();
+    assert.equal(d.querySelector('#class-picker').classList.contains('show'), true); assert.equal(affinitySelect(b).value, '');
+    assert.equal(retuneRaw(b), raw); assert.equal(JSON.stringify(r.getLocalHistory()), history); assert.equal(r.state.over, true);
+    assert.equal(JSON.stringify({ ...r.state, pendingModal: 'gameover' }), state);
+    d.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    assert.equal(r.state.over, false); assert.deepEqual(affinityCombat(b).affinity, { element: null, level: 3 });
+    assert.equal(r.getLocalHistory().classes.adventurer.games, 1); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+test('magitech affinity: late Telegram profile gets its own fresh preparation, never the anonymous choice or another account data', async () => {
+  const saved = { [magitechAccountKey(701, 'raid:classLevels')]: '{"adventurer":3}', [magitechKey('raid:classLevels')]: '{"adventurer":10}', 'raid:classLevels': '{"mage":10}' };
+  const b = await openMagitech({ url: telegramRaidUrl, saved, start: false });
+  try {
+    const d = b.dom.window.document; assert.equal(affinitySelect(b), null);
+    const sdk = localAccountSDK(701); b.dom.window.Telegram = { WebApp: sdk }; d.querySelector('script[src="https://telegram.org/js/telegram-web-app.js"]').onload();
+    if (updateLayer(b).classList.contains('show')) acknowledgeUpdate(b);
+    assert.equal(affinitySelect(b).value, ''); affinitySelect(b).value = 'water'; affinitySelect(b).dispatchEvent(new b.dom.window.Event('change'));
+    d.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    const key = magitechAccountKey(701, 'raid:activeRun'), raw = b.dom.window.localStorage.getItem(key);
+    assert.deepEqual(JSON.parse(raw).combat.affinity, { element: 'water', level: 3 });
+    sdk.initDataUnsafe.user.id = 702; b.raid.saveRun();
+    assert.equal(b.dom.window.localStorage.getItem(key), raw); assert.equal(b.dom.window.localStorage.getItem(magitechAccountKey(702, 'raid:activeRun')), null);
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null); assert.equal(b.dom.window.localStorage.getItem('raid:classLevels'), saved['raid:classLevels']);
+    assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

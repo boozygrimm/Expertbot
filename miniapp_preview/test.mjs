@@ -5161,7 +5161,7 @@ function elementalCombat(options = {}) {
   // Pin the already-released elements-v1/v2 contract. A1/v3 has its own DOM
   // coverage below/in integration.test; never call a new pool 'unchanged v2'.
   assert.equal(b.raid.saveRun(), true);
-  const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1';
+  const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1'; delete released.combat.affinity;
   b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(released));
   assert.equal(b.raid.resumeSavedRun(), true);
   b.raid.state.forceCoins = 1; b.raid.state.pierce = 0;
@@ -5177,13 +5177,13 @@ function elementalPair({ classId = 'adventurer', types = [0,0], defence = 4, lee
   return { ...b, targets };
 }
 
-test('magitech elemental saves: new runs use explicit v3/A1 rules and independent RNG, without altering a classic start or profile', () => {
+test('magitech elemental saves: new runs use explicit v4/affinity+A1 rules and independent RNG, without altering a classic start or profile', () => {
   for (const seed of [0,1,71,2718,0xffffffff]) {
     const old = raidBrowser({ seed }), b = raidBrowser({ variant: 'magitech', seed });
     const saved = magitechSave(b);
-    assert.equal(saved.version, 3); assert.equal(saved.combat.rules, 'elements-retune-v1');
+    assert.equal(saved.version, 4); assert.equal(saved.combat.rules, 'elements-affinity-v1');
     assert.ok(Number.isInteger(saved.combat.rng) && saved.combat.rng >= 0 && saved.combat.rng <= 0xffffffff);
-    assert.equal(b.raid.savedRunInfo().combatRules, 'elements-retune-v1');
+    assert.equal(b.raid.savedRunInfo().combatRules, 'elements-affinity-v1');
     const neutral = magitechSnapshot(b.raid);
     for (const cell of neutral.board) delete cell.element;
     assert.deepEqual(neutral, magitechSnapshot(old.raid), `same starting resources/6 RNG at seed${seed}`);
@@ -5312,7 +5312,7 @@ test('magitech elemental preview: lethal highlights use final hit rounding, not 
   q.resolveChain(); c.advance(420); assert.deepEqual(targets.map(t => t.hp), [97,97,97]);
 });
 
-test('magitech elemental saves: a v1 Continue stays classical through combat/new enemies and only explicit newGame opts into v3', () => {
+test('magitech elemental saves: a v1 Continue stays classical through combat/new enemies and only explicit newGame opts into v4', () => {
   const b = legacyMagitechBrowser({ menus: true, seed: 2718 }), r = b.raid;
   raidBoard(r); r.state.forceCoins = 1; r.state.pierce = 0;
   for (const slot of [0,1,2]) r.state.board[slot] = { type: 'sword' };
@@ -5323,7 +5323,7 @@ test('magitech elemental saves: a v1 Continue stays classical through combat/new
   const saved = magitechSave(b); assert.equal(saved.version, 1); assert.equal(saved.combat, undefined);
   assert.equal(r.makeSkull(true).element, undefined); assert.equal(r.makeSkull(false, true, 4).element, undefined);
   const next = raidReload(b, { variant: 'magitech' }); assert.equal(next.raid.savedRunInfo().combatRules, 'classic-v1');
-  next.raid.newGame(2718); assert.equal(magitechSave(next).version, 3); assert.equal(next.raid.savedRunInfo().combatRules, 'elements-retune-v1');
+  next.raid.newGame(2718); assert.equal(magitechSave(next).version, 4); assert.equal(next.raid.savedRunInfo().combatRules, 'elements-affinity-v1');
 });
 
 for (const phase of ['match-chain','enemy','level','gold','armor']) test(`magitech elemental saves: ${phase} checkpoint restores elements/rules/RNG/rolled choices and executes no duplicate action`, () => {
@@ -5475,7 +5475,7 @@ test('magitech elemental secondary: all 42 skills keep classical effects/6 RNG a
   for (const [index, id] of ids.entries()) {
     const options = { classId: raidClassIds[index % 10], difficulty: index % 3, menus: true, seed: 8801 };
     const old = raidBrowser(options), b = raidBrowser({ ...options, variant: 'magitech' });
-    const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1';
+    const released = magitechSave(b); released.version = 2; released.combat.rules = 'elements-v1'; delete released.combat.affinity;
     b.storage.set(MAGITECH_RUN_KEY, JSON.stringify(released)); assert.equal(b.raid.resumeSavedRun(), true);
     for (const browser of [old, b]) {
       const r = browser.raid, s = r.state;
@@ -5594,7 +5594,7 @@ test('magitech A1 save: a pending normal level reward containing retune and two 
   assert.equal(r.state.pendingModal,'level');
   const index=r.state.menuCandidates.findIndex(o=>o.id==='retune');assert.ok(index>=0);
   r.state.levelDraft=[index,index===0?1:0];assert.equal(r.saveRun(),true);
-  const saved=magitechSave(b);assert.equal(saved.version,3);assert.equal(saved.menu.choices[index].id,'retune');
+  const saved=magitechSave(b);assert.equal(saved.version,4);assert.equal(saved.menu.choices[index].id,'retune');
   const next=raidReload(b,{variant:'magitech',menus:true});
   assert.equal(next.raid.state.pendingModal,'level');assert.deepEqual(raidJSON(next.raid.state.skills),[]);
   assert.deepEqual(raidJSON(next.raid.state.levelDraft),saved.menu.picked);
@@ -5712,4 +5712,33 @@ test('magitech defeat exit source: navigation clears only the terminal UI, never
   assert.match(html, /id="picker-title"[^>]*tabindex="-1"/);
   assert.match(html, /id="modal"[^>]*aria-labelledby="modal-title"/);
   assert.match(html, /<b>После поражения\.<\/b>/);
+});
+
+test('magitech affinity source: all four distributions have exact 30/20/25/25 buckets and damage tiers; no extra old RNG, preferences or item stats', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const fn = name => js.match(new RegExp('^  function ' + name + '\\([^]*?^  }', 'm'))?.[0];
+  const source = ['affinityCounterElement', 'pilotWeaponMultiplier', 'rollWeaponElement'].map(fn).join('\n');
+  // Two helpers are single-line declarations; extract those independently.
+  const counter = js.match(/^  function affinityCounterElement[^\n]+/m)[0];
+  const helpers = counter + '\n' + fn('pilotWeaponMultiplier') + '\n' + fn('rollWeaponElement');
+  for (const level of [1, 2, 3, 10]) for (const element of [null, 'fire', 'air', 'earth', 'water']) {
+    const context = vm.createContext({ level, element });
+    vm.runInContext(`const RAID_ELEMENTS=['fire','air','earth','water']; let roll=0, calls=0;
+      function runPilotAffinity(){return {level,element:level>=2?element:null};}
+      function elementRandom(){calls++;return roll;}
+      ${helpers}
+      const counts={fire:0,air:0,earth:0,water:0};
+      for(let i=0;i<100;i++){roll=(i+.5)/100;counts[rollWeaponElement()]++;}
+      globalThis.result={counts,calls,multipliers:RAID_ELEMENTS.map(pilotWeaponMultiplier)};`, context);
+    const value = JSON.parse(JSON.stringify(context.result));
+    assert.equal(value.calls, 100);
+    for (const e of ['fire', 'air', 'earth', 'water']) {
+      const counterElement = {fire:'water',air:'fire',earth:'air',water:'earth'}[element];
+      assert.equal(value.counts[e], level < 2 || !element ? 25 : e === element ? 30 : e === counterElement ? 20 : 25);
+      assert.equal(value.multipliers[['fire','air','earth','water'].indexOf(e)], level < 3 || !element ? 1 : e === element ? 1.05 : e === counterElement ? .95 : 1);
+    }
+  }
+  assert.doesNotMatch(source, /\b(?:randInt|random)\s*\(|Math\.random|localStorage|profileStorage|equipment|setTimeout/);
+  assert.doesNotMatch(fn('saveClassConfig'), /affinity|pickerAffinities/);
+  assert.match(fn('newGame'), /pickerAffinities\.clear\(\)/); assert.match(fn('resumeSavedRun'), /Object\.freeze\(ELEMENTAL_COMBAT\.affinity\)/);
 });
