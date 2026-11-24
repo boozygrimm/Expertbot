@@ -1361,5 +1361,43 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 #board.retuning .retune-chosen .raid-orb { outline: 3px solid #f2d58e; outline-offset: -3px; background: #d4c68a22; }
 #board.retuning .cell:focus-visible { outline: 2px solid #fff0bd; outline-offset: -1px; }
 
+/* V0: same renderer/assets/sockets in all FOUR independent combinations.
+   Hide only decorative shell/material; semantic selection/status layers stay.
+   Transparent borders retain the exact box metrics (no content/hitbox jump). */
+html[data-raid-shell="off"] .raid-orb:not(.special):not(.boss):not(.burned) { border-color: transparent; box-shadow: none; }
+html[data-raid-shell="off"] .raid-orb:not(.explosive)::before,
+html[data-raid-shell="off"] .raid-orb:not(.boss)::after { display: none; }
+html[data-raid-shell="off"] .orb-material { visibility: hidden; }
+html[data-raid-shell="off"] .orb-material,
+html[data-raid-shell="off"] .orb-material *,
+html[data-raid-shell="off"] .orb-material::before,
+html[data-raid-shell="off"] .orb-material::after { animation: none !important; }
+/* Explosive is gameplay, unlike the hidden decorative material that carried
+   its old glow. A static spark remains even without the glass/material. */
+html[data-raid-shell="off"] .raid-orb.explosive::before {
+  content: '✦'; display: grid; place-items: center; z-index: 8;
+  left: auto; right: 4%; top: 4%; width: 24%; height: 24%;
+  transform: none; border: 1px solid #ffc56c; border-radius: 3px;
+  color: #ffe2a0; background: #412a1be6; font: 700 16cqw/1 system-ui,sans-serif;
+}
+/* CSS + WAAPI share the SAME effective policy. JS cancels live visual handles;
+   CSS returns coin/weapon/UI to their readable static base, never an edge-on
+   paused frame. OS reduce also wins before JS or on an older media API. */
+html[data-raid-motion="off"], html[data-raid-motion="off"] *,
+html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
+  animation: none !important; transition: none !important; scroll-behavior: auto !important;
+}
+.visual-settings { flex: none; min-width: 0; border: 1px solid #65775d99; border-radius: 4px; background: #102826; color: #d7decb; }
+.visual-settings summary { min-height: 44px; padding: 12px; font-size: 12px; cursor: pointer; }
+.visual-settings fieldset { min-width: 0; margin: 0 10px; padding: 0; border: 0; }
+.visual-settings legend { padding: 0 0 4px; font-size: 10px; color: #b8c8b4; }
+.visual-settings label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 12px; cursor: pointer; overflow-wrap: anywhere; }
+.visual-settings input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: #c5b57d; }
+.visual-settings p { margin: 5px 12px 10px; color: #b3c5ad; font-size: 11px; line-height: 1.45; }
+.visual-settings [data-raid-visual-status] { color: #f0d1a2; }
+.visual-settings :focus-visible { outline: 2px solid #eed18f; outline-offset: -2px; }
+/* On desktop the existing class list must remain usable when expanded. */
+.picker-main { overflow-y: auto; }
+
 /* Keep last: no visual skin may override the released visibility contract. */
 [hidden] { display: none !important; }
