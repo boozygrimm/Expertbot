@@ -4613,6 +4613,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.ok(html.includes('<li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>'));
   assert.ok(html.includes('<li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>'));
   assert.ok(html.includes('<li><b>Гараж мехов.</b> В круглой карточке мех показан крупно; сбоку — кнопки «Пилот» и «Мех», снизу фигурная кнопка «Поехали!». Все десять портретов перерисованы с чистым прозрачным фоном: края и детали брони восстановлены, случайные фрагменты фона удалены. Карточка закрывается нажатием вне круга. Фигурки слегка парят; движение учитывает настройку анимации и системное «уменьшение движения».</li>'));
+  assert.ok(html.includes('<li><b>Выбор стихии — отдельный шаг после выбора меха.</b> На втором экране четыре стихии занимают четверти экрана. Выбери Огонь, Воздух, Землю или Воду: центральная эмблема меняет оттенок; нажми её, чтобы начать рейд. Здесь же виден текущий формат «До гибели», выбирается сложность; кнопка «Назад» возвращает в гараж.</li>'));
   assert.match(js, /textContent = 'Поехали!'/);
   assert.match(js, /\['pilot', 'Пилот', 'О пилоте'\], \['mech', 'Мех', 'О мехе'\]/);
   assert.match(js, /className = 'mech-garage-hero'/);
@@ -4920,6 +4921,32 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   assert.match(css, /\.picker-main \.picker-tools \.btn \{ min-height: 32px/);
   assert.match(css, /mech-detail-actions\.mech-garage-side-actions \{ position: absolute;[^]*left: 5%;[^]*width: 23%/);
   assert.match(css, /mech-detail-body\.mech-garage-home > \.mech-go-button \{ position: absolute;[^]*bottom: 10%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button[^]*border-radius: 999px/);
+});
+
+test('magitech preparation flow: mech confirmation opens four-quadrant elemental screen; emblem launches and back returns to garage', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const screen = html.match(/<section class="raid-region-screen"[^]*?<\/section>/)?.[0];
+  assert.ok(screen);
+  for (const element of ['fire', 'air', 'earth', 'water']) assert.match(screen, new RegExp(`data-raid-region="${element}"`));
+  assert.match(screen, /id="difficulty-select"/);
+  assert.match(screen, /До гибели/);
+  assert.match(screen, /id="region-emblem-launch"/);
+  assert.match(screen, /id="region-back-button"/);
+  const logo = readFileSync(new URL('./assets/raid_emblem.png', import.meta.url));
+  assert.equal(logo.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(logo[25], 6); assert.equal(logo.readUInt32BE(16), 512);
+  assert.match(js, /PREPARED_MECH_ID = cls\.id/);
+  assert.match(js, /screen\.hidden = false; card\.classList\.add\('region-screen-open'\)/);
+  assert.match(js, /requestNewGame\(PREPARED_MECH_ID\)/);
+  assert.match(js, /region-back-button[^]*classList\.remove\('region-screen-open'\)/);
+  assert.match(css, /grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr/);
+  assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-world-footer \{ display:none; \}/);
+  assert.doesNotMatch(html.match(/<div class="picker-main"[^]*?<\/div>\s*<section class="raid-region-screen"/)?.[0] || '', /raid-run-settings/);
+  assert.match(css, /\.region-quadrant\.element-fire[^]*background-image: url\('__RAID_SCENE_FIRE__'\)/);
+  for (const element of ['fire', 'air', 'earth', 'water']) assert.match(css, new RegExp(`data-selected-region="${element}"`));
 });
 
 test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {
@@ -5847,7 +5874,7 @@ test('magitech direct settings source: compact board overlay reuses preferences/
   assert.match(css, /\.game-settings\s*\{[^}]*position:\s*fixed/);
   assert.match(css, /\.game-settings-card\s*\{[^}]*272px[^}]*border-radius:\s*28px/);
   assert.match(css, /\.settings-row\s*\{[^}]*min-height:\s*48px/);
-  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none !important;\s*\}\s*$/);
+  assert.match(css, /\.raid-region-screen\[hidden\]\s*\{\s*display:\s*none !important;\s*\}/);
 });
 
 

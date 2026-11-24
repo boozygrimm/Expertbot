@@ -57,16 +57,34 @@
       <p data-raid-motion-note hidden></p>
       <p data-raid-visual-status role="status" aria-live="polite" hidden></p>
     </details>
-    <div class="raid-run-settings">
-      <div class="raid-mode-summary"><span>ФОРМАТ РЕЙДА</span><strong>До гибели</strong><small>Без лимита ходов</small></div>
-      <label class="raid-difficulty">СЛОЖНОСТЬ
-        <select id="difficulty-select"><option value="0">Лёгкий</option><option value="1" selected>Нормальный</option><option value="2">Сложный</option></select>
-      </label>
-      <select id="mode-select" aria-label="Бесконечный рейд" hidden><option value="classic">Бесконечный рейд</option></select>
-    </div>
     <div class="picker-grid" id="picker-grid"></div>
     <p class="picker-foot">Мех «Авантюрист» доступен сразу. Другие открываются за трофеи. Настройки действуют на следующий рейд. Прогресс тестовой классики сюда не переносится.</p>
     </div>
+    <section class="raid-region-screen" id="raid-region-screen" hidden aria-label="Выбор стихии и сложности">
+      <div class="region-screen-head">
+        <span class="region-screen-kicker">02 / ВЫБОР СТИХИИ</span>
+        <h2 data-raid-region-title>Забытый лес</h2>
+        <p>Выбери сторону поля, затем нажми эмблему.</p>
+        <div class="region-screen-settings">
+          <span>Режим · <b>До гибели</b></span>
+          <label class="raid-difficulty">СЛОЖНОСТЬ
+            <select id="difficulty-select"><option value="0">Лёгкий</option><option value="1" selected>Нормальный</option><option value="2">Сложный</option></select>
+          </label>
+          <select id="mode-select" aria-label="Бесконечный рейд" hidden><option value="classic">Бесконечный рейд</option></select>
+        </div>
+      </div>
+      <div class="region-quadrants" role="group" aria-label="Стихии">
+        <button type="button" class="region-quadrant element-fire" data-raid-region="fire" aria-pressed="false"><span class="quadrant-symbol">△</span><strong>Огонь</strong><small>Пылающая кузня</small></button>
+        <button type="button" class="region-quadrant element-air" data-raid-region="air" aria-pressed="false"><span class="quadrant-symbol">≋</span><strong>Воздух</strong><small>Небесный разлом</small></button>
+        <button type="button" class="region-quadrant element-earth" data-raid-region="earth" aria-pressed="true"><span class="quadrant-symbol">◇</span><strong>Земля</strong><small>Забытый лес</small></button>
+        <button type="button" class="region-quadrant element-water" data-raid-region="water" aria-pressed="false"><span class="quadrant-symbol">◡</span><strong>Вода</strong><small>Затопленный храм</small></button>
+      </div>
+      <button type="button" class="region-emblem-launch" id="region-emblem-launch" aria-label="Начать рейд в выбранной стихии">
+        <img src="miniapp_preview/assets/raid_emblem.png" alt="" draggable="false">
+        <span id="region-launch-label">В бой · Земля</span>
+      </button>
+      <button type="button" class="region-back-button" id="region-back-button">Назад</button>
+    </section>
     <section class="class-editor" id="class-editor" hidden aria-labelledby="class-editor-title">
       <h3 class="picker-title" id="class-editor-title" tabindex="-1"></h3>
       <p class="picker-hint" id="class-editor-hint"></p>
@@ -233,6 +251,7 @@
         <li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>
         <li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>
         <li><b>Гараж мехов.</b> В круглой карточке мех показан крупно; сбоку — кнопки «Пилот» и «Мех», снизу фигурная кнопка «Поехали!». Все десять портретов перерисованы с чистым прозрачным фоном: края и детали брони восстановлены, случайные фрагменты фона удалены. Карточка закрывается нажатием вне круга. Фигурки слегка парят; движение учитывает настройку анимации и системное «уменьшение движения».</li>
+        <li><b>Выбор стихии — отдельный шаг после выбора меха.</b> На втором экране четыре стихии занимают четверти экрана. Выбери Огонь, Воздух, Землю или Воду: центральная эмблема меняет оттенок; нажми её, чтобы начать рейд. Здесь же виден текущий формат «До гибели», выбирается сложность; кнопка «Назад» возвращает в гараж.</li>
       </ul>
       <p class="updates-important"><b>Важно:</b> если рейд уже начат, он продолжится по прежним правилам — без склонности. Склонность можно выбрать перед следующим рейдом. Ничего удалять не нужно. Просмотр другого рейда и рост уровня меха не меняют уже начатый рейд; «Продолжить» восстановит его прежний выбор. «Перенастройка» сохраняет базовые 12 ходов и один из четырёх слотов. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>

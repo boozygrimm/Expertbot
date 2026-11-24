@@ -1103,6 +1103,10 @@
     if (document.documentElement && document.documentElement.dataset.raidRegion !== current) document.documentElement.dataset.raidRegion = current;
     const picker = document.getElementById('class-picker');
     if (picker) picker.dataset.raidRegion = region;
+    const regionScreen = document.getElementById('raid-region-screen');
+    if (regionScreen) regionScreen.dataset.selectedRegion = region;
+    const launchLabel = document.getElementById('region-launch-label');
+    if (launchLabel) launchLabel.textContent = 'В бой · ' + RAID_REGIONS[region].element;
     for (const node of document.querySelectorAll('[data-raid-region-title], [data-raid-region-caption]')) {
       const data = RAID_REGIONS[node.closest('#class-picker') ? region : current];
       node.textContent = node.hasAttribute('data-raid-region-title') ? data.title : data.index + ' / ' + data.element;
@@ -1128,6 +1132,19 @@
       if (!pickerOpen || NEW_RUN_REQUEST || !button.closest('#class-picker')) return;
       if (!applyRaidRegion(button.dataset.raidRegion)) return;
       saveRaidAppearance();
+    });
+    el('region-back-button')?.addEventListener('click', () => {
+      if (!pickerOpen || NEW_RUN_REQUEST) return;
+      PREPARED_MECH_ID = null;
+      el('raid-region-screen').hidden = true;
+      el('class-picker-main').hidden = false;
+      el('picker-card').classList.remove('region-screen-open');
+      el('class-picker').classList.remove('region-mode-open');
+      document.querySelector('.picker-card-btn')?.focus();
+    });
+    el('region-emblem-launch')?.addEventListener('click', () => {
+      if (!pickerOpen || NEW_RUN_REQUEST || !PREPARED_MECH_ID) return;
+      requestNewGame(PREPARED_MECH_ID);
     });
   }
   function mechEmblem(native) {
@@ -6265,12 +6282,18 @@
   // --- class picker / next-run editor ---------------------------------------
   let pickerOpen = false;
   let pickerGeneration = 0;
+  let PREPARED_MECH_ID = null;
   const pickerAffinities = new Map(); // unpaid preparation only; NEVER profile storage
   let classEditor = null;
 
   function renderClassPicker() {
     const grid = el('picker-grid');
     if (!grid) return;
+    PREPARED_MECH_ID = null;
+    el('class-picker-main').hidden = false;
+    el('raid-region-screen').hidden = true;
+    el('picker-card')?.classList.remove('region-screen-open');
+    el('class-picker')?.classList.remove('region-mode-open');
     grid.innerHTML = '';
     const generation = ++pickerGeneration; pickerAffinities.clear();
     const current = () => pickerOpen && !classEditor && !NEW_RUN_REQUEST && !UPDATES_OPEN && !HISTORY_OPEN && generation === pickerGeneration;
@@ -6354,7 +6377,16 @@
         go.disabled = !isClassUnlocked(cls.id);
         go.addEventListener('click', () => {
           if (!current() || !isClassUnlocked(cls.id)) return;
-          closeDetail(); requestNewGame(cls.id);
+          closeDetail();
+          const screen = el('raid-region-screen'), card = el('picker-card');
+          if (!screen || !card) { requestNewGame(cls.id); return; }
+          PREPARED_MECH_ID = cls.id;
+          el('class-picker-main').hidden = true;
+          screen.dataset.preparedClassId = cls.id;
+          screen.hidden = false; card.classList.add('region-screen-open');
+          el('class-picker').classList.add('region-mode-open');
+          applyRaidRegion(RAID_REGION);
+          el('region-emblem-launch')?.focus();
         });
         detailBody.append(hero, actions, go);
         detail.hidden = false; go.focus();
