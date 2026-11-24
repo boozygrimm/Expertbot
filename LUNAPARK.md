@@ -39,13 +39,17 @@ released v1/v2/v3 upgrades +4storage/SDK failures**, errors[]. Python9 целе�
 остальные source bytes вне3UI helpers/8UI wiring точек идентичны136; terminal/
 history/save/бой/settings/audio/A1 прежние,561other tracked blobs unchanged,
 repeat build/inline syntax/preview external Host200/full bytes/diff PASS.
-Новый PR/merge/Pages ещё впереди;804/274 ниже — исторический136.
+Создан **[PR137](https://github.com/boozygrimm/Expertbot/pull/137)**, product
+**59a5c0070499065bc9202bbe74ef3d3be4f796ab**; эта Git-запись **pre-merge**.
+Фактические final head/merge/Pages/public build и границы проверки —
+**[release-протокол7122892216](https://github.com/boozygrimm/Expertbot/pull/137#issuecomment-7122892216)**,
+обновляемый после операций.804/274 ниже — исторический136, не текущая QA.
 [PR136](https://github.com/boozygrimm/Expertbot/pull/136) фактически **MERGED**,
 merge/main **f9529ffa29eb0de7a2b00c43f8d84d1d9effdec3**, Pages45328324590 SUCCESS,
 public **6a5e7b06b6c1** —
 [завершённый протокол7122258652](https://github.com/boozygrimm/Expertbot/pull/136#issuecomment-7122258652).
-Та же arena/4dac0ee2-expertbot clean ff-only до merge136; новый инкремент требует
-нового PR, не повторного136. Это **не** разрешение добровольной сдачи живого
+Та же arena/4dac0ee2-expertbot, чистый ff-only до merge136 перед правками;
+нынешний137 — новый инкремент, не повторный136. Это **не** разрешение добровольной сдачи живого
 рейда/новых наград/баланса/M1/парка/облака/рассылки/второго poller.
 
 **Историческая pre-merge сводка136 — прямые настройки, QA был завершён:**
@@ -294,8 +298,8 @@ auto-main для существующего бота; Pages не доказыв�
 
 - **После136 — явный выход после поражения реализован и проверен, готовится выпуск:**
   - Прямое замечание владельца о тупике «только заново». На итоговом экране
-    добавить заметное «К выбору меха» без автоматического старта; Telegram
-    получает явное «Закрыть Mini App» через прежний save/SDK close/error flow.
+    добавлено заметное «К выбору меха» без автоматического старта; Telegram
+    получил явное «Закрыть Mini App» через прежний save/SDK close/error flow.
   - Escape/SDK Back с результата возвращают к подготовке, не запускают рейд;
     история/достижения/повторная игра остаются. Основные действия достижимы
     на маленьком/коротком экране, focus/Tab/44px/защита stale и закрывающего тапа.
@@ -309,8 +313,10 @@ auto-main для существующего бота; Pages не доказыв�
     native2pairs+4UI+6upgrades+4failures/errors[], Python272+48subtestsPASS.
     Финальный полный **823npm/0fail/0skip/exit0**,363unchangedfunctions/остальные
     sourcebytes/terminal+history+save/settings/audio/A1/combat/561blobs/repeatbuild/
-    syntax/Host200exactbytes/diff guards PASS. Новые PR/merge/Pages ещё впереди;
-    факты доставки будут в отдельном release-протоколе, не в результатах136.
+    syntax/Host200exactbytes/diff guards PASS. Создан **PR137**, product59a5c00;
+    эта Git-сводка pre-merge. Фактическая доставка —
+    [протокол137](https://github.com/boozygrimm/Expertbot/pull/137#issuecomment-7122892216),
+    дописываемый после операций, не результаты136.
     Добровольная сдача **живого** рейда и прочие M1/B/C/bossD/парк/облако не входят.
 
 - **Историческая pre-merge сводка136 — прямые настройки реализованы:**
@@ -2417,9 +2423,14 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   Repeat builder byte-identical, source/весь inline JS syntax, preview external
   Host200/full4041376bytes, `git diff --check` PASS. Evidence только /tmp и
   .arena/raid-defeat-exit, не новые проектные файлы.
-- Только8 существующих файлов; классика/арт/бот/профили/баланс/парк/облако не
-  расширялись. Эта запись до нового PR/merge/Pages. Live Render/физический Telegram/
-  FPS/батарея не доказаны; second poller/рассылка/M1/добровольная сдача не делались.
+- Создан **[PR137](https://github.com/boozygrimm/Expertbot/pull/137)** на assigned
+  arena/4dac0ee2-expertbot, base/main136=f9529ff; tested product **59a5c0070499065bc9202bbe74ef3d3be4f796ab**.
+  Эта запись pre-merge: final head/merge SHA/Pages run+deployment/public actual
+  build записываются после операций в
+  **[release-протокол7122892216](https://github.com/boozygrimm/Expertbot/pull/137#issuecomment-7122892216)**.
+  Docs-only ссылка не меняет tested runtime/build. Только8 существующих файлов;
+  классика/арт/бот/профили/баланс/парк/облако не расширялись. Live Render/физический
+  Telegram/FPS/батарея не доказаны; second poller/рассылка/M1/сдача не делались.
 
 ### После136 — принято исправление выхода после поражения; начало UI-шага
 
