@@ -4624,9 +4624,9 @@ test('magitech potion glass: health, acid, mana and explosive fills get clipped 
   assert.match(js, /class="potion-wave potion-wave-back"/);
   assert.match(js, /class="potion-wave potion-wave-front"/);
   assert.match(js, /!!cell\.explosive.*cell\.magicSword/);
-  assert.match(css, /@keyframes potion-rock/);
-  assert.match(css, /@keyframes potion-slosh-back/);
-  assert.match(css, /@keyframes potion-slosh-front/);
+  assert.match(css, /@keyframes potion-rock[^]*rotate\(-6\.5deg\)[^]*rotate\(6\.5deg\)/);
+  assert.match(css, /@keyframes potion-slosh-back[^]*translate\(-3px,1px\)[^]*translate\(3px,-1\.4px\)/);
+  assert.match(css, /@keyframes potion-slosh-front[^]*translate\(2\.5px,-\.8px\)[^]*translate\(-2\.5px,1\.2px\)/);
   assert.match(css, /\.cell\.type-potion\.frozen[^]*animation-play-state: paused/);
   assert.match(css, /html\[data-raid-motion="off"\][^]*animation: none !important/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
@@ -4654,9 +4654,17 @@ test('magitech potion renderer: each fill state creates a unique clipped bottle 
     assert.ok(svg.includes('class="potion-wave potion-wave-front"'));
   }
   assert.notEqual(render(variants[0][0], 0), render(variants[3][0], 3));
-  assert.match(render(variants[0][0], 0), /potion-premium-art.*raid_potion_crystal\.png/);
-  assert.doesNotMatch(render(variants[1][0], 1), /potion-premium-art/);
-  assert.match(css, /\.potion-premium-art[^]*drop-shadow/);
+  for (const [cell, kind] of variants) {
+    const svg = render(cell, variants.findIndex(item => item[1] === kind));
+    assert.ok(svg.includes(`href="miniapp_preview/assets/raid_potion_${kind}.png"`), kind + ' unique sprite');
+    const png = readFileSync(new URL(`./assets/raid_potion_${kind}.png`, import.meta.url));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', kind + ' PNG signature');
+    assert.equal(png[25], 6, kind + ' real RGBA alpha channel');
+    assert.ok(png.readUInt32BE(16) > 400 && png.readUInt32BE(20) > 700, kind + ' detailed sprite dimensions');
+  }
+  assert.match(render(variants[1][0], 1), /data-potion="acid"[^]*potion-slosh-overlay/);
+  assert.match(css, /potion-lower-motion[^]*transform-origin: 24px 21px/);
+  assert.match(css, /@keyframes potion-rock[^]*rotate\(-6\.5deg\)/);
 });
 
 test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {
