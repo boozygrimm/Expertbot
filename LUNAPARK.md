@@ -33,8 +33,11 @@ v1/v2 не мигрируют и сохраняют свои форматы/пу
 **d629e238fe5f586408f55091fad99f6d80c0e7848da990cd358c874badd50856**.
 **750npm/149Python+68subtests PASS**, Chromium153 **32current+32exact78d+2genuinev1+
 2real-v2 upgrades+4motion/errors[]**,37focused, repeat/inline/classic guards PASS.
-Это локальная проверка, не physical Telegram/60FPS/баланс/live Render. Доставка
-ещё оформляется; последний подтверждённый выпущенный132/78d95d038161, не A1.
+Это локальная проверка, не physical Telegram/60FPS/баланс/live Render. Открыт
+**[PR133](https://github.com/boozygrimm/Expertbot/pull/133)**; фактические merge/Pages/
+публичный build — в [release-протоколе](https://github.com/boozygrimm/Expertbot/pull/133#issuecomment-7118493326),
+дополняемом после операций. Эта Git-запись pre-merge, последний подтверждённый
+на момент записи выпущенный132/78d95d038161, не A1.
 Хвост «Ну и в» оборван; уточнение запрошено, продолжение не додумывать.
 
 **Исторически перед одобрением A1 — выбран A, пока проект правил:**
@@ -246,8 +249,10 @@ auto-main для существующего бота; Pages не доказыв�
     Просмотрены актуальные popup320/draft390/weaponboard390 SDK screenshots и все6
     моделей×6фаз оси×4палитры в actual Chromium320 (orb42.25px); нет обрезки силуэта.
     Это статические controlled frames, не физическая phone/FPS/owner art acceptance.
-  - Та же `arena/4dac0ee2-expertbot`, база/main132=1cefa19. Новый PR/merge/Pages
-    ещё оформляются; факты доставки будут в release-протоколе верх §7.
+  - Та же `arena/4dac0ee2-expertbot`, база/main132=1cefa19, product commit
+    `4b6a23c391b83473c7295f98e454da2ac7fe0717`, [PR133](https://github.com/boozygrimm/Expertbot/pull/133).
+    Final head/merge/Pages/public build читать в [release-протоколе](https://github.com/boozygrimm/Expertbot/pull/133#issuecomment-7118493326);
+    эта Git-запись pre-merge и не утверждает результат будущих операций.
     Live Render revision/physical Telegram/звук/FPS/игровой баланс остаются отдельно.
     Реальная рассылка/poller/cloud/bossD/парковая интеграция не запускались.
     Хвост «Ну и в» уточняется, четвёртого требования не выдумано.
@@ -2035,9 +2040,13 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   SHA7508bf…92e1f, builder, арт140, бот/admission/Send/audio untouched. Standalone/
   SDK/launcher не парковая интеграция; bossD «не сейчас»/B/C не выбраны. Никакого
   второго poller/реальной рассылки/облака/сброса данных. Live Render/physical QA отдельно.
-- Та же arena/4dac0ee2-expertbot, база132=1cefa19. Следом product commit→новыйPR,
-  protocol link→точный premerge head/tree→merge→Pages→публичный build. Этот Git-блок
-  pre-merge, не выдаёт будущую публикацию за факт; результат будет в протоколе.
+- Та же arena/4dac0ee2-expertbot, база132=1cefa19. Product commit
+  **4b6a23c391b83473c7295f98e454da2ac7fe0717** отправлен, открыт **[PR133](https://github.com/boozygrimm/Expertbot/pull/133)**.
+  **[Release-протокол7118493326](https://github.com/boozygrimm/Expertbot/pull/133#issuecomment-7118493326)**
+  фиксирует final premerge head/tree→merge→Pages→публичный build после выполнения.
+  Эта последующая правка только связывает docs с протоколом, HTML/build/QA прежние.
+  Этот Git-блок pre-merge, не выдаёт будущую публикацию/CI за факт. GitHub до
+  docs-commit OPEN/MERGEABLE/CLEAN, statusCheckRollup=[] (не «зелёный premerge CI»).
   AGENTS перечитан; **весь актуальный LUNA1–4994 прочитан последовательно** перед
   выпуском (10 contiguous read_file ranges1…5000, без пропуска старого §7/§8–9).
   Это позднее чтение, не выполненный preread до реализации: процедурный недочёт
