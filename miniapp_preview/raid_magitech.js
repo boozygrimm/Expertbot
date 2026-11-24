@@ -6308,7 +6308,7 @@
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег</span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
       btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"></span></span><span class="pick-name">${cls.name}</span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}</span>`;
-      btn.title = unlocked ? `Начать рейд за меха «${cls.name}»` : `Мех «${cls.name}» закрыт`;
+      btn.title = `Открыть карточку меха «${cls.name}»`;
       btn.setAttribute('aria-haspopup', 'dialog');
       const line = (label, text) => {
         const p = document.createElement('p'); p.className = 'mech-detail-line';
@@ -6317,13 +6317,15 @@
       };
       const openGarage = () => {
         if (!current()) return;
-        restoreDetailControls(); detailOwner = row; detailBody.replaceChildren();
+        restoreDetailControls(); detailOwner = row; detailBody.classList.remove('mech-info-view'); detailBody.classList.add('mech-garage-home'); detailBody.replaceChildren();
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
         const heading = document.createElement('h3'); heading.textContent = cls.name;
-        const actions = document.createElement('div'); actions.className = 'mech-detail-actions';
+        const hero = document.createElement('div'); hero.className = 'mech-garage-hero';
+        hero.append(portrait, heading);
+        const actions = document.createElement('div'); actions.className = 'mech-detail-actions mech-garage-side-actions';
         const detailsView = (kind) => {
-          restoreDetailControls(); detailBody.replaceChildren();
+          restoreDetailControls(); detailBody.classList.remove('mech-garage-home'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
           const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = '‹ Назад'; back.addEventListener('click', openGarage);
           const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? 'О пилоте' : 'О мехе';
           detailBody.append(back, portrait.cloneNode(true), tabTitle);
@@ -6344,9 +6346,9 @@
             if (configButton) detailBody.appendChild(configButton);
           }
         };
-        for (const [kind, text] of [['pilot', 'О пилоте'], ['mech', 'О мехе']]) {
+        for (const [kind, text, label] of [['pilot', 'Пилот', 'О пилоте'], ['mech', 'Мех', 'О мехе']]) {
           const action = document.createElement('button'); action.type = 'button'; action.className = 'mech-detail-topic'; action.textContent = text;
-          action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
+          action.setAttribute('aria-label', label); action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
         }
         const go = document.createElement('button'); go.type = 'button'; go.className = 'mech-go-button'; go.textContent = 'Поехали!';
         go.disabled = !isClassUnlocked(cls.id);
@@ -6354,7 +6356,7 @@
           if (!current() || !isClassUnlocked(cls.id)) return;
           closeDetail(); requestNewGame(cls.id);
         });
-        detailBody.append(portrait, heading, actions, go);
+        detailBody.append(hero, actions, go);
         detail.hidden = false; go.focus();
       };
       // Selecting any mech opens its circular garage card; launch is a deliberate second action.
