@@ -4612,7 +4612,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.ok(html.includes('<li><b>Понятнее описания экипировки.</b> Уточнили, когда срабатывает снижение атаки врагов и другие свойства предметов. Правила боя не менялись.</li>'));
   assert.ok(html.includes('<li><b>Четыре узнаваемых хрустальных зелья.</b> Лечение — рубин, кислота — пузырящийся лайм, мана — сапфир со звездой, взрывное — янтарь с искрой. Крышка закреплена, нижняя часть раскачивается, жидкость заметно плещется внутри. Игровые эффекты не менялись.</li>'));
   assert.ok(html.includes('<li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>'));
-  assert.ok(html.includes('<li><b>Новая галерея мехов.</b> Для каждого меха — своя портретная фигурка в компактной сетке без длинного списка. Нажми «i», чтобы открыть круглую полупрозрачную карточку с пилотом, свойствами, модулями и настройками. Фигурки слегка парят, руны вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>'));
+  assert.ok(html.includes('<li><b>Новая галерея мехов.</b> На старте теперь «Гараж»: десять портретов собраны компактно, без длинных карточек и больших кнопок. Нажми «i» для круглого полупрозрачного окна со свойствами. Портрет помещён в аккуратную рамку и больше не закрывает имя. Фигурки слегка парят, кольца вращаются; движение учитывает настройку анимации и системное «уменьшение движения».</li>'));
   assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после этого залпа снижает силу атаки черепов, уже стоявших на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
@@ -4904,6 +4904,11 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   assert.match(css, /\.mech-detail-body[^]*border-radius: 50%/);
   assert.match(css, /data-raid-motion="off"[^]*animation: none/);
   assert.match(css, /prefers-reduced-motion: reduce/);
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  assert.match(html, /id="picker-title"[^>]*><em>Гараж<\/em>/);
+  assert.match(css, /\.mech-detail-portrait \{ overflow: hidden; \}/);
+  assert.match(css, /\.mech-detail-portrait img \{ width: 100%; height: 100%;/);
+  assert.match(css, /\.picker-main \.picker-tools \.btn \{ min-height: 32px/);
 });
 
 test('magitech approved item motion: the coin has two faces/edge and the weapon turns on its handle axis, never the glass/material', () => {
