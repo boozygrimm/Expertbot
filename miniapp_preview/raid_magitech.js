@@ -6281,15 +6281,16 @@
     detail.setAttribute('role', 'dialog'); detail.setAttribute('aria-modal', 'true'); detail.setAttribute('aria-label', 'Сведения о мехе');
     const detailBody = document.createElement('div'); detailBody.className = 'mech-detail-body';
     detail.appendChild(detailBody); el('picker-card')?.appendChild(detail);
-    const closeDetail = () => {
-      if (detailOwner) {
-        for (const selector of ['.picker-affinity-field', '.picker-affinity-note', '.class-config-btn']) {
-          const node = detailBody.querySelector(selector); if (node) detailOwner.appendChild(node);
-        }
+    const restoreDetailControls = () => {
+      if (!detailOwner) return;
+      for (const selector of ['.picker-affinity-field', '.picker-affinity-note', '.class-config-btn']) {
+        const node = detailBody.querySelector(selector); if (node) detailOwner.appendChild(node);
       }
-      const trigger = detailOwner?.querySelector('.mech-info');
+    };
+    const closeDetail = () => {
+      restoreDetailControls();
+      const trigger = detailOwner?.querySelector('.picker-card-btn');
       detailOwner = null; detail.hidden = true; detailBody.replaceChildren();
-      document.querySelector('.mech-info[aria-expanded="true"]')?.setAttribute('aria-expanded', 'false');
       trigger?.focus();
     };
     for (const cls of CLASSES) {
@@ -6308,41 +6309,56 @@
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
       btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"></span></span><span class="pick-name">${cls.name}</span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}</span>`;
       btn.title = unlocked ? `Начать рейд за меха «${cls.name}»` : `Мех «${cls.name}» закрыт`;
-      const info = document.createElement('button'); info.type = 'button'; info.className = 'mech-info';
-      info.textContent = 'i'; info.setAttribute('aria-label', `Свойства меха «${cls.name}»`);
-      info.setAttribute('aria-haspopup', 'dialog'); info.setAttribute('aria-expanded', 'false');
-      info.addEventListener('click', () => {
+      btn.setAttribute('aria-haspopup', 'dialog');
+      const line = (label, text) => {
+        const p = document.createElement('p'); p.className = 'mech-detail-line';
+        const b = document.createElement('b'); b.textContent = label;
+        p.append(b, document.createTextNode(text)); return p;
+      };
+      const openGarage = () => {
         if (!current()) return;
-        document.querySelectorAll('.mech-info[aria-expanded="true"]').forEach(node => node.setAttribute('aria-expanded', 'false'));
-        info.setAttribute('aria-expanded', 'true'); detailBody.replaceChildren(); detailOwner = row;
-        const close = document.createElement('button'); close.type = 'button'; close.className = 'mech-detail-close'; close.textContent = '×'; close.setAttribute('aria-label', 'Закрыть сведения'); close.addEventListener('click', closeDetail);
+        restoreDetailControls(); detailOwner = row; detailBody.replaceChildren();
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
         const heading = document.createElement('h3'); heading.textContent = cls.name;
-        const line = (label, text, className = '') => { const p = document.createElement('p'); p.className = 'mech-detail-line ' + className; const b = document.createElement('b'); b.textContent = label; p.append(b, document.createTextNode(text)); return p; };
-        detailBody.append(close, portrait, heading,
-          line('Пилот · ', RACE_INFO[config.race].name + ' — ' + RACE_INFO[config.race].desc),
-          line('Мех · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
-          line('Модуль · ', cls.uniqueSkillDesc),
-          line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
-          line('Изъяны · ', config.flaws.filter(Boolean).map(name => CLASS_TRAITS.flaws[name].name).join(' · ') || 'нет'),
-          line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
-        const affinity = row.querySelector('.picker-affinity-field');
-        const affinityNote = row.querySelector('.picker-affinity-note');
-        if (affinity) detailBody.appendChild(affinity);
-        if (affinityNote) detailBody.appendChild(affinityNote);
-        const configButton = row.querySelector('.class-config-btn');
-        if (configButton) detailBody.appendChild(configButton);
-        detail.hidden = false; close.focus();
-      });
-      row.appendChild(info);
-      // A synthesized click from closing results must not start the mech
-      // underneath. A pointer activation has to BEGIN on this picker generation.
-      bindReadOnlyDismiss(btn, () => {
-        if (!current()) return;
-        if (!isClassUnlocked(cls.id)) { flash('⚠ Мех закрыт: подбери трофей после победы над особыми черепами'); return; }
-        requestNewGame(cls.id);
-      }, () => generation);
+        const actions = document.createElement('div'); actions.className = 'mech-detail-actions';
+        const detailsView = (kind) => {
+          restoreDetailControls(); detailBody.replaceChildren();
+          const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = '‹ Назад'; back.addEventListener('click', openGarage);
+          const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? 'О пилоте' : 'О мехе';
+          detailBody.append(back, portrait.cloneNode(true), tabTitle);
+          if (kind === 'pilot') {
+            detailBody.append(line('Пилот · ', `${RACE_INFO[config.race].name} — ${RACE_INFO[config.race].desc}`));
+            detailBody.append(line('Склонность · ', 'Выбирается на этот рейд, начиная со 2-го уровня меха; бонус и штраф урона открываются на 3-м.'));
+            const affinity = row.querySelector('.picker-affinity-field');
+            const affinityNote = row.querySelector('.picker-affinity-note');
+            if (affinity) detailBody.appendChild(affinity);
+            if (affinityNote) detailBody.appendChild(affinityNote);
+          } else {
+            detailBody.append(line('Специализация · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
+              line('Модуль · ', cls.uniqueSkillDesc),
+              line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
+              line('Изъяны · ', config.flaws.filter(Boolean).map(name => CLASS_TRAITS.flaws[name].name).join(' · ') || 'нет'),
+              line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
+            const configButton = row.querySelector('.class-config-btn');
+            if (configButton) detailBody.appendChild(configButton);
+          }
+        };
+        for (const [kind, text] of [['pilot', 'О пилоте'], ['mech', 'О мехе']]) {
+          const action = document.createElement('button'); action.type = 'button'; action.className = 'mech-detail-topic'; action.textContent = text;
+          action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
+        }
+        const go = document.createElement('button'); go.type = 'button'; go.className = 'mech-go-button'; go.textContent = 'Поехали!';
+        go.disabled = !isClassUnlocked(cls.id);
+        go.addEventListener('click', () => {
+          if (!current() || !isClassUnlocked(cls.id)) return;
+          closeDetail(); requestNewGame(cls.id);
+        });
+        detailBody.append(portrait, heading, actions, go);
+        detail.hidden = false; go.focus();
+      };
+      // Selecting any mech opens its circular garage card; launch is a deliberate second action.
+      bindReadOnlyDismiss(btn, openGarage, () => generation);
       row.appendChild(btn);
       if (unlocked && classLevelOf(cls.id) >= 2) {
         const label = document.createElement('label'); label.className = 'picker-affinity-field';
