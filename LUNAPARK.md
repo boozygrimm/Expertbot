@@ -32,7 +32,10 @@
 рейдам, v1/v2/v3 Continue без пересчёта. Отдельные XP/грейды/РПГ не вводятся;
 Академия/Puzzle Quest остаётся будущим концептом. Шаг реализован локально как
 **ed9cc968edea /4051389B**, полный npm/Python/lint/native QA PASS (верх §7);
-эта запись pre-merge, публикация подтверждается отдельно.
+доставка — **[PR138](https://github.com/boozygrimm/Expertbot/pull/138)** и
+[release-протокол7125082863](https://github.com/boozygrimm/Expertbot/pull/138#issuecomment-7125082863),
+дополняемый фактами после операций. Эта запись pre-merge, публикация
+подтверждается только протоколом.
 Последний выпущенный **cac8221e1021**, [PR137](https://github.com/boozygrimm/Expertbot/pull/137)
 **MERGED**, main **107bb2881e5da0b6e224557d16f5f9f9242f839c**,
 Pages45333074582 SUCCESS, web/telegram actual build прочитаны —
@@ -326,10 +329,12 @@ auto-main для существующего бота; Pages не доказыв�
     cac/v1/78d fixtures, включая4000-плиточный element-word replay, матрицу
     урона по уровням/стихиям, подготовку на4 viewport и frozen Continue.
     Guards: повторный build байт-в-байт,562 прочих blob неизменны,370 из384
-    общих функций побайтово равны HEAD/14 изменены/6 добавлены/0 удалены,
+    общих функций побайтово равны base/14 изменены/6 добавлены/0 удалены,
     inline syntax, Host200 точные bytes, `git diff --check`. Это **не** live
-    Render/физический Telegram/FPS/батарея/баланс; факты публикации — только
-    в release-протоколе нового PR после операций.
+    Render/физический Telegram/FPS/батарея/баланс; факты публикации — только в
+    **[PR138](https://github.com/boozygrimm/Expertbot/pull/138)** и
+    [release-протоколе7125082863](https://github.com/boozygrimm/Expertbot/pull/138#issuecomment-7125082863)
+    после операций.
   - Владелец: «Да, неплохо и спокойно впишется. Только выбор именно перед
     рейдом, а не на постоянную». **Не сохранять выбор в классе/пилоте/prefs**,
     не переносить в следующий рейд; хранить лишь frozen snapshot начатого.
@@ -2719,8 +2724,13 @@ mouse+touch/keyboard+SDK Back/мелкий экран. Старый арт140/cl
   урона — арифметика контракта, не симуляция прохождений. Академия/Puzzle Quest,
   парк/лаборатория/облако, новые XP/валюта/грейды, предметные стихийные бонусы
   и bossD не начинались. Второй poller/реальная рассылка не запускались.
-  Эта Git-запись **pre-merge**: фактические head/merge/Pages/публичный build и
-  границы проверки фиксируются в release-протоколе нового PR после операций.
+  Продуктовый commit **08f3f1557b6fea1d1e87aecf7ec4cc18f4d8cdfe**, создан
+  **[PR138](https://github.com/boozygrimm/Expertbot/pull/138)** на той же assigned
+  arena/4dac0ee2-expertbot (base/main107bb28, GH OPEN/MERGEABLE/CLEAN,
+  `statusCheckRollup=[]` — CI до merge нет, не выдавать за зелёный). Эта Git-запись
+  **pre-merge**: фактические head/merge/Pages/публичный build и границы проверки —
+  **[release-протокол7125082863](https://github.com/boozygrimm/Expertbot/pull/138#issuecomment-7125082863)**,
+  дополняемый после операций.137 не переоткрывается/не мержится повторно.
 
 ### M1-lite утверждён — начало реализации, склонность выбирается перед каждым рейдом
 
