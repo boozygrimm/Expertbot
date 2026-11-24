@@ -4634,6 +4634,7 @@ test('magitech potion glass: health, acid, mana and explosive fills get clipped 
 
 test('magitech potion renderer: each fill state creates a unique clipped bottle and its own liquid/accent', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const from = js.indexOf('  function tileSymbol('), to = js.indexOf('\n  // Alchemy reference:', from);
   assert.ok(from >= 0 && to > from);
   const render = vm.runInNewContext('(' + js.slice(from, to).trim() + ')', {
@@ -4653,6 +4654,9 @@ test('magitech potion renderer: each fill state creates a unique clipped bottle 
     assert.ok(svg.includes('class="potion-wave potion-wave-front"'));
   }
   assert.notEqual(render(variants[0][0], 0), render(variants[3][0], 3));
+  assert.match(render(variants[0][0], 0), /potion-premium-art.*raid_potion_crystal\.png/);
+  assert.doesNotMatch(render(variants[1][0], 1), /potion-premium-art/);
+  assert.match(css, /\.potion-premium-art[^]*drop-shadow/);
 });
 
 test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {

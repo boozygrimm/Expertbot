@@ -150,6 +150,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-potion .potion-bubble { fill: #fff8df; fill-opacity: .8; animation: potion-bubble-rise 2.8s ease-in-out infinite; }
 .cell.type-potion .potion-bubble-delay { animation-delay: -1.35s; }
 .cell.type-potion .potion-mark { filter: drop-shadow(0 0 1px #fff8dfaa); }
+.cell.type-potion .potion-premium-art { filter: drop-shadow(0 0 1.4px #fff6de) drop-shadow(0 0 2px #ff547c99); opacity: .98; }
 .cell.type-potion.acid .potion-vessel { filter: drop-shadow(0 0 3px #b9e95a88); }
 .cell.type-potion.acid .potion-bubble { fill: #efffa6; }
 .cell.type-potion.mana .potion-vessel { filter: drop-shadow(0 0 3px #76c6ff88); }
