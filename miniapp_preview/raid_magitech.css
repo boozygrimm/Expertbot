@@ -536,6 +536,8 @@ body { display: flex; align-items: stretch; justify-content: center; }
   padding: 20px 12px;
 }
 .class-picker.show { opacity: 1; pointer-events: auto; }
+/* The garage is z-index 90; guide/help overlays must render above it, not behind it. */
+#beginner-guide, #help-modal { z-index: 110; }
 .picker-card {
   width: min(100%, 620px);
   background: linear-gradient(180deg, #1c1228 0%, #140e22 100%);
