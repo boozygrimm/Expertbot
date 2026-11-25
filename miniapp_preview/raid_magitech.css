@@ -1886,3 +1886,289 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background:var(--raid-round-button-texture) center / 100% 100% no-repeat;
   filter:drop-shadow(0 0 12px #f0522d70) drop-shadow(0 12px 20px #000b);
 }
+/* Pilot profession cards and the switchable in-cockpit mech-head installation. */
+.mech-cockpit-art {
+  position:absolute; z-index:2; left:31%; bottom:17%; width:47%; aspect-ratio:1;
+  pointer-events:none; isolation:isolate; filter:drop-shadow(0 10px 12px #000b);
+  animation:cockpit-hover 5.4s ease-in-out infinite;
+}
+.mech-cockpit-head { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+.mech-cockpit-pilot {
+  position:absolute; z-index:-1; left:34%; top:37%; width:38%; height:43%; object-fit:contain;
+  filter:drop-shadow(0 0 5px #1de4d555);
+}
+.mech-garage-icon-button.pilot::after {
+  content:""; position:absolute; inset:5%; border-radius:50%;
+  background:var(--pilot-icon-url) center 34% / 175% auto no-repeat;
+  mask-image:radial-gradient(ellipse 39% 41% at 50% 46%,#000 58%,transparent 100%);
+  -webkit-mask-image:radial-gradient(ellipse 39% 41% at 50% 46%,#000 58%,transparent 100%);
+  pointer-events:none;
+}
+.mech-garage-action:has(.mech-garage-icon-button.pilot) { --pilot-icon-url:none; }
+.mech-garage-side-actions .mech-garage-icon-button.pilot { background-image:var(--raid-round-button-texture); }
+@keyframes cockpit-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+@media (max-width:720px) {
+  .mech-cockpit-art { left:29%; bottom:16%; width:48%; }
+}
+@media (prefers-reduced-motion:reduce) { .mech-cockpit-art { animation:none; } }
+/* Follow-up garage composition adjustments: keep the head distinct from the mech art. */
+.mech-cockpit-art { left:30%; bottom:25%; width:32%; z-index:2; }
+@media (max-width:720px) { .mech-cockpit-art { left:29%; bottom:23%; width:32%; } }
+/* Visible portrait, rather than a decorative CSS background, for every selected/default pilot. */
+.mech-garage-side-actions .mech-garage-icon-button.pilot { isolation:isolate; }
+.mech-garage-pilot-icon {
+  position:absolute; z-index:0; left:50%; top:50%; width:128%; height:128%; max-width:none;
+  object-fit:cover; object-position:center 23%; transform:translate(-50%,-50%);
+  clip-path:circle(36% at 50% 50%); filter:drop-shadow(0 2px 5px #000c);
+}
+.mech-garage-icon-button.pilot .mech-garage-icon-label { position:relative; z-index:1; }
+.mech-detail-body.mech-info-view { padding-bottom:74px; }
+.mech-detail-body .mech-detail-back {
+  position:absolute; z-index:8; right:12%; bottom:11%; align-self:auto;
+  width:126px; min-height:43px; padding:0 16px 0 29px; overflow:hidden;
+  border:1px solid #d9c17a; border-radius:8px 22px 8px 22px;
+  background:linear-gradient(135deg,#29463b,#132b27 55%,#0d1e1d);
+  color:#f2dda0; box-shadow:0 4px 14px #0009,inset 0 0 0 2px #d7bd6230;
+  font:700 11px/1 system-ui,sans-serif; letter-spacing:.08em; text-transform:uppercase;
+}
+.mech-detail-body .mech-detail-back::before {
+  content:"‹"; position:absolute; left:10px; top:50%; transform:translateY(-53%);
+  color:#f1d27b; font:26px/1 Georgia,serif;
+}
+.mech-detail-body .mech-detail-back::after {
+  content:""; position:absolute; inset:3px; border:1px solid #d9c17a55;
+  border-radius:6px 18px 6px 18px; pointer-events:none;
+}
+.mech-detail-body .mech-detail-back:hover { background:linear-gradient(135deg,#385d4d,#1b3931); }
+.mech-pilot-detail-portrait {
+  width:clamp(120px,27vw,178px); aspect-ratio:1; flex:none; overflow:hidden;
+  border:2px solid #c6a95c; border-radius:50%; background:#0c201e;
+  box-shadow:0 0 0 5px #d2b76b22,0 8px 20px #0008;
+}
+.mech-pilot-detail-portrait img { width:100%; height:100%; object-fit:cover; object-position:center 24%; }
+@media (max-width:720px) {
+  .mech-detail-body.mech-info-view { padding-bottom:74px; }
+  .mech-detail-body .mech-detail-back { right:9%; bottom:8%; width:112px; }
+}
+/* Generated antique-bronze back plaque artwork; the arrow is part of the image. */
+.mech-detail-body .mech-detail-back {
+  width:132px; min-height:44px; padding:0 14px 0 39px; border:0; border-radius:0;
+  background: url("miniapp_preview/assets/back_button_ornament.png") center / 100% 100% no-repeat;
+  color:#f4e4b9; text-shadow:0 1px 4px #000e;
+  box-shadow:none; text-transform:none; letter-spacing:.03em;
+}
+.mech-detail-body .mech-detail-back::before,.mech-detail-body .mech-detail-back::after { content:none; }
+.mech-detail-body .mech-detail-back:hover { border:0; background: url("miniapp_preview/assets/back_button_ornament.png") center / 100% 100% no-repeat; filter:brightness(1.15); }
+/* Refined garage layout from the latest screenshot review. */
+.mech-garage-hero { top:9%; left:31%; }
+.mech-cockpit-art { left:27%; bottom:34%; width:30%; }
+.mech-detail-body { overflow:hidden !important; }
+.mech-detail-body.mech-info-view { padding:42px 52px 36px; }
+.mech-detail-body .mech-detail-back {
+  top:10%; left:10%; right:auto; bottom:auto; width:132px; height:44px; min-height:44px;
+}
+.mech-detail-body .mech-pilot-small-portrait {
+  width:82px; height:82px; flex:0 0 82px; overflow:hidden;
+}
+.mech-detail-body .mech-pilot-small-portrait img { object-fit:cover; object-position:center 24%; }
+@media (max-width:720px) {
+  .mech-garage-hero { top:9%; left:31%; }
+  .mech-cockpit-art { left:26%; bottom:33%; width:30%; }
+  .mech-detail-body.mech-info-view { padding:40px 30px 28px; }
+  .mech-detail-body .mech-detail-back { top:9%; left:9%; right:auto; bottom:auto; width:112px; height:39px; min-height:39px; }
+  .mech-detail-body .mech-pilot-small-portrait { width:76px; height:76px; flex-basis:76px; }
+}
+/* Garage controls are the artwork itself: cockpit on the left, mech on the right. */
+.mech-detail-actions.mech-garage-side-actions { display:none !important; }
+.mech-garage-mech-button {
+  appearance:none; border:0; padding:0; background:transparent; color:inherit; font:inherit;
+  cursor:pointer; text-align:center; border-radius:0;
+}
+.mech-garage-mech-button:focus-visible,.mech-cockpit-art:focus-visible {
+  outline:2px solid #f0d68c; outline-offset:4px; border-radius:12px;
+}
+.mech-cockpit-art {
+  appearance:none; display:block; margin:0; padding:0; border:0; border-radius:0;
+  background:transparent; color:inherit; font:inherit; cursor:pointer; overflow:visible;
+  left:21%; bottom:31%; width:33%;
+}
+.mech-cockpit-caption {
+  position:absolute; z-index:3; left:-18%; right:-18%; bottom:-11%;
+  display:block; color:#ead7a6; font:600 clamp(10px,2.4vw,14px)/1.2 system-ui,sans-serif;
+  text-align:center; text-shadow:0 2px 6px #000d;
+}
+.mech-detail-body.mech-info-view .mech-detail-back { top:15%; left:17%; right:auto; bottom:auto; }
+.mech-detail-body.mech-info-view .mech-pilot-small-portrait img { animation:none !important; }
+@media (max-width:720px) {
+  .mech-cockpit-art { left:20%; bottom:30%; width:34%; }
+  .mech-detail-body.mech-info-view .mech-detail-back { top:15%; left:16%; right:auto; bottom:auto; }
+}
+.mech-cockpit-art { pointer-events:auto; }
+/* Compact the back plaque and tuck it farther down/left inside the round panel. */
+.mech-detail-body.mech-info-view .mech-detail-back {
+  top:17%; left:14%; width:112px; height:37px; min-height:37px;
+  padding:0 12px 0 33px; font-size:10px;
+}
+@media (max-width:720px) {
+  .mech-detail-body.mech-info-view .mech-detail-back {
+    top:16%; left:13%; width:104px; height:35px; min-height:35px;
+  }
+}
+/* Pilot selection is offered only at mech level 5+, with an explicit accept step. */
+.mech-pilot-selection {
+  position:relative; display:flex; align-items:center; justify-content:center;
+  width:158px; min-height:88px; flex:none;
+}
+.mech-pilot-selection .mech-pilot-arrow {
+  position:absolute; z-index:2; top:50%; transform:translateY(-50%);
+  display:grid; place-items:center; width:31px; height:39px; padding:0;
+  border:1px solid #c6a95c; border-radius:10px 3px 10px 3px;
+  background:linear-gradient(145deg,#25483e,#102522); color:#efda9d;
+  box-shadow:0 3px 9px #0008,inset 0 0 0 1px #dfc87924;
+  font:28px/1 Georgia,serif; cursor:pointer;
+}
+.mech-pilot-selection .mech-pilot-arrow:hover { background:linear-gradient(145deg,#38624e,#18352e); }
+.mech-pilot-selection .mech-pilot-arrow.previous { left:0; }
+.mech-pilot-selection .mech-pilot-arrow.next { right:0; }
+.mech-detail-footer {
+  position:relative; display:flex; align-items:center; justify-content:center; gap:9px;
+  margin-top:5px; align-self:center; transform:translateX(-14px); flex:none;
+}
+.mech-detail-body .mech-detail-back {
+  position:relative; inset:auto; flex:none; width:106px; height:35px; min-height:35px;
+  padding:0 9px 0 31px; font-size:10px;
+}
+.mech-pilot-accept {
+  position:relative; min-width:106px; height:35px; padding:0 12px 0 27px;
+  border:1px solid #d3bb71; border-radius:7px 16px 7px 16px;
+  background:linear-gradient(135deg,#39745a,#164638 55%,#10362f);
+  color:#f2e2b7; box-shadow:0 3px 10px #0008,inset 0 0 0 2px #d9c37630;
+  font:700 10px/1 system-ui,sans-serif; letter-spacing:.03em; cursor:pointer;
+}
+.mech-pilot-accept::before { content:'✓'; position:absolute; left:10px; color:#b8e3a0; font-size:14px; }
+.mech-pilot-accept:hover { filter:brightness(1.16); }
+@media (max-width:720px) {
+  .mech-pilot-selection { width:148px; min-height:82px; }
+  .mech-pilot-selection .mech-pilot-small-portrait { width:74px; height:74px; flex-basis:74px; }
+  .mech-detail-footer { gap:6px; transform:translateX(-10px); }
+  .mech-detail-body .mech-detail-back { width:96px; height:33px; min-height:33px; }
+  .mech-pilot-accept { min-width:96px; height:33px; }
+}
+/* Keep the back plaque in the pilot-detail footer instead of pinning it to the circle edge. */
+.mech-detail-body.mech-info-view .mech-detail-footer .mech-detail-back {
+  position:relative; inset:auto; width:106px; height:35px; min-height:35px;
+}
+@media (max-width:720px) {
+  .mech-detail-body.mech-info-view .mech-detail-footer .mech-detail-back {
+    width:96px; height:33px; min-height:33px;
+  }
+}
+/* Generated button art: carved brass arrow medallions and a teal-gold accept plaque. */
+.mech-pilot-selection .mech-pilot-arrow {
+  width:34px; height:38px; border:0; border-radius:0; padding:0;
+  background:url("miniapp_preview/assets/pilot_arrow_button.webp") center / contain no-repeat;
+  box-shadow:none; color:transparent; font-size:0;
+}
+.mech-pilot-selection .mech-pilot-arrow.next { transform:translateY(-50%) scaleX(-1); }
+.mech-pilot-selection .mech-pilot-arrow.previous { transform:translateY(-50%); }
+.mech-pilot-selection .mech-pilot-arrow:hover { background:url("miniapp_preview/assets/pilot_arrow_button.webp") center / contain no-repeat; filter:brightness(1.15); }
+.mech-pilot-selection .mech-pilot-arrow.next:hover { transform:translateY(-50%) scaleX(-1); }
+.mech-pilot-accept {
+  min-width:112px; border:0; border-radius:0; padding:0 10px 0 27px;
+  background:url("miniapp_preview/assets/pilot_accept_button.webp") center / 100% 100% no-repeat;
+  color:#f3e5bd; text-shadow:0 1px 4px #001b18;
+}
+.mech-pilot-accept::before { content:none; }
+.mech-pilot-accept:hover { filter:brightness(1.15); }
+@media (max-width:720px) { .mech-pilot-accept { min-width:102px; } }
+/* Two balanced artwork zones, vertically centered within the round mech card. */
+.mech-garage-hero {
+  top:50%; left:53%; width:44%; height:74%; transform:translateY(-50%);
+  align-items:center; justify-content:center; gap:0;
+}
+.mech-garage-hero .mech-detail-portrait { width:min(220px,42vw); }
+.mech-garage-hero h3 { margin-top:-2px; }
+.mech-cockpit-art {
+  left:5%; top:48%; bottom:auto; width:42%; transform:translateY(-50%);
+}
+.mech-cockpit-head { z-index:2; }
+.mech-cockpit-pilot { z-index:1; left:31%; top:31%; width:42%; height:45%; }
+.mech-cockpit-caption { bottom:-7%; }
+@media (max-width:720px) {
+  .mech-garage-hero { top:50%; left:53%; width:44%; height:74%; }
+  .mech-garage-hero .mech-detail-portrait { width:min(190px,42vw); }
+  .mech-cockpit-art { left:4%; top:48%; bottom:auto; width:43%; }
+  .mech-cockpit-pilot { left:31%; top:31%; width:42%; height:45%; }
+}
+/* Align the entire cockpit artwork (including its hover) to the circle's vertical center. */
+.mech-cockpit-art {
+  top:50%; transform:translateY(-50%); bottom:auto;
+  animation:cockpit-hover-centered 5.4s ease-in-out infinite;
+}
+@keyframes cockpit-hover-centered {
+  0%,100% { transform:translateY(-50%); }
+  50% { transform:translateY(calc(-50% - 4px)); }
+}
+/* The chosen seated pilot must sit in front of the opaque illustrated interior, inside its aperture. */
+.mech-cockpit-head { z-index:2; }
+.mech-cockpit-pilot {
+  z-index:3; left:29%; top:29%; width:44%; height:48%;
+  clip-path:polygon(5% 0,92% 0,100% 55%,88% 82%,72% 100%,18% 92%,0 70%,0 22%);
+  object-fit:contain;
+}
+@media (max-width:720px) {
+  .mech-cockpit-art { top:50%; transform:translateY(-50%); }
+  .mech-cockpit-pilot { left:29%; top:29%; width:44%; height:48%; }
+}
+@media (prefers-reduced-motion:reduce) { .mech-cockpit-art { animation:none; transform:translateY(-50%); } }
+/* Remove browser button-face/rectangular shadow from the transparent cockpit artwork. */
+.mech-detail-body.mech-garage-home .mech-cockpit-art {
+  appearance:none; -webkit-appearance:none; background:transparent !important;
+  background-color:transparent !important; box-shadow:none !important; border:0 !important;
+  filter:none !important; outline:none;
+}
+.mech-cockpit-head { filter:drop-shadow(0 8px 10px #0009); }
+/* Scale the seated figure to read clearly through the cockpit opening. */
+.mech-cockpit-pilot {
+  left:23%; top:23%; width:56%; height:60%;
+  clip-path:polygon(7% 0,93% 0,100% 48%,94% 78%,78% 100%,20% 94%,4% 72%,0 24%);
+}
+@media (max-width:720px) {
+  .mech-cockpit-pilot { left:23%; top:23%; width:56%; height:60%; }
+}
+/* Seat the figure into the actual chair aperture: align its head with the headrest and hide the leg spill behind the cockpit lip. */
+.mech-cockpit-pilot {
+  left:35%; top:23%; width:56%; height:60%;
+  clip-path:polygon(8% 16%,82% 16%,90% 27%,88% 58%,78% 68%,19% 68%,8% 58%,6% 29%);
+  object-fit:contain; filter:drop-shadow(0 1px 3px #0009);
+}
+.mech-cockpit-head {
+  mask-image:linear-gradient(to bottom,#000 0%,#000 76%,#000b 84%,transparent 94%);
+  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 76%,#000b 84%,transparent 94%);
+}
+@media (max-width:720px) {
+  .mech-cockpit-pilot { left:35%; top:23%; width:56%; height:60%; }
+}
+/* Keep the pilot's helmet/face fully inside the cockpit viewport instead of under the roof rim. */
+.mech-cockpit-pilot {
+  left:37%; top:27%; width:50%; height:54%;
+  clip-path:polygon(8% 7%,82% 7%,90% 22%,88% 58%,78% 71%,19% 71%,8% 60%,6% 24%);
+}
+@media (max-width:720px) {
+  .mech-cockpit-pilot { left:37%; top:27%; width:50%; height:54%; }
+}
+/* Keep the cockpit clean: the selected pilot is named below the cabin, never composited into its artwork. */
+.mech-cockpit-pilot { display:none !important; }
+.mech-cockpit-head { mask-image:none !important; -webkit-mask-image:none !important; }
+.mech-detail-body.mech-garage-home .mech-cockpit-art {
+  background:transparent !important; background-color:transparent !important;
+  border:0 !important; box-shadow:none !important; filter:none !important;
+}
+/* Clean, isolated Ranger cockpit cutout; no keyed floor/shadow remnants. */
+.mech-cockpit-head { mask-image:none !important; -webkit-mask-image:none !important; }
+.mech-garage-hero { top:47%; left:50%; }
+.mech-cockpit-art { left:9%; top:47%; }
+@media (max-width:720px) {
+  .mech-garage-hero { top:47%; left:50%; }
+  .mech-cockpit-art { left:8%; top:47%; }
+}

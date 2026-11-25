@@ -19,9 +19,18 @@ COIN_TAKEN = 'assets/cointaken.mp3'
 COIN_DROP = 'assets/coinsdrop.mp3'
 PHYLACTERY_ART = 'assets/lich_phylactery.png'
 TROPHY_ART = 'assets/raid_trophy.png'
+PILOT_ASSETS = tuple(f'assets/pilots/{slug}_{kind}.webp'
+                     for slug in ('mercenary', 'biochemist', 'breacher', 'quartermaster', 'survivalist',
+                                  'assault', 'armorer', 'interceptor', 'thermite', 'tactician')
+                     for kind in ('portrait', 'seated'))
+MECH_HEAD_ASSETS = tuple(f'assets/mech_head_{mech}.webp'
+                         for mech in ('adventurer', 'barbarian', 'mage', 'ranger', 'rogue',
+                                      'priest', 'paladin', 'raider', 'warrior', 'assassin'))
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
-           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, TROPHY_ART, *SCENES.values())
+           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, TROPHY_ART,
+           'assets/back_button_ornament.png', 'assets/pilot_arrow_button.webp',
+           'assets/pilot_accept_button.webp', *PILOT_ASSETS, *MECH_HEAD_ASSETS, *SCENES.values())
 
 
 def main():
@@ -72,8 +81,23 @@ def main():
     js = js.replace("'assets/raid_trophy.png'", "'data:image/png;base64," + trophy_art + "'")
     art_js = ('window.RAID_MONSTER_CATALOG = ' + json.dumps(catalog, separators=(',', ':')) + ';\n'
               + 'window.RAID_MONSTER_ART = ' + json.dumps(art['portraits'], separators=(',', ':')) + ';\n')
+    # Explicit visual-test switch: preview with every mech at least level 5 to inspect
+    # the pilot carousel. It is inert unless ?pilot-demo=1 is requested.
+    pilot_demo = """(function(){
+      if (new URLSearchParams(location.search).get('pilot-demo') !== '1') return;
+      try {
+        var ids = ['adventurer','barbarian','mage','ranger','rogue','priest','paladin','raider','warrior','assassin'];
+        var telegram = new URLSearchParams(location.search).get('telegram') === '1';
+        var uid = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user && window.Telegram.WebApp.initDataUnsafe.user.id;
+        var prefix = telegram && Number.isSafeInteger(uid) ? 'raid:magitech:tg:' + uid + ':' : 'raid:magitech:';
+        var key = prefix + 'classLevels';
+        var old = JSON.parse(localStorage.getItem(key) || '{}');
+        ids.forEach(function(id){ old[id] = Math.max(5, Number(old[id]) || 0); });
+        localStorage.setItem(key, JSON.stringify(old));
+      } catch (error) { console.warn('Pilot demo levels could not be prepared', error); }
+    })();\n"""
     html = html.replace('__RAID_BUILD__', build_id)
-    html = html.replace('/*__STYLE__*/', css).replace('/*__SCRIPT__*/', art_js + js.replace('</', '<\\/'))
+    html = html.replace('/*__STYLE__*/', css).replace('/*__SCRIPT__*/', art_js + pilot_demo + js.replace('</', '<\\/'))
     target = ROOT / 'lunapark-raid-magitech.html'
     target.write_text(html, encoding='utf-8')
     print(f'Built {target} ({target.stat().st_size} bytes, build {build_id})')

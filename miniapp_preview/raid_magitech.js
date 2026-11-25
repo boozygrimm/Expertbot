@@ -649,55 +649,55 @@
   // ============================================================
   const CLASSES = [
     { id: 'adventurer', native: 0, name: 'Авантюрист', icon: '❔', race: 'Human', uniqueSkill: 'teleport', pool: ['steal', 'freeze', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour'],
-      perk: '—', flaw: '—', raceName: 'Человек',
+      perk: '—', flaw: '—', raceName: 'Наёмник',
       perkDesc: 'нет пассивов', flawDesc: 'нет изъянов',
       clsDesc: 'Стартовый мех без пассива и изъяна; получает все открытые навыки',
       uniqueSkillDesc: 'Нет фиксированного: случайный выбор из всех открытых навыков' },
     { id: 'barbarian', native: 4, name: 'Варвар', icon: '🪓', race: 'Orc', uniqueSkill: 'berserk', pool: ['berserk', 'repair', 'counter', 'shatter', 'teleport', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
-      perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Орк',
+      perk: 'Strong', flaw: 'Reckless', perkName: 'Сила', flawName: 'Безрассудство', raceName: 'Штурмовик',
       perkDesc: '+1 базового урона', flawDesc: '-10% шанс бонусных щитов',
-      clsDesc: 'пассив: Сила · изъян: Безрассудство · раса: Орк (оглушение 10%)',
+      clsDesc: 'пассив: Сила · изъян: Безрассудство · пилот: Штурмовик (оглушение 10%)',
       uniqueSkillDesc: 'Берсерк (14): убийство черепа даёт HP равный его атаке' },
     { id: 'mage', native: 5, name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
-      perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Изменник',
+      perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Тактик',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
-      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · раса: Изменник (менятся)',
+      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · пилот: Тактик (зарядка навыка)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка из 4+ узлов собирает интерьер, кроме особых и боссов' },
     { id: 'ranger', native: 1, name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
-      perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Эльф',
+      perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Биохимик',
       perkDesc: '5% мечей выпадают стрелками (стрелять на 1 клетку)', flawDesc: '-1 броня',
-      clsDesc: 'пассив: Ловкость · изъян: Тощий · раса: Эльф (медленный яд)',
+      clsDesc: 'пассив: Ловкость · изъян: Тощий · пилот: Биохимик (медленный яд)',
       uniqueSkillDesc: 'Воллей (15): все мечи → стрелы (стрелы стреляют на 1 клетку)' },
     { id: 'rogue', native: 6, name: 'Вор', icon: '🗡', race: 'Sauren', uniqueSkill: 'greed', pool: ['greed', 'steal', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostgold', 'boosthealth', 'trap', 'biggame', 'chamber', 'magicsword'],
-      perk: 'Frugal', flaw: 'Clumsy', perkName: 'Бережливость', flawName: 'Неловкость', raceName: 'Саурен',
+      perk: 'Frugal', flaw: 'Clumsy', perkName: 'Бережливость', flawName: 'Неловкость', raceName: 'Снабженец',
       perkDesc: '+10% шанс бонусных монет', flawDesc: '3% щитов выпадают сломанными (дают 0)',
-      clsDesc: 'пассив: Бережливость · изъян: Неловкость · раса: Саурен (50% шанс розыгрыша свитка)',
+      clsDesc: 'пассив: Бережливость · изъян: Неловкость · пилот: Снабженец (50% шанс розыгрыша свитка)',
       uniqueSkillDesc: 'Жадность (25): убивает всех черепов рядом с монеткой' },
     { id: 'paladin', native: 7, name: 'Паладин', icon: '🛡', race: 'Dragonkin', uniqueSkill: 'laststand', pool: ['laststand', 'heal', 'repair', 'counter', 'shatter', 'explosive', 'elixir', 'slash', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
-      perk: 'Intimidating', flaw: 'Zealous', perkName: 'Устрашающий', flawName: 'Рьяный', raceName: 'Драконкин',
+      perk: 'Intimidating', flaw: 'Zealous', perkName: 'Устрашающий', flawName: 'Рьяный', raceName: 'Термит',
       perkDesc: 'вдвое реже срабатывает замена особого на смертного врага', flawDesc: 'черепа-монстры появляются на 1 ход раньше',
-      clsDesc: 'пассив: Устрашающий · изъян: Рьяный · раса: Драконкин (огненное дыхание)',
+      clsDesc: 'пассив: Устрашающий · изъян: Рьяный · пилот: Термит (поджог при применении навыка)',
       uniqueSkillDesc: 'Последний рубеж (35): полное лечение HP, если герой погибнет в этот ход' },
     { id: 'priest', native: 3, name: 'Жрец', icon: '✨', race: 'Faun', uniqueSkill: 'wish', pool: ['wish', 'freeze', 'heal', 'shatter', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'dazzle', 'boosthealth', 'boostarmour', 'banish', 'exorcise', 'magicsword', 'earthquake', 'fireball', 'mana'],
-      perk: 'Faithful', flaw: 'Cautious', perkName: 'Праведный', flawName: 'Осторожный', raceName: 'Фавн',
+      perk: 'Faithful', flaw: 'Cautious', perkName: 'Праведный', flawName: 'Осторожный', raceName: 'Выживальщик',
       perkDesc: 'улучшение регенерации даёт +2 вместо +1', flawDesc: '-20% пробития брони',
-      clsDesc: 'пассив: Праведный · изъян: Осторожный · раса: Фавн (возрождение)',
+      clsDesc: 'пассив: Праведный · изъян: Осторожный · пилот: Выживальщик (минимум HP при повышении уровня)',
       uniqueSkillDesc: 'Желание — одноразовый навык: собрать все клетки доски' },
     { id: 'raider', native: 2, name: 'Разбойник', icon: '🏴', race: 'Halfling', uniqueSkill: 'masochism', pool: ['masochism', 'heal', 'repair', 'counter', 'goldtouch', 'explosive', 'elixir', 'slash', 'treasure', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth', 'boostarmour', 'exorcise', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour'],
-      perk: 'Daring', flaw: 'Cocky', perkName: 'Дерзкий', flawName: 'Наглый', raceName: 'Халфлинг',
+      perk: 'Daring', flaw: 'Cocky', perkName: 'Дерзкий', flawName: 'Наглый', raceName: 'Бронник',
       perkDesc: '100% бонус с десятой клетки каждого типа', flawDesc: '3 узла: ресурсы убираются без награды; убийства дают опыт',
-      clsDesc: 'пассив: Дерзкий · изъян: Наглый · раса: Халфлинг (храбрость)',
+      clsDesc: 'пассив: Дерзкий · изъян: Наглый · пилот: Бронник (улучшение брони за серию убийств)',
       uniqueSkillDesc: 'Мазохизм (15): превращает все монетки в черепов' },
     { id: 'warrior', native: 8, name: 'Воин', icon: '⚔️', race: 'Dwarf', uniqueSkill: 'charge', pool: ['charge', 'heal', 'repair', 'counter', 'shatter', 'goldtouch', 'teleport', 'enchant', 'slash', 'treasure', 'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostarmour', 'banish', 'trap', 'biggame', 'magicsword', 'explosivearmour'],
-      perk: 'Tough', flaw: 'Noisy', perkName: 'Прочный', flawName: 'Громкий', raceName: 'Дворф',
+      perk: 'Tough', flaw: 'Noisy', perkName: 'Прочный', flawName: 'Громкий', raceName: 'Проломщик',
       perkDesc: '+10 макс. HP', flawDesc: 'черепа-монстры +5% HP',
-      clsDesc: 'пассив: Прочный · изъян: Громкий · раса: Дворф (верховая атака)',
+      clsDesc: 'пассив: Прочный · изъян: Громкий · пилот: Проломщик (вертикальный апперкот)',
       uniqueSkillDesc: 'Рывок (18): собирать все клетки по краю поля' },
     { id: 'assassin', native: 9, name: 'Ассасин', icon: '🗡', race: 'Werewolf', uniqueSkill: 'haste', pool: ['haste', 'steal', 'freeze', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'treasure', 'disarm', 'dazzle', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'explosivearmour', 'fireball'],
-      perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Вервольф',
+      perk: 'Cunning', flaw: 'Sneaky', perkName: 'Хитрый', flawName: 'Незаметный', raceName: 'Перехватчик',
       perkDesc: '-1 к кулдауну 4-го навыка', flawDesc: '+1 HP у обычных черепов',
       raceDesc: 'Калечение: в конце хода собирает всех обычных черепов с HP ниже их собственной защиты; даёт опыт, не действует на особых и боссов.',
-      clsDesc: 'пассив: Хитрый · изъян: Незаметный · раса: Вервольф (Калечение)',
+      clsDesc: 'пассив: Хитрый · изъян: Незаметный · пилот: Перехватчик (автосбор ослабленных обычных врагов)',
       uniqueSkillDesc: 'Спешка (16): ставит на поле цепную клетку — она подходит к любому типу' },
   ];
   // Mortal enemy per race (original GetMortalEnemyType table).
@@ -790,17 +790,26 @@
   const CLASS_CONFIG_KEY = 'raid:classConfigs';
   const CLASS_PAIR_LEVELS = [1, 3, 7, 9];
   const RACE_INFO = {
-    Human: { name: 'Человек', desc: 'Без расового бонуса и особого смертного врага.' },
-    Elf: { name: 'Эльф', desc: 'Яд на враге ослабляет его атаку. Смертный враг — Отравленный: пока он на поле, зелья не снимают яд героя.' },
-    Dwarf: { name: 'Дворф', desc: 'Удар снизу вверх по вертикальной цепочке усиливается. Смертный враг — Хаотический: блокирует другие прямые удары цепочкой.' },
-    Sauren: { name: 'Саурен', desc: 'Вдвое выше шанс розыгрыша свитка в магазине. Смертный враг — Вор: кража золота также ранит героя.' },
-    Faun: { name: 'Фавн', desc: 'При повышении уровня поднимает HP хотя бы до 25% максимума. Смертный враг — Убийца: может убрать клетку под собой и спуститься.' },
-    Orc: { name: 'Орк', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
-    Halfling: { name: 'Халфлинг', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
-    Werewolf: { name: 'Вервольф', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
-    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
-    Changeling: { name: 'Изменник', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
+    Human: { name: 'Наёмник', desc: 'Базовый профиль без отдельного пассива пилота.' },
+    Elf: { name: 'Биохимик', desc: 'Яд на враге ослабляет его атаку. Смертный враг — Отравленный: пока он на поле, зелья не снимают яд героя.' },
+    Dwarf: { name: 'Проломщик', desc: 'Удар снизу вверх по вертикальной цепочке усиливается. Смертный враг — Хаотический: блокирует другие прямые удары цепочкой.' },
+    Sauren: { name: 'Снабженец', desc: 'Вдвое выше шанс розыгрыша свитка в магазине. Смертный враг — Вор: кража золота также ранит героя.' },
+    Faun: { name: 'Выживальщик', desc: 'При повышении уровня поднимает HP хотя бы до 25% максимума. Смертный враг — Убийца: может убрать клетку под собой и спуститься.' },
+    Orc: { name: 'Штурмовик', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
+    Halfling: { name: 'Бронник', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
+    Werewolf: { name: 'Перехватчик', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
+    Dragonkin: { name: 'Термит', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
+    Changeling: { name: 'Тактик', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
   };
+  // Display-only pilot professions; legacy race IDs and all linked bonuses/nemeses remain stable.
+  const PILOT_ART_BY_RACE = Object.freeze({
+    Human: 'mercenary', Elf: 'biochemist', Dwarf: 'breacher', Sauren: 'quartermaster',
+    Faun: 'survivalist', Orc: 'assault', Halfling: 'armorer', Werewolf: 'interceptor',
+    Dragonkin: 'thermite', Changeling: 'tactician',
+  });
+  const pilotArtSlug = race => PILOT_ART_BY_RACE[race] || 'mercenary';
+  const pilotArtPath = (race, kind = 'portrait') => `miniapp_preview/assets/pilots/${pilotArtSlug(race)}_${kind}.webp`;
+  const CLASS_HEAD_ART = Object.freeze(Object.fromEntries(CLASSES.map(cls => [cls.id, `miniapp_preview/assets/mech_head_${cls.id}.webp`])));
   const CLASS_TRAITS = {
     perks: Object.fromEntries([
       ['Unexpected', { name: 'Неожиданность', desc: 'Первые 5 ходов враги пропускают общий залп' }],
@@ -6446,6 +6455,8 @@
     };
     for (const cls of CLASSES) {
       const unlocked = isClassUnlocked(cls.id), config = getClassConfig(cls.id);
+      // A mech always has its native pilot unless a valid alternate pilot is explicitly saved.
+      let pilotRace = RACE_INFO[config.race] ? config.race : cls.race;
       const row = document.createElement('div'); row.className = 'picker-class';
       const btn = document.createElement('button');
       btn.type = 'button'; btn.dataset.classId = cls.id;
@@ -6472,22 +6483,81 @@
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
         const heading = document.createElement('h3'); heading.textContent = cls.name;
-        const hero = document.createElement('div'); hero.className = 'mech-garage-hero';
+        const hero = document.createElement('div'); hero.className = 'mech-garage-hero'; hero.classList.add('mech-garage-mech-button');
+        hero.setAttribute('role', 'button'); hero.tabIndex = 0; hero.setAttribute('aria-label', `О мехе: ${cls.name}`);
         hero.append(portrait, heading);
+        const cockpit = document.createElement('div'); cockpit.className = 'mech-cockpit-art';
+        cockpit.setAttribute('role', 'button'); cockpit.tabIndex = 0;
+        cockpit.setAttribute('aria-label', `Пилот: ${RACE_INFO[pilotRace].name}`);
+        cockpit.dataset.mechId = cls.id; cockpit.dataset.pilotRace = pilotRace;
+        const headArt = document.createElement('img'); headArt.className = 'mech-cockpit-head';
+        const artRevision = document.querySelector('meta[name="raid-build"]')?.content || 'dev';
+        headArt.src = `${CLASS_HEAD_ART[cls.id] || CLASS_HEAD_ART.adventurer}?v=${encodeURIComponent(artRevision)}`;
+        headArt.alt = ''; headArt.draggable = false;
+        const cockpitCaption = document.createElement('span'); cockpitCaption.className = 'mech-cockpit-caption';
+        cockpitCaption.textContent = `Пилот: ${RACE_INFO[pilotRace].name}`;
+        cockpit.append(headArt, cockpitCaption);
         const actions = document.createElement('div'); actions.className = 'mech-detail-actions mech-garage-side-actions';
         const detailsView = (kind) => {
           restoreDetailControls(); detailBody.classList.remove('mech-garage-home'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
-          const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = '‹ Назад'; back.addEventListener('click', openGarage);
-          const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? 'О пилоте' : 'О мехе';
-          detailBody.append(back, portrait.cloneNode(true), tabTitle);
+          const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = 'Назад'; back.addEventListener('click', openGarage);
+          const footer = document.createElement('div'); footer.className = 'mech-detail-footer';
+          const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? RACE_INFO[pilotRace].name : 'О мехе';
+          detailBody.append(tabTitle);
           if (kind === 'pilot') {
-            detailBody.append(line('Пилот · ', `${RACE_INFO[config.race].name} — ${RACE_INFO[config.race].desc}`));
-            detailBody.append(line('Склонность · ', 'Выбирается на этот рейд, начиная со 2-го уровня меха; бонус и штраф урона открываются на 3-м.'));
+            const selectablePilots = Object.keys(RACE_INFO).filter(isRaceUnlocked);
+            const canSelectPilot = classRules(cls.id).canChangeRace && selectablePilots.length > 1;
+            let pendingPilotRace = pilotRace;
+            const detailPortrait = document.createElement('div'); detailPortrait.className = 'mech-detail-portrait mech-pilot-small-portrait';
+            const pilotImage = document.createElement('img'); pilotImage.src = pilotArtPath(pendingPilotRace); pilotImage.alt = RACE_INFO[pendingPilotRace].name; pilotImage.draggable = false;
+            detailPortrait.appendChild(pilotImage);
+            const pilotDescription = line('Пилот · ', `${RACE_INFO[pendingPilotRace].name} — ${RACE_INFO[pendingPilotRace].desc}`);
+            if (canSelectPilot) {
+              const selection = document.createElement('div'); selection.className = 'mech-pilot-selection';
+              const arrow = (direction, glyph, label) => {
+                const button = document.createElement('button'); button.type = 'button'; button.className = `mech-pilot-arrow ${direction}`;
+                button.textContent = glyph; button.setAttribute('aria-label', label); selection.appendChild(button); return button;
+              };
+              const previous = arrow('previous', '', 'Предыдущий пилот');
+              selection.appendChild(detailPortrait);
+              const next = arrow('next', '', 'Следующий пилот');
+              detailBody.appendChild(selection);
+              const refreshPilot = () => {
+                pilotImage.src = pilotArtPath(pendingPilotRace); pilotImage.alt = RACE_INFO[pendingPilotRace].name;
+                pilotDescription.lastChild.textContent = `${RACE_INFO[pendingPilotRace].name} — ${RACE_INFO[pendingPilotRace].desc}`;
+                tabTitle.textContent = RACE_INFO[pendingPilotRace].name;
+              };
+              const stepPilot = delta => {
+                const index = selectablePilots.indexOf(pendingPilotRace);
+                pendingPilotRace = selectablePilots[(index + delta + selectablePilots.length) % selectablePilots.length];
+                refreshPilot();
+              };
+              previous.addEventListener('click', () => stepPilot(-1));
+              next.addEventListener('click', () => stepPilot(1));
+              const accept = document.createElement('button'); accept.type = 'button'; accept.className = 'mech-pilot-accept';
+              accept.textContent = 'Принять'; accept.addEventListener('click', () => {
+                if (pendingPilotRace === pilotRace) { openGarage(); return; }
+                if (!saveClassConfig(cls.id, { ...config, race: pendingPilotRace })) {
+                  accept.textContent = 'Ошибка сохранения'; accept.disabled = true; return;
+                }
+                pilotRace = config.race = pendingPilotRace;
+                cockpit.dataset.pilotRace = pilotRace;
+                cockpit.setAttribute('aria-label', `Пилот: ${RACE_INFO[pilotRace].name}`);
+                cockpitCaption.textContent = `Пилот: ${RACE_INFO[pilotRace].name}`;
+                openGarage();
+              });
+              footer.append(back, accept);
+            } else {
+              detailBody.appendChild(detailPortrait);
+              footer.appendChild(back);
+            }
+            detailBody.append(pilotDescription, line('Склонность · ', 'Выбирается на этот рейд, начиная со 2-го уровня меха; бонус и штраф урона открываются на 3-м.'));
             const affinity = row.querySelector('.picker-affinity-field');
             const affinityNote = row.querySelector('.picker-affinity-note');
             if (affinity) detailBody.appendChild(affinity);
             if (affinityNote) detailBody.appendChild(affinityNote);
           } else {
+            detailBody.appendChild(portrait.cloneNode(true));
             detailBody.append(line('Специализация · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
               line('Модуль · ', cls.uniqueSkillDesc),
               line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
@@ -6495,12 +6565,26 @@
               line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
             const configButton = row.querySelector('.class-config-btn');
             if (configButton) detailBody.appendChild(configButton);
+            footer.appendChild(back);
           }
+          detailBody.appendChild(footer);
         };
+        hero.addEventListener('click', () => detailsView('mech'));
+        hero.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); detailsView('mech'); }
+        });
+        cockpit.addEventListener('click', () => detailsView('pilot'));
+        cockpit.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); detailsView('pilot'); }
+        });
         for (const [kind, text, label] of [['pilot', 'Пилот', 'О пилоте'], ['mech', 'Мех', 'О мехе']]) {
           const control = document.createElement('div'); control.className = 'mech-garage-action';
           const action = document.createElement('button'); action.type = 'button'; action.className = `mech-detail-topic mech-garage-icon-button ${kind}`;
           action.setAttribute('aria-label', label);
+          if (kind === 'pilot') {
+            const pilotIcon = document.createElement('img'); pilotIcon.className = 'mech-garage-pilot-icon';
+            pilotIcon.src = pilotArtPath(pilotRace); pilotIcon.alt = ''; pilotIcon.draggable = false; action.appendChild(pilotIcon);
+          }
           if (kind === 'mech') {
             const art = document.createElement('img'); art.className = 'mech-garage-icon-art';
             art.src = `miniapp_preview/assets/mech_${cls.id}.png`; art.alt = ''; art.draggable = false; action.appendChild(art);
@@ -6523,7 +6607,7 @@
           applyRaidRegion(RAID_REGION);
           el('region-emblem-launch')?.focus();
         });
-        detailBody.append(hero, actions, go);
+        detailBody.append(hero, cockpit, actions, go);
         detail.hidden = false; go.focus();
       };
       // Selecting any mech opens its circular garage card; launch is a deliberate second action.
