@@ -1354,31 +1354,34 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   background: repeating-linear-gradient(to bottom,#ffe192 0 1px,#a16910 1px 2px,#d5a438 2px 3px);
   transform: rotateY(90deg);
 }
-.raid-orb[data-type="sword"] .weapon-texture {
-  transform-origin: 50% 54%; backface-visibility: hidden;
-  animation: weapon-idle-sway 7.2s ease-in-out infinite; animation-delay: var(--orb-phase,0ms);
+.raid-orb[data-type="sword"] .weapon-art {
+  position:absolute; inset:0; display:block; transform-origin:50% 54%; backface-visibility:hidden;
+  animation:weapon-idle-sway 7.2s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+}
+.raid-orb[data-type="sword"] .weapon-art > .weapon-texture {
+  position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
 }
 /* A second copy of the transparent weapon art keeps the glint bound to the
    exact sprite silhouette; a narrow diagonal clipping window sweeps over it. */
 .raid-orb[data-type="sword"] .weapon-glint {
   position:absolute; z-index:4; inset:0; width:100%; height:100%; object-fit:contain;
   pointer-events:none; opacity:0; mix-blend-mode:screen;
-  filter:brightness(1.85) saturate(.55) drop-shadow(0 0 1px #b9edff80);
+  filter:brightness(2.25) saturate(.72) drop-shadow(0 0 2px #e8f8ffbf);
   clip-path:polygon(0 0,0 0,0 100%,0 100%);
-  animation:weapon-natural-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+  animation:weapon-natural-glint 5.2s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 /* A hammer head is broad and blunt: give its metal a compact moving sheen,
    not the sword-like blade slash. */
 .raid-orb[data-type="sword"] .weapon-glint[data-weapon-art="techno-hammer-v2"] {
-  filter:brightness(1.5) saturate(.72) drop-shadow(0 0 2px #ffe1a080);
+  filter:brightness(2) saturate(.8) drop-shadow(0 0 3px #ffe1a0cc);
   animation-name:weapon-hammer-glint;
 }
 .weapon-tip-sparkle {
-  position:absolute; z-index:5; left:82%; top:13%; width:10%; aspect-ratio:1;
+  position:absolute; z-index:5; left:91%; top:1%; width:10%; aspect-ratio:1;
   opacity:0; pointer-events:none; border-radius:50%;
   background:radial-gradient(circle,#fff 0 8%,#fff4c9 18%,#ffe28a9c 34%,transparent 72%);
   filter:drop-shadow(0 0 2px #fff0b8);
-  animation:weapon-tip-twinkle 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+  animation:weapon-tip-twinkle 5.2s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 .weapon-tip-sparkle::before,.weapon-tip-sparkle::after {
   content:""; position:absolute; left:47%; top:0; width:6%; height:100%;
@@ -1386,13 +1389,15 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 }
 .weapon-tip-sparkle::after { transform:rotate(90deg); }
 /* Put the glint at the weapon's business end, not the sword point, for blunt or broad heads. */
-.weapon-glint[data-weapon-art="techno-hammer-v2"] ~ .weapon-tip-sparkle { left:82%; top:31%; width:11%; }
-.weapon-glint[data-weapon-art="techno-mace-v2"] ~ .weapon-tip-sparkle { left:80%; top:18%; width:11%; }
-.weapon-glint[data-weapon-art="techno-axe-v2"] ~ .weapon-tip-sparkle { left:84%; top:24%; width:11%; }
+.weapon-glint[data-weapon-art="techno-hammer-v2"] ~ .weapon-tip-sparkle { left:86%; top:14%; width:12%; }
+.weapon-glint[data-weapon-art="techno-mace-v2"] ~ .weapon-tip-sparkle { left:83%; top:8%; width:11%; }
+.weapon-glint[data-weapon-art="techno-axe-v2"] ~ .weapon-tip-sparkle { left:87%; top:4%; width:11%; }
 .weapon-impact-slash,.weapon-impact-echo { position:absolute; z-index:8; left:-35%; top:49%; width:170%; height:2px; border-radius:99px; opacity:0; pointer-events:none; background:linear-gradient(90deg,transparent 0%,#dffaff88 24%,#fff 50%,#c6f4ff 68%,transparent 100%); box-shadow:0 0 7px #8ee8ffb3; transform:rotate(-42deg) scaleX(.05); animation:weapon-impact-slash .23s cubic-bezier(.15,.75,.25,1) both; animation-delay:var(--burst-delay,0ms); }
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
 .raid-orb.frozen :is(.weapon-texture,.coin-3d) { animation-play-state: paused; }
-.raid-orb.frozen[data-type="sword"] .weapon-glint { animation-play-state: paused; }
+.raid-orb.frozen[data-type="sword"] .weapon-art,
+.raid-orb.frozen[data-type="sword"] .weapon-glint,
+.raid-orb.frozen[data-type="sword"] .weapon-tip-sparkle { animation-play-state: paused; }
 
 /* Air occupies the TOP two thirds. Water is a small translucent body below,
    with two gently travelling wave surfaces rather than a spinning liquid. */
@@ -1482,18 +1487,18 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 @keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
 @keyframes weapon-idle-sway { 0%,100% { transform: rotate(-1.3deg) translateY(0); } 50% { transform: rotate(1.3deg) translateY(-1.1%); } }
 @keyframes weapon-natural-glint {
-  0%,50%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
-  54% { opacity:.16; clip-path:polygon(28% 0,36% 0,0 58%,0 46%); }
-  60% { opacity:.38; clip-path:polygon(100% 0,100% 12%,12% 100%,0 100%); }
-  65% { opacity:.08; clip-path:polygon(100% 42%,100% 56%,56% 100%,42% 100%); }
-  69% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+  0%,48%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
+  51% { opacity:.3; clip-path:polygon(16% 0,25% 0,0 33%,0 20%); }
+  57% { opacity:.72; clip-path:polygon(77% 0,88% 0,20% 100%,8% 100%); }
+  62% { opacity:.28; clip-path:polygon(100% 25%,100% 40%,52% 100%,40% 100%); }
+  66% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
 }
 @keyframes weapon-hammer-glint {
-  0%,50%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
-  55% { opacity:.14; clip-path:polygon(50% 6%,60% 2%,80% 27%,71% 32%); }
-  61% { opacity:.38; clip-path:polygon(69% 17%,79% 13%,99% 38%,90% 43%); }
-  66% { opacity:.08; clip-path:polygon(72% 29%,82% 24%,96% 42%,88% 49%); }
-  70% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+  0%,48%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
+  51% { opacity:.3; clip-path:polygon(52% 5%,64% 2%,78% 18%,66% 22%); }
+  57% { opacity:.72; clip-path:polygon(72% 14%,84% 10%,100% 29%,88% 34%); }
+  62% { opacity:.28; clip-path:polygon(78% 25%,89% 20%,100% 38%,91% 43%); }
+  66% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
 }
 @keyframes weapon-tip-twinkle {
   0%,50%,100% { opacity:0; transform:scale(.25); }
