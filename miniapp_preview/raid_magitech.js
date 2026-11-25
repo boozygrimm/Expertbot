@@ -6391,8 +6391,15 @@
           }
         };
         for (const [kind, text, label] of [['pilot', 'Пилот', 'О пилоте'], ['mech', 'Мех', 'О мехе']]) {
-          const action = document.createElement('button'); action.type = 'button'; action.className = 'mech-detail-topic'; action.textContent = text;
-          action.setAttribute('aria-label', label); action.addEventListener('click', () => detailsView(kind)); actions.appendChild(action);
+          const control = document.createElement('div'); control.className = 'mech-garage-action';
+          const action = document.createElement('button'); action.type = 'button'; action.className = `mech-detail-topic mech-garage-icon-button ${kind}`;
+          action.setAttribute('aria-label', label);
+          if (kind === 'mech') {
+            const art = document.createElement('img'); art.className = 'mech-garage-icon-art';
+            art.src = `miniapp_preview/assets/mech_${cls.id}.png`; art.alt = ''; art.draggable = false; action.appendChild(art);
+          }
+          const caption = document.createElement('span'); caption.className = 'mech-garage-icon-label'; caption.textContent = text;
+          action.addEventListener('click', () => detailsView(kind)); control.append(action, caption); actions.appendChild(control);
         }
         const go = document.createElement('button'); go.type = 'button'; go.className = 'mech-go-button'; go.textContent = 'Поехали!';
         go.disabled = !isClassUnlocked(cls.id);
