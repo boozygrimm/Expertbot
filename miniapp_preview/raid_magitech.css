@@ -1367,6 +1367,28 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   clip-path:polygon(0 0,0 0,0 100%,0 100%);
   animation:weapon-natural-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
+/* A hammer head is broad and blunt: give its metal a compact moving sheen,
+   not the sword-like blade slash. */
+.raid-orb[data-type="sword"] .weapon-glint[data-weapon-art="techno-hammer-v2"] {
+  filter:brightness(1.5) saturate(.72) drop-shadow(0 0 2px #ffe1a080);
+  animation-name:weapon-hammer-glint;
+}
+.weapon-tip-sparkle {
+  position:absolute; z-index:5; left:82%; top:13%; width:10%; aspect-ratio:1;
+  opacity:0; pointer-events:none; border-radius:50%;
+  background:radial-gradient(circle,#fff 0 8%,#fff4c9 18%,#ffe28a9c 34%,transparent 72%);
+  filter:drop-shadow(0 0 2px #fff0b8);
+  animation:weapon-tip-twinkle 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+}
+.weapon-tip-sparkle::before,.weapon-tip-sparkle::after {
+  content:""; position:absolute; left:47%; top:0; width:6%; height:100%;
+  background:linear-gradient(transparent,#fff 46% 54%,transparent);
+}
+.weapon-tip-sparkle::after { transform:rotate(90deg); }
+/* Put the glint at the weapon's business end, not the sword point, for blunt or broad heads. */
+.weapon-glint[data-weapon-art="techno-hammer-v2"] ~ .weapon-tip-sparkle { left:82%; top:31%; width:11%; }
+.weapon-glint[data-weapon-art="techno-mace-v2"] ~ .weapon-tip-sparkle { left:80%; top:18%; width:11%; }
+.weapon-glint[data-weapon-art="techno-axe-v2"] ~ .weapon-tip-sparkle { left:84%; top:24%; width:11%; }
 .weapon-impact-slash,.weapon-impact-echo { position:absolute; z-index:8; left:-35%; top:49%; width:170%; height:2px; border-radius:99px; opacity:0; pointer-events:none; background:linear-gradient(90deg,transparent 0%,#dffaff88 24%,#fff 50%,#c6f4ff 68%,transparent 100%); box-shadow:0 0 7px #8ee8ffb3; transform:rotate(-42deg) scaleX(.05); animation:weapon-impact-slash .23s cubic-bezier(.15,.75,.25,1) both; animation-delay:var(--burst-delay,0ms); }
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
 .raid-orb.frozen :is(.weapon-texture,.coin-3d) { animation-play-state: paused; }
@@ -1465,6 +1487,19 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   60% { opacity:.38; clip-path:polygon(100% 0,100% 12%,12% 100%,0 100%); }
   65% { opacity:.08; clip-path:polygon(100% 42%,100% 56%,56% 100%,42% 100%); }
   69% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+}
+@keyframes weapon-hammer-glint {
+  0%,50%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
+  55% { opacity:.14; clip-path:polygon(50% 6%,60% 2%,80% 27%,71% 32%); }
+  61% { opacity:.38; clip-path:polygon(69% 17%,79% 13%,99% 38%,90% 43%); }
+  66% { opacity:.08; clip-path:polygon(72% 29%,82% 24%,96% 42%,88% 49%); }
+  70% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+}
+@keyframes weapon-tip-twinkle {
+  0%,50%,100% { opacity:0; transform:scale(.25); }
+  56% { opacity:.95; transform:scale(1.1); }
+  62% { opacity:.32; transform:scale(.72); }
+  67% { opacity:0; transform:scale(.2); }
 }
 @keyframes weapon-impact-slash { 0% { opacity:0; transform:rotate(-42deg) scaleX(.06) translateX(-8%); } 18% { opacity:.95; } 68% { opacity:.75; transform:rotate(-42deg) scaleX(1) translateX(1%); } 100% { opacity:0; transform:rotate(-42deg) scaleX(1.08) translateX(5%); } }
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
