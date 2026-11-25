@@ -5979,6 +5979,7 @@ test('release notice shows one short current item and keeps older notes collapse
   assert.match(current, /Тактильный отклик в бою/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /Новый кубок-трофей/);
+  assert.match(archive, /Кабины мехов и выбор пилота/);
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
   assert.doesNotMatch(archive, /<details[^>]*open/);
