@@ -16,7 +16,7 @@
 <audio id="raid-sword-blade" src="__RAID_SWORDBLADE__" preload="auto" aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
-  <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку" aria-pressed="true" title="Выключить фоновую музыку">
+  <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку в меню" aria-pressed="true" title="Выключить музыку в меню">
     <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 12v8h5l7 5V7l-7 5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path class="music-wave" d="M21 12q5 4 0 8m3-12q9 8 0 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="music-mute" d="m21 12 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
   </button>
   <div class="picker-card" id="picker-card">
@@ -200,8 +200,8 @@
       <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
     </fieldset>
     <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-    <label class="settings-row"><span>Фоновая музыка<small>Продолжается в бою</small></span><input type="checkbox" id="music-on" checked aria-label="Фоновая музыка" role="switch"></label>
-    <p class="settings-hint">Вид — для этого профиля.<br>Звук и музыка настраиваются отдельно.</p>
+    <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
+    <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
     <p class="settings-note" data-raid-motion-note hidden></p>
     <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
   </section>
@@ -254,7 +254,7 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li><b>Фоновая музыка сохраняет настройку и продолжается в бою.</b> Управление доступно и в гараже, и в настройках игры.</li>
+        <li><b>Музыка в гараже и бою настраивается отдельно.</b> Звук выбора меча немного укорочен; удар цепочкой звучит отдельно.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
