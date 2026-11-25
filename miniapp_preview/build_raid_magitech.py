@@ -12,9 +12,10 @@ GARAGE_BACKGROUND = 'assets/mech_garage_bg.webp'
 LAUNCH_TEXTURE = 'assets/raid_launch_texture.webp'
 ROUND_BUTTON_TEXTURE = 'assets/raid_round_button_texture.webp'
 CONTINUE_TEXTURE = 'assets/raid_continue_texture.webp'
+INTRO_MUSIC = 'intro_music.mp3'
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
-           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, *SCENES.values())
+           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, *SCENES.values())
 
 
 def main():
@@ -49,6 +50,8 @@ def main():
     css = css.replace('__RAID_ROUND_BUTTON_TEXTURE__', 'data:image/webp;base64,' + round_image)
     continue_image = base64.b64encode((HERE / CONTINUE_TEXTURE).read_bytes()).decode('ascii')
     css = css.replace('__RAID_CONTINUE_TEXTURE__', 'data:image/webp;base64,' + continue_image)
+    intro_music = base64.b64encode((HERE / INTRO_MUSIC).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_INTRO_MUSIC__', 'data:audio/mpeg;base64,' + intro_music)
     art_js = ('window.RAID_MONSTER_CATALOG = ' + json.dumps(catalog, separators=(',', ':')) + ';\n'
               + 'window.RAID_MONSTER_ART = ' + json.dumps(art['portraits'], separators=(',', ':')) + ';\n')
     html = html.replace('__RAID_BUILD__', build_id)

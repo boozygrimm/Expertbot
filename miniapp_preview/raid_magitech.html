@@ -11,8 +11,12 @@
 </style>
 </head>
 <body>
+<audio id="raid-intro-music" src="__RAID_INTRO_MUSIC__" preload="none" loop aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
+  <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку" aria-pressed="true" title="Выключить фоновую музыку">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 12v8h5l7 5V7l-7 5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path class="music-wave" d="M21 12q5 4 0 8m3-12q9 8 0 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="music-mute" d="m21 12 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
   <div class="picker-card" id="picker-card">
     <aside class="raid-intro" aria-label="Мир RAID">
       <div class="raid-wordmark"><span class="raid-sigil"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 2 38 20 20 38 2 20Z" fill="none" stroke="currentColor"/><path d="m20 9 11 11-11 11L9 20Z" fill="none" stroke="currentColor" stroke-opacity=".5"/><path d="m20 13 5 7-5 7-5-7Z" fill="currentColor"/><path d="M20 2v7m18 11h-7M20 38v-7M2 20h7" stroke="currentColor" stroke-width="2"/></svg></span><span>RAID<small>МАГИЯ СТАЛИ</small></span><span class="raid-edition">ПРОТОТИП / 02</span></div>
@@ -247,7 +251,7 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li><b>Обновлены кнопки подготовки.</b> У «Вид» появился символ Ока Саурона, у «Продолжить» — новая текстура.</li>
+        <li><b>Музыка первых экранов.</b> Включается после первого касания; её можно отключить кнопкой в гараже.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>

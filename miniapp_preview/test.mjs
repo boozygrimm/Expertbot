@@ -4994,7 +4994,7 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
 test('magitech material SFX source: no external audio, autoplay, loops, timer queues, harsh oscillators or gameplay writes', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const audio = js.slice(js.indexOf('  // --- audio'), js.indexOf('  function isChainUppercut'));
-  assert.doesNotMatch(audio, /\b(?:fetch|setTimeout|setInterval|randInt|orbElementIndex)\s*\(|Math\.random|RNG_SEEDS|localStorage|profileStorage|new Audio\b|'(?:square|sawtooth)'|\.loop\s*=/);
+  assert.doesNotMatch(audio, /\b(?:fetch|setTimeout|setInterval|randInt|orbElementIndex)\s*\(|Math\.random|RNG_SEEDS|profileStorage|new Audio\b|'(?:square|sawtooth)'|\.loop\s*=/);
   assert.doesNotMatch(audio, /\bS(?:\.[\w]+|\[[^\]]+\])*\s*(?:=|\+\+|--)/);
   assert.match(audio, /if \(!event\.isTrusted\) return/);
   assert.match(audio, /ctx\.state !== 'running'/);
@@ -5012,7 +5012,10 @@ test('magitech material SFX source: no external audio, autoplay, loops, timer qu
 function materialAudioFixture(options = {}) {
   const documentListeners = new Map(), windowListeners = new Map(), contexts = [];
   let constructions = 0;
-  const input = { checked: true, addEventListener(name, fn) { documentListeners.set('sound:' + name, [fn]); } };
+  const input = { checked: true, volume: 1, currentTime: 0,
+    classList: { toggle() {}, contains() { return true; } }, setAttribute() {},
+    play() { return Promise.resolve(); }, pause() {},
+    addEventListener(name, fn) { documentListeners.set('sound:' + name, [fn]); } };
   const parameter = () => ({ value: 0, calls: [],
     setValueAtTime(value, time) { this.value = value; this.calls.push(['set', value, time]); },
     exponentialRampToValueAtTime(value, time) { this.value = value; this.calls.push(['ramp', value, time]); },
@@ -5937,7 +5940,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Обновлены кнопки подготовки/);
+  assert.match(current, /Музыка первых экранов/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5948,7 +5951,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Обновлены кнопки подготовки\.<\/b>/);
+  assert.match(html, /<b>Музыка первых экранов\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -6022,4 +6025,24 @@ test('all circular garage and region controls use the generated fire medallion w
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat[\s\S]*?box-shadow:0 0 18px/);
   assert.match(css, /\.region-emblem-launch \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat;[\s\S]*?drop-shadow\(0 0 12px/);
   assert.match(builder, /ROUND_BUTTON_TEXTURE = 'assets\/raid_round_button_texture\.webp'/);
+});
+
+test('uploaded intro music is embedded in standalone and obeys gesture, mute and gameplay boundaries', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
+  const audio = readFileSync(new URL('./intro_music.mp3', import.meta.url));
+  assert.equal(audio.subarray(0, 3).toString('ascii'), 'ID3');
+  assert.match(html, /<audio id="raid-intro-music" src="__RAID_INTRO_MUSIC__" preload="none" loop/);
+  assert.match(html, /id="raid-music-toggle"[^>]*aria-label="Выключить музыку"/);
+  assert.match(html, /class="music-wave"/);
+  assert.match(html, /class="music-mute"/);
+  assert.match(builder, /INTRO_MUSIC = 'intro_music\.mp3'/);
+  assert.match(builder, /data:audio\/mpeg;base64,/);
+  assert.match(js, /introMusicScreenVisible\(\)[\s\S]*?classList\.contains\('show'\)/);
+  assert.match(js, /toggle\.addEventListener\('click'[\s\S]*?localStorage\.setItem\(INTRO_MUSIC_KEY/);
+  assert.match(js, /if \(!introMusicEnabled \|\| !introMusicGesture[\s\S]*?track\.pause\(\)/);
+  assert.match(js, /clearFloatEffects\(\);\s*stopMaterialAudio\(\); stopIntroMusic\(true\)/);
+  assert.match(css, /\.raid-music-toggle \{[\s\S]*?background:var\(--raid-round-button-texture\)/);
 });

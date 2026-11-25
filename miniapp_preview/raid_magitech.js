@@ -1749,7 +1749,7 @@
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio();
+    stopMaterialAudio(); stopIntroMusic(true);
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -3328,7 +3328,7 @@
     RUN_ID++;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio();
+    stopMaterialAudio(); stopIntroMusic(true);
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -4547,6 +4547,8 @@
   // music or gameplay RNG. A trusted gesture unlocks the context; suspended
   // events are dropped, never replayed later over a menu/after unmuting.
   let audioCtx = null, audioMaster = null, audioNoise = null, audioGesture = false, audioPageActive = true, audioHostActive = true;
+  let introMusicEnabled = true, introMusicGesture = false;
+  const INTRO_MUSIC_KEY = 'raid.magitech.introMusic.v1';
   const AUDIO_VOICES = new Set(), AUDIO_LAST = new Map();
   const MATERIAL_SOUNDS = {
     gold: [[1180, 1050, .25, .052], [2360, 2310, .19, .016, .012], [1720, 1680, .32, .018, .035]],
@@ -4587,9 +4589,52 @@
     }
     AUDIO_LAST.clear();
   }
+  function introMusicScreenVisible() {
+    return !!el('class-picker')?.classList.contains('show');
+  }
+  function updateIntroMusicToggle() {
+    const toggle = el('raid-music-toggle'); if (!toggle) return;
+    toggle.classList.toggle('is-muted', !introMusicEnabled);
+    toggle.setAttribute('aria-pressed', String(introMusicEnabled));
+    toggle.setAttribute('aria-label', introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку');
+    toggle.title = introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку';
+  }
+  function syncIntroMusic() {
+    const track = el('raid-intro-music'); if (!track) return;
+    if (!introMusicEnabled || !introMusicGesture || !audioPageActive || document.visibilityState === 'hidden' || !introMusicScreenVisible()) {
+      track.pause(); return;
+    }
+    track.volume = .28;
+    try { const playing = track.play(); playing?.catch?.(() => {}); } catch (ignored) {}
+  }
+  function stopIntroMusic(reset = false) {
+    const track = el('raid-intro-music'); if (!track) return;
+    track.pause(); if (reset) { try { track.currentTime = 0; } catch (ignored) {} }
+  }
+  function initIntroMusic() {
+    const track = el('raid-intro-music'), toggle = el('raid-music-toggle');
+    if (!track || !toggle) return;
+    track.volume = .28;
+    try { introMusicEnabled = localStorage.getItem(INTRO_MUSIC_KEY) !== 'off'; } catch (ignored) {}
+    updateIntroMusicToggle();
+    toggle.addEventListener('click', () => {
+      introMusicEnabled = !introMusicEnabled;
+      try { localStorage.setItem(INTRO_MUSIC_KEY, introMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
+      updateIntroMusicToggle();
+      if (introMusicEnabled) { introMusicGesture = true; syncIntroMusic(); }
+      else stopIntroMusic();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') stopIntroMusic(); else syncIntroMusic();
+    });
+    window.addEventListener?.('pagehide', () => stopIntroMusic());
+    window.addEventListener?.('pageshow', () => syncIntroMusic());
+  }
   function unlockMaterialAudio(event) {
     if (!event.isTrusted) return;
-    audioGesture = true;
+    audioGesture = true; introMusicGesture = true;
+    if (event.target?.closest?.('#raid-music-toggle')) return;
+    syncIntroMusic();
     const ctx = audio();
     if (ctx?.state === 'suspended') {
       try { ctx.resume()?.catch?.(() => {}); } catch (ignored) {}
@@ -4650,6 +4695,7 @@
     for (const spec of voices) materialVoice(ctx, spec, now);
   }
   function initMaterialAudio() {
+    initIntroMusic();
     document.addEventListener('pointerdown', unlockMaterialAudio, { capture: true, passive: true });
     document.addEventListener('keydown', unlockMaterialAudio, { capture: true });
     el('sound-on')?.addEventListener('change', event => {
@@ -6596,6 +6642,7 @@
     if (!pickerOpen) return;
     if (!S || S.over) { resumeSavedRun(); return; }
     if (SAVE_CONFLICT) { flash('Обнови страницу: сохранение изменено в другой вкладке'); return; }
+    stopIntroMusic(true);
     closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
     el('menu-btn')?.focus();
   }
