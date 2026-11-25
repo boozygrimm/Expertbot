@@ -6041,7 +6041,9 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.match(html, /id="music-on" checked aria-label="Музыка в бою" role="switch"/);
   assert.match(builder, /INTRO_MUSIC = 'intro_music\.mp3'/);
   assert.match(builder, /data:audio\/mpeg;base64,/);
-  assert.match(js, /clip\.currentTime = \.12[\s\S]*?clip\.currentTime >= 1\.37/);
+  assert.match(js, /clip\.currentTime = 0[\s\S]*?clip\.currentTime >= 1\.25/);
+  const swordTaken = readFileSync(new URL('./assets/swordtaken.mp3', import.meta.url));
+  assert.ok(swordTaken.length < 61692, 'swordtaken source should have its leading segment trimmed');
   assert.match(js, /function isMenuMusicContext\(\) \{ return !!el\('class-picker'\)\?\.classList\.contains\('show'\); \}/);
   assert.match(js, /introMusicAppVisible\(\)[\s\S]*?audioPageActive && audioHostActive/);
   assert.match(js, /el\('music-on'\)\?\.addEventListener\('change',[\s\S]*?setMusicPreference\(event\.target\.checked, false\)/);

@@ -4604,8 +4604,8 @@
     try {
       clip.pause();
       if (id === 'raid-sword-taken') {
-        clip.currentTime = .12;
-        clip.ontimeupdate = () => { if (clip.currentTime >= 1.37) { clip.ontimeupdate = null; clip.pause(); } };
+        clip.currentTime = 0;
+        clip.ontimeupdate = () => { if (clip.currentTime >= 1.25) { clip.ontimeupdate = null; clip.pause(); } };
       } else { clip.currentTime = 0; clip.ontimeupdate = null; }
       const playing = clip.play(); playing?.catch?.(() => {});
     } catch (ignored) {}
