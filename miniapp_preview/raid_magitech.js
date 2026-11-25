@@ -4589,6 +4589,15 @@
       AUDIO_VOICES.delete(voice);
     }
     AUDIO_LAST.clear();
+    for (const id of ['raid-sword-taken', 'raid-sword-blade']) {
+      const clip = el(id); if (clip) { clip.pause(); try { clip.currentTime = 0; } catch (ignored) {} }
+    }
+  }
+  function playSwordClip(id) {
+    if (!audioAllowed()) return;
+    const clip = el(id); if (!clip) return;
+    clip.volume = .65;
+    try { clip.pause(); clip.currentTime = 0; const playing = clip.play(); playing?.catch?.(() => {}); } catch (ignored) {}
   }
   function introMusicAppVisible() {
     return audioPageActive && audioHostActive && document.visibilityState !== 'hidden';
@@ -4724,8 +4733,8 @@
     }
     materialSound('ui');
   }
-  function audioSwordSelect() { materialSound('metal'); }
-  function audioSwordChain() { materialSound('impact'); }
+  function audioSwordSelect() { playSwordClip('raid-sword-taken'); }
+  function audioSwordChain() { playSwordClip('raid-sword-blade'); }
   function audioKill() { materialSound('impact'); }
   function audioHeal() { materialSound('water'); }
   function audioArmor() { materialSound('armour'); }
