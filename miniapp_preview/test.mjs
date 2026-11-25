@@ -5937,7 +5937,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Огненный враг: теперь с анимацией/);
+  assert.match(current, /Обновлён гараж мехов/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5948,7 +5948,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Огненный враг: теперь с анимацией\.<\/b> При поджоге соседних клеток вспыхивает пламя/);
+  assert.match(html, /<b>Обновлён гараж мехов\.<\/b> Полноэкранный ангар/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -5959,4 +5959,21 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   assert.match(js, /Опасность для героя — обычная атака Огненного \(×2\), она входит в общий залп/);
   assert.match(css, /\.orb-fire \{ position:absolute/);
   assert.doesNotMatch(js + css, /orb-igniter|orb-burn|in-fire-zone|fireZone/);
+});
+
+test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaque mech cards and a textured resume CTA', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
+  assert.match(html, /id="picker-history"[^>]*>[\s\S]*?picker-tool-icon/);
+  assert.equal((html.match(/class="picker-tool-icon"/g) || []).length, 4);
+  assert.match(html, /id="picker-visual"[\s\S]*?<span>Вид<\/span>/);
+  assert.match(css, /--raid-garage-background: url\('__RAID_GARAGE_BACKGROUND__'\)/);
+  assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-intro \{ display:none !important; \}/);
+  assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.picker-card-btn \{[\s\S]*?background:linear-gradient\(155deg/);
+  assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css, /height:clamp\(220px,38vh,390px\); max-height:44vh; overflow:hidden/);
+  assert.match(css, /repeating-linear-gradient\(127deg/);
+  assert.match(builder, /GARAGE_BACKGROUND = 'assets\/mech_garage_bg\.webp'/);
+  assert.match(builder, /__RAID_GARAGE_BACKGROUND__/);
 });
