@@ -2658,7 +2658,7 @@
     if (!cell || cell.type === 'empty') return '';
     if (cell.type === 'skull' && cell.skull?.phylactery) return `<img class="phylactery-art" src="${PHYLACTERY_IMAGE}" alt="">`;
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
-    if (cell.type === 'sword') return raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint');
+    if (cell.type === 'sword') return raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint') + '<span class="weapon-tip-sparkle" aria-hidden="true"></span>';
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
