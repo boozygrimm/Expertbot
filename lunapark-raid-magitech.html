@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="47dbf0c02475">
+<meta name="raid-build" content="37aa39cff180">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1359,16 +1359,14 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   transform-origin: 50% 54%; backface-visibility: hidden;
   animation: weapon-idle-sway 7.2s ease-in-out infinite; animation-delay: var(--orb-phase,0ms);
 }
-/* Mask the moving highlight to the actual RGBA blade silhouette, so it reads as metal glint rather than a line over the orb. */
+/* A second copy of the transparent weapon art keeps the glint bound to the
+   exact sprite silhouette; a narrow diagonal clipping window sweeps over it. */
 .raid-orb[data-type="sword"] .weapon-glint {
-  position:absolute; z-index:4; inset:0; pointer-events:none; opacity:0; mix-blend-mode:screen;
-  background:linear-gradient(112deg,transparent 38%,#ffffff20 43%,#f7ffff 49%,#b9eaff 52%,#ffffff20 56%,transparent 62%);
-  background-size:240% 240%; background-position:145% -50%;
-  -webkit-mask-image:var(--weapon-mask); mask-image:var(--weapon-mask);
-  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-position:center; mask-position:center;
-  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
-  filter:drop-shadow(0 0 2px #b9edffb3);
-  animation:weapon-mask-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+  position:absolute; z-index:4; inset:0; width:100%; height:100%; object-fit:contain;
+  pointer-events:none; opacity:0; mix-blend-mode:screen;
+  filter:brightness(1.85) saturate(.55) drop-shadow(0 0 1px #b9edff80);
+  clip-path:polygon(0 0,0 0,0 100%,0 100%);
+  animation:weapon-natural-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 .weapon-impact-slash,.weapon-impact-echo { position:absolute; z-index:8; left:-35%; top:49%; width:170%; height:2px; border-radius:99px; opacity:0; pointer-events:none; background:linear-gradient(90deg,transparent 0%,#dffaff88 24%,#fff 50%,#c6f4ff 68%,transparent 100%); box-shadow:0 0 7px #8ee8ffb3; transform:rotate(-42deg) scaleX(.05); animation:weapon-impact-slash .23s cubic-bezier(.15,.75,.25,1) both; animation-delay:var(--burst-delay,0ms); }
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
@@ -1459,7 +1457,13 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 /* Content-only 3D rotation, explicitly requested after PR125. */
 @keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
 @keyframes weapon-idle-sway { 0%,100% { transform: rotate(-1.3deg) translateY(0); } 50% { transform: rotate(1.3deg) translateY(-1.1%); } }
-@keyframes weapon-mask-glint { 0%,52%,100% { opacity:0; background-position:145% -50%; } 58% { opacity:.2; } 63% { opacity:.95; background-position:-55% 150%; } 68% { opacity:.08; } }
+@keyframes weapon-natural-glint {
+  0%,50%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
+  54% { opacity:.16; clip-path:polygon(28% 0,36% 0,0 58%,0 46%); }
+  60% { opacity:.38; clip-path:polygon(100% 0,100% 12%,12% 100%,0 100%); }
+  65% { opacity:.08; clip-path:polygon(100% 42%,100% 56%,56% 100%,42% 100%); }
+  69% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+}
 @keyframes weapon-impact-slash { 0% { opacity:0; transform:rotate(-42deg) scaleX(.06) translateX(-8%); } 18% { opacity:.95; } 68% { opacity:.75; transform:rotate(-42deg) scaleX(1) translateX(1%); } 100% { opacity:0; transform:rotate(-42deg) scaleX(1.08) translateX(5%); } }
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
@@ -1686,7 +1690,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 47dbf0c02475</p>
+    <p class="build-label">Сборка 37aa39cff180</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1855,7 +1859,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 47dbf0c02475</p>
+    <p class="build-label">Сборка 37aa39cff180</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1889,7 +1893,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 47dbf0c02475</p>
+      <p class="build-label" id="updates-build">Сборка 37aa39cff180</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
@@ -1981,11 +1985,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 47dbf0c02475.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 37aa39cff180.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
-    <p><b>Прозрачные плитки — проба оформления по умолчанию.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; монета вращается, меч не делает полного оборота — только едва покачивается, ловит редкий блик и оставляет короткий росчерк при атаке. Заморозка сохраняет лёд и останавливает движение, переключатель анимаций или системное уменьшение движения отключает её. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мех и пилот наследуют исходные класс и полный расовый пакет. В новых рейдах v4 доступна небольшая склонность пилота, выбранная только на этот забег; грейдов, заданий и музыки нет. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
+    <p><b>Прозрачные плитки — проба оформления по умолчанию.</b> У невыбранных клеток нет постоянной цветной заливки: остаются тонкий круглый контур, предмет или противник и его числа. Выбранная цепь получает мягкую заливку и светлую обводку; возврат по цепи или отмена убирает её. Стихия окрашивает само оружие: Огонь — тёплый медно-оранжевый, Воздух — светлое серебро, Земля — оливково-зелёный, Вода — синий. Светлая грань и тёмный торец толщиной около пикселя отделяют силуэт от поля. Прежние дымка и волна видны только у выбранных клеток: воздух в верхних двух третях, вода в нижних. Стекло не вращается и не пульсирует; монета вращается, меч не делает полного оборота — только едва покачивается, ловит короткий диагональный блик по самой картинке оружия и оставляет отдельный росчерк при атаке. Заморозка сохраняет лёд и останавливает движение, переключатель анимаций или системное уменьшение движения отключает её. Звуки тихие и материальные; mute и уход в фон немедленно гасят их. Музыки и непрерывного фона нет. Магазин показывает конкретную предлагаемую модель и отделку: клинок, саблю, булаву, молот, топор или клинок стражи. После покупки та же модель/отделка появляется во всех мечевых клетках; отдельный стихийный оттенок клетки не меняет предмет. Просмотр не переодевает поле, обычный апгрейд не меняет внешность, «Продолжить» восстанавливает надетое без переброса. Это визуальный прототип, не финальная приёмка каталога. Все мечи любых стихий соединяются вместе. В новых забегах стихия цвета — настоящее назначение для боя, не отдельный декоративный розыгрыш. Старые забеги продолжаются по прежним правилам без стихийных множителей. Мех и пилот наследуют исходные класс и полный расовый пакет. В новых рейдах v4 доступна небольшая склонность пилота, выбранная только на этот забег; грейдов, заданий и музыки нет. Локация нового забега задаёт местную стихию противников, но не даёт прямых бонусов или штрафов герою.</p>
     <ul>
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
       <li>Новый стихийный бой: Огонь → Воздух → Земля → Вода → Огонь. Вклад каждого меча/стрелы ×1,25 против следующей стихии, ×0,75 против предыдущей, ×1 против своей и противоположной. База нейтральна. Смешанные вклады складываются; сломанный меч даёт 0, магический — силу 5. Boost удваивает только оружие. У босса две разные стихии: множитель каждого меча — их арифметическое среднее; противоположная пара нейтральна. Прежние ограничения целей остаются; округление один раз перед защитой, затем HP и броски разрушения брони. Общий показанный урон — нейтральный, подсветка убийств учитывает цель. Предпросмотр не тратит случайность и не обещает случайные награды.</li>
@@ -4668,7 +4672,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function tileSymbol(cell, cellIdx = 0) {
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '<\/svg>';
-    if (cell.type === 'sword') return raidWeaponTexture('ic') + '<i class="weapon-glint" aria-hidden="true"><\/i>';
+    if (cell.type === 'sword') return raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint');
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
