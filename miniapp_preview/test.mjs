@@ -4921,7 +4921,7 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   assert.match(css, /\.mech-detail-portrait img \{ width: 100%; height: 100%;/);
   assert.match(css, /\.picker-main \.picker-tools \.btn \{ min-height: 32px/);
   assert.match(css, /mech-detail-actions\.mech-garage-side-actions \{ position: absolute;[^]*left: 5%;[^]*width: 23%/);
-  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:13%; bottom:16%; width:74%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:21%; bottom:16%; width:58%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button[^]*border-radius: 999px/);
 });
 
@@ -5989,8 +5989,9 @@ test('mech detail uses round pilot/mech medallions and keeps the textured launch
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button[\s\S]*?border-radius:50%/);
   assert.match(css, /\.mech-garage-icon-button\.pilot \{ background:/);
   assert.match(css, /\.mech-garage-icon-art \{[\s\S]*?width:270%; height:270%/);
-  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:13%; bottom:16%; width:74%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:21%; bottom:16%; width:58%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button::before/);
+  assert.match(css, /repeating-linear-gradient\(135deg,#ead69b0b[\s\S]*?linear-gradient\(180deg,#243a30/);
   assert.match(css, /\.mech-detail-actions\.mech-garage-side-actions \{ top:27%; left:4%; width:25%; gap:5px !important; \}/);
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{ width:52px; height:52px; \}/);
 });

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="0d6faa48df4a">
+<meta name="raid-build" content="9c328724edd3">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1786,21 +1786,21 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .mech-garage-icon-art { position:absolute; left:50%; top:-4%; width:270%; height:270%; max-width:none; object-fit:contain; transform:translateX(-50%); filter:drop-shadow(0 2px 4px #000b); }
 .mech-garage-icon-label { color:#eadfbf; font:500 10px/1.1 system-ui,sans-serif; text-shadow:0 1px 5px #000; }
 .mech-detail-body.mech-garage-home > .mech-go-button {
-  left:14%; bottom:16%; width:72%; min-height:44px; padding:8px 16px; overflow:hidden; isolation:isolate;
-  border:1px solid #f6e2a2;
-  background:repeating-linear-gradient(118deg,#ffffff0c 0 1px,#4939160b 1px 4px),linear-gradient(108deg,#94743a 0%,#e8d184 20%,#b8964e 38%,#f4df98 54%,#a27f3e 76%,#e0c579 100%);
-  box-shadow:0 7px 19px #000a,inset 0 2px 1px #fff9c8a8,inset 0 -4px 8px #4a351b80;
-  text-shadow:0 1px 0 #fff1bf;
+  left:21%; bottom:16%; width:58%; min-height:44px; padding:8px 16px; overflow:hidden; isolation:isolate;
+  border:2px ridge #c7ad69; border-radius:999px; color:#f1e3bb;
+  background:repeating-linear-gradient(135deg,#ead69b0b 0 1px,transparent 1px 7px),radial-gradient(ellipse at 50% 0%,#3b5748 0%,transparent 78%),linear-gradient(180deg,#243a30 0%,#172820 48%,#101b17 100%);
+  box-shadow:0 7px 19px #000a,inset 0 2px 2px #fff3,inset 0 -4px 9px #050c0a99;
+  font:700 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-shadow:0 1px 4px #000b;
 }
 .mech-detail-body.mech-garage-home > .mech-go-button::before {
-  content:''; position:absolute; z-index:-1; inset:4px; border:1px solid #765d2b8a; border-radius:999px;
-  box-shadow:inset 0 1px 2px #fff7; pointer-events:none;
+  content:''; position:absolute; z-index:-1; inset:4px; border:1px solid #c6ad6a70; border-radius:999px;
+  box-shadow:inset 0 1px 2px #fff3; pointer-events:none;
 }
 @media (max-width:720px) {
   .mech-detail-actions.mech-garage-side-actions { top:27%; left:4%; width:25%; gap:5px !important; }
   .mech-garage-side-actions .mech-garage-icon-button { width:52px; height:52px; }
   .mech-garage-icon-label { font-size:9px; }
-  .mech-detail-body.mech-garage-home > .mech-go-button { left:13%; bottom:16%; width:74%; min-height:42px; font-size:12px; }
+  .mech-detail-body.mech-garage-home > .mech-go-button { left:21%; bottom:16%; width:58%; min-height:42px; font-size:12px; }
 }
 
 </style>
@@ -1830,7 +1830,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 0d6faa48df4a</p>
+    <p class="build-label">Сборка 9c328724edd3</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -2003,7 +2003,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 0d6faa48df4a</p>
+    <p class="build-label">Сборка 9c328724edd3</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2037,7 +2037,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 0d6faa48df4a</p>
+      <p class="build-label" id="updates-build">Сборка 9c328724edd3</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
@@ -2134,7 +2134,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 0d6faa48df4a.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 9c328724edd3.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
