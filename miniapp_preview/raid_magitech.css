@@ -480,6 +480,17 @@ body { display: flex; align-items: stretch; justify-content: center; }
   background: rgba(8, 5, 14, 0.7); opacity: 0; pointer-events: none; transition: opacity 180ms ease;
 }
 .help-modal.show { opacity: 1; pointer-events: auto; }
+.beginner-guide-card { text-align:left; max-width:620px; }
+.beginner-guide-card h3 { text-align:center; }
+.guide-lead { font-size:1.05em; color:#d5e6f6; }
+.guide-step { border-top:1px solid #ffffff22; padding:.35rem 0; }
+.guide-step h4 { margin:.5rem 0 .2rem; color:#8de6c7; }
+.guide-step p { margin:.25rem 0 .6rem; line-height:1.45; }
+.guide-board { display:block; width:min(100%,320px); height:auto; margin:.5rem auto; }
+.guide-boss { padding:.75rem; border-radius:12px; background:#101827; text-align:center; line-height:1.7; color:#f3c875; }
+.guide-note { font-size:.9em; opacity:.82; }
+.beginner-guide-card button { margin:.25rem; }
+@media (max-width:480px) { .beginner-guide-card { padding:16px; max-height:88dvh; overflow:auto; } .guide-boss { font-size:.9em; } }
 .help-card {
   width: min(100%, 430px); min-width: 0; max-height: 82dvh; overflow: auto;
   background: linear-gradient(160deg, #2c1b40, #161028);
@@ -1737,7 +1748,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .class-picker:not(.region-mode-open) .picker-main > #picker-save-status { order:2; flex:none; max-height:2.7em; margin:0; overflow:hidden; color:#d0d9cb; font:500 11px/1.32 system-ui,sans-serif; text-shadow:0 1px 5px #000; }
 .class-picker:not(.region-mode-open) .picker-main > #picker-save-status { max-height:1.4em; white-space:nowrap; text-overflow:ellipsis; }
 .class-picker:not(.region-mode-open) .picker-tools {
-  order:3; flex:none; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; gap:4px;
+  order:3; flex:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); align-items:start; gap:4px;
   margin:2px 0 1px; padding:4px 0; background:transparent;
 }
 /* Legacy page rules must not offset or span the compact garage tool row. */
@@ -1749,6 +1760,8 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   border:0; border-radius:0; background:transparent; box-shadow:none; color:#dfe5d5; font:500 9px/1.15 system-ui,sans-serif; text-align:center; cursor:pointer;
 }
 .picker-tool:hover,.picker-visual-tool > summary:hover { background:transparent; color:#fff1c8; transform:none; }
+#picker-guide { color:#ffe8b0; font-weight:700; }
+#picker-guide .picker-tool-icon { background:var(--raid-round-button-texture) center / 100% 100% no-repeat; filter:drop-shadow(0 0 8px #ff9a42aa); }
 .picker-tool-icon {
   box-sizing:border-box; flex:none; width:50px; height:50px; padding:12px; display:block;
   border:0; border-radius:50%; color:#f2dfad;

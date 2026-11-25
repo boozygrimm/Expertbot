@@ -6005,7 +6005,9 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
   assert.match(html, /id="picker-history"[^>]*>[\s\S]*?picker-tool-icon/);
-  assert.equal((html.match(/class="picker-tool-icon(?:\s|\")/g) || []).length, 4);
+  assert.equal((html.match(/class="picker-tool-icon(?:\s|\")/g) || []).length, 5);
+  assert.match(html, /id="picker-guide"[^>]*>[\s\S]*?Как играть/);
+  assert.match(css, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
   assert.match(html, /id="picker-visual"[\s\S]*?<span>Вид<\/span>/);
   assert.match(css, /--raid-garage-background: url\('__RAID_GARAGE_BACKGROUND__'\)/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-intro \{ display:none !important; \}/);
