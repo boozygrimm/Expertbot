@@ -2626,6 +2626,7 @@
     chain.push(cellIdx);
     S.chainType = chainTypeForCell(S.board[chain[0]]);
     if (firstSelection && S.board[cellIdx].type === 'sword') audioSwordSelect();
+    else if (firstSelection && S.board[cellIdx].type === 'coin') audioCoinSelect();
     onChainChanged();
   }
 
@@ -4598,11 +4599,11 @@
       AUDIO_VOICES.delete(voice);
     }
     AUDIO_LAST.clear();
-    for (const id of ['raid-sword-taken', 'raid-sword-blade']) {
+    for (const id of ['raid-sword-taken', 'raid-sword-blade', 'raid-coin-taken', 'raid-coin-drop']) {
       const clip = el(id); if (clip) { clip.ontimeupdate = null; clip.pause(); try { clip.currentTime = 0; } catch (ignored) {} }
     }
   }
-  function playSwordClip(id) {
+  function playAudioClip(id) {
     if (!audioAllowed()) return;
     const clip = el(id); if (!clip) return;
     clip.volume = .65;
@@ -4762,8 +4763,10 @@
     }
     materialSound('ui');
   }
-  function audioSwordSelect() { playSwordClip('raid-sword-taken'); }
-  function audioSwordChain() { playSwordClip('raid-sword-blade'); }
+  function audioSwordSelect() { playAudioClip('raid-sword-taken'); }
+  function audioSwordChain() { playAudioClip('raid-sword-blade'); }
+  function audioCoinSelect() { playAudioClip('raid-coin-taken'); }
+  function audioCoinChain() { playAudioClip('raid-coin-drop'); }
   function audioKill() { materialSound('impact'); }
   function audioHeal() { materialSound('water'); }
   function audioArmor() { materialSound('armour'); }
@@ -4910,6 +4913,7 @@
     const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
     if (!committed && !rune.length) { clearChain(); return; }
     if (committed && S.chainType === 'sword') audioSwordChain();
+    else if (committed && S.chainType === 'coin') audioCoinChain();
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
     S.actionCommitted = committed;
