@@ -5976,8 +5976,10 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Новый кубок-трофей/);
+  assert.match(current, /Тактильный отклик в бою/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Новый кубок-трофей/);
+  assert.match(archive, /Кабины мехов и выбор пилота/);
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
   assert.doesNotMatch(archive, /<details[^>]*open/);
@@ -5987,7 +5989,6 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -6008,7 +6009,7 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.equal((html.match(/class="picker-tool-icon(?:\s|\")/g) || []).length, 5);
   assert.match(html, /id="picker-guide"[^>]*>[\s\S]*?Как играть/);
   assert.match(css, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
-  assert.match(html, /id="picker-visual"[\s\S]*?<span>Вид<\/span>/);
+  assert.match(html, /id="picker-visual"[\s\S]*?<span>Настройки<\/span>/);
   assert.match(css, /--raid-garage-background: url\('__RAID_GARAGE_BACKGROUND__'\)/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-intro \{ display:none !important; \}/);
   assert.match(css, /\.picker-main > \.picker-tools > #picker-updates,[\s\S]*?#picker-visual \{ grid-column:auto; \}/);
@@ -6108,4 +6109,25 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.doesNotMatch(resumeBody, /stopIntroMusic/);
   assert.match(js, /'activated',[\s\S]*?syncIntroMusic\(\)/);
   assert.match(css, /\.raid-music-toggle \{[\s\S]*?background:var\(--raid-round-button-texture\)/);
+});
+
+test('raid haptics setting persists modes and coalesces enemy kills with boss priority', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  assert.match(html, /<select id="haptics-mode" data-raid-haptics aria-label="Вибрация боя"><option value="important">Важные события<\/option><option value="all">Все боевые события<\/option><option value="off">Выключена<\/option><\/select>/);
+  assert.equal((html.match(/data-raid-haptics/g) || []).length, 3, 'same preference is available in garage, menu and combat settings');
+  assert.match(html, /<b>Тактильный отклик в бою\.<\/b>[\s\S]*?«Важные события»[\s\S]*?Haptic Feedback API/);
+  assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
+  assert.match(js, /HAPTICS_KEY = 'raid\.magitech\.haptics\.v1'/);
+  assert.match(js, /feedback\.notificationOccurred\(kind === 'boss' \? 'success' : 'warning'\)/);
+  assert.match(js, /damage >= Math\.max\(3, Math\.ceil\(S\.hero\.maxHp \* \.25\)\)/);
+  assert.match(js, /feedback\.impactOccurred\(kind === 'kill' \? 'medium' : kind === 'hit' \? 'soft' : 'light'\)/);
+  assert.match(js, /pendingHapticBoss \|\|= boss/);
+  assert.match(js, /if \(kill\) \{ emitHaptic\(boss \? 'boss' : 'kill'\)/);
+  assert.match(js, /if \(!hapticTimer\) hapticTimer = setTimeout\(flushCombatHaptic, 65\)/);
+  assert.match(js, /queueCombatHaptic\('kill', !!cell\.skull\?\.boss\)/);
+  assert.match(js, /function initHaptics\(\)[\s\S]*?localStorage\.setItem\(HAPTICS_KEY, hapticsMode\)/);
+  assert.match(js, /initHaptics\(\)/);
+  assert.match(css, /\.settings-row select/);
 });

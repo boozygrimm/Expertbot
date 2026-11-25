@@ -3733,7 +3733,7 @@
       const dmg = damageSkull(skull, amount, opts);
       flashOn(idx, -dmg, 'hurt', 'HP');
       flashOn(idx, skull.def - defence, 'armor', 'брони');
-      if (skull.hp > 0) return false;
+      if (skull.hp > 0) { queueCombatHaptic('hit'); return false; }
       if (skull.type === 32) {
         // AttackSkull transforms Lich; collection/poison are different paths.
         Object.assign(skull, { phylactery: true, lichDelay: true, countdown: 1,
@@ -4243,7 +4243,7 @@
           heal(event.amount);
           if (event.leech) { S.scrollLeechLabel.inFlight = false; fadeScrollLeechLabel(); }
         } else if (event.kind === 'damage') {
-          damageHero(event.amount, false, true, event.cause);
+          damageHeroWithHaptics(event.amount, false, true, event.cause);
           const borrowed = event.lastStand && !S.lastStand;
           if (borrowed) S.lastStand = 1;
           if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
@@ -4354,6 +4354,7 @@
     const batch = RESOURCE_BATCH;
     const cell = S.board[idx];
     if (!cell || cell.matched || cell.type === 'empty' || batch.seen.has(cell)) return;
+    if (cell.type === 'skull') queueCombatHaptic('kill', !!cell.skull?.boss);
     batch.seen.add(cell);
     const type = opts.rewardType || (cell.type === 'skull' ? 'xp' : cell.type);
     S.board[idx] = { type: 'empty' };
@@ -4559,6 +4560,76 @@
   }
   function flashOn(idx, amount, kind, label) {
     floatOn(amount, kind, `.cell[data-idx="${idx}"]`, label);
+  }
+
+  // --- haptics --------------------------------------------------------------
+  // Haptics are best-effort and entirely local. Batch rapid multi-kills into a
+  // single cue so chain reactions never buzz continuously.
+  const HAPTICS_KEY = 'raid.magitech.haptics.v1';
+  let hapticsMode = 'important', hapticTimer = 0, hapticCooldownUntil = 0;
+  let pendingHapticKill = false, pendingHapticBoss = false, pendingHapticDamage = false, pendingHapticHit = false;
+  function hapticsEnabled() { return hapticsMode !== 'off' && document.visibilityState !== 'hidden'; }
+  function emitHaptic(kind) {
+    if (!hapticsEnabled()) return;
+    try {
+      const feedback = window.Telegram?.WebApp?.HapticFeedback;
+      if ((kind === 'boss' || kind === 'damage') && typeof feedback?.notificationOccurred === 'function') {
+        feedback.notificationOccurred(kind === 'boss' ? 'success' : 'warning'); return;
+      }
+      if (typeof feedback?.impactOccurred === 'function') {
+        feedback.impactOccurred(kind === 'kill' ? 'medium' : kind === 'hit' ? 'soft' : 'light'); return;
+      }
+      // Browser fallback is optional; iOS and some embedded WebViews do not
+      // expose it. Never make gameplay depend on vibration support.
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(kind === 'boss' ? [35, 25, 45] : kind === 'damage' ? [45, 30, 45] : kind === 'kill' ? 35 : 12);
+    } catch (ignored) {}
+  }
+  function flushCombatHaptic() {
+    hapticTimer = 0;
+    const kill = pendingHapticKill, boss = pendingHapticBoss, damage = pendingHapticDamage, hit = pendingHapticHit;
+    pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+    const now = Date.now();
+    if (now < hapticCooldownUntil) {
+      pendingHapticKill = kill; pendingHapticBoss = boss; pendingHapticDamage = damage; pendingHapticHit = hit;
+      hapticTimer = setTimeout(flushCombatHaptic, hapticCooldownUntil - now);
+      return;
+    }
+    if (kill) { emitHaptic(boss ? 'boss' : 'kill'); hapticCooldownUntil = now + 140; }
+    else if (damage) { emitHaptic('damage'); hapticCooldownUntil = now + 160; }
+    else if (hit && hapticsMode === 'all') { emitHaptic('hit'); hapticCooldownUntil = now + 90; }
+  }
+  function queueCombatHaptic(kind, boss = false) {
+    if (!hapticsEnabled()) return;
+    if (kind === 'kill') { pendingHapticKill = true; pendingHapticBoss ||= boss; }
+    else if (kind === 'damage') pendingHapticDamage = true;
+    else if (kind === 'hit' && hapticsMode === 'all') pendingHapticHit = true;
+    else return;
+    if (!hapticTimer) hapticTimer = setTimeout(flushCombatHaptic, 65);
+  }
+  function initHaptics() {
+    const controls = [...document.querySelectorAll('[data-raid-haptics]')]; if (!controls.length) return;
+    try {
+      const saved = localStorage.getItem(HAPTICS_KEY);
+      if (['important', 'all', 'off'].includes(saved)) hapticsMode = saved;
+    } catch (ignored) {}
+    const syncControls = () => controls.forEach(control => { control.value = hapticsMode; });
+    syncControls();
+    controls.forEach(control => control.addEventListener('change', event => {
+      const value = event.target.value;
+      hapticsMode = ['important', 'all', 'off'].includes(value) ? value : 'important';
+      try { localStorage.setItem(HAPTICS_KEY, hapticsMode); } catch (ignored) {}
+      syncControls();
+      if (hapticsMode === 'off') {
+        clearTimeout(hapticTimer); hapticTimer = 0;
+        pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+      }
+    }));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(hapticTimer); hapticTimer = 0;
+        pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+      }
+    });
   }
 
   // --- audio ----------------------------------------------------------------
@@ -5081,7 +5152,8 @@
     if (S.over || S.pendingModal || !ownsRunSlot()) return;
     S.resolving = true;
     S.actionCommitted = true;
-    processEnemyAttack();
+    const incoming = processEnemyAttack();
+    if (incoming?.damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
     renderBoard(); renderHUD();
     // Spikes/counter resources (and their menus) settle before turn++.
     continueAfterRewards({ phase: 'end-turn' });
@@ -5186,6 +5258,12 @@
       floatOn(-damage, 'hurt', '#hud-hp', 'HP');
     }
     audioEnemy();
+    return damage;
+  }
+
+  function damageHeroWithHaptics(...args) {
+    const damage = damageHero(...args);
+    if (damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
     return damage;
   }
 
@@ -6163,7 +6241,7 @@
       } else if (t === 16) { // Assassin — bottom row: direct 2× hit; mortal enemy (Faun): kill the tile below
         if (roundOrCol === ROWS - 1) {
           const bonusDmg = 2 * enemyGetAttack(s);
-          damageHero(bonusDmg, false, true);
+          damageHeroWithHaptics(bonusDmg, false, true);
           log('🗡️ Ассасин: прямой урон −' + bonusDmg + ' HP');
         } else if (clsRace() === 'Faun') {
           // Original StabAttack: only as the Faun's mortal enemy does it match
@@ -7154,6 +7232,7 @@
     initVisualPreferences();
     initMaterialAudio();
     initGameSettings();
+    initHaptics();
     window.addEventListener?.('resize', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();

@@ -1614,6 +1614,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .visual-settings legend { padding: 0 0 4px; font-size: 10px; color: #b8c8b4; }
 .visual-settings label { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 12px; cursor: pointer; overflow-wrap: anywhere; }
 .visual-settings input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: #c5b57d; }
+.visual-settings select { max-width: 180px; min-height: 36px; margin: 4px 10px; padding: 5px 26px 5px 8px; border: 1px solid #65775d99; border-radius: 7px; color: #edf3df; background: #071f20; font: inherit; font-size: 12px; }
 .visual-settings p { margin: 5px 12px 10px; color: #b3c5ad; font-size: 11px; line-height: 1.45; }
 .visual-settings [data-raid-visual-status] { color: #f0d1a2; }
 .visual-settings :focus-visible { outline: 2px solid #eed18f; outline-offset: -2px; }
@@ -1652,6 +1653,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .settings-row input::before { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9cb09f; }
 .settings-row input:checked { background: #c5ba86; border-color: #e0d19e; }
 .settings-row input:checked::before { transform: translateX(18px); background: #1b3730; }
+.settings-row select { flex: none; max-width: 180px; min-height: 38px; padding: 6px 28px 6px 10px; border: 1px solid #91aa8f80; border-radius: 9px; color: #edf3df; background: #071f20; font: inherit; font-size: 12px; }
+.haptics-preference { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; color: #e8ebd9; font-size: 12px; }
+.haptics-preference select { min-height: 36px; max-width: 180px; padding: 5px 28px 5px 9px; border: 1px solid #91aa8f80; border-radius: 9px; color: #edf3df; background: #071f20; font: inherit; font-size: 12px; }
 .settings-hint, .settings-note { margin: 10px 0 0; color: #b7cbb4; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .game-settings-card [data-raid-visual-status] { color: #f0d1a2; }
 .game-settings :focus-visible, .settings-toggle:focus-visible { outline: 2px solid #f2dc9e; outline-offset: 3px; }
