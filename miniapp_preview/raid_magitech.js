@@ -260,7 +260,7 @@
     29: { name: 'Загрязнитель',  feats: ['Пока на поле — каждый поглощённый пункт залпа ломает броню', 'Долговечность не действует, броски разрушения пропускаются', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     30: { name: 'Желе-Щит',      feats: ['Перехватывает урон цепочки от других черепов', 'Сам поглощает урон и уязвим', 'Статы: ½ ⚔ / броня / ×5 ❤️'] },
     31: { name: 'Бегун',        feats: ['Каждый ход уходит на одну клетку выше', 'На верхнем краю — исчезает без трофея', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
-    32: { name: 'Лич',          feats: ['Смертельный удар создаёт филактерий; сбор даёт награду особого', 'Если филактерий не собрать, Лич возродится', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
+    32: { name: 'Лич',          feats: ['Нанеси Личу смертельный урон цепочкой мечей: он превратится в филактерию, а не погибнет.', 'В следующем ходу собери цепочку из 3+ монет, обязательно включив филактерию.', 'Не соберёшь её до конца хода — Лич воскреснет. Сбор филактерия убивает его окончательно и даёт награду особого. Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
   };
 
   const SKILLS = [
@@ -2655,6 +2655,7 @@
 
   function tileSymbol(cell, cellIdx = 0) {
     if (!cell || cell.type === 'empty') return '';
+    if (cell.type === 'skull' && cell.skull?.phylactery) return tileSymbol({ type: 'coin' }, cellIdx);
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
     if (cell.type === 'sword') return raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint');
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
@@ -2754,6 +2755,7 @@
     ORB_VIEWS.clear(); ORB_ELEMENTS = new WeakMap(); ORB_VIEW_UID = 0;
   }
   function orbLook(cell, idx) {
+    if (isPhylacteryCell(cell)) return { state: 'sand', rgb: '228 190 94', light: '#ffeab0', mid: '#907331', dark: '#352c20' };
     const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
     // Unselected glass is clear. Elemental metal tint is CSS-only; the old
     // 2/3-height body appears only on selection (air above, water below).
@@ -2831,9 +2833,10 @@
       cellEl.className = 'cell empty'; cellEl.replaceChildren();
       cellEl.title = ''; cellEl.removeAttribute('aria-label'); return;
     }
-    const orb = view.node, isSkull = cell.type === 'skull', s = cell.skull;
+    const orb = view.node, s = cell.skull, phylactery = isPhylacteryCell(cell);
+    const isSkull = cell.type === 'skull' && !phylactery;
     const frozen = !!cell.frozen || !!(isSkull ? s.stunned : cell.stunned);
-    const burned = !!(isSkull ? s.burn : cell.burn), boss = !!s?.boss, special = !!s?.special && !boss;
+    const burned = !!(isSkull ? s.burn : cell.burn), boss = !!s?.boss && !phylactery, special = !!s?.special && !boss && !phylactery;
     const look = orbLook(cell, idx), element = ORB_ELEMENT_ORDER[orbElementIndex(cell, idx)];
     const status = (cell.broken ? ' broken' : '') + (cell.acid ? ' acid' : '') + (cell.mana ? ' mana' : '')
       + (burned ? ' burned' : '') + (frozen ? ' frozen' : '') + (boss ? ' boss' : special ? ' special' : '')
@@ -2882,7 +2885,8 @@
         + ' · ' + (ELEMENTAL_COMBAT ? combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : RAID_REGIONS[element].element + ' (внешность локации; бой классический)');
       if (s.type === 7) label += ' · Опасность для героя — обычная атака Огненного (×2), она входит в общий залп. Каждый ход он также поджигает до 8 занятых соседних клеток: после залпа горящие соседние черепа получают урон, равный его атаке, но сам поджог герою не вредит. Убей Огненного, чтобы прекратить будущие поджоги.';
     } else {
-      label = { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
+      label = phylactery ? 'Филактерий Лича: включи в цепочку из 3+ монет в следующем ходу, иначе Лич воскреснет'
+        : { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
       if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + (ELEMENTAL_COMBAT ? ' (×1,25 / ×1 / ×0,75 по цели)' : ' (оформление; урон классический)');
       if (cell.magicSword) label += ', сила 5 мечей';
       if (cell.explosive) label += ', взрывное';
@@ -5358,20 +5362,28 @@
     resetModalScroll();
     wrap.className = 'modal show skull';
     title.className = 'modal-title skull';
-    title.textContent = boss ? 'БОСС' : ('ОСОБЫЙ · ' + specialTypeName(skull).toUpperCase());
+    title.textContent = skull.phylactery ? 'ФИЛАКТЕРИЙ ЛИЧА' : boss ? 'БОСС' : ('ОСОБЫЙ · ' + specialTypeName(skull).toUpperCase());
     body.innerHTML = '';
 
-    const img = document.createElement('img');
-    img.className = 'skull-feat-art';
-    img.src = raidPortrait(skull);
-    img.dataset.portrait = raidPortraitKey(skull);
-    img.alt = boss ? 'Босс' : ('Особый противник: ' + specialTypeName(skull));
-    body.appendChild(img);
+    if (skull.phylactery) {
+      const art = document.createElement('div');
+      art.className = 'phylactery-modal-art'; art.setAttribute('role', 'img'); art.setAttribute('aria-label', 'Золотая монета — филактерий Лича');
+      art.innerHTML = tileSymbol({ type: 'coin' }); body.appendChild(art);
+    } else {
+      const img = document.createElement('img');
+      img.className = 'skull-feat-art';
+      img.src = raidPortrait(skull);
+      img.dataset.portrait = raidPortraitKey(skull);
+      img.alt = boss ? 'Босс' : ('Особый противник: ' + specialTypeName(skull));
+      body.appendChild(img);
+    }
 
     const stats = document.createElement('p');
     stats.className = 'skull-feat-stats';
     const cd = skull.countdown > 0 ? ` · ⏱ ${skull.countdown}` : '';
-    stats.innerHTML = `<b>Атака ${skull.atk}</b> · <b>Броня ${skull.def}</b> · <b>HP ${skull.hp}</b>${cd}`;
+    stats.innerHTML = skull.phylactery
+      ? '<b>Возродится в конце следующего хода, если не собрать</b>'
+      : `<b>Атака ${skull.atk}</b> · <b>Броня ${skull.def}</b> · <b>HP ${skull.hp}</b>${cd}`;
     body.appendChild(stats);
     if (ELEMENTAL_COMBAT) {
       const elements = document.createElement('p');
@@ -5382,7 +5394,9 @@
 
     const feats = document.createElement('div');
     feats.className = 'skull-feat-list';
-    const items = boss
+    const items = skull.phylactery
+      ? ['Филактерий считается монетой и может входить в цепочку монет.', 'Собери цепочку из 3 или более монет вместе с филактерием в следующем ходу.', 'Если не собрать её до конца хода, Лич воскреснет. Сбор филактерия окончательно побеждает Лича и даёт награду особого.']
+      : boss
       ? ['Усиленная элитность — как оригинальный Boss (×3 ⚔ / ×3 🛡 / ×6 ❤️).',
          'Броня не ниже 1, HP ограничен бонусом Громкого (+5% HP).',
          ELEMENTAL_COMBAT ? 'Исходный Boss: прежние способности и параметры, без новых эффектов.' : 'Исходный Boss; этот портрет пока не назначает ему стихию или новую способность.']
