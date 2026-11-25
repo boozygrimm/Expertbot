@@ -4607,21 +4607,23 @@
     if (!hapticTimer) hapticTimer = setTimeout(flushCombatHaptic, 65);
   }
   function initHaptics() {
-    const control = el('haptics-mode'); if (!control) return;
+    const controls = [...document.querySelectorAll('[data-raid-haptics]')]; if (!controls.length) return;
     try {
       const saved = localStorage.getItem(HAPTICS_KEY);
       if (['important', 'all', 'off'].includes(saved)) hapticsMode = saved;
     } catch (ignored) {}
-    control.value = hapticsMode;
-    control.addEventListener('change', event => {
+    const syncControls = () => controls.forEach(control => { control.value = hapticsMode; });
+    syncControls();
+    controls.forEach(control => control.addEventListener('change', event => {
       const value = event.target.value;
       hapticsMode = ['important', 'all', 'off'].includes(value) ? value : 'important';
       try { localStorage.setItem(HAPTICS_KEY, hapticsMode); } catch (ignored) {}
+      syncControls();
       if (hapticsMode === 'off') {
         clearTimeout(hapticTimer); hapticTimer = 0;
         pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
       }
-    });
+    }));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         clearTimeout(hapticTimer); hapticTimer = 0;
