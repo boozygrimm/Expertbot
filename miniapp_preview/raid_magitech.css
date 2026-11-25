@@ -1804,6 +1804,20 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .mech-garage-icon-label { font-size:9px; }
   .mech-detail-body.mech-garage-home > .mech-go-button { left:21%; bottom:16%; width:58%; min-height:42px; font-size:12px; }
 }
+/* Background theme control stays above all preparation sub-screens. */
+.raid-music-toggle {
+  position:absolute; z-index:12; top:max(12px,env(safe-area-inset-top)); right:14px;
+  width:44px; height:44px; padding:8px; display:grid; place-items:center;
+  border:0; border-radius:50%; color:#f0dbac;
+  background:var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  box-shadow:0 0 15px #f0522d55,0 4px 12px #0009; filter:drop-shadow(0 0 6px #ef592b66);
+}
+.raid-music-toggle svg { display:block; width:100%; height:100%; }
+.raid-music-toggle .music-mute { display:none; }
+.raid-music-toggle.is-muted .music-wave { display:none; }
+.raid-music-toggle.is-muted .music-mute { display:block; }
+.raid-music-toggle:focus-visible { outline:2px solid #fff0bd; outline-offset:3px; }
+@media (max-width:380px) { .raid-music-toggle { top:max(8px,env(safe-area-inset-top)); right:10px; width:40px; height:40px; } }
 /* Reuse the ember medallion and underglow on every circular action control. */
 .region-emblem-launch {
   background:var(--raid-round-button-texture) center / 100% 100% no-repeat;
