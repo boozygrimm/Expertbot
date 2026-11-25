@@ -4603,10 +4603,7 @@
     clip.volume = .65;
     try {
       clip.pause();
-      if (id === 'raid-sword-taken') {
-        clip.currentTime = 0;
-        clip.ontimeupdate = () => { if (clip.currentTime >= 1.25) { clip.ontimeupdate = null; clip.pause(); } };
-      } else { clip.currentTime = 0; clip.ontimeupdate = null; }
+      clip.currentTime = 0;
       const playing = clip.play(); playing?.catch?.(() => {});
     } catch (ignored) {}
   }
