@@ -1787,6 +1787,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   font:700 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-shadow:0 1px 5px #000e;
 }
 .mech-detail-body.mech-garage-home > .mech-go-button::before { display:none; }
+.mech-detail-body.mech-garage-home > .mech-go-button:hover:not(:disabled),
+.mech-detail-body.mech-garage-home > .mech-go-button:focus-visible {
+  border:0; border-radius:0; background:var(--raid-launch-texture) center / 100% 100% no-repeat;
+  color:#fff0ca; filter:drop-shadow(0 5px 7px #000a) drop-shadow(0 0 9px #ff542faa);
+}
 @media (max-width:720px) {
   .mech-detail-actions.mech-garage-side-actions { top:27%; left:4%; width:25%; gap:5px !important; }
   .mech-garage-side-actions .mech-garage-icon-button { width:52px; height:52px; }
