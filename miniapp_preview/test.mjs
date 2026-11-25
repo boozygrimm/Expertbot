@@ -5937,7 +5937,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Обновлён гараж мехов/);
+  assert.match(current, /Кнопка старта рейда/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5948,7 +5948,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Обновлён гараж мехов\.<\/b>/);
+  assert.match(html, /<b>Кнопка старта рейда\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -5977,7 +5977,12 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.match(css, /height:clamp\(220px,38vh,390px\); max-height:44vh; overflow:hidden/);
   assert.match(css, /repeating-linear-gradient\(127deg/);
   assert.match(builder, /GARAGE_BACKGROUND = 'assets\/mech_garage_bg\.webp'/);
-  assert.match(builder, /__RAID_GARAGE_BACKGROUND__/);
+  assert.match(builder, /LAUNCH_TEXTURE = 'assets\/raid_launch_texture\.webp'/);
+  assert.match(builder, /__RAID_LAUNCH_TEXTURE__/);
+  const launch = readFileSync(new URL('./assets/raid_launch_texture.webp', import.meta.url));
+  assert.equal(launch.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(launch.subarray(8, 12).toString('ascii'), 'WEBP');
+  assert.match(css, /--raid-launch-texture: url\('__RAID_LAUNCH_TEXTURE__'\)/);
 });
 
 test('mech detail uses round pilot/mech medallions and keeps the textured launch button inset', () => {
@@ -5991,7 +5996,7 @@ test('mech detail uses round pilot/mech medallions and keeps the textured launch
   assert.match(css, /\.mech-garage-icon-art \{[\s\S]*?width:270%; height:270%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:21%; bottom:16%; width:58%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button::before/);
-  assert.match(css, /repeating-linear-gradient\(135deg,#ead69b0b[\s\S]*?linear-gradient\(180deg,#243a30/);
+  assert.match(css, /background:var\(--raid-launch-texture\) center \/ 100% 100% no-repeat/);
   assert.match(css, /\.mech-detail-actions\.mech-garage-side-actions \{ top:27%; left:4%; width:25%; gap:5px !important; \}/);
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{ width:52px; height:52px; \}/);
 });
