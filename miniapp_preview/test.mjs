@@ -5937,30 +5937,26 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Огненный враг: пламя видно/);
+  assert.match(current, /Огненный враг: теперь с анимацией/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
   assert.doesNotMatch(archive, /<details[^>]*open/);
 });
 
-test('burning enemies show their pending fire damage and explain the end-of-turn effect', () => {
+test('the Flaming enemy uses a transient flame effect and clearly explains its actual threat', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(js, /class="orb-burn" aria-hidden="true" hidden/);
-  assert.match(js, /burn\.textContent = burned \? '🔥−' \+ \(s\.fireDamage/);
-  assert.match(js, /горит: \$\{isSkull \? \(s\.fireDamage/);
-  assert.match(css, /\.raid-orb\.burned \{ border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px/);
-  assert.match(css, /\.orb-burn \{ position:absolute/);
-  assert.match(html, /<b>Огненный враг: пламя видно\.<\/b> При поджоге на соседних клетках вспыхивает анимация; 🔥×8 отмечает источник, 🔥−число показывает урон\./);
-  assert.match(js, /orb\.dataset\.enemyType = String\(s\.type\)/);
+  assert.match(html, /<b>Огненный враг: теперь с анимацией\.<\/b> При поджоге соседних клеток вспыхивает пламя/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
-  assert.match(js, /animateOrb\(orb\.querySelector\('\.orb-fire'\)/);
+  assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
+  assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
+  assert.match(css, /\.orb-fire\.ignite-pop \{ animation:orb-ignite-pop/);
+  assert.doesNotMatch(js, /animateOrb\(orb\.querySelector\('\.orb-fire'\)/);
   assert.match(js, /Каждый ход он также поджигает до 8 занятых соседних клеток/);
   assert.match(js, /горящие соседние черепа получают урон, равный его атаке, но сам поджог герою не вредит/);
   assert.match(js, /Опасность для героя — обычная атака Огненного \(×2\), она входит в общий залп/);
   assert.match(css, /\.orb-fire \{ position:absolute/);
-  assert.match(css, /\.orb-igniter \{ top:3%; left:2%/);
-  assert.doesNotMatch(js + css, /in-fire-zone|fireZone/);
+  assert.doesNotMatch(js + css, /orb-igniter|orb-burn|in-fire-zone|fireZone/);
 });

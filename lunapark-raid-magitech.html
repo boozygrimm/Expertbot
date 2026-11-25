@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="eed6aa3cd678">
+<meta name="raid-build" content="fc82292213cb">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1429,7 +1429,6 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb.frozen .orb-ice { opacity: 1; }
 .orb-fire { position:absolute; inset:-2%; z-index:6; border-radius:50%; opacity:0; overflow:hidden; background:radial-gradient(ellipse at 50% 84%,#ff6b3740 0%,#ff9c291c 46%,transparent 75%); mix-blend-mode:screen; pointer-events:none; }
 .raid-orb.burned .orb-fire { opacity:.76; }
-.raid-orb.burned:not(.frozen) { border-color:#ffae55; box-shadow:inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
 .raid-orb.frozen .orb-material, .raid-orb.frozen .orb-material::before { animation-play-state: paused; }
 .raid-orb.frozen .orb-core { filter: saturate(.6) brightness(1.15); }
 .orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
@@ -1439,16 +1438,8 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1)) grayscale(.8)
     drop-shadow(-.65px -.65px 0 #b3c5be) drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
 }
-.raid-orb.burned { border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
-.orb-igniter, .orb-burn { position:absolute; z-index:7; min-width:38%; height:24%; display:flex; align-items:center; justify-content:center; padding:0 3%; border:1px solid #ffd078; border-radius:999px; background:#32150df2; color:#fff4d4; font:800 17cqw/1 system-ui,sans-serif; text-shadow:0 1px 2px #381005; box-shadow:0 0 7px #ff6729d9; white-space:nowrap; pointer-events:none; }
-.orb-igniter { top:3%; left:2%; min-width:40%; border-color:#ffbd5c; background:#45190df5; box-shadow:0 0 9px #ff6729e6; }
-.raid-orb[data-enemy-type="7"] { border-color:#ff9743; box-shadow:inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
-.raid-orb[data-enemy-type="7"] .orb-igniter:not([hidden]) { animation:igniter-pulse 1.5s ease-in-out infinite alternate; }
-@keyframes igniter-pulse { from { filter:brightness(.9); } to { filter:brightness(1.24); } }
-.orb-burn { top:3%; right:2%;
-.orb-igniter[hidden], .orb-burn[hidden] { display:none; }
-.raid-orb.burned:not(.frozen) .orb-burn { animation: burn-marker-flicker .8s ease-in-out infinite alternate; }
-@keyframes burn-marker-flicker { from { filter:brightness(.92); transform:scale(.97); } to { filter:brightness(1.18); transform:scale(1.03); } }
+.orb-fire.ignite-pop { animation:orb-ignite-pop .9s cubic-bezier(.18,.75,.28,1); }
+@keyframes orb-ignite-pop { 0% { opacity:0; transform:scale(.68); } 42% { opacity:.92; transform:scale(1.08); } 100% { opacity:0; transform:scale(1); } }
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: scale(.8); filter: hue-rotate(35deg) brightness(.8); }
@@ -1706,7 +1697,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка eed6aa3cd678</p>
+    <p class="build-label">Сборка fc82292213cb</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1875,7 +1866,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка eed6aa3cd678</p>
+    <p class="build-label">Сборка fc82292213cb</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1909,12 +1900,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка eed6aa3cd678</p>
+      <p class="build-label" id="updates-build">Сборка fc82292213cb</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li><b>Огненный враг: пламя видно.</b> При поджоге на соседних клетках вспыхивает анимация; 🔥×8 отмечает источник, 🔥−число показывает урон.</li>
+        <li><b>Огненный враг: теперь с анимацией.</b> При поджоге соседних клеток вспыхивает пламя; его эффект и урон объяснены в карточке врага.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
@@ -2006,7 +1997,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка eed6aa3cd678.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка fc82292213cb.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -4880,8 +4871,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     orb.dataset.type = cell.type; orb.dataset.state = look.state;
     if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
     else delete orb.dataset.element;
-    if (isSkull) orb.dataset.enemyType = String(s.type);
-    else delete orb.dataset.enemyType;
     orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
     orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
     const key = `${cell.type}:${!!cell.acid}:${!!cell.mana}:${!!cell.explosive}:${!!cell.magicSword}:${isSkull ? s.uid : ''}`;
@@ -4890,7 +4879,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       orb.innerHTML = (weapon
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"><\/i><i class="orb-fog-wisp orb-fog-back"><\/i><\/span>'
         : '<span class="orb-material" aria-hidden="true"><\/span>') + '<span class="orb-core"><\/span>'
-        + (isSkull ? '<div class="skull-badge"><\/div><span class="orb-countdown"><\/span><span class="orb-igniter" aria-hidden="true" hidden>🔥×8<\/span><span class="orb-burn" aria-hidden="true" hidden><\/span>' : cell.magicSword ? '<span class="orb-charge">5<\/span>' : '')
+        + (isSkull ? '<div class="skull-badge"><\/div><span class="orb-countdown"><\/span>' : cell.magicSword ? '<span class="orb-charge">5<\/span>' : '')
         + '<span class="orb-ice">' + ORB_ICE + '<\/span><span class="orb-fire" aria-hidden="true">' + ORB_FIRE + '<\/span><span class="orb-crack" aria-hidden="true"><\/span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
@@ -4914,17 +4903,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
       const countdown = orb.querySelector('.orb-countdown');
       countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
-      const igniter = orb.querySelector('.orb-igniter');
-      if (igniter) {
-        igniter.hidden = s.type !== 7;
-        igniter.title = s.type === 7 ? 'Огненный: в конце хода воспламеняет соседние клетки' : '';
-      }
-      const burn = orb.querySelector('.orb-burn');
-      if (burn) {
-        burn.hidden = !burned;
-        burn.textContent = burned ? '🔥−' + (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : '';
-        burn.title = burned ? 'Огненный урон в конце хода' : '';
-      }
       const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
@@ -4944,11 +4922,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
     // Remove an orb vacating this socket, never rebuild the incoming object.
     for (const child of [...cellEl.children]) if (child !== orb) child.remove();
-    if (view.initialized && view.burned !== burned && burned) {
-      animateOrb(orb.querySelector('.orb-fire'),
-        [{ opacity: 0, transform: 'scale(.68)' }, { opacity: .92, transform: 'scale(1.08)', offset: .42 }, { opacity: .5, transform: 'scale(1)' }],
-        { duration: 900, easing: 'cubic-bezier(.18,.75,.28,1)', fill: 'forwards' });
-    }
     view.burned = burned;
     if (view.initialized && view.frozen !== frozen) {
       animateOrb(orb.querySelector('.orb-ice'), frozen
@@ -4999,9 +4972,10 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     // LAST: batch ALL writes before ALL final geometry reads. Measuring and
     // starting each orb in one loop forced 36 layouts and staggered animation
     // clocks on phones. Interrupted moves still start at their on-screen rect.
-    const plans = [];
+    const plans = [], firePulses = [];
     for (let idx = 0; idx < CELL_COUNT; idx++) {
       const key = keys[idx]; let view = key && previous.get(key);
+      const wasBurned = view?.burned;
       if (key && !view) {
         const node = document.createElement('div'); node.dataset.orbId = String(++ORB_VIEW_UID);
         node.style.setProperty('--orb-phase', -(ORB_VIEW_UID * 137 % 3100) + 'ms');
@@ -5010,6 +4984,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const moved = previous.has(key) && view.slot !== idx;
       if (moved) view.motion?.cancel();
       renderCell(S.board[idx], idx, view);
+      const cell = S.board[idx], target = cell?.type === 'skull' ? cell.skull : cell;
+      if (view && wasBurned === false && !!target?.burn) firePulses.push(view.node.querySelector('.orb-fire'));
       if (!view) continue;
       next.set(key, view);
       if (moved || !previous.has(key)) plans.push({ view, idx, old: rects.get(key), moved });
@@ -5034,6 +5010,13 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       }
     }
     ORB_VIEWS = next;
+    if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
+      for (const overlay of firePulses) {
+        if (!overlay?.isConnected) continue;
+        overlay.classList.remove('ignite-pop');
+        requestAnimationFrame(() => { if (overlay.isConnected && !orbReducedMotion()) overlay.classList.add('ignite-pop'); });
+      }
+    });
     renderSelection(); renderChainLine();
   }
 
