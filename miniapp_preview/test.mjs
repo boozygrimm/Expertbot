@@ -4904,7 +4904,7 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   }
   assert.match(js, /mech_\$\{cls\.id\}\.png/);
   assert.match(js, /className = 'picker-card-btn'/);
-  assert.match(js, /className = 'mech-detail-topic'/);
+  assert.match(js, /className = `mech-detail-topic mech-garage-icon-button \$\{kind\}`/);
   assert.match(js, /textContent = 'Поехали!'/);
   assert.match(js, /event\.target === detail\) closeDetail\(\)/);
   assert.match(js, /role', 'dialog'/);
@@ -4921,7 +4921,7 @@ test('magitech mech gallery: every mech has its own transparent portrait, compac
   assert.match(css, /\.mech-detail-portrait img \{ width: 100%; height: 100%;/);
   assert.match(css, /\.picker-main \.picker-tools \.btn \{ min-height: 32px/);
   assert.match(css, /mech-detail-actions\.mech-garage-side-actions \{ position: absolute;[^]*left: 5%;[^]*width: 23%/);
-  assert.match(css, /mech-detail-body\.mech-garage-home > \.mech-go-button \{ position: absolute;[^]*bottom: 10%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:13%; bottom:16%; width:74%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button[^]*border-radius: 999px/);
 });
 
@@ -5948,7 +5948,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Обновлён гараж мехов\.<\/b> Полноэкранный ангар/);
+  assert.match(html, /<b>Обновлён гараж мехов\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -5978,4 +5978,17 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.match(css, /repeating-linear-gradient\(127deg/);
   assert.match(builder, /GARAGE_BACKGROUND = 'assets\/mech_garage_bg\.webp'/);
   assert.match(builder, /__RAID_GARAGE_BACKGROUND__/);
+});
+
+test('mech detail uses round pilot/mech medallions and keeps the textured launch button inset', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  assert.match(js, /mech-garage-icon-button \$\{kind\}/);
+  assert.match(js, /if \(kind === 'mech'\)[\s\S]*?mech-garage-icon-art[\s\S]*?mech_\$\{cls\.id\}\.png/);
+  assert.match(js, /caption\.textContent = text/);
+  assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button[\s\S]*?border-radius:50%/);
+  assert.match(css, /\.mech-garage-icon-button\.pilot \{ background:/);
+  assert.match(css, /\.mech-garage-icon-art \{[\s\S]*?width:270%; height:270%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:13%; bottom:16%; width:74%/);
+  assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button::before/);
 });
