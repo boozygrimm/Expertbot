@@ -4961,18 +4961,17 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   assert.match(frames('coin-axial-turn'), /rotateY\(0deg\)[^]*rotateY\(360deg\)/);
   assert.match(frames('weapon-idle-sway'), /rotate\(-1\.3deg\)[^]*rotate\(1\.3deg\)/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
-  assert.match(frames('weapon-mask-glint'), /opacity:0[^]*opacity:\.95/);
+  assert.match(frames('weapon-natural-glint'), /opacity:0[^]*opacity:\.38/);
   assert.match(frames('weapon-impact-slash'), /scaleX\(\.06\)[^]*scaleX\(1\.08\)/);
   for (const name of ['heat','mist','flow','grain','sheen','sap'].map(n => 'orb-fx-' + n).concat(['orb-fog-drift','orb-fog-return','orb-water-slosh','orb-water-return'])) {
     assert.doesNotMatch(frames(name), /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, name + ': still no spinning, pulsing or blinking material');
   }
   assert.match(css, /animation:\s*coin-axial-turn 16s linear infinite/);
   assert.match(css, /animation:\s*weapon-idle-sway 7\.2s ease-in-out infinite/);
-  assert.match(css, /animation:\s*weapon-mask-glint 6\.5s ease-in-out infinite/);
-  assert.match(css, /-webkit-mask-image:var\(--weapon-mask\); mask-image:var\(--weapon-mask\)/);
+  assert.match(css, /animation:\s*weapon-natural-glint 6\.5s ease-in-out infinite/);
+  assert.match(css, /\.weapon-glint[^{]*\{[^}]*object-fit:contain[^}]*clip-path:polygon/);
   assert.match(css, /\.raid-orb\.frozen\[data-type="sword"\] \.weapon-glint \{ animation-play-state: paused; \}/);
-  assert.match(js, /return raidWeaponTexture\('ic'\) \+ '<i class="weapon-glint"/);
-  assert.match(js, /--weapon-mask:url\(' \+ art\.src \+ '\)/);
+  assert.match(js, /return raidWeaponTexture\('ic'\) \+ raidWeaponTexture\('weapon-glint'\)/);
   assert.match(css, /animation:weapon-impact-slash \.23s cubic-bezier/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(js, /if \(view\.node\.dataset\.type === 'sword'\)/);

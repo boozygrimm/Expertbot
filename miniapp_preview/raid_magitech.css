@@ -1350,16 +1350,14 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   transform-origin: 50% 54%; backface-visibility: hidden;
   animation: weapon-idle-sway 7.2s ease-in-out infinite; animation-delay: var(--orb-phase,0ms);
 }
-/* Mask the moving highlight to the actual RGBA blade silhouette, so it reads as metal glint rather than a line over the orb. */
+/* A second copy of the transparent weapon art keeps the glint bound to the
+   exact sprite silhouette; a narrow diagonal clipping window sweeps over it. */
 .raid-orb[data-type="sword"] .weapon-glint {
-  position:absolute; z-index:4; inset:0; pointer-events:none; opacity:0; mix-blend-mode:screen;
-  background:linear-gradient(112deg,transparent 38%,#ffffff20 43%,#f7ffff 49%,#b9eaff 52%,#ffffff20 56%,transparent 62%);
-  background-size:240% 240%; background-position:145% -50%;
-  -webkit-mask-image:var(--weapon-mask); mask-image:var(--weapon-mask);
-  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-position:center; mask-position:center;
-  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
-  filter:drop-shadow(0 0 2px #b9edffb3);
-  animation:weapon-mask-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
+  position:absolute; z-index:4; inset:0; width:100%; height:100%; object-fit:contain;
+  pointer-events:none; opacity:0; mix-blend-mode:screen;
+  filter:brightness(1.85) saturate(.55) drop-shadow(0 0 1px #b9edff80);
+  clip-path:polygon(0 0,0 0,0 100%,0 100%);
+  animation:weapon-natural-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 .weapon-impact-slash,.weapon-impact-echo { position:absolute; z-index:8; left:-35%; top:49%; width:170%; height:2px; border-radius:99px; opacity:0; pointer-events:none; background:linear-gradient(90deg,transparent 0%,#dffaff88 24%,#fff 50%,#c6f4ff 68%,transparent 100%); box-shadow:0 0 7px #8ee8ffb3; transform:rotate(-42deg) scaleX(.05); animation:weapon-impact-slash .23s cubic-bezier(.15,.75,.25,1) both; animation-delay:var(--burst-delay,0ms); }
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
@@ -1450,7 +1448,13 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 /* Content-only 3D rotation, explicitly requested after PR125. */
 @keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
 @keyframes weapon-idle-sway { 0%,100% { transform: rotate(-1.3deg) translateY(0); } 50% { transform: rotate(1.3deg) translateY(-1.1%); } }
-@keyframes weapon-mask-glint { 0%,52%,100% { opacity:0; background-position:145% -50%; } 58% { opacity:.2; } 63% { opacity:.95; background-position:-55% 150%; } 68% { opacity:.08; } }
+@keyframes weapon-natural-glint {
+  0%,50%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
+  54% { opacity:.16; clip-path:polygon(28% 0,36% 0,0 58%,0 46%); }
+  60% { opacity:.38; clip-path:polygon(100% 0,100% 12%,12% 100%,0 100%); }
+  65% { opacity:.08; clip-path:polygon(100% 42%,100% 56%,56% 100%,42% 100%); }
+  69% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+}
 @keyframes weapon-impact-slash { 0% { opacity:0; transform:rotate(-42deg) scaleX(.06) translateX(-8%); } 18% { opacity:.95; } 68% { opacity:.75; transform:rotate(-42deg) scaleX(1) translateX(1%); } 100% { opacity:0; transform:rotate(-42deg) scaleX(1.08) translateX(5%); } }
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
