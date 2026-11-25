@@ -908,6 +908,19 @@ test('Lich instructions explain the 3-coin phylactery win condition and show the
   assert.equal(relic.subarray(1, 4).toString('ascii'), 'PNG');
 });
 
+test('the trophy tile uses the generated transparent gold cup art in preview and standalone builds', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
+  const png = readFileSync(new URL('./assets/raid_trophy.png', import.meta.url));
+  assert.match(js, /cell\.type === 'trophy'\) return `<img class="trophy-art"/);
+  assert.match(js, /TROPHY_IMAGE = 'assets\/raid_trophy\.png'/);
+  assert.match(css, /\.cell\.type-trophy \.trophy-art/);
+  assert.match(builder, /TROPHY_ART = 'assets\/raid_trophy\.png'/);
+  assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.equal(png[25], 6, 'trophy artwork retains a transparent alpha channel');
+});
+
 test('raid burning specials and poison-killed Lich use the shared special reward path', () => {
   for (const source of ['fire', 'poison']) {
     const { raid } = raidBrowser({ seed: 0 });
@@ -5963,7 +5976,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Блик оружия подстраивается под вид/);
+  assert.match(current, /Новый кубок-трофей/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5974,7 +5987,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Блик оружия подстраивается под вид\.<\/b>/);
+  assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
