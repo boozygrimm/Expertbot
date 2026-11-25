@@ -4614,7 +4614,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.ok(html.includes('<li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>'));
   assert.ok(html.includes('<li><b>Гараж мехов.</b> В круглой карточке мех показан крупно; сбоку — кнопки «Пилот» и «Мех», снизу фигурная кнопка «Поехали!». Все десять портретов перерисованы с чистым прозрачным фоном: края и детали брони восстановлены, случайные фрагменты фона удалены. Карточка закрывается нажатием вне круга. Фигурки слегка парят; движение учитывает настройку анимации и системное «уменьшение движения».</li>'));
   assert.ok(html.includes('<li><b>Выбор стихии — отдельный шаг после выбора меха.</b> На втором экране четыре стихии занимают четверти экрана. Выбери Огонь, Воздух, Землю или Воду: центральная эмблема меняет оттенок; нажми её, чтобы начать рейд. Здесь же виден текущий формат «До гибели», выбирается сложность; кнопка «Назад» возвращает в гараж.</li>'));
-  assert.ok(html.includes('<li><b>Мечи в бою — без полного вращения.</b> На поле клинок едва заметно покачивается и изредка ловит блик. При сборе меча для атаки появляется короткий световой росчерк с послесвечением; длительность хода и урон не меняются.</li>'));
+  assert.ok(html.includes('<li><b>Мечи в бою — без полного вращения.</b> На поле клинок едва покачивается; теперь по его силуэту заметно проходит короткий холодный металлический блик. При сборе меча для атаки появляется отдельный росчерк с послесвечением; длительность хода и урон не меняются.</li>'));
   assert.match(js, /textContent = 'Поехали!'/);
   assert.match(js, /\['pilot', 'Пилот', 'О пилоте'\], \['mech', 'Мех', 'О мехе'\]/);
   assert.match(js, /className = 'mech-garage-hero'/);
@@ -4961,14 +4961,18 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   assert.match(frames('coin-axial-turn'), /rotateY\(0deg\)[^]*rotateY\(360deg\)/);
   assert.match(frames('weapon-idle-sway'), /rotate\(-1\.3deg\)[^]*rotate\(1\.3deg\)/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
-  assert.match(frames('weapon-edge-glint'), /opacity:0[^]*opacity:\.38/);
+  assert.match(frames('weapon-mask-glint'), /opacity:0[^]*opacity:\.95/);
   assert.match(frames('weapon-impact-slash'), /scaleX\(\.06\)[^]*scaleX\(1\.08\)/);
   for (const name of ['heat','mist','flow','grain','sheen','sap'].map(n => 'orb-fx-' + n).concat(['orb-fog-drift','orb-fog-return','orb-water-slosh','orb-water-return'])) {
     assert.doesNotMatch(frames(name), /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, name + ': still no spinning, pulsing or blinking material');
   }
   assert.match(css, /animation:\s*coin-axial-turn 16s linear infinite/);
   assert.match(css, /animation:\s*weapon-idle-sway 7\.2s ease-in-out infinite/);
-  assert.match(css, /animation:\s*weapon-edge-glint 9s ease-in-out infinite/);
+  assert.match(css, /animation:\s*weapon-mask-glint 6\.5s ease-in-out infinite/);
+  assert.match(css, /-webkit-mask-image:var\(--weapon-mask\); mask-image:var\(--weapon-mask\)/);
+  assert.match(css, /\.raid-orb\.frozen\[data-type="sword"\] \.weapon-glint \{ animation-play-state: paused; \}/);
+  assert.match(js, /return raidWeaponTexture\('ic'\) \+ '<i class="weapon-glint"/);
+  assert.match(js, /--weapon-mask:url\("' \+ art\.src \+ '"\)/);
   assert.match(css, /animation:weapon-impact-slash \.23s cubic-bezier/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(js, /if \(view\.node\.dataset\.type === 'sword'\)/);

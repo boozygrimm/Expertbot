@@ -1004,7 +1004,7 @@
     // A stable metal finish, not an elemental tint or a quality/stat promise.
     // Upgrading mods cannot repaint a weapon. Equal appearances may look alike.
     const finish = `hue-rotate(${(appearance % 20 - 10) * 1.5}deg) saturate(.9) brightness(${(.94 + Math.floor(appearance / 20) * .04).toFixed(2)})`;
-    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish };
+    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish + ';--weapon-mask:url("' + art.src + '")' };
   }
   function raidWeaponTexture(className, item) {
     const art = raidWeaponVisual(item);
@@ -2654,7 +2654,7 @@
   function tileSymbol(cell, cellIdx = 0) {
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
-    if (cell.type === 'sword') return raidWeaponTexture('ic');
+    if (cell.type === 'sword') return raidWeaponTexture('ic') + '<i class="weapon-glint" aria-hidden="true"></i>';
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
