@@ -1780,6 +1780,7 @@
       if (data.menu) { S.levelDraft = [...data.menu.picked]; openModal(data.menu.kind, restoreMenuChoices(data.menu)); }
       else resumeRewards();
     }
+    syncIntroMusic();
     if (saveRun()) saveRaidAppearance();
     return true;
   }
@@ -3411,6 +3412,7 @@
     renderHUD();
     renderChainTip();
     log('✦ Новый забег: ' + cls.name + ' спускается в рейд');
+    syncIntroMusic();
     if (saveRun()) saveRaidAppearance();
   }
 
@@ -4548,8 +4550,10 @@
   // persistent intro track and use no samples, network or gameplay RNG. A
   // trusted gesture unlocks effects; suspended events are dropped, never queued.
   let audioCtx = null, audioMaster = null, audioNoise = null, audioGesture = false, audioPageActive = true, audioHostActive = true;
-  let introMusicEnabled = true, introMusicGesture = false;
-  const INTRO_MUSIC_KEY = 'raid.magitech.introMusic.v1';
+  let menuMusicEnabled = true, battleMusicEnabled = true, introMusicGesture = false;
+  const INTRO_MUSIC_KEY = 'raid.magitech.introMusic.v1'; // legacy preference for migration
+  const MENU_MUSIC_KEY = 'raid.magitech.menuMusic.v1';
+  const BATTLE_MUSIC_KEY = 'raid.magitech.battleMusic.v1';
   const AUDIO_VOICES = new Set(), AUDIO_LAST = new Map();
   const MATERIAL_SOUNDS = {
     gold: [[1180, 1050, .25, .052], [2360, 2310, .19, .016, .012], [1720, 1680, .32, .018, .035]],
@@ -4590,29 +4594,42 @@
     }
     AUDIO_LAST.clear();
     for (const id of ['raid-sword-taken', 'raid-sword-blade']) {
-      const clip = el(id); if (clip) { clip.pause(); try { clip.currentTime = 0; } catch (ignored) {} }
+      const clip = el(id); if (clip) { clip.ontimeupdate = null; clip.pause(); try { clip.currentTime = 0; } catch (ignored) {} }
     }
   }
   function playSwordClip(id) {
     if (!audioAllowed()) return;
     const clip = el(id); if (!clip) return;
     clip.volume = .65;
-    try { clip.pause(); clip.currentTime = 0; const playing = clip.play(); playing?.catch?.(() => {}); } catch (ignored) {}
+    try {
+      clip.pause();
+      if (id === 'raid-sword-taken') {
+        clip.currentTime = .12;
+        clip.ontimeupdate = () => { if (clip.currentTime >= 1.37) { clip.ontimeupdate = null; clip.pause(); } };
+      } else { clip.currentTime = 0; clip.ontimeupdate = null; }
+      const playing = clip.play(); playing?.catch?.(() => {});
+    } catch (ignored) {}
   }
   function introMusicAppVisible() {
     return audioPageActive && audioHostActive && document.visibilityState !== 'hidden';
   }
+  function isMenuMusicContext() { return !!el('class-picker')?.classList.contains('show'); }
+  function activeMusicEnabled() { return isMenuMusicContext() ? menuMusicEnabled : battleMusicEnabled; }
   function updateIntroMusicToggle() {
-    const toggle = el('raid-music-toggle'); if (!toggle) return;
-    toggle.classList.toggle('is-muted', !introMusicEnabled);
-    toggle.setAttribute('aria-pressed', String(introMusicEnabled));
-    const setting = el('music-on'); if (setting) setting.checked = introMusicEnabled;
-    toggle.setAttribute('aria-label', introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку');
-    toggle.title = introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку';
+    const toggle = el('raid-music-toggle');
+    const enabled = activeMusicEnabled(), context = isMenuMusicContext() ? 'меню' : 'бою';
+    if (toggle) {
+      toggle.classList.toggle('is-muted', !enabled);
+      toggle.setAttribute('aria-pressed', String(enabled));
+      toggle.setAttribute('aria-label', `${enabled ? 'Выключить' : 'Включить'} музыку в ${context}`);
+      toggle.title = `${enabled ? 'Выключить' : 'Включить'} музыку в ${context}`;
+    }
+    const setting = el('music-on'); if (setting) setting.checked = battleMusicEnabled;
   }
   function syncIntroMusic(allowAutoplayAttempt = false) {
     const track = el('raid-intro-music'); if (!track) return;
-    if (!introMusicEnabled || (!introMusicGesture && !allowAutoplayAttempt) || !introMusicAppVisible()) {
+    updateIntroMusicToggle();
+    if (!activeMusicEnabled() || (!introMusicGesture && !allowAutoplayAttempt) || !introMusicAppVisible()) {
       track.pause(); return;
     }
     track.volume = .28;
@@ -4622,21 +4639,31 @@
     const track = el('raid-intro-music'); if (!track) return;
     track.pause(); if (reset) { try { track.currentTime = 0; } catch (ignored) {} }
   }
+  function setMusicPreference(enabled, menuContext = isMenuMusicContext()) {
+    if (menuContext) {
+      menuMusicEnabled = !!enabled;
+      try { localStorage.setItem(MENU_MUSIC_KEY, menuMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
+    } else {
+      battleMusicEnabled = !!enabled;
+      try { localStorage.setItem(BATTLE_MUSIC_KEY, battleMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
+    }
+    updateIntroMusicToggle();
+    if (activeMusicEnabled()) { introMusicGesture = true; syncIntroMusic(); }
+    else stopIntroMusic();
+  }
   function initIntroMusic() {
     const track = el('raid-intro-music'), toggle = el('raid-music-toggle');
     if (!track || !toggle) return;
     track.volume = .28;
-    try { introMusicEnabled = localStorage.getItem(INTRO_MUSIC_KEY) !== 'off'; } catch (ignored) {}
+    try {
+      const legacy = localStorage.getItem(INTRO_MUSIC_KEY);
+      const menuSaved = localStorage.getItem(MENU_MUSIC_KEY), battleSaved = localStorage.getItem(BATTLE_MUSIC_KEY);
+      menuMusicEnabled = menuSaved === null ? legacy !== 'off' : menuSaved !== 'off';
+      battleMusicEnabled = battleSaved === null ? legacy !== 'off' : battleSaved !== 'off';
+    } catch (ignored) {}
     updateIntroMusicToggle();
-    const setIntroMusicEnabled = enabled => {
-      introMusicEnabled = !!enabled;
-      try { localStorage.setItem(INTRO_MUSIC_KEY, introMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
-      updateIntroMusicToggle();
-      if (introMusicEnabled) { introMusicGesture = true; syncIntroMusic(); }
-      else stopIntroMusic();
-    };
-    toggle.addEventListener('click', () => setIntroMusicEnabled(!introMusicEnabled));
-    el('music-on')?.addEventListener('change', event => setIntroMusicEnabled(event.target.checked));
+    toggle.addEventListener('click', () => setMusicPreference(!activeMusicEnabled()));
+    el('music-on')?.addEventListener('change', event => setMusicPreference(event.target.checked, false));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') stopIntroMusic(); else syncIntroMusic();
     });
@@ -6653,6 +6680,7 @@
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
+    syncIntroMusic();
     return true;
   }
   function resumeFromClassPicker() {
@@ -6660,6 +6688,7 @@
     if (!S || S.over) { resumeSavedRun(); return; }
     if (SAVE_CONFLICT) { flash('Обнови страницу: сохранение изменено в другой вкладке'); return; }
     closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
+    syncIntroMusic();
     el('menu-btn')?.focus();
   }
 
