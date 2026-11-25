@@ -5937,7 +5937,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Поджог теперь понятнее/);
+  assert.match(current, /Огненный враг стал понятнее/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5953,6 +5953,11 @@ test('burning enemies show their pending fire damage and explain the end-of-turn
   assert.match(js, /горит: \$\{isSkull \? \(s\.fireDamage/);
   assert.match(css, /\.raid-orb\.burned \{ border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px/);
   assert.match(css, /\.orb-burn \{ position:absolute/);
-  assert.match(html, /<b>Поджог теперь понятнее\.<\/b> Метка 🔥−число на враге показывает огненный урон, который сработает в конце хода\./);
-  assert.match(js, /Ручное применение навыка поджигает случайного обычного черепа: в конце хода он получит огненный урон/);
+  assert.match(html, /<b>Огненный враг стал понятнее\.<\/b> Метка 🔥×8 показывает его соседнюю зону воспламенения; 🔥−число на горящей цели — урон от его атаки в конце хода\./);
+  assert.match(js, /orb\.dataset\.enemyType = String\(s\.type\)/);
+  assert.match(js, /const fireZone = new Set\(\)/);
+  assert.match(js, /classList\.toggle\('in-fire-zone', fireZone\.has\(idx\)\)/);
+  assert.match(js, /Каждый ход до 8 соседних клеток воспламеняются; горящие враги получают урон/);
+  assert.match(css, /#board \.cell\.in-fire-zone::before/);
+  assert.match(css, /\.orb-igniter \{ top:3%; left:2%/);
 });

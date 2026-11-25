@@ -235,7 +235,7 @@
     4:  { name: 'Исцеление',   feats: ['Лечит до 2 раненых черепов до макс. HP', 'Без раненых — даст до 2 черепам +1 к атаке', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     5:  { name: 'Невидимый',   feats: ['Повышенная броня и половина обычного HP', 'Статы: ×2 ⚔ / ×10 🛡 / ½ ❤️', 'Без отдельной способности'] },
     6:  { name: 'Кислотный',   feats: ['Каждый ход превращает одну обычную зелье в кислотное', 'Кислое зелье — ранит героя, а не лечит', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
-    7:  { name: 'Огненный',    feats: ['Каждый ход поджигает до 8 соседних клеток (не других Огненных)', 'Обгоревший череп получает урон этим врагом', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
+    7:  { name: 'Огненный',    feats: ['В конце каждого хода воспламеняет все занятые соседние клетки вокруг себя (до 8; других Огненных не трогает)', 'Обгоревший череп получает огненный урон, равный атаке этого Огненного; прочие клетки не повреждаются', 'Убей Огненного до его следующего хода, чтобы остановить поджоги. Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     8:  { name: 'Застывший',   feats: ['Каждый ход замораживает до 2 клеток', 'Замороженные ресурсы не соединяются; черепа соединяются, но не атакуют', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     9:  { name: 'Отравленный', feats: ['Если общий залп пробил броню, накладывает яд по своей атаке', 'Зелье снимает яд; исключение — смертный враг Эльфа на поле', 'Статы: ⚔ / ×2 🛡 / ×4 ❤️'] },
     10: { name: 'Ка-Ми-Казе',  feats: ['Таймер 5 → 0 — взрыв: пол-HP героя', 'При убийстве — тоже взрыв в соседних не-черепах', 'Статы: ⚔ / ×2 🛡 / ×6 ❤️ · таймер 5'] },
@@ -798,7 +798,7 @@
     Orc: { name: 'Орк', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
     Halfling: { name: 'Халфлинг', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
     Werewolf: { name: 'Вервольф', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
-    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа: в конце хода он получит огненный урон, равный базовому урону героя (если не заморожен). Метка 🔥−урон показывает цель и силу поджога. Особые враги и босс невосприимчивы. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
+    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
     Changeling: { name: 'Изменник', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
   };
   const CLASS_TRAITS = {
@@ -2839,6 +2839,8 @@
     orb.dataset.type = cell.type; orb.dataset.state = look.state;
     if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
     else delete orb.dataset.element;
+    if (isSkull) orb.dataset.enemyType = String(s.type);
+    else delete orb.dataset.enemyType;
     orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
     orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
     const key = `${cell.type}:${!!cell.acid}:${!!cell.mana}:${!!cell.explosive}:${!!cell.magicSword}:${isSkull ? s.uid : ''}`;
@@ -2847,7 +2849,7 @@
       orb.innerHTML = (weapon
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"></i><i class="orb-fog-wisp orb-fog-back"></i></span>'
         : '<span class="orb-material" aria-hidden="true"></span>') + '<span class="orb-core"></span>'
-        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span><span class="orb-burn" aria-hidden="true" hidden></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
+        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span><span class="orb-igniter" aria-hidden="true" hidden>🔥×8</span><span class="orb-burn" aria-hidden="true" hidden></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
         + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-crack" aria-hidden="true"></span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
@@ -2871,6 +2873,11 @@
       badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
       const countdown = orb.querySelector('.orb-countdown');
       countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
+      const igniter = orb.querySelector('.orb-igniter');
+      if (igniter) {
+        igniter.hidden = s.type !== 7;
+        igniter.title = s.type === 7 ? 'Огненный: в конце хода воспламеняет соседние клетки' : '';
+      }
       const burn = orb.querySelector('.orb-burn');
       if (burn) {
         burn.hidden = !burned;
@@ -2882,6 +2889,7 @@
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
         + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '')
         + ' · ' + (ELEMENTAL_COMBAT ? combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : RAID_REGIONS[element].element + ' (внешность локации; бой классический)');
+      if (s.type === 7) label += ' · Каждый ход до 8 соседних клеток воспламеняются; горящие враги получают урон, равный атаке Огненного. Убей его, чтобы остановить поджоги.';
     } else {
       label = { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
       if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + (ELEMENTAL_COMBAT ? ' (×1,25 / ×1 / ×0,75 по цели)' : ' (оформление; урон классический)');
@@ -2917,6 +2925,19 @@
     }
     const previous = ORB_VIEWS, next = new Map(), rects = new Map(), boardRect = board.getBoundingClientRect();
     const keys = S.board.map(cell => cell && cell.type !== 'empty' ? orbIdentity(cell) : null);
+    const fireZone = new Set();
+    S.board.forEach((cell, idx) => {
+      if (cell?.type !== 'skull' || cell.skull?.type !== 7) return;
+      const row = Math.floor(idx / COLS), col = idx % COLS;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const r = row + dr, c = col + dc;
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+          const adjacent = S.board[r * COLS + c];
+          if (!(adjacent?.type === 'skull' && adjacent.skull?.type === 7)) fireZone.add(r * COLS + c);
+        }
+      }
+    });
     // FIRST: capture the actual, possibly interrupted on-screen positions before
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
@@ -2955,6 +2976,7 @@
       const moved = previous.has(key) && view.slot !== idx;
       if (moved) view.motion?.cancel();
       renderCell(S.board[idx], idx, view);
+      qs(`.cell[data-idx="${idx}"]`)?.classList.toggle('in-fire-zone', fireZone.has(idx));
       if (!view) continue;
       next.set(key, view);
       if (moved || !previous.has(key)) plans.push({ view, idx, old: rects.get(key), moved });
