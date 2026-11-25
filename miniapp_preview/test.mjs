@@ -5957,7 +5957,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Для монет — два отдельных звука/);
+  assert.match(current, /Звук цепочки монет короче на 40%/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5968,7 +5968,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Для монет — два отдельных звука:<\/b>/);
+  assert.match(html, /<b>Звук цепочки монет короче на 40%\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -6065,6 +6065,8 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.match(html, /id="raid-coin-drop" src="__RAID_COINDROP__"/);
   assert.match(builder, /COIN_TAKEN = 'assets\/cointaken\.mp3'/);
   assert.match(builder, /COIN_DROP = 'assets\/coinsdrop\.mp3'/);
+  const coinsDrop = readFileSync(new URL('./assets/coinsdrop.mp3', import.meta.url));
+  assert.ok(coinsDrop.length < 35000, 'coinsdrop source must be physically trimmed at the end');
   assert.match(js, /firstSelection && S\.board\[cellIdx\]\.type === 'coin'\) audioCoinSelect\(\)/);
   assert.match(js, /committed && S\.chainType === 'coin'\) audioCoinChain\(\)/);
   assert.match(js, /function audioCoinSelect\(\) \{ playAudioClip\('raid-coin-taken'\); \}/);
