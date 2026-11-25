@@ -1801,6 +1801,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); align-content:stretch; gap:7px; padding:2px;
 }
 .class-picker:not(.region-mode-open) .picker-class { min-width:0; min-height:0; }
+/* Per-run affinity belongs in the mech's Pilot details, never squeezed into the tiny roster tile. */
+.class-picker:not(.region-mode-open) .picker-grid .picker-affinity-field,
+.class-picker:not(.region-mode-open) .picker-grid .picker-affinity-note { display:none !important; }
 .class-picker:not(.region-mode-open) .picker-card-btn {
   min-width:0; min-height:0; height:100%; padding:5px 3px; gap:4px; border:1px solid #b8ad7d;
   border-radius:13px; background:linear-gradient(155deg,#18302ceF,#0a1715f5 82%); box-shadow:0 5px 14px #0009,inset 0 1px 0 #fff1;
