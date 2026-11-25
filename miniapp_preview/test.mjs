@@ -5932,3 +5932,14 @@ test('magitech affinity source: all four distributions have exact 30/20/25/25 bu
   assert.doesNotMatch(fn('saveClassConfig'), /affinity|pickerAffinities/);
   assert.match(fn('newGame'), /pickerAffinities\.clear\(\)/); assert.match(fn('resumeSavedRun'), /Object\.freeze\(ELEMENTAL_COMBAT\.affinity\)/);
 });
+
+test('release notice shows one short current item and keeps older notes collapsed in history', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
+  assert.equal((current.match(/<li>/g) || []).length, 1);
+  assert.match(current, /Блик меча стал естественнее/);
+  const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /<summary>История обновлений<\/summary>/);
+  assert.match(archive, /<ol>[\s\S]*<li>/);
+  assert.doesNotMatch(archive, /<details[^>]*open/);
+});
