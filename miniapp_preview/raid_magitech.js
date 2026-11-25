@@ -2681,7 +2681,7 @@
       const bodyWindow = `raid-potion-body-${cellIdx}`;
       return start + `<defs><clipPath id="${headClip}"><rect x="0" y="0" width="48" height="23"/></clipPath><clipPath id="${bodyWindow}"><rect x="0" y="21" width="48" height="28"/></clipPath><clipPath id="${clip}"><path d="M24 16c-2.5 3.4-9 4.6-13 8.5-5 5.1-5.8 11.3-.3 18.1 7.1 4.1 25.5 4.1 32.6 0 5.5-6.8 4.7-13-.3-18.1-4-3.9-10.5-5.1-13-8.5Z"/></clipPath></defs><g class="potion-vessel" data-potion="${kind}"><image class="potion-art-head" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet" clip-path="url(#${headClip})"/><g class="potion-lower-window" clip-path="url(#${bodyWindow})"><g class="potion-lower-motion"><image class="potion-art-body" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet"/><g class="potion-slosh-overlay" clip-path="url(#${clip})"><path class="potion-wave potion-wave-back" d="M3 ${surfaceY}c5-2 8 1 13-1s8-2 12 0 8 1 17-1v10H3Z" fill="${liquid}" fill-opacity=".24"/><path class="potion-wave potion-wave-front" d="M3 ${surfaceY + 1}c6 1 8-2 14 0s8 2 13 0 9-1 15 1v10H3Z" fill="${liquid}" fill-opacity=".47"/><path class="potion-wave potion-surface-glint" d="M7 ${surfaceY + .4}q5-1 8-.2m7 .2q6 1 11-.1" fill="none" stroke="#fff8e8" stroke-opacity=".8" stroke-width=".7" stroke-linecap="round"/><circle class="potion-bubble" cx="18" cy="34" r=".9"/><circle class="potion-bubble potion-bubble-delay" cx="31" cy="37" r=".65"/>${mark}</g></g></g></g>` + end;
     }
-    if (cell.type === 'trophy') return start + '<path d="M15 6h18v13c0 7-4 11-9 11s-9-4-9-11ZM15 10H6v9c0 5 4 8 10 8m17-17h9v9c0 5-4 8-10 8" fill="#c5a25a" stroke="#f7db8d" stroke-width="2"/><path d="M21 30h6v9h8v5H13v-5h8Z" fill="#e2c276"/><path d="m24 11 5 7-5 7-5-7Z" fill="#a7f3d9"/>' + end;
+    if (cell.type === 'trophy') return `<img class="trophy-art" src="${TROPHY_IMAGE}" alt="">`;
     if (cell.type === 'chain') return start + '<path d="m21 9-9 9a9 9 0 0 0 13 13l4-4m-10-6-4 4a9 9 0 0 0 13 13l9-9a9 9 0 0 0-13-13Z" stroke="#a6dce0" stroke-width="5" fill="none"/><path d="m17 30 14-14" stroke="#e9d597" stroke-width="3"/>' + end;
     return start + '<circle cx="24" cy="24" r="17" fill="#607c73"/><path d="m14 19 7 2-3 7-6-2m22-7-7 2 3 7 6-2M20 34h8" stroke="#142826" stroke-width="3" fill="none"/>' + end;
   }
@@ -2691,6 +2691,7 @@
   // weapon selection haze display assignments; legacy v1 palettes stay cosmetic.
   const ORB_ELEMENT_ORDER = RAID_ELEMENTS;
   const PHYLACTERY_IMAGE = 'assets/lich_phylactery.png';
+  const TROPHY_IMAGE = 'assets/raid_trophy.png';
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
     { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },

@@ -678,6 +678,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .shop-item .shop-preview { display: block; white-space: normal; overflow-wrap: anywhere; }
 .cell.type-trophy { color: #ffe195; border-color: #dba85c; background: radial-gradient(ellipse, #604124, #24142d); }
 .cell.type-trophy .ic { filter: drop-shadow(0 0 5px #c68a39); }
+.cell.type-trophy .trophy-art { width: 96%; height: 96%; object-fit: contain; filter: drop-shadow(0 0 4px #e6b956b3); }
 .cell.type-trophy.frozen { border-color: #8fccef; }
 
 /* Next-run class configuration, deliberately separate from the reward modal. */

@@ -18,9 +18,10 @@ SWORD_BLADE = 'assets/swordblade.mp3'
 COIN_TAKEN = 'assets/cointaken.mp3'
 COIN_DROP = 'assets/coinsdrop.mp3'
 PHYLACTERY_ART = 'assets/lich_phylactery.png'
+TROPHY_ART = 'assets/raid_trophy.png'
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
-           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, *SCENES.values())
+           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, TROPHY_ART, *SCENES.values())
 
 
 def main():
@@ -67,6 +68,8 @@ def main():
     html = html.replace('__RAID_COINDROP__', 'data:audio/mpeg;base64,' + coin_drop)
     phylactery_art = base64.b64encode((HERE / PHYLACTERY_ART).read_bytes()).decode('ascii')
     js = js.replace("'assets/lich_phylactery.png'", "'data:image/png;base64," + phylactery_art + "'")
+    trophy_art = base64.b64encode((HERE / TROPHY_ART).read_bytes()).decode('ascii')
+    js = js.replace("'assets/raid_trophy.png'", "'data:image/png;base64," + trophy_art + "'")
     art_js = ('window.RAID_MONSTER_CATALOG = ' + json.dumps(catalog, separators=(',', ':')) + ';\n'
               + 'window.RAID_MONSTER_ART = ' + json.dumps(art['portraits'], separators=(',', ':')) + ';\n')
     html = html.replace('__RAID_BUILD__', build_id)
