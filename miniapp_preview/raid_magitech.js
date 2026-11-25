@@ -6577,8 +6577,9 @@
     const resume = el('picker-resume'), info = savedRunInfo();
     if (resume) {
       resume.hidden = !(S && !S.over || info);
-      resume.textContent = S && !S.over ? 'Вернуться в забег'
-        : info ? `▶ Продолжить: ${CLASS_BY_ID[info.classId].name} · ход ${info.turn} · ${[ELEMENTAL_RULES, RETUNE_RULES, AFFINITY_RULES].includes(info.combatRules) ? 'стихии' : 'прежние правила'}` : 'Продолжить';
+      resume.textContent = 'Продолжить';
+      resume.title = S && !S.over ? 'Вернуться в текущий забег'
+        : info ? `Продолжить рейд меха «${CLASS_BY_ID[info.classId].name}», ход ${info.turn}` : 'Продолжить забег';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
