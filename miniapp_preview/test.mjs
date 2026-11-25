@@ -6109,3 +6109,21 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.match(js, /'activated',[\s\S]*?syncIntroMusic\(\)/);
   assert.match(css, /\.raid-music-toggle \{[\s\S]*?background:var\(--raid-round-button-texture\)/);
 });
+
+test('raid haptics setting persists modes and coalesces enemy kills with boss priority', () => {
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  assert.match(html, /<select id="haptics-mode" aria-label="Вибрация"><option value="important">Важные события<\/option><option value="all">Все боевые события<\/option><option value="off">Выключена<\/option><\/select>/);
+  assert.match(js, /HAPTICS_KEY = 'raid\.magitech\.haptics\.v1'/);
+  assert.match(js, /feedback\.notificationOccurred\(kind === 'boss' \? 'success' : 'warning'\)/);
+  assert.match(js, /damage >= Math\.max\(3, Math\.ceil\(S\.hero\.maxHp \* \.25\)\)/);
+  assert.match(js, /feedback\.impactOccurred\(kind === 'kill' \? 'medium' : kind === 'hit' \? 'soft' : 'light'\)/);
+  assert.match(js, /pendingHapticBoss \|\|= boss/);
+  assert.match(js, /if \(kill\) \{ emitHaptic\(boss \? 'boss' : 'kill'\)/);
+  assert.match(js, /if \(!hapticTimer\) hapticTimer = setTimeout\(flushCombatHaptic, 65\)/);
+  assert.match(js, /queueCombatHaptic\('kill', !!cell\.skull\?\.boss\)/);
+  assert.match(js, /function initHaptics\(\)[\s\S]*?localStorage\.setItem\(HAPTICS_KEY, hapticsMode\)/);
+  assert.match(js, /initHaptics\(\)/);
+  assert.match(css, /\.settings-row select/);
+});

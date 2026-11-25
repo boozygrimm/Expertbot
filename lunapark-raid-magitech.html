@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="b7c7012010e7">
+<meta name="raid-build" content="c99287043426">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1661,6 +1661,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .settings-row input::before { content: ''; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #9cb09f; }
 .settings-row input:checked { background: #c5ba86; border-color: #e0d19e; }
 .settings-row input:checked::before { transform: translateX(18px); background: #1b3730; }
+.settings-row select { flex: none; max-width: 180px; min-height: 38px; padding: 6px 28px 6px 10px; border: 1px solid #91aa8f80; border-radius: 9px; color: #edf3df; background: #071f20; font: inherit; font-size: 12px; }
 .settings-hint, .settings-note { margin: 10px 0 0; color: #b7cbb4; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .game-settings-card [data-raid-visual-status] { color: #f0d1a2; }
 .game-settings :focus-visible, .settings-toggle:focus-visible { outline: 2px solid #f2dc9e; outline-offset: 3px; }
@@ -2217,7 +2218,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка b7c7012010e7</p>
+    <p class="build-label">Сборка c99287043426</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -2377,6 +2378,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
     </fieldset>
     <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
+    <label class="settings-row"><span>Вибрация<small>Тактильный отклик в бою</small></span><select id="haptics-mode" aria-label="Вибрация"><option value="important">Важные события</option><option value="all">Все боевые события</option><option value="off">Выключена</option></select></label>
     <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
     <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
     <p class="settings-note" data-raid-motion-note hidden></p>
@@ -2392,7 +2394,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка b7c7012010e7</p>
+    <p class="build-label">Сборка c99287043426</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2426,7 +2428,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка b7c7012010e7</p>
+      <p class="build-label" id="updates-build">Сборка c99287043426</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
@@ -2552,7 +2554,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка b7c7012010e7.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка c99287043426.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -6331,7 +6333,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const dmg = damageSkull(skull, amount, opts);
       flashOn(idx, -dmg, 'hurt', 'HP');
       flashOn(idx, skull.def - defence, 'armor', 'брони');
-      if (skull.hp > 0) return false;
+      if (skull.hp > 0) { queueCombatHaptic('hit'); return false; }
       if (skull.type === 32) {
         // AttackSkull transforms Lich; collection/poison are different paths.
         Object.assign(skull, { phylactery: true, lichDelay: true, countdown: 1,
@@ -6841,7 +6843,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
           heal(event.amount);
           if (event.leech) { S.scrollLeechLabel.inFlight = false; fadeScrollLeechLabel(); }
         } else if (event.kind === 'damage') {
-          damageHero(event.amount, false, true, event.cause);
+          damageHeroWithHaptics(event.amount, false, true, event.cause);
           const borrowed = event.lastStand && !S.lastStand;
           if (borrowed) S.lastStand = 1;
           if (S.hero.hp <= 0 && !lastStandTriggerIfNeeded()) gameOver();
@@ -6952,6 +6954,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const batch = RESOURCE_BATCH;
     const cell = S.board[idx];
     if (!cell || cell.matched || cell.type === 'empty' || batch.seen.has(cell)) return;
+    if (cell.type === 'skull') queueCombatHaptic('kill', !!cell.skull?.boss);
     batch.seen.add(cell);
     const type = opts.rewardType || (cell.type === 'skull' ? 'xp' : cell.type);
     S.board[idx] = { type: 'empty' };
@@ -7157,6 +7160,74 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function flashOn(idx, amount, kind, label) {
     floatOn(amount, kind, `.cell[data-idx="${idx}"]`, label);
+  }
+
+  // --- haptics --------------------------------------------------------------
+  // Haptics are best-effort and entirely local. Batch rapid multi-kills into a
+  // single cue so chain reactions never buzz continuously.
+  const HAPTICS_KEY = 'raid.magitech.haptics.v1';
+  let hapticsMode = 'important', hapticTimer = 0, hapticCooldownUntil = 0;
+  let pendingHapticKill = false, pendingHapticBoss = false, pendingHapticDamage = false, pendingHapticHit = false;
+  function hapticsEnabled() { return hapticsMode !== 'off' && document.visibilityState !== 'hidden'; }
+  function emitHaptic(kind) {
+    if (!hapticsEnabled()) return;
+    try {
+      const feedback = window.Telegram?.WebApp?.HapticFeedback;
+      if ((kind === 'boss' || kind === 'damage') && typeof feedback?.notificationOccurred === 'function') {
+        feedback.notificationOccurred(kind === 'boss' ? 'success' : 'warning'); return;
+      }
+      if (typeof feedback?.impactOccurred === 'function') {
+        feedback.impactOccurred(kind === 'kill' ? 'medium' : kind === 'hit' ? 'soft' : 'light'); return;
+      }
+      // Browser fallback is optional; iOS and some embedded WebViews do not
+      // expose it. Never make gameplay depend on vibration support.
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(kind === 'boss' ? [35, 25, 45] : kind === 'damage' ? [45, 30, 45] : kind === 'kill' ? 35 : 12);
+    } catch (ignored) {}
+  }
+  function flushCombatHaptic() {
+    hapticTimer = 0;
+    const kill = pendingHapticKill, boss = pendingHapticBoss, damage = pendingHapticDamage, hit = pendingHapticHit;
+    pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+    const now = Date.now();
+    if (now < hapticCooldownUntil) {
+      pendingHapticKill = kill; pendingHapticBoss = boss; pendingHapticDamage = damage; pendingHapticHit = hit;
+      hapticTimer = setTimeout(flushCombatHaptic, hapticCooldownUntil - now);
+      return;
+    }
+    if (kill) { emitHaptic(boss ? 'boss' : 'kill'); hapticCooldownUntil = now + 140; }
+    else if (damage) { emitHaptic('damage'); hapticCooldownUntil = now + 160; }
+    else if (hit && hapticsMode === 'all') { emitHaptic('hit'); hapticCooldownUntil = now + 90; }
+  }
+  function queueCombatHaptic(kind, boss = false) {
+    if (!hapticsEnabled()) return;
+    if (kind === 'kill') { pendingHapticKill = true; pendingHapticBoss ||= boss; }
+    else if (kind === 'damage') pendingHapticDamage = true;
+    else if (kind === 'hit' && hapticsMode === 'all') pendingHapticHit = true;
+    else return;
+    if (!hapticTimer) hapticTimer = setTimeout(flushCombatHaptic, 65);
+  }
+  function initHaptics() {
+    const control = el('haptics-mode'); if (!control) return;
+    try {
+      const saved = localStorage.getItem(HAPTICS_KEY);
+      if (['important', 'all', 'off'].includes(saved)) hapticsMode = saved;
+    } catch (ignored) {}
+    control.value = hapticsMode;
+    control.addEventListener('change', event => {
+      const value = event.target.value;
+      hapticsMode = ['important', 'all', 'off'].includes(value) ? value : 'important';
+      try { localStorage.setItem(HAPTICS_KEY, hapticsMode); } catch (ignored) {}
+      if (hapticsMode === 'off') {
+        clearTimeout(hapticTimer); hapticTimer = 0;
+        pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(hapticTimer); hapticTimer = 0;
+        pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
+      }
+    });
   }
 
   // --- audio ----------------------------------------------------------------
@@ -7679,7 +7750,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (S.over || S.pendingModal || !ownsRunSlot()) return;
     S.resolving = true;
     S.actionCommitted = true;
-    processEnemyAttack();
+    const incoming = processEnemyAttack();
+    if (incoming?.damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
     renderBoard(); renderHUD();
     // Spikes/counter resources (and their menus) settle before turn++.
     continueAfterRewards({ phase: 'end-turn' });
@@ -7784,6 +7856,12 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       floatOn(-damage, 'hurt', '#hud-hp', 'HP');
     }
     audioEnemy();
+    return damage;
+  }
+
+  function damageHeroWithHaptics(...args) {
+    const damage = damageHero(...args);
+    if (damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
     return damage;
   }
 
@@ -8761,7 +8839,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       } else if (t === 16) { // Assassin — bottom row: direct 2× hit; mortal enemy (Faun): kill the tile below
         if (roundOrCol === ROWS - 1) {
           const bonusDmg = 2 * enemyGetAttack(s);
-          damageHero(bonusDmg, false, true);
+          damageHeroWithHaptics(bonusDmg, false, true);
           log('🗡️ Ассасин: прямой урон −' + bonusDmg + ' HP');
         } else if (clsRace() === 'Faun') {
           // Original StabAttack: only as the Faun's mortal enemy does it match
@@ -9752,6 +9830,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     initVisualPreferences();
     initMaterialAudio();
     initGameSettings();
+    initHaptics();
     window.addEventListener?.('resize', finishOrbAnimations);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') finishOrbAnimations(); });
     initTelegramPreview();
