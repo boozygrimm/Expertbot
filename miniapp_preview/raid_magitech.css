@@ -799,6 +799,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   --raid-scene-air: url('__RAID_SCENE_AIR__');
   --raid-scene-water: url('__RAID_SCENE_WATER__');
   --raid-garage-background: url('__RAID_GARAGE_BACKGROUND__');
+  --raid-launch-texture: url('__RAID_LAUNCH_TEXTURE__');
   --raid-scene: var(--raid-scene-earth);
   --raid-view-height: var(--raid-tg-visible-height, 100dvh);
 }
@@ -1778,15 +1779,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .mech-garage-icon-label { color:#eadfbf; font:500 10px/1.1 system-ui,sans-serif; text-shadow:0 1px 5px #000; }
 .mech-detail-body.mech-garage-home > .mech-go-button {
   left:21%; bottom:16%; width:58%; min-height:44px; padding:8px 16px; overflow:hidden; isolation:isolate;
-  border:2px ridge #c7ad69; border-radius:999px; color:#f1e3bb;
-  background:repeating-linear-gradient(135deg,#ead69b0b 0 1px,transparent 1px 7px),radial-gradient(ellipse at 50% 0%,#3b5748 0%,transparent 78%),linear-gradient(180deg,#243a30 0%,#172820 48%,#101b17 100%);
-  box-shadow:0 7px 19px #000a,inset 0 2px 2px #fff3,inset 0 -4px 9px #050c0a99;
-  font:700 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-shadow:0 1px 4px #000b;
+  border:0; border-radius:0; color:#fff0ca;
+  background:var(--raid-launch-texture) center / 100% 100% no-repeat;
+  filter:drop-shadow(0 5px 7px #000a) drop-shadow(0 0 5px #d5412755);
+  font:700 12px/1 system-ui,sans-serif; letter-spacing:.14em; text-shadow:0 1px 5px #000e;
 }
-.mech-detail-body.mech-garage-home > .mech-go-button::before {
-  content:''; position:absolute; z-index:-1; inset:4px; border:1px solid #c6ad6a70; border-radius:999px;
-  box-shadow:inset 0 1px 2px #fff3; pointer-events:none;
-}
+.mech-detail-body.mech-garage-home > .mech-go-button::before { display:none; }
 @media (max-width:720px) {
   .mech-detail-actions.mech-garage-side-actions { top:27%; left:4%; width:25%; gap:5px !important; }
   .mech-garage-side-actions .mech-garage-icon-button { width:52px; height:52px; }
