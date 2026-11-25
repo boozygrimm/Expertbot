@@ -5991,4 +5991,6 @@ test('mech detail uses round pilot/mech medallions and keeps the textured launch
   assert.match(css, /\.mech-garage-icon-art \{[\s\S]*?width:270%; height:270%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button \{[\s\S]*?left:13%; bottom:16%; width:74%/);
   assert.match(css, /\.mech-detail-body\.mech-garage-home > \.mech-go-button::before/);
+  assert.match(css, /\.mech-detail-actions\.mech-garage-side-actions \{ top:27%; left:4%; width:25%; gap:5px !important; \}/);
+  assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{ width:52px; height:52px; \}/);
 });
