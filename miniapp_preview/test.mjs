@@ -891,15 +891,21 @@ test('raid Lich direct lethal hit transforms without rewards; collecting its phy
   assert.equal(s.hero.xpLevelCum, 20);
 });
 
-test('Lich instructions explain the 3-coin phylactery win condition and render it like a gold coin', () => {
+test('Lich instructions explain the 3-coin phylactery win condition and show the unique golden relic', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   assert.match(js, /Нанеси Личу смертельный урон цепочкой мечей/);
   assert.match(js, /цепочку из 3\+ монет, обязательно включив филактерию/);
-  assert.match(js, /if \(cell\.type === 'skull' && cell\.skull\?\.phylactery\) return tileSymbol\(\{ type: 'coin' \}/);
+  assert.match(js, /if \(cell\.type === 'skull' && cell\.skull\?\.phylactery\) return `<img class="phylactery-art"/);
   assert.match(js, /Филактерий Лича: включи в цепочку из 3\+ монет в следующем ходу/);
-  assert.match(js, /Филактерий считается монетой/);
-  assert.match(css, /\.cell\.type-skull\.phylactery[\s\S]*?#[0-9a-f]{6}/i);
+  assert.match(js, /Золотой филактерий со зловещей душой Лича/);
+  assert.match(css, /\.cell\.type-skull\.phylactery \.phylactery-art/);
+  assert.match(js, /PHYLACTERY_IMAGE = 'assets\/lich_phylactery\.png'/);
+  const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
+  assert.match(builder, /PHYLACTERY_ART = 'assets\/lich_phylactery\.png'/);
+  assert.match(builder, /data:image\/png;base64,/);
+  const relic = readFileSync(new URL('./assets/lich_phylactery.png', import.meta.url));
+  assert.equal(relic.subarray(1, 4).toString('ascii'), 'PNG');
 });
 
 test('raid burning specials and poison-killed Lich use the shared special reward path', () => {

@@ -2655,7 +2655,7 @@
 
   function tileSymbol(cell, cellIdx = 0) {
     if (!cell || cell.type === 'empty') return '';
-    if (cell.type === 'skull' && cell.skull?.phylactery) return tileSymbol({ type: 'coin' }, cellIdx);
+    if (cell.type === 'skull' && cell.skull?.phylactery) return `<img class="phylactery-art" src="${PHYLACTERY_IMAGE}" alt="">`;
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '</svg>';
     if (cell.type === 'sword') return raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint');
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
@@ -2689,6 +2689,7 @@
   // (37a857da), consolidated in PR87. Six resource/enemy materials plus the
   // weapon selection haze display assignments; legacy v1 palettes stay cosmetic.
   const ORB_ELEMENT_ORDER = RAID_ELEMENTS;
+  const PHYLACTERY_IMAGE = 'assets/lich_phylactery.png';
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
     { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },
@@ -5367,8 +5368,8 @@
 
     if (skull.phylactery) {
       const art = document.createElement('div');
-      art.className = 'phylactery-modal-art'; art.setAttribute('role', 'img'); art.setAttribute('aria-label', 'Золотая монета — филактерий Лича');
-      art.innerHTML = tileSymbol({ type: 'coin' }); body.appendChild(art);
+      art.className = 'phylactery-modal-art'; art.setAttribute('role', 'img'); art.setAttribute('aria-label', 'Золотой филактерий со зловещей душой Лича');
+      art.innerHTML = tileSymbol({ type: 'skull', skull: { phylactery: true } }); body.appendChild(art);
     } else {
       const img = document.createElement('img');
       img.className = 'skull-feat-art';
