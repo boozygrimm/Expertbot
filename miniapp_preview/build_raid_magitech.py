@@ -10,8 +10,10 @@ SCENES = {element: f'assets/raid_magitech_{element}.jpg'
           for element in ('fire', 'air', 'earth', 'water')}
 GARAGE_BACKGROUND = 'assets/mech_garage_bg.webp'
 LAUNCH_TEXTURE = 'assets/raid_launch_texture.webp'
+ROUND_BUTTON_TEXTURE = 'assets/raid_round_button_texture.webp'
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
-           'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE, *SCENES.values())
+           'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
+           ROUND_BUTTON_TEXTURE, *SCENES.values())
 
 
 def main():
@@ -42,6 +44,8 @@ def main():
     css = css.replace('__RAID_GARAGE_BACKGROUND__', 'data:image/webp;base64,' + garage_image)
     launch_image = base64.b64encode((HERE / LAUNCH_TEXTURE).read_bytes()).decode('ascii')
     css = css.replace('__RAID_LAUNCH_TEXTURE__', 'data:image/webp;base64,' + launch_image)
+    round_image = base64.b64encode((HERE / ROUND_BUTTON_TEXTURE).read_bytes()).decode('ascii')
+    css = css.replace('__RAID_ROUND_BUTTON_TEXTURE__', 'data:image/webp;base64,' + round_image)
     art_js = ('window.RAID_MONSTER_CATALOG = ' + json.dumps(catalog, separators=(',', ':')) + ';\n'
               + 'window.RAID_MONSTER_ART = ' + json.dumps(art['portraits'], separators=(',', ':')) + ';\n')
     html = html.replace('__RAID_BUILD__', build_id)

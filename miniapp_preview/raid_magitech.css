@@ -800,6 +800,7 @@ body { display: flex; align-items: stretch; justify-content: center; }
   --raid-scene-water: url('__RAID_SCENE_WATER__');
   --raid-garage-background: url('__RAID_GARAGE_BACKGROUND__');
   --raid-launch-texture: url('__RAID_LAUNCH_TEXTURE__');
+  --raid-round-button-texture: url('__RAID_ROUND_BUTTON_TEXTURE__');
   --raid-scene: var(--raid-scene-earth);
   --raid-view-height: var(--raid-tg-visible-height, 100dvh);
 }
@@ -1704,11 +1705,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .picker-tool:hover,.picker-visual-tool > summary:hover { background:transparent; color:#fff1c8; transform:none; }
 .picker-tool-icon {
   box-sizing:border-box; flex:none; width:50px; height:50px; padding:12px; display:block;
-  border:1px solid #d5c58d9c; border-radius:50%; color:#ead49a;
-  background:radial-gradient(circle at 34% 25%,#36554ccc,#10221edb 70%);
-  box-shadow:0 4px 16px #0008,inset 0 1px 0 #f4e8c540; filter:drop-shadow(0 0 8px #b9a15c30);
+  border:0; border-radius:50%; color:#f2dfad;
+  background:var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  box-shadow:0 0 16px #f0522d55,0 4px 12px #0009; filter:drop-shadow(0 0 6px #ef592b66);
 }
-.picker-tool:active .picker-tool-icon,.picker-visual-tool[open] .picker-tool-icon { transform:scale(.94); border-color:#fff0b6; background:radial-gradient(circle,#665a35,#142620); }
+.picker-tool:active .picker-tool-icon,.picker-visual-tool[open] .picker-tool-icon { transform:scale(.94); background:var(--raid-round-button-texture) center / 100% 100% no-repeat; filter:drop-shadow(0 0 10px #ff6a36aa); }
 .picker-visual-tool { position:relative; min-width:0; margin:0; padding:0; border:0; border-radius:0; background:transparent; color:inherit; }
 .picker-visual-tool > summary { list-style:none; }
 .picker-visual-tool > summary::-webkit-details-marker { display:none; }
@@ -1770,11 +1771,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .mech-garage-side-actions .mech-garage-icon-button {
   position:relative; width:clamp(60px,17vw,76px); height:clamp(60px,17vw,76px); min-height:0; flex:none; padding:0;
   display:grid; place-items:center; overflow:hidden; border:1px solid #e0cb87; border-radius:50%;
-  background:radial-gradient(circle at 38% 28%,#34564dcf,#10231f 70%); color:#f1dfae;
-  box-shadow:0 4px 15px #0009,inset 0 1px 2px #fff4,inset 0 0 0 4px #d4bd7b19;
+  background:var(--raid-round-button-texture) center / 100% 100% no-repeat; color:#f1dfae;
+  box-shadow:0 0 18px #f0522d60,0 4px 15px #000a,inset 0 0 0 1px #ffc96144;
+  filter:drop-shadow(0 0 7px #ef592b77);
 }
-.mech-garage-side-actions .mech-garage-icon-button::before { content:''; position:absolute; inset:4px; z-index:1; border:1px solid #d8c27b68; border-radius:50%; pointer-events:none; }
-.mech-garage-icon-button.pilot { background:radial-gradient(circle at 38% 28%,#314d46,#0d1b19 72%); }
+.mech-garage-side-actions .mech-garage-icon-button::before { display:none; }
+.mech-garage-icon-button.pilot { background:var(--raid-round-button-texture) center / 100% 100% no-repeat; }
 .mech-garage-icon-art { position:absolute; left:50%; top:-4%; width:270%; height:270%; max-width:none; object-fit:contain; transform:translateX(-50%); filter:drop-shadow(0 2px 4px #000b); }
 .mech-garage-icon-label { color:#eadfbf; font:500 10px/1.1 system-ui,sans-serif; text-shadow:0 1px 5px #000; }
 .mech-detail-body.mech-garage-home > .mech-go-button {
@@ -1790,4 +1792,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .mech-garage-side-actions .mech-garage-icon-button { width:52px; height:52px; }
   .mech-garage-icon-label { font-size:9px; }
   .mech-detail-body.mech-garage-home > .mech-go-button { left:21%; bottom:16%; width:58%; min-height:42px; font-size:12px; }
+}
+/* Reuse the ember medallion and underglow on every circular action control. */
+.region-emblem-launch {
+  background:var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  filter:drop-shadow(0 0 12px #f0522d70) drop-shadow(0 12px 20px #000b);
 }

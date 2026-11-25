@@ -5937,7 +5937,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Кнопка старта рейда/);
+  assert.match(current, /Кнопки в огненном стиле/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5948,7 +5948,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Кнопка старта рейда\.<\/b>/);
+  assert.match(html, /<b>Кнопки в огненном стиле\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -5979,10 +5979,16 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.match(builder, /GARAGE_BACKGROUND = 'assets\/mech_garage_bg\.webp'/);
   assert.match(builder, /LAUNCH_TEXTURE = 'assets\/raid_launch_texture\.webp'/);
   assert.match(builder, /__RAID_LAUNCH_TEXTURE__/);
+  assert.match(builder, /ROUND_BUTTON_TEXTURE = 'assets\/raid_round_button_texture\.webp'/);
+  assert.match(builder, /__RAID_ROUND_BUTTON_TEXTURE__/);
+  const roundButton = readFileSync(new URL('./assets/raid_round_button_texture.webp', import.meta.url));
+  assert.equal(roundButton.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(roundButton.subarray(8, 12).toString('ascii'), 'WEBP');
   const launch = readFileSync(new URL('./assets/raid_launch_texture.webp', import.meta.url));
   assert.equal(launch.subarray(0, 4).toString('ascii'), 'RIFF');
   assert.equal(launch.subarray(8, 12).toString('ascii'), 'WEBP');
   assert.match(css, /--raid-launch-texture: url\('__RAID_LAUNCH_TEXTURE__'\)/);
+  assert.match(css, /--raid-round-button-texture: url\('__RAID_ROUND_BUTTON_TEXTURE__'\)/);
 });
 
 test('mech detail uses round pilot/mech medallions and keeps the textured launch button inset', () => {
@@ -5999,4 +6005,13 @@ test('mech detail uses round pilot/mech medallions and keeps the textured launch
   assert.match(css, /background:var\(--raid-launch-texture\) center \/ 100% 100% no-repeat/);
   assert.match(css, /\.mech-detail-actions\.mech-garage-side-actions \{ top:27%; left:4%; width:25%; gap:5px !important; \}/);
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{ width:52px; height:52px; \}/);
+});
+
+test('all circular garage and region controls use the generated fire medallion with underglow', () => {
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
+  assert.match(css, /\.picker-tool-icon \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat/);
+  assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat[\s\S]*?box-shadow:0 0 18px/);
+  assert.match(css, /\.region-emblem-launch \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat;[\s\S]*?drop-shadow\(0 0 12px/);
+  assert.match(builder, /ROUND_BUTTON_TEXTURE = 'assets\/raid_round_button_texture\.webp'/);
 });
