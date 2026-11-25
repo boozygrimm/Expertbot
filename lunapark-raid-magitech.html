@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="f93c65f6672f">
+<meta name="raid-build" content="d46ae627d335">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -489,6 +489,17 @@ body { display: flex; align-items: stretch; justify-content: center; }
   background: rgba(8, 5, 14, 0.7); opacity: 0; pointer-events: none; transition: opacity 180ms ease;
 }
 .help-modal.show { opacity: 1; pointer-events: auto; }
+.beginner-guide-card { text-align:left; max-width:620px; }
+.beginner-guide-card h3 { text-align:center; }
+.guide-lead { font-size:1.05em; color:#d5e6f6; }
+.guide-step { border-top:1px solid #ffffff22; padding:.35rem 0; }
+.guide-step h4 { margin:.5rem 0 .2rem; color:#8de6c7; }
+.guide-step p { margin:.25rem 0 .6rem; line-height:1.45; }
+.guide-board { display:block; width:min(100%,320px); height:auto; margin:.5rem auto; }
+.guide-boss { padding:.75rem; border-radius:12px; background:#101827; text-align:center; line-height:1.7; color:#f3c875; }
+.guide-note { font-size:.9em; opacity:.82; }
+.beginner-guide-card button { margin:.25rem; }
+@media (max-width:480px) { .beginner-guide-card { padding:16px; max-height:88dvh; overflow:auto; } .guide-boss { font-size:.9em; } }
 .help-card {
   width: min(100%, 430px); min-width: 0; max-height: 82dvh; overflow: auto;
   background: linear-gradient(160deg, #2c1b40, #161028);
@@ -1746,7 +1757,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .class-picker:not(.region-mode-open) .picker-main > #picker-save-status { order:2; flex:none; max-height:2.7em; margin:0; overflow:hidden; color:#d0d9cb; font:500 11px/1.32 system-ui,sans-serif; text-shadow:0 1px 5px #000; }
 .class-picker:not(.region-mode-open) .picker-main > #picker-save-status { max-height:1.4em; white-space:nowrap; text-overflow:ellipsis; }
 .class-picker:not(.region-mode-open) .picker-tools {
-  order:3; flex:none; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; gap:4px;
+  order:3; flex:none; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); align-items:start; gap:4px;
   margin:2px 0 1px; padding:4px 0; background:transparent;
 }
 /* Legacy page rules must not offset or span the compact garage tool row. */
@@ -1758,6 +1769,8 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   border:0; border-radius:0; background:transparent; box-shadow:none; color:#dfe5d5; font:500 9px/1.15 system-ui,sans-serif; text-align:center; cursor:pointer;
 }
 .picker-tool:hover,.picker-visual-tool > summary:hover { background:transparent; color:#fff1c8; transform:none; }
+#picker-guide { color:#ffe8b0; font-weight:700; }
+#picker-guide .picker-tool-icon { background:var(--raid-round-button-texture) center / 100% 100% no-repeat; filter:drop-shadow(0 0 8px #ff9a42aa); }
 .picker-tool-icon {
   box-sizing:border-box; flex:none; width:50px; height:50px; padding:12px; display:block;
   border:0; border-radius:50%; color:#f2dfad;
@@ -1913,7 +1926,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка f93c65f6672f</p>
+    <p class="build-label">Сборка d46ae627d335</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1921,6 +1934,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <button class="btn" id="picker-resume" type="button" hidden>Продолжить</button>
     <p class="save-note" id="picker-save-status" role="status" aria-live="polite"></p>
     <div class="picker-tools" aria-label="Инструменты гаража">
+      <button class="picker-tool" id="picker-guide" type="button" title="Как дожить до первого босса"><span class="picker-tool-icon" aria-hidden="true">📘</span><span>Как играть</span></button>
       <button class="picker-tool" id="picker-history" type="button" title="Рекорды и статистика"><svg class="picker-tool-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M6 25h20M9 22V16h4v6m3 0V9h4v13m3 0v-9h4v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 8h4M9 6v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Рекорды</span></button>
       <button class="picker-tool" id="picker-achievements" type="button" title="Достижения"><svg class="picker-tool-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="m16 4 3.2 7 7.6.8-5.7 5 1.6 7.5L16 20.5l-6.7 3.8 1.6-7.5-5.7-5 7.6-.8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-opacity=".45"/></svg><span>Достижения</span></button>
       <button class="picker-tool" id="picker-updates" type="button" title="Что нового и история обновлений"><svg class="picker-tool-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 24V9.5A2.5 2.5 0 0 1 9.5 7H25v17H9.5A2.5 2.5 0 0 0 7 26m0-3a2.5 2.5 0 0 1 2.5-2.5H25M12 12h8m-8 4h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m23 3 .8 2.2L26 6l-2.2.8L23 9l-.8-2.2L20 6l2.2-.8Z" fill="currentColor"/></svg><span>Что нового</span></button>
@@ -2087,7 +2101,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка f93c65f6672f</p>
+    <p class="build-label">Сборка d46ae627d335</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2108,7 +2122,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
     <button class="btn secondary" id="menu-updates" type="button">Что нового · история обновлений</button>
     <p class="save-note" id="menu-updates-status" role="status" aria-live="polite" hidden></p>
-    <button class="btn secondary" id="menu-help" type="button">? Как играть</button>
+    <button class="btn secondary" id="menu-help" type="button">📘 Быстрый гайд</button>
     <button class="btn secondary" id="menu-close" type="button">Закрыть меню</button>
   </div>
 </div>
@@ -2121,7 +2135,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка f93c65f6672f</p>
+      <p class="build-label" id="updates-build">Сборка d46ae627d335</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
@@ -2217,13 +2231,37 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   </div>
 </div>
 
+<!-- beginner guide -->
+<div class="help-modal" id="beginner-guide" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+  <div class="help-card beginner-guide-card">
+    <h3 id="guide-title">📘 Первый рейд: доживи до босса</h3>
+    <p class="guide-lead">Твоя цель — собирать цепочки и не отдавать черепам бесплатные удары. Первый босс появляется примерно к 10-му ходу; между боссами могут быть обычные враги.</p>
+    <section class="guide-step"><h4>1. Каждый ход — сначала осмотрись</h4>
+      <svg class="guide-board" viewBox="0 0 320 110" role="img" aria-label="Пример цепочки: соедините три меча по диагонали">
+        <rect width="320" height="110" rx="14" fill="#101827"/>
+        <g font-size="25" text-anchor="middle" dominant-baseline="middle"><text x="55" y="32">⚔️</text><text x="125" y="32">🛡️</text><text x="195" y="32">🧪</text><text x="55" y="78">🪙</text><text x="125" y="78">⚔️</text><text x="195" y="78">⚔️</text></g>
+        <path d="M55 32 L125 78 L195 78" fill="none" stroke="#72e6c1" stroke-width="4" stroke-linecap="round" stroke-dasharray="5 5"/>
+      </svg>
+      <p>Соедини 3 и больше одинаковых клеток. Диагонали разрешены. Мечи и враги можно соединять в общей боевой цепи. Старайся выбирать цепь, которая лечит/чинит или наносит хороший урон.</p>
+    </section>
+    <section class="guide-step"><h4>2. Береги здоровье и броню</h4><p>Зелье лечит, щит чинит броню (а при полной броне даёт UP). Черепа атакуют после твоего хода: не оставляй несколько старых врагов на поле. Новые враги в ход появления не атакуют. HP на нуле — конец забега.</p></section>
+    <section class="guide-step"><h4>3. На уровнях выбирай выживаемость</h4><p>Выбирай 2 из 4 улучшений. Приоритет новичка: <b>макс. HP и лечение</b>, затем <b>броня/её восстановление</b>, потом <b>урон оружия</b>. Если точного варианта нет — бери доступное улучшение, которое закрывает слабое место меха. Не жертвуй выживанием ради монет.</p></section>
+    <section class="guide-step"><h4>4. Перед боссом и в бою</h4><p>К 10-му ходу постарайся иметь запас HP и брони. У босса больше здоровья и могут быть особые способности — нажми на него, чтобы посмотреть параметры. Сначала убирай опасных обычных черепов, затем собирай длинную цепь оружия по слабой стихии босса. Используй лечение/защитный навык, когда они реально помогут пережить следующий залп; навыки перезаряжаются.</p>
+      <div class="guide-boss" role="img" aria-label="План боя: убрать угрозы, усилиться и атаковать босса">① Убери угрозы　→　② Подлечись/починись　→　③ Цепь оружия по боссу</div>
+    </section>
+    <p class="guide-note">Нет гарантированного билда: мех, награды и поле меняются. Если проиграл — попробуй чаще собирать щиты/зелья и не копить врагов.</p>
+    <button class="btn secondary" id="guide-tech-help" type="button">Открыть подробную справку</button>
+    <button class="btn secondary" id="guide-close" type="button">Закрыть</button>
+  </div>
+</div>
+
 <!-- help -->
 <div class="help-modal" id="help-modal" role="dialog" aria-modal="true">
   <div class="help-card">
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка f93c65f6672f.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка d46ae627d335.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -4025,7 +4063,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
     S.equipment = S.equipment.map(item => ({ ...item, slotName: itemSlotById(item.slot).name, icon: itemSlotById(item.slot).icon }));
     closeClassEditor(false); pickerOpen = false; pickerGeneration++;
-    for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'restart-modal']) el(id)?.classList.remove('show');
+    for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'beginner-guide', 'restart-modal']) el(id)?.classList.remove('show');
     const board = el('board'); if (board) { board.innerHTML = ''; delete board.dataset.cellsReady; }
     renderBoard(); renderHUD(); renderChainTip();
     const logNode = el('log'); if (logNode) logNode.innerHTML = S.log.map(text => `<div>${text}<\/div>`).join('');
@@ -9015,7 +9053,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
-      || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
+      || ['help-modal', 'beginner-guide', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
@@ -9064,6 +9102,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
+    else if (telegramLayer('beginner-guide')) { el('beginner-guide').classList.remove('show'); el('menu-help')?.focus(); }
     else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
@@ -9116,7 +9155,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'beginner-guide', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -9145,7 +9184,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
   function openGameSettings() {
     if (GAME_SETTINGS || !S || S.over || activeDrag || pickerOpen || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal
-      || ['menu-modal', 'help-modal', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
+      || ['menu-modal', 'help-modal', 'beginner-guide', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
     const wrap = el('game-settings'); if (!wrap) return false;
     GAME_SETTINGS = { background: [] }; SETTINGS_OUTSIDE = null;
     wrap.hidden = false; wrap.classList.add('show'); el('settings-btn').setAttribute('aria-expanded', 'true');
@@ -9409,10 +9448,18 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
         hide(); showClassPicker();
       });
       const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => requestNewGame());
+      const openBeginnerGuide = () => { qs('#beginner-guide')?.classList.add('show'); qs('#guide-close')?.focus(); };
+      qs('#picker-guide')?.addEventListener('click', openBeginnerGuide);
       const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
         hide();
-        const wrap = qs('#help-modal');
-        if (wrap) wrap.classList.add('show');
+        const wrap = qs('#beginner-guide');
+        if (wrap) { wrap.classList.add('show'); qs('#guide-close')?.focus(); }
+      });
+      const guideClose = qs('#guide-close');
+      guideClose?.addEventListener('click', () => { qs('#beginner-guide')?.classList.remove('show'); qs('#menu-help')?.focus(); });
+      qs('#guide-tech-help')?.addEventListener('click', () => {
+        qs('#beginner-guide')?.classList.remove('show');
+        qs('#help-modal')?.classList.add('show'); qs('#help-close')?.focus();
       });
     }
     const statsBtn = qs('#stats-btn');

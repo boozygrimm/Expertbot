@@ -1769,7 +1769,7 @@
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
     S.equipment = S.equipment.map(item => ({ ...item, slotName: itemSlotById(item.slot).name, icon: itemSlotById(item.slot).icon }));
     closeClassEditor(false); pickerOpen = false; pickerGeneration++;
-    for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'restart-modal']) el(id)?.classList.remove('show');
+    for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'beginner-guide', 'restart-modal']) el(id)?.classList.remove('show');
     const board = el('board'); if (board) { board.innerHTML = ''; delete board.dataset.cellsReady; }
     renderBoard(); renderHUD(); renderChainTip();
     const logNode = el('log'); if (logNode) logNode.innerHTML = S.log.map(text => `<div>${text}</div>`).join('');
@@ -6759,7 +6759,7 @@
     // Back belongs to nested views only. At the board/reward root Telegram
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
-      || ['help-modal', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
+      || ['help-modal', 'beginner-guide', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
       || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
@@ -6808,6 +6808,7 @@
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
+    else if (telegramLayer('beginner-guide')) { el('beginner-guide').classList.remove('show'); el('menu-help')?.focus(); }
     else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
@@ -6860,7 +6861,7 @@
       // or touching any gameplay state. Mutations of host chrome are external.
       if (typeof window.MutationObserver === 'function') {
         const observer = new window.MutationObserver(syncTelegramChrome);
-        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
+        for (const id of ['class-picker', 'class-editor', 'history-modal', 'help-modal', 'beginner-guide', 'restart-modal', 'exit-modal', 'menu-modal', 'modal', 'updates-modal', 'game-settings']) {
           const node = el(id); if (node) observer.observe(node, { attributes: true, attributeFilter: ['class', 'hidden'] });
         }
       }
@@ -6889,7 +6890,7 @@
   }
   function openGameSettings() {
     if (GAME_SETTINGS || !S || S.over || activeDrag || pickerOpen || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal
-      || ['menu-modal', 'help-modal', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
+      || ['menu-modal', 'help-modal', 'beginner-guide', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
     const wrap = el('game-settings'); if (!wrap) return false;
     GAME_SETTINGS = { background: [] }; SETTINGS_OUTSIDE = null;
     wrap.hidden = false; wrap.classList.add('show'); el('settings-btn').setAttribute('aria-expanded', 'true');
@@ -7153,10 +7154,18 @@
         hide(); showClassPicker();
       });
       const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => requestNewGame());
+      const openBeginnerGuide = () => { qs('#beginner-guide')?.classList.add('show'); qs('#guide-close')?.focus(); };
+      qs('#picker-guide')?.addEventListener('click', openBeginnerGuide);
       const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
         hide();
-        const wrap = qs('#help-modal');
-        if (wrap) wrap.classList.add('show');
+        const wrap = qs('#beginner-guide');
+        if (wrap) { wrap.classList.add('show'); qs('#guide-close')?.focus(); }
+      });
+      const guideClose = qs('#guide-close');
+      guideClose?.addEventListener('click', () => { qs('#beginner-guide')?.classList.remove('show'); qs('#menu-help')?.focus(); });
+      qs('#guide-tech-help')?.addEventListener('click', () => {
+        qs('#beginner-guide')?.classList.remove('show');
+        qs('#help-modal')?.classList.add('show'); qs('#help-close')?.focus();
       });
     }
     const statsBtn = qs('#stats-btn');
