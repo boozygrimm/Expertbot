@@ -2621,8 +2621,10 @@
       return;
     }
     if (!canChainSelect(cellIdx, chain) || (chain.length && !isAdjacent(chain[chain.length - 1], cellIdx))) return;
+    const firstSelection = chain.length === 0;
     chain.push(cellIdx);
     S.chainType = chainTypeForCell(S.board[chain[0]]);
+    if (firstSelection && S.board[cellIdx].type === 'sword') audioSwordSelect();
     onChainChanged();
   }
 
@@ -2638,7 +2640,6 @@
     renderSelection();
     renderChainLine();
     renderChainTip();
-    if (S.selected.length >= 3) audioPick(S.chainType);
   }
 
   // --- board rendering ------------------------------------------------------
@@ -4723,6 +4724,8 @@
     }
     materialSound('ui');
   }
+  function audioSwordSelect() { materialSound('metal'); }
+  function audioSwordChain() { materialSound('impact'); }
   function audioKill() { materialSound('impact'); }
   function audioHeal() { materialSound('water'); }
   function audioArmor() { materialSound('armour'); }
@@ -4868,6 +4871,7 @@
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
     const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
     if (!committed && !rune.length) { clearChain(); return; }
+    if (committed && S.chainType === 'sword') audioSwordChain();
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
     S.actionCommitted = committed;
