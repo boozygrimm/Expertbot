@@ -2841,8 +2841,6 @@
     orb.dataset.type = cell.type; orb.dataset.state = look.state;
     if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
     else delete orb.dataset.element;
-    if (isSkull) orb.dataset.enemyType = String(s.type);
-    else delete orb.dataset.enemyType;
     orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
     orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
     const key = `${cell.type}:${!!cell.acid}:${!!cell.mana}:${!!cell.explosive}:${!!cell.magicSword}:${isSkull ? s.uid : ''}`;
@@ -2851,7 +2849,7 @@
       orb.innerHTML = (weapon
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"></i><i class="orb-fog-wisp orb-fog-back"></i></span>'
         : '<span class="orb-material" aria-hidden="true"></span>') + '<span class="orb-core"></span>'
-        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span><span class="orb-igniter" aria-hidden="true" hidden>🔥×8</span><span class="orb-burn" aria-hidden="true" hidden></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
+        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
         + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-fire" aria-hidden="true">' + ORB_FIRE + '</span><span class="orb-crack" aria-hidden="true"></span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
@@ -2875,17 +2873,6 @@
       badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
       const countdown = orb.querySelector('.orb-countdown');
       countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
-      const igniter = orb.querySelector('.orb-igniter');
-      if (igniter) {
-        igniter.hidden = s.type !== 7;
-        igniter.title = s.type === 7 ? 'Огненный: в конце хода воспламеняет соседние клетки' : '';
-      }
-      const burn = orb.querySelector('.orb-burn');
-      if (burn) {
-        burn.hidden = !burned;
-        burn.textContent = burned ? '🔥−' + (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : '';
-        burn.title = burned ? 'Огненный урон в конце хода' : '';
-      }
       const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
@@ -2905,11 +2892,6 @@
     if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
     // Remove an orb vacating this socket, never rebuild the incoming object.
     for (const child of [...cellEl.children]) if (child !== orb) child.remove();
-    if (view.initialized && view.burned !== burned && burned) {
-      animateOrb(orb.querySelector('.orb-fire'),
-        [{ opacity: 0, transform: 'scale(.68)' }, { opacity: .92, transform: 'scale(1.08)', offset: .42 }, { opacity: .5, transform: 'scale(1)' }],
-        { duration: 900, easing: 'cubic-bezier(.18,.75,.28,1)', fill: 'forwards' });
-    }
     view.burned = burned;
     if (view.initialized && view.frozen !== frozen) {
       animateOrb(orb.querySelector('.orb-ice'), frozen
@@ -2960,9 +2942,10 @@
     // LAST: batch ALL writes before ALL final geometry reads. Measuring and
     // starting each orb in one loop forced 36 layouts and staggered animation
     // clocks on phones. Interrupted moves still start at their on-screen rect.
-    const plans = [];
+    const plans = [], firePulses = [];
     for (let idx = 0; idx < CELL_COUNT; idx++) {
       const key = keys[idx]; let view = key && previous.get(key);
+      const wasBurned = view?.burned;
       if (key && !view) {
         const node = document.createElement('div'); node.dataset.orbId = String(++ORB_VIEW_UID);
         node.style.setProperty('--orb-phase', -(ORB_VIEW_UID * 137 % 3100) + 'ms');
@@ -2971,6 +2954,8 @@
       const moved = previous.has(key) && view.slot !== idx;
       if (moved) view.motion?.cancel();
       renderCell(S.board[idx], idx, view);
+      const cell = S.board[idx], target = cell?.type === 'skull' ? cell.skull : cell;
+      if (view && wasBurned === false && !!target?.burn) firePulses.push(view.node.querySelector('.orb-fire'));
       if (!view) continue;
       next.set(key, view);
       if (moved || !previous.has(key)) plans.push({ view, idx, old: rects.get(key), moved });
@@ -2995,6 +2980,13 @@
       }
     }
     ORB_VIEWS = next;
+    if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
+      for (const overlay of firePulses) {
+        if (!overlay?.isConnected) continue;
+        overlay.classList.remove('ignite-pop');
+        requestAnimationFrame(() => { if (overlay.isConnected && !orbReducedMotion()) overlay.classList.add('ignite-pop'); });
+      }
+    });
     renderSelection(); renderChainLine();
   }
 
