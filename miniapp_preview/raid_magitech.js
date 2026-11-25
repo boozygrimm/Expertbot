@@ -2782,6 +2782,8 @@
     }
     const burst = document.createElement('div'); burst.className = 'orb-burst';
     burst.dataset.orbId = view.node.dataset.orbId;
+    burst.dataset.type = view.node.dataset.type || '';
+    if (view.node.dataset.element) burst.dataset.element = view.node.dataset.element;
     burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
     for (let i = 0; i < 4; i++) {
@@ -2790,7 +2792,12 @@
       shard.style.setProperty('--dy', (i < 2 ? -.6 : .6) * rect.height + 'px');
       burst.appendChild(shard);
     }
-    view.node.classList.add('orb-ghost'); burst.appendChild(view.node); layer.appendChild(burst);
+    view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
+    if (view.node.dataset.type === 'sword') {
+      const slash = document.createElement('i'); slash.className = 'weapon-impact-slash'; burst.appendChild(slash);
+      const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
+    }
+    layer.appendChild(burst);
     // Backwards fill holds an untriggered ghost in its original socket. Its
     // ring/shards stay hidden until the same delay (CSS forwards fill only).
     animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
