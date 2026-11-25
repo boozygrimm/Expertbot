@@ -5937,9 +5937,22 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Блик меча стал естественнее/);
+  assert.match(current, /Поджог теперь понятнее/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
   assert.doesNotMatch(archive, /<details[^>]*open/);
+});
+
+test('burning enemies show their pending fire damage and explain the end-of-turn effect', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  assert.match(js, /class="orb-burn" aria-hidden="true" hidden/);
+  assert.match(js, /burn\.textContent = burned \? '🔥−' \+ \(s\.fireDamage/);
+  assert.match(js, /горит: \$\{isSkull \? \(s\.fireDamage/);
+  assert.match(css, /\.raid-orb\.burned \{ border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px/);
+  assert.match(css, /\.orb-burn \{ position:absolute/);
+  assert.match(html, /<b>Поджог теперь понятнее\.<\/b> Метка 🔥−число на враге показывает огненный урон, который сработает в конце хода\./);
+  assert.match(js, /Ручное применение навыка поджигает случайного обычного черепа: в конце хода он получит огненный урон/);
 });

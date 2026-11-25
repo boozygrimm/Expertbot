@@ -1427,7 +1427,11 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1)) grayscale(.8)
     drop-shadow(-.65px -.65px 0 #b3c5be) drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
 }
-.raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
+.raid-orb.burned { border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
+.orb-burn { position:absolute; z-index:7; top:3%; right:2%; min-width:38%; height:24%; display:flex; align-items:center; justify-content:center; padding:0 3%; border:1px solid #ffd078; border-radius:999px; background:#32150df2; color:#fff4d4; font:800 17cqw/1 system-ui,sans-serif; text-shadow:0 1px 2px #381005; box-shadow:0 0 7px #ff6729d9; white-space:nowrap; pointer-events:none; }
+.orb-burn[hidden] { display:none; }
+.raid-orb.burned:not(.frozen) .orb-burn { animation: burn-marker-flicker .8s ease-in-out infinite alternate; }
+@keyframes burn-marker-flicker { from { filter:brightness(.92); transform:scale(.97); } to { filter:brightness(1.18); transform:scale(1.03); } }
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: scale(.8); filter: hue-rotate(35deg) brightness(.8); }

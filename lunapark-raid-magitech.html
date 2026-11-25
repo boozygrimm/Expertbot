@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="00e17316605e">
+<meta name="raid-build" content="7e89519c2735">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1436,7 +1436,11 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1)) grayscale(.8)
     drop-shadow(-.65px -.65px 0 #b3c5be) drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
 }
-.raid-orb.burned { border-color: #ffb061; box-shadow: inset 0 0 0 2px #ff9b4a,0 0 8px #ff7a3a90; }
+.raid-orb.burned { border-color: #ff9b4a; box-shadow: inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
+.orb-burn { position:absolute; z-index:7; top:3%; right:2%; min-width:38%; height:24%; display:flex; align-items:center; justify-content:center; padding:0 3%; border:1px solid #ffd078; border-radius:999px; background:#32150df2; color:#fff4d4; font:800 17cqw/1 system-ui,sans-serif; text-shadow:0 1px 2px #381005; box-shadow:0 0 7px #ff6729d9; white-space:nowrap; pointer-events:none; }
+.orb-burn[hidden] { display:none; }
+.raid-orb.burned:not(.frozen) .orb-burn { animation: burn-marker-flicker .8s ease-in-out infinite alternate; }
+@keyframes burn-marker-flicker { from { filter:brightness(.92); transform:scale(.97); } to { filter:brightness(1.18); transform:scale(1.03); } }
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: scale(.8); filter: hue-rotate(35deg) brightness(.8); }
@@ -1694,7 +1698,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 00e17316605e</p>
+    <p class="build-label">Сборка 7e89519c2735</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1863,7 +1867,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 00e17316605e</p>
+    <p class="build-label">Сборка 7e89519c2735</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1897,12 +1901,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 00e17316605e</p>
+      <p class="build-label" id="updates-build">Сборка 7e89519c2735</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li><b>Блик меча стал естественнее.</b> Короткий диагональный свет проходит по изображению клинка; покачивание и ударный росчерк сохранены.</li>
+        <li><b>Поджог теперь понятнее.</b> Метка 🔥−число на враге показывает огненный урон, который сработает в конце хода.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
@@ -1994,7 +1998,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 00e17316605e.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 7e89519c2735.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -2825,7 +2829,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     Orc: { name: 'Орк', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
     Halfling: { name: 'Халфлинг', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
     Werewolf: { name: 'Вервольф', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
-    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
+    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа: в конце хода он получит огненный урон, равный базовому урону героя (если не заморожен). Метка 🔥−урон показывает цель и силу поджога. Особые враги и босс невосприимчивы. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
     Changeling: { name: 'Изменник', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
   };
   const CLASS_TRAITS = {
@@ -4874,7 +4878,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       orb.innerHTML = (weapon
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"><\/i><i class="orb-fog-wisp orb-fog-back"><\/i><\/span>'
         : '<span class="orb-material" aria-hidden="true"><\/span>') + '<span class="orb-core"><\/span>'
-        + (isSkull ? '<div class="skull-badge"><\/div><span class="orb-countdown"><\/span>' : cell.magicSword ? '<span class="orb-charge">5<\/span>' : '')
+        + (isSkull ? '<div class="skull-badge"><\/div><span class="orb-countdown"><\/span><span class="orb-burn" aria-hidden="true" hidden><\/span>' : cell.magicSword ? '<span class="orb-charge">5<\/span>' : '')
         + '<span class="orb-ice">' + ORB_ICE + '<\/span><span class="orb-crack" aria-hidden="true"><\/span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
@@ -4898,6 +4902,12 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
       const countdown = orb.querySelector('.orb-countdown');
       countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
+      const burn = orb.querySelector('.orb-burn');
+      if (burn) {
+        burn.hidden = !burned;
+        burn.textContent = burned ? '🔥−' + (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : '';
+        burn.title = burned ? 'Огненный урон в конце хода' : '';
+      }
       const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
@@ -4911,7 +4921,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       if (cell.broken) label += ', сломано: без награды';
     }
     if (frozen) label += ', заморожено';
-    if (burned) label += ', горит';
+    if (burned) label += `, горит: ${isSkull ? (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : (cell.fireDamage ?? (typeof cell.burn === 'number' ? cell.burn : baseDamage()))} огненного урона в конце хода${frozen ? ', после оттаивания' : ''}`;
     cellEl.title = label; cellEl.setAttribute('aria-label', label);
     if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
     // Remove an orb vacating this socket, never rebuild the incoming object.
