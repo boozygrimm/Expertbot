@@ -4972,7 +4972,7 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   assert.match(css, /-webkit-mask-image:var\(--weapon-mask\); mask-image:var\(--weapon-mask\)/);
   assert.match(css, /\.raid-orb\.frozen\[data-type="sword"\] \.weapon-glint \{ animation-play-state: paused; \}/);
   assert.match(js, /return raidWeaponTexture\('ic'\) \+ '<i class="weapon-glint"/);
-  assert.match(js, /--weapon-mask:url\("' \+ art\.src \+ '"\)/);
+  assert.match(js, /--weapon-mask:url\(' \+ art\.src \+ '\)/);
   assert.match(css, /animation:weapon-impact-slash \.23s cubic-bezier/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(js, /if \(view\.node\.dataset\.type === 'sword'\)/);

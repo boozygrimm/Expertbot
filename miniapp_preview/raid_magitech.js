@@ -1004,7 +1004,7 @@
     // A stable metal finish, not an elemental tint or a quality/stat promise.
     // Upgrading mods cannot repaint a weapon. Equal appearances may look alike.
     const finish = `hue-rotate(${(appearance % 20 - 10) * 1.5}deg) saturate(.9) brightness(${(.94 + Math.floor(appearance / 20) * .04).toFixed(2)})`;
-    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish + ';--weapon-mask:url("' + art.src + '")' };
+    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish + ';--weapon-mask:url(' + art.src + ')' };
   }
   function raidWeaponTexture(className, item) {
     const art = raidWeaponVisual(item);
