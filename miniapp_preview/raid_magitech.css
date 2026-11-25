@@ -1692,6 +1692,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   order:3; flex:none; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:start; gap:4px;
   margin:2px 0 1px; padding:4px 0; background:transparent;
 }
+/* The legacy release-note rule spans its parent grid; keep all garage tools in one aligned row. */
+.class-picker:not(.region-mode-open) .picker-main > .picker-tools > #picker-updates,
+.class-picker:not(.region-mode-open) .picker-main > .picker-tools > #picker-visual { grid-column:auto; }
 .picker-tool,.picker-visual-tool > summary {
   min-width:0; min-height:0; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:5px;
   border:0; border-radius:0; background:transparent; box-shadow:none; color:#dfe5d5; font:500 9px/1.15 system-ui,sans-serif; text-align:center; cursor:pointer;

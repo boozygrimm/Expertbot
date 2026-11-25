@@ -5970,6 +5970,7 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.match(html, /id="picker-visual"[\s\S]*?<span>Вид<\/span>/);
   assert.match(css, /--raid-garage-background: url\('__RAID_GARAGE_BACKGROUND__'\)/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-intro \{ display:none !important; \}/);
+  assert.match(css, /\.picker-main > \.picker-tools > #picker-updates,[\s\S]*?#picker-visual \{ grid-column:auto; \}/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.picker-card-btn \{[\s\S]*?background:linear-gradient\(155deg/);
   assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /height:clamp\(220px,38vh,390px\); max-height:44vh; overflow:hidden/);
