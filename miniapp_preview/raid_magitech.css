@@ -1231,8 +1231,6 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 }
 #board .cell::before { content: ''; position: absolute; inset: 6%; border: 0; border-radius: 50%; background: none; pointer-events: none; }
 #board .cell.empty::before { opacity: .4; }
-#board .cell.in-fire-zone::before { inset: 8%; z-index: 4; border: 1.5px dashed #ff9b4ab8; background: radial-gradient(circle,#ff6b3714 0%,transparent 72%); box-shadow: 0 0 7px #ff6b3740; opacity: 1; }
-#board .cell.in-fire-zone.empty::before { opacity: .72; }
 .raid-orb {
   position: absolute; inset: 2%; display: grid; place-items: center;
   container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
@@ -1418,8 +1416,11 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
 .raid-orb.primed .orb-material { opacity: .18; }
 .orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
-.orb-ice svg { width: 100%; height: 100%; }
+.orb-ice svg, .orb-fire svg { width: 100%; height: 100%; }
 .raid-orb.frozen .orb-ice { opacity: 1; }
+.orb-fire { position:absolute; inset:-2%; z-index:6; border-radius:50%; opacity:0; overflow:hidden; background:radial-gradient(ellipse at 50% 84%,#ff6b3740 0%,#ff9c291c 46%,transparent 75%); mix-blend-mode:screen; pointer-events:none; }
+.raid-orb.burned .orb-fire { opacity:.76; }
+.raid-orb.burned:not(.frozen) { border-color:#ffae55; box-shadow:inset 0 0 0 2px #ff8b36,0 0 12px #ff6b37b3; }
 .raid-orb.frozen .orb-material, .raid-orb.frozen .orb-material::before { animation-play-state: paused; }
 .raid-orb.frozen .orb-core { filter: saturate(.6) brightness(1.15); }
 .orb-crack { position: absolute; inset: 8%; z-index: 5; opacity: 0; border-radius: 50%; background: linear-gradient(120deg,transparent 41%,#09222c 42% 45%,transparent 46%),linear-gradient(35deg,transparent 58%,#09222c 59% 62%,transparent 63%); }
