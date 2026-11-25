@@ -235,7 +235,7 @@
     4:  { name: 'Исцеление',   feats: ['Лечит до 2 раненых черепов до макс. HP', 'Без раненых — даст до 2 черепам +1 к атаке', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     5:  { name: 'Невидимый',   feats: ['Повышенная броня и половина обычного HP', 'Статы: ×2 ⚔ / ×10 🛡 / ½ ❤️', 'Без отдельной способности'] },
     6:  { name: 'Кислотный',   feats: ['Каждый ход превращает одну обычную зелье в кислотное', 'Кислое зелье — ранит героя, а не лечит', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
-    7:  { name: 'Огненный',    feats: ['В конце каждого хода воспламеняет все занятые соседние клетки вокруг себя (до 8; других Огненных не трогает)', 'Обгоревший череп получает огненный урон, равный атаке этого Огненного; прочие клетки не повреждаются', 'Убей Огненного до его следующего хода, чтобы остановить поджоги. Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
+    7:  { name: 'Огненный',    feats: ['Каждый ход воспламеняет до 8 занятых соседних клеток (других Огненных не трогает)', 'После общего залпа горящие соседние черепа получают урон, равный атаке Огненного; сам поджог герою не вредит', 'Опасность для героя — обычная атака Огненного (×2), она входит в общий залп. Соседние черепа успевают атаковать до урона от огня. Убей его, чтобы прекратить поджоги. Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     8:  { name: 'Застывший',   feats: ['Каждый ход замораживает до 2 клеток', 'Замороженные ресурсы не соединяются; черепа соединяются, но не атакуют', 'Статы: ×2 ⚔ / ×2 🛡 / ×4 ❤️'] },
     9:  { name: 'Отравленный', feats: ['Если общий залп пробил броню, накладывает яд по своей атаке', 'Зелье снимает яд; исключение — смертный враг Эльфа на поле', 'Статы: ⚔ / ×2 🛡 / ×4 ❤️'] },
     10: { name: 'Ка-Ми-Казе',  feats: ['Таймер 5 → 0 — взрыв: пол-HP героя', 'При убийстве — тоже взрыв в соседних не-черепах', 'Статы: ⚔ / ×2 🛡 / ×6 ❤️ · таймер 5'] },
@@ -2693,6 +2693,8 @@
     { state: 'liquid', rgb: '71 185 232', light: '#b2eeff', mid: '#266c99', dark: '#112b44' },
   ];
   const ORB_ICE = '<svg viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="m11 31 16-20 24 5L69 9l20 23-5 22 7 17-24 19-18-7-22 7-16-22 8-19Z" fill="#c5f5ff" fill-opacity=".16" stroke="#dcfbff" stroke-opacity=".8" stroke-width="1.4"/><path d="m27 11 9 24-17 14m32-33-5 22 20 5L89 32M11 68l25-9 13 24m18 7-1-24 18-12M36 35l10 3-10 21 16-7 14 14m-20-28 6 14 14-9" stroke="#ebfcff" stroke-opacity=".7" stroke-width="1.1"/><path d="M52 29v36M36 38l32 18M36 56l32-18m-22-2 6 5 6-5m-12 22 6-5 6 5" stroke="#f1feff" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  const ORB_FIRE = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M8 82c7-12 4-22 14-34-1 14 7 15 10 4 2-9 0-17 10-30 0 15 7 20 11 27 4-13 2-25 13-39 1 18 13 23 13 40 7-7 8-13 13-17-2 19 7 32 1 47-6 15-21 21-45 21S13 96 8 82Z" fill="#ff622b" fill-opacity=".72"/><path d="M24 84c8-11 1-17 11-29-1 12 7 14 12 3 4 11 11 12 13-2 11 13 6 21 17 30-5 9-16 13-28 13S31 93 24 84Z" fill="#ffd35e" fill-opacity=".78"/><path d="M43 87c1-10 5-15 10-22 3 9 10 13 9 22-2 7-6 10-10 10s-8-3-9-10Z" fill="#fff1a6" fill-opacity=".85"/></svg>';
+
   let ORB_ELEMENTS = new WeakMap();
   let ORB_VIEWS = new Map(); // resource object / enemy UID -> one movable DOM orb
   let ORB_VIEW_UID = 0;
@@ -2850,7 +2852,7 @@
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"></i><i class="orb-fog-wisp orb-fog-back"></i></span>'
         : '<span class="orb-material" aria-hidden="true"></span>') + '<span class="orb-core"></span>'
         + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span><span class="orb-igniter" aria-hidden="true" hidden>🔥×8</span><span class="orb-burn" aria-hidden="true" hidden></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
-        + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-crack" aria-hidden="true"></span>';
+        + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-fire" aria-hidden="true">' + ORB_FIRE + '</span><span class="orb-crack" aria-hidden="true"></span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
       if (isSkull) {
@@ -2889,7 +2891,7 @@
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
         + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '')
         + ' · ' + (ELEMENTAL_COMBAT ? combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : RAID_REGIONS[element].element + ' (внешность локации; бой классический)');
-      if (s.type === 7) label += ' · Каждый ход до 8 соседних клеток воспламеняются; горящие враги получают урон, равный атаке Огненного. Убей его, чтобы остановить поджоги.';
+      if (s.type === 7) label += ' · Опасность для героя — обычная атака Огненного (×2), она входит в общий залп. Каждый ход он также поджигает до 8 занятых соседних клеток: после залпа горящие соседние черепа получают урон, равный его атаке, но сам поджог герою не вредит. Убей Огненного, чтобы прекратить будущие поджоги.';
     } else {
       label = { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
       if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + (ELEMENTAL_COMBAT ? ' (×1,25 / ×1 / ×0,75 по цели)' : ' (оформление; урон классический)');
@@ -2903,6 +2905,12 @@
     if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
     // Remove an orb vacating this socket, never rebuild the incoming object.
     for (const child of [...cellEl.children]) if (child !== orb) child.remove();
+    if (view.initialized && view.burned !== burned && burned) {
+      animateOrb(orb.querySelector('.orb-fire'),
+        [{ opacity: 0, transform: 'scale(.68)' }, { opacity: .92, transform: 'scale(1.08)', offset: .42 }, { opacity: .5, transform: 'scale(1)' }],
+        { duration: 900, easing: 'cubic-bezier(.18,.75,.28,1)', fill: 'forwards' });
+    }
+    view.burned = burned;
     if (view.initialized && view.frozen !== frozen) {
       animateOrb(orb.querySelector('.orb-ice'), frozen
         ? [{ transform: 'scale(.15) rotate(-12deg)', opacity: 0 }, { transform: 'scale(1.06)', opacity: 1, offset: .75 }, { transform: 'scale(1)', opacity: 1 }]
@@ -2925,19 +2933,6 @@
     }
     const previous = ORB_VIEWS, next = new Map(), rects = new Map(), boardRect = board.getBoundingClientRect();
     const keys = S.board.map(cell => cell && cell.type !== 'empty' ? orbIdentity(cell) : null);
-    const fireZone = new Set();
-    S.board.forEach((cell, idx) => {
-      if (cell?.type !== 'skull' || cell.skull?.type !== 7) return;
-      const row = Math.floor(idx / COLS), col = idx % COLS;
-      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-        if (!dr && !dc) continue;
-        const r = row + dr, c = col + dc;
-        if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
-          const adjacent = S.board[r * COLS + c];
-          if (!(adjacent?.type === 'skull' && adjacent.skull?.type === 7)) fireZone.add(r * COLS + c);
-        }
-      }
-    });
     // FIRST: capture the actual, possibly interrupted on-screen positions before
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
@@ -2976,7 +2971,6 @@
       const moved = previous.has(key) && view.slot !== idx;
       if (moved) view.motion?.cancel();
       renderCell(S.board[idx], idx, view);
-      qs(`.cell[data-idx="${idx}"]`)?.classList.toggle('in-fire-zone', fireZone.has(idx));
       if (!view) continue;
       next.set(key, view);
       if (moved || !previous.has(key)) plans.push({ view, idx, old: rects.get(key), moved });
