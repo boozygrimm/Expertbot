@@ -15,10 +15,12 @@ CONTINUE_TEXTURE = 'assets/raid_continue_texture.webp'
 INTRO_MUSIC = 'intro_music.mp3'
 SWORD_TAKEN = 'assets/swordtaken.mp3'
 SWORD_BLADE = 'assets/swordblade.mp3'
+COIN_TAKEN = 'assets/cointaken.mp3'
+COIN_DROP = 'assets/coinsdrop.mp3'
 PHYLACTERY_ART = 'assets/lich_phylactery.png'
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
-           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, PHYLACTERY_ART, *SCENES.values())
+           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, *SCENES.values())
 
 
 def main():
@@ -59,6 +61,10 @@ def main():
     html = html.replace('__RAID_SWORDTAKEN__', 'data:audio/mpeg;base64,' + sword_taken)
     sword_blade = base64.b64encode((HERE / SWORD_BLADE).read_bytes()).decode('ascii')
     html = html.replace('__RAID_SWORDBLADE__', 'data:audio/mpeg;base64,' + sword_blade)
+    coin_taken = base64.b64encode((HERE / COIN_TAKEN).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_COINTAKEN__', 'data:audio/mpeg;base64,' + coin_taken)
+    coin_drop = base64.b64encode((HERE / COIN_DROP).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_COINDROP__', 'data:audio/mpeg;base64,' + coin_drop)
     phylactery_art = base64.b64encode((HERE / PHYLACTERY_ART).read_bytes()).decode('ascii')
     js = js.replace("'assets/lich_phylactery.png'", "'data:image/png;base64," + phylactery_art + "'")
     art_js = ('window.RAID_MONSTER_CATALOG = ' + json.dumps(catalog, separators=(',', ':')) + ';\n'
