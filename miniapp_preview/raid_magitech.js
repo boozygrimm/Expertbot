@@ -798,7 +798,7 @@
     Orc: { name: 'Орк', desc: '10% шанс оглушить пережившего прямой удар врага. Смертный враг — Коррозия: появление обнуляет текущую броню героя.' },
     Halfling: { name: 'Халфлинг', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг — Невидимый: удваивает защиту других новых черепов.' },
     Werewolf: { name: 'Вервольф', desc: 'В конце хода собирает обычных черепов с HP ниже их защиты. Смертный враг — Вампир: может лечиться выше своего прежнего максимума.' },
-    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
+    Dragonkin: { name: 'Драконкин', desc: 'Ручное применение навыка поджигает случайного обычного черепа: в конце хода он получит огненный урон, равный базовому урону героя (если не заморожен). Метка 🔥−урон показывает цель и силу поджога. Особые враги и босс невосприимчивы. Смертный враг — Замораживающий: вдвое уменьшает базовую часть урона цепочки.' },
     Changeling: { name: 'Изменник', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг — Нестабильный: его телепорт исключает мечи вместо черепов.' },
   };
   const CLASS_TRAITS = {
@@ -2847,7 +2847,7 @@
       orb.innerHTML = (weapon
         ? '<span class="orb-material orb-fog" aria-hidden="true"><i class="orb-fog-wisp"></i><i class="orb-fog-wisp orb-fog-back"></i></span>'
         : '<span class="orb-material" aria-hidden="true"></span>') + '<span class="orb-core"></span>'
-        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
+        + (isSkull ? '<div class="skull-badge"></div><span class="orb-countdown"></span><span class="orb-burn" aria-hidden="true" hidden></span>' : cell.magicSword ? '<span class="orb-charge">5</span>' : '')
         + '<span class="orb-ice">' + ORB_ICE + '</span><span class="orb-crack" aria-hidden="true"></span>';
       view.key = key;
       const core = orb.querySelector('.orb-core');
@@ -2871,6 +2871,12 @@
       badge.style.setProperty('--badge-font', Math.min(19, 160 / text.length) + 'cqw');
       const countdown = orb.querySelector('.orb-countdown');
       countdown.textContent = s.countdown > 0 ? String(s.countdown) : ''; countdown.hidden = !(s.countdown > 0);
+      const burn = orb.querySelector('.orb-burn');
+      if (burn) {
+        burn.hidden = !burned;
+        burn.textContent = burned ? '🔥−' + (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : '';
+        burn.title = burned ? 'Огненный урон в конце хода' : '';
+      }
       const cripple = clsRace() === 'Werewolf' && isCrippleTarget(s);
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
@@ -2884,7 +2890,7 @@
       if (cell.broken) label += ', сломано: без награды';
     }
     if (frozen) label += ', заморожено';
-    if (burned) label += ', горит';
+    if (burned) label += `, горит: ${isSkull ? (s.fireDamage ?? (typeof s.burn === 'number' ? s.burn : baseDamage())) : (cell.fireDamage ?? (typeof cell.burn === 'number' ? cell.burn : baseDamage()))} огненного урона в конце хода${frozen ? ', после оттаивания' : ''}`;
     cellEl.title = label; cellEl.setAttribute('aria-label', label);
     if (orb.parentNode !== cellEl) cellEl.appendChild(orb);
     // Remove an orb vacating this socket, never rebuild the incoming object.
