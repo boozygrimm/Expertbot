@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="d41c44aa11d5">
+<meta name="raid-build" content="af6696e51684">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1359,16 +1359,21 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   transform-origin: 50% 54%; backface-visibility: hidden;
   animation: weapon-idle-sway 7.2s ease-in-out infinite; animation-delay: var(--orb-phase,0ms);
 }
-/* A rare glint along the blade spine, not a full-item spin or constant neon sheen. */
-.raid-orb[data-type="sword"] .orb-core::before {
-  content: ''; position: absolute; inset: 12%; pointer-events: none; opacity: 0;
-  background: linear-gradient(135deg,transparent 48.8%,#c7e8ef1f 49.2%,#effbffb8 49.8% 50.2%,#b9e2ed2b 50.8%,transparent 51.2%);
-  animation: weapon-edge-glint 9s ease-in-out infinite; animation-delay: var(--orb-phase,0ms);
+/* Mask the moving highlight to the actual RGBA blade silhouette, so it reads as metal glint rather than a line over the orb. */
+.raid-orb[data-type="sword"] .weapon-glint {
+  position:absolute; z-index:4; inset:0; pointer-events:none; opacity:0; mix-blend-mode:screen;
+  background:linear-gradient(112deg,transparent 38%,#ffffff20 43%,#f7ffff 49%,#b9eaff 52%,#ffffff20 56%,transparent 62%);
+  background-size:240% 240%; background-position:145% -50%;
+  -webkit-mask-image:var(--weapon-mask); mask-image:var(--weapon-mask);
+  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-position:center; mask-position:center;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  filter:drop-shadow(0 0 2px #b9edffb3);
+  animation:weapon-mask-glint 6.5s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 .weapon-impact-slash,.weapon-impact-echo { position:absolute; z-index:8; left:-35%; top:49%; width:170%; height:2px; border-radius:99px; opacity:0; pointer-events:none; background:linear-gradient(90deg,transparent 0%,#dffaff88 24%,#fff 50%,#c6f4ff 68%,transparent 100%); box-shadow:0 0 7px #8ee8ffb3; transform:rotate(-42deg) scaleX(.05); animation:weapon-impact-slash .23s cubic-bezier(.15,.75,.25,1) both; animation-delay:var(--burst-delay,0ms); }
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
 .raid-orb.frozen :is(.weapon-texture,.coin-3d) { animation-play-state: paused; }
-.raid-orb.frozen[data-type="sword"] .orb-core::before { animation-play-state: paused; }
+.raid-orb.frozen[data-type="sword"] .weapon-glint { animation-play-state: paused; }
 
 /* Air occupies the TOP two thirds. Water is a small translucent body below,
    with two gently travelling wave surfaces rather than a spinning liquid. */
@@ -1454,7 +1459,7 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 /* Content-only 3D rotation, explicitly requested after PR125. */
 @keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
 @keyframes weapon-idle-sway { 0%,100% { transform: rotate(-1.3deg) translateY(0); } 50% { transform: rotate(1.3deg) translateY(-1.1%); } }
-@keyframes weapon-edge-glint { 0%,72%,100% { opacity:0; } 78% { opacity:.38; } 82% { opacity:.12; } }
+@keyframes weapon-mask-glint { 0%,52%,100% { opacity:0; background-position:145% -50%; } 58% { opacity:.2; } 63% { opacity:.95; background-position:-55% 150%; } 68% { opacity:.08; } }
 @keyframes weapon-impact-slash { 0% { opacity:0; transform:rotate(-42deg) scaleX(.06) translateX(-8%); } 18% { opacity:.95; } 68% { opacity:.75; transform:rotate(-42deg) scaleX(1) translateX(1%); } 100% { opacity:0; transform:rotate(-42deg) scaleX(1.08) translateX(5%); } }
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
@@ -1681,7 +1686,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка d41c44aa11d5</p>
+    <p class="build-label">Сборка af6696e51684</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -1850,7 +1855,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка d41c44aa11d5</p>
+    <p class="build-label">Сборка af6696e51684</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -1884,7 +1889,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка d41c44aa11d5</p>
+      <p class="build-label" id="updates-build">Сборка af6696e51684</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Первый вход в обновлённую сборку. Вот что изменилось — без запуска нового рейда.</p>
@@ -1898,7 +1903,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <li><b>Щиты на поле.</b> Пять моделей — деревянная, круглая, башенная, гербовая и руническая — теперь показываются по надетому щиту. После покупки картинка на поле обновляется сразу, как у меча. Характеристики защиты не менялись.</li>
         <li><b>Гараж мехов.</b> В круглой карточке мех показан крупно; сбоку — кнопки «Пилот» и «Мех», снизу фигурная кнопка «Поехали!». Все десять портретов перерисованы с чистым прозрачным фоном: края и детали брони восстановлены, случайные фрагменты фона удалены. Карточка закрывается нажатием вне круга. Фигурки слегка парят; движение учитывает настройку анимации и системное «уменьшение движения».</li>
         <li><b>Выбор стихии — отдельный шаг после выбора меха.</b> На втором экране четыре стихии занимают четверти экрана. Выбери Огонь, Воздух, Землю или Воду: центральная эмблема меняет оттенок; нажми её, чтобы начать рейд. Здесь же виден текущий формат «До гибели», выбирается сложность; кнопка «Назад» возвращает в гараж.</li>
-        <li><b>Мечи в бою — без полного вращения.</b> На поле клинок едва заметно покачивается и изредка ловит блик. При сборе меча для атаки появляется короткий световой росчерк с послесвечением; длительность хода и урон не меняются.</li>
+        <li><b>Мечи в бою — без полного вращения.</b> На поле клинок едва покачивается; теперь по его силуэту заметно проходит короткий холодный металлический блик. При сборе меча для атаки появляется отдельный росчерк с послесвечением; длительность хода и урон не меняются.</li>
       </ul>
       <p class="updates-important"><b>Важно:</b> если рейд уже начат, он продолжится по прежним правилам — без склонности. Склонность можно выбрать перед следующим рейдом. Ничего удалять не нужно. Просмотр другого рейда и рост уровня меха не меняют уже начатый рейд; «Продолжить» восстановит его прежний выбор. «Перенастройка» сохраняет базовые 12 ходов и один из четырёх слотов. «Понятно» только закрывает это окно.</p>
       <h4>Краткая история</h4>
@@ -1976,7 +1981,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка d41c44aa11d5.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка af6696e51684.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -3013,7 +3018,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     // A stable metal finish, not an elemental tint or a quality/stat promise.
     // Upgrading mods cannot repaint a weapon. Equal appearances may look alike.
     const finish = `hue-rotate(${(appearance % 20 - 10) * 1.5}deg) saturate(.9) brightness(${(.94 + Math.floor(appearance / 20) * .04).toFixed(2)})`;
-    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish };
+    return { src: art.src, id: art.id, key: art.id + ':' + appearance, style: '--weapon-finish:' + finish + ';--weapon-mask:url("' + art.src + '")' };
   }
   function raidWeaponTexture(className, item) {
     const art = raidWeaponVisual(item);
@@ -4663,7 +4668,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   function tileSymbol(cell, cellIdx = 0) {
     if (!cell || cell.type === 'empty') return '';
     const start = '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end = '<\/svg>';
-    if (cell.type === 'sword') return raidWeaponTexture('ic');
+    if (cell.type === 'sword') return raidWeaponTexture('ic') + '<i class="weapon-glint" aria-hidden="true"><\/i>';
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
     if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
