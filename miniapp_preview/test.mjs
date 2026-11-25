@@ -6014,6 +6014,7 @@ test('mobile mech garage is a no-scroll full-screen scene with icon tools, opaqu
   assert.match(css, /\.picker-main > \.picker-tools > #picker-updates,[\s\S]*?#picker-visual \{ grid-column:auto; \}/);
   assert.match(css, /\.picker-main > \.picker-tools > #picker-history \{ margin:0; \}/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.picker-grid \.picker-affinity-field,[\s\S]*?\.picker-grid \.picker-affinity-note \{ display:none !important; \}/, 'hide affinity controls from cramped mech tiles; they live in the pilot detail view');
+  assert.match(css, /#beginner-guide, #help-modal \{ z-index: 110; \}/, 'the beginner guide must layer above the garage overlay');
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.picker-card-btn \{[\s\S]*?background:linear-gradient\(155deg/);
   assert.match(css, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
   assert.match(css, /height:clamp\(220px,38vh,390px\); max-height:44vh; overflow:hidden/);
