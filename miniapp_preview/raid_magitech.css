@@ -1486,6 +1486,10 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .updates-body ul, .updates-body ol { padding-left: 21px; margin: 0 0 14px; }
 .updates-body li { margin-bottom: 10px; }
 .updates-body b { color: #e6dfc0; }
+.updates-history { margin: 8px 0 14px; border: 1px solid #627c6d66; border-radius: 8px; background: #102522; }
+.updates-history summary { min-height: 44px; display: flex; align-items: center; padding: 8px 12px; color: #f2d7a4; cursor: pointer; font-weight: 700; }
+.updates-history[open] summary { border-bottom: 1px solid #627c6d66; }
+.updates-history ol, .updates-history .updates-boundary { margin: 10px 12px 12px; }
 .updates-important, .updates-boundary { padding: 10px; border-left: 2px solid #ba9d60; background: #122a28; }
 .updates-actions { border-top: 1px solid #627c6d66; padding-top: 9px; }
 .updates-actions p { margin: 0 0 8px; color: #b3c1b1; font-size: 11px; line-height: 1.4; }
