@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="452069040b68">
+<meta name="raid-build" content="3256e8257607">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1864,7 +1864,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 452069040b68</p>
+    <p class="build-label">Сборка 3256e8257607</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -2022,8 +2022,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
       <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
     </fieldset>
-    <label class="settings-row"><span>Звук<small>Тихие эффекты</small></span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-    <p class="settings-hint">Вид — для этого профиля.<br>Звук — в этом окне игры.</p>
+    <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
+    <label class="settings-row"><span>Фоновая музыка<small>Продолжается в бою</small></span><input type="checkbox" id="music-on" checked aria-label="Фоновая музыка" role="switch"></label>
+    <p class="settings-hint">Вид — для этого профиля.<br>Звук и музыка настраиваются отдельно.</p>
     <p class="settings-note" data-raid-motion-note hidden></p>
     <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
   </section>
@@ -2037,7 +2038,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 452069040b68</p>
+    <p class="build-label">Сборка 3256e8257607</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2071,12 +2072,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 452069040b68</p>
+      <p class="build-label" id="updates-build">Сборка 3256e8257607</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li><b>Музыка первых экранов.</b> Включается после первого касания; её можно отключить кнопкой в гараже.</li>
+        <li><b>Фоновая музыка сохраняет настройку и продолжается в бою.</b> Управление доступно и в гараже, и в настройках игры.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
@@ -2168,7 +2169,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 452069040b68.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 3256e8257607.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации и звук. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -3950,7 +3951,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio(); stopIntroMusic(true);
+    stopMaterialAudio();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -5529,7 +5530,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     RUN_ID++;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio(); stopIntroMusic(true);
+    stopMaterialAudio();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -6744,9 +6745,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
   }
 
   // --- audio ----------------------------------------------------------------
-  // Quiet, locally synthesized material SFX. No samples, network, timer queue,
-  // music or gameplay RNG. A trusted gesture unlocks the context; suspended
-  // events are dropped, never replayed later over a menu/after unmuting.
+  // Quiet, locally synthesized material SFX. They are separate from the
+  // persistent intro track and use no samples, network or gameplay RNG. A
+  // trusted gesture unlocks effects; suspended events are dropped, never queued.
   let audioCtx = null, audioMaster = null, audioNoise = null, audioGesture = false, audioPageActive = true, audioHostActive = true;
   let introMusicEnabled = true, introMusicGesture = false;
   const INTRO_MUSIC_KEY = 'raid.magitech.introMusic.v1';
@@ -6790,19 +6791,20 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     }
     AUDIO_LAST.clear();
   }
-  function introMusicScreenVisible() {
-    return !!el('class-picker')?.classList.contains('show');
+  function introMusicAppVisible() {
+    return audioPageActive && audioHostActive && document.visibilityState !== 'hidden';
   }
   function updateIntroMusicToggle() {
     const toggle = el('raid-music-toggle'); if (!toggle) return;
     toggle.classList.toggle('is-muted', !introMusicEnabled);
     toggle.setAttribute('aria-pressed', String(introMusicEnabled));
+    const setting = el('music-on'); if (setting) setting.checked = introMusicEnabled;
     toggle.setAttribute('aria-label', introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку');
     toggle.title = introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку';
   }
-  function syncIntroMusic() {
+  function syncIntroMusic(allowAutoplayAttempt = false) {
     const track = el('raid-intro-music'); if (!track) return;
-    if (!introMusicEnabled || !introMusicGesture || !audioPageActive || document.visibilityState === 'hidden' || !introMusicScreenVisible()) {
+    if (!introMusicEnabled || (!introMusicGesture && !allowAutoplayAttempt) || !introMusicAppVisible()) {
       track.pause(); return;
     }
     track.volume = .28;
@@ -6818,18 +6820,21 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     track.volume = .28;
     try { introMusicEnabled = localStorage.getItem(INTRO_MUSIC_KEY) !== 'off'; } catch (ignored) {}
     updateIntroMusicToggle();
-    toggle.addEventListener('click', () => {
-      introMusicEnabled = !introMusicEnabled;
+    const setIntroMusicEnabled = enabled => {
+      introMusicEnabled = !!enabled;
       try { localStorage.setItem(INTRO_MUSIC_KEY, introMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
       updateIntroMusicToggle();
       if (introMusicEnabled) { introMusicGesture = true; syncIntroMusic(); }
       else stopIntroMusic();
-    });
+    };
+    toggle.addEventListener('click', () => setIntroMusicEnabled(!introMusicEnabled));
+    el('music-on')?.addEventListener('change', event => setIntroMusicEnabled(event.target.checked));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') stopIntroMusic(); else syncIntroMusic();
     });
     window.addEventListener?.('pagehide', () => stopIntroMusic());
     window.addEventListener?.('pageshow', () => syncIntroMusic());
+    syncIntroMusic(true);
   }
   function unlockMaterialAudio(event) {
     if (!event.isTrusted) return;
@@ -8843,7 +8848,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!pickerOpen) return;
     if (!S || S.over) { resumeSavedRun(); return; }
     if (SAVE_CONFLICT) { flash('Обнови страницу: сохранение изменено в другой вкладке'); return; }
-    stopIntroMusic(true);
     closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
     el('menu-btn')?.focus();
   }
@@ -8991,8 +8995,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       telegramCall(tg, 'setHeaderColor', '#140e22'); telegramCall(tg, 'setBackgroundColor', '#140e22');
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
-      telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); syncIntroMusic(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); stopIntroMusic(); closeRetune(false); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers

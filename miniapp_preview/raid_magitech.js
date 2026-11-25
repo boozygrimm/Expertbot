@@ -1749,7 +1749,7 @@
     RUN_ID++; SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio(); stopIntroMusic(true);
+    stopMaterialAudio();
     cancelTelegramExit(false);
     clearTimeout(ACTION_TIMER); clearTimeout(SAVE_TIMER); clearTimeout(SCROLL_LABEL_TIMER);
     ACTION_TIMER = SAVE_TIMER = SCROLL_LABEL_TIMER = null; SCROLL_LABEL_DEADLINE = 0;
@@ -3328,7 +3328,7 @@
     RUN_ID++;
     resetOrbPresentation();
     clearFloatEffects();
-    stopMaterialAudio(); stopIntroMusic(true);
+    stopMaterialAudio();
     SAVE_CONFLICT = false; NEW_RUN_REQUEST = null; FINISHED_RECORD = null;
     cancelTelegramExit(false);
     try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
@@ -4543,9 +4543,9 @@
   }
 
   // --- audio ----------------------------------------------------------------
-  // Quiet, locally synthesized material SFX. No samples, network, timer queue,
-  // music or gameplay RNG. A trusted gesture unlocks the context; suspended
-  // events are dropped, never replayed later over a menu/after unmuting.
+  // Quiet, locally synthesized material SFX. They are separate from the
+  // persistent intro track and use no samples, network or gameplay RNG. A
+  // trusted gesture unlocks effects; suspended events are dropped, never queued.
   let audioCtx = null, audioMaster = null, audioNoise = null, audioGesture = false, audioPageActive = true, audioHostActive = true;
   let introMusicEnabled = true, introMusicGesture = false;
   const INTRO_MUSIC_KEY = 'raid.magitech.introMusic.v1';
@@ -4589,19 +4589,20 @@
     }
     AUDIO_LAST.clear();
   }
-  function introMusicScreenVisible() {
-    return !!el('class-picker')?.classList.contains('show');
+  function introMusicAppVisible() {
+    return audioPageActive && audioHostActive && document.visibilityState !== 'hidden';
   }
   function updateIntroMusicToggle() {
     const toggle = el('raid-music-toggle'); if (!toggle) return;
     toggle.classList.toggle('is-muted', !introMusicEnabled);
     toggle.setAttribute('aria-pressed', String(introMusicEnabled));
+    const setting = el('music-on'); if (setting) setting.checked = introMusicEnabled;
     toggle.setAttribute('aria-label', introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку');
     toggle.title = introMusicEnabled ? 'Выключить фоновую музыку' : 'Включить фоновую музыку';
   }
-  function syncIntroMusic() {
+  function syncIntroMusic(allowAutoplayAttempt = false) {
     const track = el('raid-intro-music'); if (!track) return;
-    if (!introMusicEnabled || !introMusicGesture || !audioPageActive || document.visibilityState === 'hidden' || !introMusicScreenVisible()) {
+    if (!introMusicEnabled || (!introMusicGesture && !allowAutoplayAttempt) || !introMusicAppVisible()) {
       track.pause(); return;
     }
     track.volume = .28;
@@ -4617,18 +4618,21 @@
     track.volume = .28;
     try { introMusicEnabled = localStorage.getItem(INTRO_MUSIC_KEY) !== 'off'; } catch (ignored) {}
     updateIntroMusicToggle();
-    toggle.addEventListener('click', () => {
-      introMusicEnabled = !introMusicEnabled;
+    const setIntroMusicEnabled = enabled => {
+      introMusicEnabled = !!enabled;
       try { localStorage.setItem(INTRO_MUSIC_KEY, introMusicEnabled ? 'on' : 'off'); } catch (ignored) {}
       updateIntroMusicToggle();
       if (introMusicEnabled) { introMusicGesture = true; syncIntroMusic(); }
       else stopIntroMusic();
-    });
+    };
+    toggle.addEventListener('click', () => setIntroMusicEnabled(!introMusicEnabled));
+    el('music-on')?.addEventListener('change', event => setIntroMusicEnabled(event.target.checked));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') stopIntroMusic(); else syncIntroMusic();
     });
     window.addEventListener?.('pagehide', () => stopIntroMusic());
     window.addEventListener?.('pageshow', () => syncIntroMusic());
+    syncIntroMusic(true);
   }
   function unlockMaterialAudio(event) {
     if (!event.isTrusted) return;
@@ -6642,7 +6646,6 @@
     if (!pickerOpen) return;
     if (!S || S.over) { resumeSavedRun(); return; }
     if (SAVE_CONFLICT) { flash('Обнови страницу: сохранение изменено в другой вкладке'); return; }
-    stopIntroMusic(true);
     closeClassEditor(false); pickerOpen = false; el('class-picker').classList.remove('show');
     el('menu-btn')?.focus();
   }
@@ -6790,8 +6793,8 @@
       telegramCall(tg, 'setHeaderColor', '#140e22'); telegramCall(tg, 'setBackgroundColor', '#140e22');
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
-      telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); closeRetune(false); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); syncIntroMusic(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); stopIntroMusic(); closeRetune(false); cancelPointerGesture(); saveRun(); });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers

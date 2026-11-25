@@ -5888,7 +5888,7 @@ test('magitech direct settings source: compact board overlay reuses preferences/
   assert.match(section, /activeDrag/); assert.match(section, /stopImmediatePropagation/); assert.match(section, /bindReadOnlyDismiss\(close, closeGameSettings/);
   assert.match(html, /id="settings-btn"[^>]*aria-haspopup="dialog"[^>]*aria-controls="game-settings"[^>]*aria-expanded="false"/);
   assert.equal((html.match(/id="sound-on"/g) || []).length, 1);
-  assert.equal((html.match(/role="switch"/g) || []).length, 3);
+  assert.equal((html.match(/role="switch"/g) || []).length, 4);
   assert.match(css, /\.game-settings\s*\{[^}]*position:\s*fixed/);
   assert.match(css, /\.game-settings-card\s*\{[^}]*272px[^}]*border-radius:\s*28px/);
   assert.match(css, /\.settings-row\s*\{[^}]*min-height:\s*48px/);
@@ -5940,7 +5940,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Музыка первых экранов/);
+  assert.match(current, /Фоновая музыка сохраняет настройку/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /<summary>История обновлений<\/summary>/);
   assert.match(archive, /<ol>[\s\S]*<li>/);
@@ -5951,7 +5951,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
-  assert.match(html, /<b>Музыка первых экранов\.<\/b>/);
+  assert.match(html, /<b>Фоновая музыка сохраняет настройку и продолжается в бою\.<\/b>/);
   assert.match(js, /class="orb-fire" aria-hidden="true">' \+ ORB_FIRE/);
   assert.match(js, /firePulses\.push\(view\.node\.querySelector\('\.orb-fire'\)\)/);
   assert.match(js, /overlay\.classList\.add\('ignite-pop'\)/);
@@ -6027,7 +6027,7 @@ test('all circular garage and region controls use the generated fire medallion w
   assert.match(builder, /ROUND_BUTTON_TEXTURE = 'assets\/raid_round_button_texture\.webp'/);
 });
 
-test('uploaded intro music is embedded in standalone and obeys gesture, mute and gameplay boundaries', () => {
+test('uploaded intro music is embedded, persisted across screens and available in combat', () => {
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
@@ -6038,11 +6038,18 @@ test('uploaded intro music is embedded in standalone and obeys gesture, mute and
   assert.match(html, /id="raid-music-toggle"[^>]*aria-label="Выключить музыку"/);
   assert.match(html, /class="music-wave"/);
   assert.match(html, /class="music-mute"/);
+  assert.match(html, /id="music-on" checked aria-label="Фоновая музыка" role="switch"/);
   assert.match(builder, /INTRO_MUSIC = 'intro_music\.mp3'/);
   assert.match(builder, /data:audio\/mpeg;base64,/);
-  assert.match(js, /introMusicScreenVisible\(\)[\s\S]*?classList\.contains\('show'\)/);
-  assert.match(js, /toggle\.addEventListener\('click'[\s\S]*?localStorage\.setItem\(INTRO_MUSIC_KEY/);
-  assert.match(js, /if \(!introMusicEnabled \|\| !introMusicGesture[\s\S]*?track\.pause\(\)/);
-  assert.match(js, /clearFloatEffects\(\);\s*stopMaterialAudio\(\); stopIntroMusic\(true\)/);
+  assert.match(js, /introMusicAppVisible\(\)[\s\S]*?audioPageActive && audioHostActive/);
+  assert.match(js, /el\('music-on'\)\?\.addEventListener\('change',[\s\S]*?setIntroMusicEnabled/);
+  assert.match(js, /setIntroMusicEnabled = enabled =>[\s\S]*?localStorage\.setItem\(INTRO_MUSIC_KEY/);
+  assert.match(js, /if \(!introMusicEnabled \|\| \(!introMusicGesture && !allowAutoplayAttempt\) \|\| !introMusicAppVisible\(\)\)[\s\S]*?track\.pause\(\)/);
+  assert.match(js, /syncIntroMusic\(true\)/);
+  const newGameBody = js.slice(js.indexOf('  function newGame(seed)'), js.indexOf('  function isSelectable('));
+  assert.doesNotMatch(newGameBody, /stopIntroMusic/);
+  const resumeBody = js.slice(js.indexOf('  function resumeSavedRun()'), js.indexOf('  // --- local records'));
+  assert.doesNotMatch(resumeBody, /stopIntroMusic/);
+  assert.match(js, /'activated',[\s\S]*?syncIntroMusic\(\)/);
   assert.match(css, /\.raid-music-toggle \{[\s\S]*?background:var\(--raid-round-button-texture\)/);
 });
