@@ -4597,6 +4597,15 @@ function legacyMagitechBrowser(options = {}) {
 // Controlled fixtures, not native replay or naturally played runs.
 const magitechSnapshot = raid => {
   const state = raidJSON(raid.state);
+  const presentationKeys = new Set(['desc', 'raceDesc', 'perkDesc', 'flawDesc', 'clsDesc', 'uniqueSkillDesc']);
+  const stripPresentation = value => {
+    if (!value || typeof value !== 'object') return;
+    for (const key of Object.keys(value)) {
+      if (presentationKeys.has(key)) delete value[key];
+      else stripPresentation(value[key]);
+    }
+  };
+  stripPresentation(state); // Copy may improve without altering legacy gameplay.
   delete state.historyId; // Independent, non-gameplay UUID.
   delete state.log; // Terminology is presentation (class -> mech).
   // Item-offer wording is presentation too; the redesign may clarify it without
@@ -4629,8 +4638,13 @@ test('magitech source: unchanged combat/resource/generator functions remain byte
     'classRules', 'runClassConfig', 'specialSpawnCount'];
   for (const name of names) {
     const expression = new RegExp(`^  function ${name}\\([^]*?^  }`, 'm');
-    const a = original.match(expression)?.[0], b = fork.match(expression)?.[0];
+    let a = original.match(expression)?.[0], b = fork.match(expression)?.[0];
     assert.ok(a && b, name);
+    if (name === 'endEnemyTurn') {
+      const presentationOnly = /const message = `🐺 Калечение [^`]*`;/;
+      a = a.replace(presentationOnly, 'const message = `PRESENTATION_ONLY`;');
+      b = b.replace(presentationOnly, 'const message = `PRESENTATION_ONLY`;');
+    }
     assert.equal(b, a, `Elemental integration must not rebalance ${name}`);
   }
 });
@@ -4650,7 +4664,7 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.match(js, /className = 'mech-garage-hero'/);
   assert.match(js, /event\.target === detail\) closeDetail\(\)/);
   assert.match(js, /requestNewGame\(cls\.id\)/);
-  assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после этого залпа снижает силу атаки черепов, уже стоявших на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
+  assert.match(js, /name: 'Снижение атаки врагов'.*desc: 'Если перед атакой врагов у тебя есть броня, после залпа снижает силу атаки тех, кто уже стоял на поле\. Снижение равно бонусу; сила атаки не опускается ниже 1'/);
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
 
@@ -5976,7 +5990,7 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li>/g) || []).length, 1);
-  assert.match(current, /Тактильный отклик в бою/);
+  assert.match(current, /Настройки и тексты боя/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
   assert.match(archive, /Новый кубок-трофей/);
   assert.match(archive, /Кабины мехов и выбор пилота/);
@@ -5995,7 +6009,7 @@ test('the Flaming enemy uses a transient flame effect and clearly explains its a
   assert.match(css, /\.orb-fire\.ignite-pop \{ animation:orb-ignite-pop/);
   assert.doesNotMatch(js, /animateOrb\(orb\.querySelector\('\.orb-fire'\)/);
   assert.match(js, /Каждый ход он также поджигает до 8 занятых соседних клеток/);
-  assert.match(js, /горящие соседние черепа получают урон, равный его атаке, но сам поджог герою не вредит/);
+  assert.match(js, /горящие враги получают урон, равный атаке Огненного; сам поджог герою не вредит/);
   assert.match(js, /Опасность для героя — обычная атака Огненного \(×2\), она входит в общий залп/);
   assert.match(css, /\.orb-fire \{ position:absolute/);
   assert.doesNotMatch(js + css, /orb-igniter|orb-burn|in-fire-zone|fireZone/);
@@ -6115,9 +6129,14 @@ test('raid haptics setting persists modes and coalesces enemy kills with boss pr
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
-  assert.match(html, /<select id="haptics-mode" data-raid-haptics aria-label="Вибрация боя"><option value="important">Важные события<\/option><option value="all">Все боевые события<\/option><option value="off">Выключена<\/option><\/select>/);
-  assert.equal((html.match(/data-raid-haptics/g) || []).length, 3, 'same preference is available in garage, menu and combat settings');
-  assert.match(html, /<b>Тактильный отклик в бою\.<\/b>[\s\S]*?«Важные события»[\s\S]*?Haptic Feedback API/);
+  assert.match(html, /name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"/);
+  assert.match(html, /name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"/);
+  assert.match(html, /name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"/);
+  assert.equal((html.match(/data-raid-haptics/g) || []).length, 9, 'three positions are available in garage, menu and combat settings');
+  assert.match(css, /\.haptics-segments \{ display: grid; grid-template-columns:repeat\(3,/);
+  assert.match(html, /<b>Настройки и тексты боя\.<\/b>[\s\S]*?трёхпозиционный тумблер[\s\S]*?пятипозиционный тумблер/);
+  assert.match(js, /const choices = \['fire', 'air', 'earth', 'water', ''\]/);
+  assert.match(css, /\.affinity-segments \{ display:grid; grid-template-columns:repeat\(5,/);
   assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
   assert.match(js, /HAPTICS_KEY = 'raid\.magitech\.haptics\.v1'/);
   assert.match(js, /feedback\.notificationOccurred\(kind === 'boss' \? 'success' : 'warning'\)/);
@@ -6130,4 +6149,23 @@ test('raid haptics setting persists modes and coalesces enemy kills with boss pr
   assert.match(js, /function initHaptics\(\)[\s\S]*?localStorage\.setItem\(HAPTICS_KEY, hapticsMode\)/);
   assert.match(js, /initHaptics\(\)/);
   assert.match(css, /\.settings-row select/);
+});
+
+test('pilot names and enemy descriptions use current player-facing terminology', () => {
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
+  const feats = js.slice(js.indexOf('  const ENEMY_FEATS = {'), js.indexOf('  const SKILLS = ['));
+  const raceInfo = js.slice(js.indexOf('  const RACE_INFO = {'), js.indexOf('  // Display-only pilot professions'));
+  const currentPilotNames = ['Наёмник','Биохимик','Проломщик','Снабженец','Выживальщик','Штурмовик','Бронник','Перехватчик','Термит','Тактик'];
+  for (const name of currentPilotNames) assert.ok(raceInfo.includes(`name: '${name}'`), `pilot name ${name} should appear in the current race-to-pilot mapping`);
+  for (const oldLabel of ['череп','Эльф','Орк','Дворф','Саурен','Фавн','Вервольф','Драконид','Перевёртыш']) {
+    assert.doesNotMatch(feats, new RegExp(oldLabel, 'i'), `enemy descriptions should not show legacy label ${oldLabel}`);
+  }
+  for (const name of ['Биохимик','Проломщик','Снабженец','Выживальщик','Штурмовик','Перехватчик','Термит','Тактик']) {
+    assert.ok(js.includes(`пилота «${name}»`) || js.includes(`Пилотом «${name}»`), `current pilot name ${name} is used in enemy/achievement descriptions`);
+  }
+  assert.equal((html.match(/череп|Череп/g) || []).length, 1, 'the only remaining user-facing mention explains the terminology update');
+  assert.match(js, /Лич — босс: атака ×3, броня ×3 и HP ×6/);
+  assert.match(js, /Способности Лича одинаковы при любом пилоте/);
+  assert.match(html, /История обновлений[\s\S]*?Кабины мехов и выбор пилота/);
 });
