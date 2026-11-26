@@ -4159,6 +4159,46 @@ test('magitech haptics: browser fallback receives synchronous confirmation when 
   } finally { b.dom.window.close(); }
 });
 
+test('haptic diagnostics call each Telegram method synchronously even when combat vibration is off', async () => {
+  const calls = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value() { calls.push('browser'); } });
+    w.Telegram = { WebApp: { HapticFeedback: {
+      impactOccurred(kind) { calls.push(['impact', kind]); },
+      notificationOccurred(kind) { calls.push(['notification', kind]); },
+    } } };
+  } });
+  try {
+    const d = b.dom.window.document;
+    d.querySelector('[name="haptics-garage"][value="off"]').click();
+    for (const container of d.querySelectorAll('.haptics-test')) {
+      container.querySelector('[data-haptic-test="impact"]').click();
+      container.querySelector('[data-haptic-test="notification"]').click();
+      assert.match(container.querySelector('[role="status"]').textContent, /не может это проверить/);
+    }
+    assert.deepEqual(calls, Array.from({ length: 3 }, () => [['impact', 'medium'], ['notification', 'success']]).flat());
+    assert.ok([...d.querySelectorAll('[data-raid-haptics][value="off"]')].every(radio => radio.checked));
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('haptic diagnostics report missing and throwing Telegram methods without browser fallback', async () => {
+  const calls = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value() { calls.push('browser'); } });
+  } });
+  try {
+    const w = b.dom.window, box = w.document.querySelector('.haptics-test'), status = box.querySelector('[role="status"]');
+    box.querySelector('[data-haptic-test="impact"]').click();
+    assert.match(status.textContent, /недоступен/);
+    w.Telegram = { WebApp: { HapticFeedback: { notificationOccurred() { throw new Error('unsupported'); } } } };
+    box.querySelector('[data-haptic-test="notification"]').click();
+    assert.match(status.textContent, /отклонил запрос/);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 test('magitech controls: vibration is three-position radio in garage/menu/combat and affinity is five-position radio for the current mech', async () => {
   const b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: '{"adventurer":3}' } });
   try {
