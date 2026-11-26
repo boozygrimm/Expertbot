@@ -4199,6 +4199,23 @@ test('haptic diagnostics report missing and throwing Telegram methods without br
   } finally { b.dom.window.close(); }
 });
 
+test('haptic diagnostics independently test browser vibration and unsupported Telegram versions', async () => {
+  const calls = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value(ms) { calls.push(ms); return true; } });
+    w.Telegram = { WebApp: { isVersionAtLeast: () => false, HapticFeedback: { impactOccurred() { calls.push('telegram'); } } } };
+  } });
+  try {
+    const box = b.dom.window.document.querySelector('.haptics-test'), status = box.querySelector('[role="status"]');
+    box.querySelector('[data-haptic-test="impact"]').click();
+    assert.match(status.textContent, /не поддерживается/);
+    box.querySelector('[data-haptic-test="browser"]').click();
+    assert.deepEqual(calls, [100]);
+    assert.match(status.textContent, /не может это проверить/);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 test('magitech controls: vibration is three-position radio in garage/menu/combat and affinity is five-position radio for the current mech', async () => {
   const b = await openMagitech({ start: false, saved: { [magitechKey('raid:classLevels')]: '{"adventurer":3}' } });
   try {

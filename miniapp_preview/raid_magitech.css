@@ -2256,3 +2256,6 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .haptics-test-actions { display:flex; gap:8px; }
 .haptics-test-actions button { flex:1; min-width:0; min-height:40px; padding:7px 5px; border:1px solid #9d9b74; border-radius:9px; background:#17332e; color:#eee2be; font:600 11px/1.2 system-ui,sans-serif; cursor:pointer; }
 .haptics-test-actions button:focus-visible { outline:2px solid #eed18f; outline-offset:2px; }
+
+.haptics-test-actions { flex-wrap:wrap; }
+.haptics-test-actions button { flex:1 1 45%; }
