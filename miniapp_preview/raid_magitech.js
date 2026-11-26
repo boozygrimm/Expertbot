@@ -4634,22 +4634,34 @@
       }
     }));
     // Diagnostic calls are deliberately synchronous, bypass the combat queue,
-    // preference and browser fallback, and never claim physical delivery.
+    // preference and automatic fallback, and never claim physical delivery.
     document.querySelectorAll('[data-haptic-test]').forEach(button => button.addEventListener('click', () => {
       const status = button.closest('.haptics-test')?.querySelector('.haptics-test-status');
       let message;
       try {
-        const feedback = window.Telegram?.WebApp?.HapticFeedback;
-        const impact = button.dataset.hapticTest === 'impact';
-        const method = impact ? 'impactOccurred' : 'notificationOccurred';
-        if (typeof feedback?.[method] !== 'function') {
-          message = 'Метод Telegram недоступен. Откройте рейд кнопкой в Telegram и проверьте загрузку SDK.';
+        if (button.dataset.hapticTest === 'browser') {
+          if (typeof navigator.vibrate !== 'function') {
+            message = 'Вибрация браузера недоступна в этом клиенте.';
+          } else if (!navigator.vibrate(100)) {
+            message = 'Браузер не принял запрос вибрации.';
+          } else {
+            message = 'Браузер принял запрос. Почувствовали вибрацию? Приложение не может это проверить.';
+          }
         } else {
-          feedback[method](impact ? 'medium' : 'success');
-          message = 'Запрос отправлен в Telegram. Почувствовали вибрацию? Приложение не может это проверить.';
+          const app = window.Telegram?.WebApp, feedback = app?.HapticFeedback;
+          const impact = button.dataset.hapticTest === 'impact';
+          const method = impact ? 'impactOccurred' : 'notificationOccurred';
+          if (typeof feedback?.[method] !== 'function') {
+            message = 'Метод Telegram недоступен. Откройте рейд кнопкой в Telegram и проверьте загрузку SDK.';
+          } else if (typeof app.isVersionAtLeast === 'function' && !app.isVersionAtLeast('6.1')) {
+            message = 'Клиент Telegram сообщает, что вибрация не поддерживается (нужна версия API 6.1).';
+          } else {
+            feedback[method](impact ? 'medium' : 'success');
+            message = 'Метод Telegram вызван без ошибки. Почувствовали вибрацию? Приложение не может это проверить.';
+          }
         }
       } catch (ignored) {
-        message = 'Telegram отклонил запрос вибрации. Проверьте клиент и системные настройки.';
+        message = 'Клиент отклонил запрос вибрации. Проверьте клиент и системные настройки.';
       }
       if (status) { status.textContent = message; status.hidden = false; }
     }));
