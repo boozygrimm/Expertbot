@@ -30,7 +30,7 @@ GEMINI_COOLDOWN_UNTIL = 0
 
 
 def is_gemini_alive():
-    global GEMINI_COOLDOWN_UNTIL, GEMINI_FAILS
+    global GEMINI_FAILS
     if time.time() > GEMINI_COOLDOWN_UNTIL:
         GEMINI_FAILS = 0
         return True

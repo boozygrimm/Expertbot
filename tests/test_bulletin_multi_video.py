@@ -250,7 +250,7 @@ def test_second_changed_hash_with_real_acquisition_blocks_all_tts(tmp_path, sour
     def download(_post, folder, **kwargs):
         folder.mkdir(); path = folder / 'source.mp4'; shutil.copyfile(source_mp4, path)
         return source.Video(path, hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_size, 2., 320, 180, True)
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='fake'), \
+    with patch('shutil.which', return_value='fake'), \
          patch.object(source, 'fetch_post', side_effect=post) as fetch, \
          patch.object(source, 'download_video', side_effect=download) as acquire, \
          patch.object(bulletin_dialogue_audio, 'request_one') as tts:

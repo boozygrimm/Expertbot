@@ -2,14 +2,13 @@ import asyncio
 import importlib
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramBadRequest
 
 from database import db
 from ai_logic import try_groq
-from config import get_msk_now
 from handlers.admin_cron import is_chat_admin
 from handlers.admin_panel import get_chat_feature_flags, set_feature_state
 
@@ -394,7 +393,6 @@ async def handle_rp_command(message: types.Message):
     if not action:
         return
 
-    is_safe = action in RP_SAFE
     is_18 = action in RP_18
 
     chat_id = message.chat.id

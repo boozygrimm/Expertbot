@@ -143,12 +143,10 @@ class HangmanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(viselitsa.active_hangman_games, {})
 
     async def test_word_from_llm_outside_seven_to_fifteen_letters_falls_back(self):
-        with patch.object(viselitsa, 'generate_with_retry', AsyncMock(return_value='КОТ|Маленький')), \
-             patch.object(viselitsa, 'random') as random_module:
+        with patch.object(viselitsa, 'generate_with_retry', AsyncMock(return_value='КОТ|Маленький')):
             word, hint = await viselitsa.get_hangman_word('нет')
         self.assertEqual(word, 'ЭКЗЕКУЦИЯ')
         self.assertIn('Высшая мера', hint)
-        random_module.shuffle.assert_not_called()
 
     async def test_word_from_llm_is_stripped_to_russian_letters(self):
         with patch.object(viselitsa, 'generate_with_retry', AsyncMock(

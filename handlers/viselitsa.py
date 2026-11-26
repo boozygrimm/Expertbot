@@ -1,5 +1,4 @@
 import re
-import random
 import asyncio
 import logging
 import time
@@ -137,7 +136,7 @@ async def update_hangman_message(bot, chat_id):
     errors = game["errors"]
     
     scoreboard_lines = [f"👤 {p['name']}: {p['score']} очк." for p in game["players"].values() if p['score'] > 0]
-    score_text = f"\n**Счёт игроков:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
+    score_text = "\n**Счёт игроков:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
     
     turn_status = "🟢 Ждем смельчака! Жми 'Взять ход'."
     if game["current_turn"] is not None:
@@ -289,7 +288,7 @@ async def hm_handle_letter(callback: types.CallbackQuery):
             )
             return await callback.answer("Смерть...", show_alert=True)
 
-        await callback.answer(f"❌ Ошибка! Строится виселица...", show_alert=True)
+        await callback.answer("❌ Ошибка! Строится виселица...", show_alert=True)
         # Ошибся — теряет ход
         game["current_turn"] = None
         game["last_move_time"] = time.time()

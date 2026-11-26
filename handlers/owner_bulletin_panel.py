@@ -878,5 +878,5 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
         logger.warning('Ошибка панели вестника: %s', type(exc).__name__)
         try:
             await callback.answer('Действие не подтверждено. Проверь список вестников; не повторяй вслепую.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)

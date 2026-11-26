@@ -485,7 +485,7 @@ async def _enqueue_media_reply(message, query, context, *, kind):
         if status is not None:
             try:
                 await status.delete()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug('Не удалось удалить служебное сообщение: %s', type(exc).__name__)
         if result == 'full':
             await reply_text_safely(message, random.choice(FULL_MESSAGES))

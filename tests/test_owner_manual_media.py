@@ -136,7 +136,7 @@ def test_single_story_render_with_fragment_mixes_the_fragment(tmp_path, source_m
     (folder / 'news-image.jpg').write_bytes(news_image_codec.decode_thumbnail(
         news_image_codec.make_thumbnail(png(size=(200, 120)))))
     output = tmp_path / 'video.mp4'
-    with patch.object(story_video_insert.shutil, 'which', return_value='ffprobe'), \
+    with patch('shutil.which', return_value='ffprobe'), \
          patch.object(telegram_public_source, 'inspect', return_value=(2.0, 320, 180, True)):
         story_video_insert.render(folder, output, imageio_ffmpeg.get_ffmpeg_exe(), source_mp4)
     assert output.stat().st_size > 100_000
@@ -196,7 +196,7 @@ def test_worker_prepares_fragment_only_in_the_studio(tmp_path):
          patch('news_prototype.bulletin_manual_media.acquire',
                return_value=work / 'source.mp4') as acquire, \
          patch('news_prototype.story_video_insert.render') as render, \
-         patch.object(story_pipeline.shutil, 'which', return_value='/usr/bin/ffprobe'), \
+         patch('shutil.which', return_value='/usr/bin/ffprobe'), \
          patch('video_prototype.news_jobs.story_studio_assets_ready', return_value=True):
         render.side_effect = ValueError('render stub')
         with pytest.raises(ValueError, match='render stub'):

@@ -1,5 +1,4 @@
 """A separate trial: an eye briefly rises in the purple flask and looks right."""
-import math
 from PIL import Image, ImageChops, ImageDraw
 
 if __package__:

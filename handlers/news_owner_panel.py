@@ -447,5 +447,5 @@ async def news_panel_action(callback: types.CallbackQuery, state: FSMContext = N
         logger.warning('Не удалось выполнить действие панели новостей: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось выполнить действие. Открой панель заново.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)

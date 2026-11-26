@@ -1,5 +1,4 @@
 import re
-import asyncio
 import logging
 from aiogram import Router, types, F
 from aiogram.filters import Command
@@ -289,7 +288,7 @@ async def cmd_stop_daily_group(message: types.Message, bot):
     )
 
     if result.modified_count > 0:
-        await message.answer(f"⏸ Ежедневный отчет для этого чата отключен.", parse_mode="Markdown")
+        await message.answer("⏸ Ежедневный отчет для этого чата отключен.", parse_mode="Markdown")
     else:
         await message.answer("⚠️ Для этого чата нет активных отчетов.")
 

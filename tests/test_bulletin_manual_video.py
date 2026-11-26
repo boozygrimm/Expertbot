@@ -76,7 +76,7 @@ async def test_upload_endpoint_auth_and_existing_client(tmp_path, source_mp4):
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     base = f'http://127.0.0.1:{server.server_port}'; data = source_mp4.read_bytes(); digest = hashlib.sha256(data).hexdigest()
     try:
-        with patch.object(worker.shutil, 'which', return_value='ffmpeg'), \
+        with patch('shutil.which', return_value='ffmpeg'), \
              patch.object(source, 'inspect', return_value=(2., 320, 180, True)), \
              patch('news_prototype.news_worker_client.validate_url', return_value=base):
             client = NewsWorkerClient(base, 'secret')
@@ -122,7 +122,7 @@ async def test_confirmed_manual_fragment_renders_and_keeps_queue_compatibility(t
     root = tmp_path / 'news-jobs'; root.mkdir(); job = root / 'job'; job.mkdir()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with patch.object(source, 'inspect', return_value=(2., 320, 180, True)), \
-         patch.object(bulletin_pipeline.shutil, 'which', return_value='ffprobe'), \
+         patch('shutil.which', return_value='ffprobe'), \
          patch.object(bulletin_dialogue_audio, 'request_one', return_value=(wav(), 1.0)) as tts:
         media.save(root, digest, blob, ffmpeg=ffmpeg, ffprobe='ffprobe')
         output = bulletin_pipeline.run(script, job/'work', ffmpeg, ['fake'])
@@ -132,7 +132,7 @@ async def test_confirmed_manual_fragment_renders_and_keeps_queue_compatibility(t
     # Missing fragment fails before any TTS.
     (root/'.bulletin-manual-video'/(digest+'.mp4')).unlink()
     job2 = root / 'job2'; job2.mkdir()
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='ffprobe'), \
+    with patch('shutil.which', return_value='ffprobe'), \
          patch.object(bulletin_dialogue_audio, 'request_one') as tts:
         with pytest.raises((ValueError, OSError)):
             bulletin_pipeline.run(script, job2/'work', ffmpeg, ['fake'])

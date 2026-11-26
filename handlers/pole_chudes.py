@@ -124,7 +124,7 @@ async def update_main_message(bot, chat_id):
     missed = ", ".join(sorted(game["missed_letters"])) or "нет"
     
     scoreboard_lines = [f"👤 {p['name']}: {p['score']} очк." for p in game["players"].values() if p['score'] > 0]
-    score_text = f"\n**Счёт:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
+    score_text = "\n**Счёт:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
     
     turn_status = "🟢 Барабан свободен! Жмите кнопку."
     if game["current_turn"] is not None:
@@ -518,7 +518,7 @@ async def handle_letter(callback: types.CallbackQuery):
     else:
         game["missed_letters"].add(letter)
         game["last_comment"] = await get_comment("letter_fail")
-        await callback.answer(f"❌ Нет такой буквы!", show_alert=True)
+        await callback.answer("❌ Нет такой буквы!", show_alert=True)
 
     game["current_turn"] = None
     game["last_move_time"] = time.time()

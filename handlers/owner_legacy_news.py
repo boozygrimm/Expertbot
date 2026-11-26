@@ -209,5 +209,6 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
         except Exception:
             try:
                 await callback.message.answer('Результат не подтверждён. Проверь состояние, не повторяй вслепую.', parse_mode=None)
-            except Exception:
-                pass
+            except Exception as answer_error:
+                logger.debug('Не удалось сообщить о неподтверждённом результате: %s',
+                             type(answer_error).__name__)

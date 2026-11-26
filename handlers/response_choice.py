@@ -146,8 +146,8 @@ async def offer_response_choice(message, query, context, *, kind='chat', persona
         if failed and menu is not None:
             try:
                 await menu.edit_text('🤖 Не смог подготовить выбор ответа. Попробуй ещё раз позже.')
-            except Exception:
-                pass
+            except Exception as edit_error:
+                logger.debug('Не удалось пометить меню как неудачное: %s', type(edit_error).__name__)
     return True
 
 

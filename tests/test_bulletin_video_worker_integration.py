@@ -76,7 +76,7 @@ async def test_owner_approval_frozen_job_and_actual_video_pipeline(tmp_path, sou
         return telegram_public_source.Video(local, hashlib.sha256(local.read_bytes()).hexdigest(),
                                            local.stat().st_size, 2., 320, 180, True)
     ff = imageio_ffmpeg.get_ffmpeg_exe()
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='test-ffprobe'), \
+    with patch('shutil.which', return_value='test-ffprobe'), \
          patch.object(telegram_public_source, 'fetch_post', return_value=post) as fetch, \
          patch.object(telegram_public_source, 'download_video', side_effect=download) as acquire_media, \
          patch.object(telegram_public_source, 'inspect', return_value=(2., 320, 180, True)), \
@@ -104,7 +104,7 @@ async def test_source_or_revision_change_fails_closed_before_tts(tmp_path, sourc
     selected = await owner_bulletin.get(db, owner, number)
     payload = await owner_bulletin.approved_payload(db, owner, number, selected['revision'])
     post = telegram_public_source.Post('https://t.me/ExampleNews/102', 'ExampleNews/102', 'changed', 'available', 'unused')
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='fake'), \
+    with patch('shutil.which', return_value='fake'), \
          patch.object(telegram_public_source, 'fetch_post', return_value=post), \
          patch.object(telegram_public_source, 'download_video') as download, \
          patch.object(bulletin_dialogue_audio, 'request_one') as tts:
@@ -250,7 +250,7 @@ def test_changed_video_bytes_refused_before_any_tts(tmp_path, source_mp4):
         path = folder / 'source.mp4'; shutil.copyfile(source_mp4, path)
         return telegram_public_source.Video(path, hashlib.sha256(path.read_bytes()).hexdigest(),
                                            path.stat().st_size, 2., 320, 180, True)
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='ffprobe'), \
+    with patch('shutil.which', return_value='ffprobe'), \
          patch.object(telegram_public_source, 'fetch_post', return_value=post), \
          patch.object(telegram_public_source, 'download_video', side_effect=download), \
          patch.object(bulletin_dialogue_audio, 'request_one') as tts:

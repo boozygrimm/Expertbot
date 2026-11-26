@@ -6,7 +6,6 @@ after the check. Never print secrets or modify the TTS configuration.
 """
 import fcntl
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess

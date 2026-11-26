@@ -1,6 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_URI
-import datetime
 import logging
 import math
 

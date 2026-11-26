@@ -1,6 +1,5 @@
 """One-off Pai Mei cameo, layered over the approved smoke render."""
 import argparse
-import math
 from pathlib import Path
 import subprocess
 from PIL import Image, ImageChops, ImageDraw, ImageFilter

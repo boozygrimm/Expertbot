@@ -848,7 +848,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 await owner_bulletin_panel.prepare_selected(message, callback.from_user.id, data)
             elif name == 'build_program':
                 from news_prototype import owner_program
-                from handlers import news_owner_drafts, owner_news_actions
+                from handlers import news_owner_drafts
                 if not await owner_trial.drafts_enabled(db.db):
                     await message.answer('Подготовка сценариев выключена.', parse_mode=None)
                 else:
@@ -877,8 +877,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     logger.debug('Не удалось убрать подтверждение вестника: %s', type(exc).__name__)
                     try:
                         await callback.message.edit_text('Действие завершено. Результат ниже.', reply_markup=None, parse_mode=None)
-                    except Exception:
-                        pass
+                    except Exception as edit_error:
+                        logger.debug('Не удалось обновить экран инструмента: %s', type(edit_error).__name__)
             return
         await callback.answer('Неизвестное действие.', show_alert=True)
     except Exception as exc:
@@ -888,5 +888,6 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
         except Exception:
             try:
                 await callback.message.answer('Не удалось подтвердить результат. Проверь состояние в панели; не повторяй действие вслепую.', parse_mode=None)
-            except Exception:
-                pass
+            except Exception as answer_error:
+                logger.debug('Не удалось сообщить о неподтверждённом результате: %s',
+                             type(answer_error).__name__)

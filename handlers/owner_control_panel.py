@@ -520,8 +520,8 @@ async def raid_announcement_action(callback: types.CallbackQuery, state: FSMCont
         logger.warning('Не удалось выполнить объявление Рейда: %s', type(exc).__name__)
         try:
             await callback.answer('Действие не завершено. Проверь итог; не повторяй рассылку вслепую.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)
     finally:
         if broadcast_lock:
             _raid_broadcast_lock.release()
@@ -888,8 +888,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             if get_data:
                 try:
                     await get_data()
-                except Exception:
-                    pass
+                except Exception as refresh_error:
+                    logger.debug('Не удалось обновить данные экрана: %s', type(refresh_error).__name__)
             await state.clear()
     try:
         if action == 'close':
@@ -947,5 +947,5 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
         logger.warning('Не удалось выполнить действие пульта: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось выполнить действие. Открой пульт заново.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)
