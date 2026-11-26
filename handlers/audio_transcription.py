@@ -10,6 +10,7 @@ import tempfile
 
 from ai_logic import transcribe_audio_groq
 from database import db
+from background import spawn
 
 logger = logging.getLogger(__name__)
 MAX_PENDING = 20
@@ -96,11 +97,15 @@ def start_transcription(message):
         return _jobs[key]
     if len(_jobs) >= MAX_PENDING or not _media(message)[0]:
         return None
-    task = asyncio.create_task(_run(message))
+    task = spawn(_run(message), name='transcription')
     _jobs[key] = task
+
     def finished(done):
+        # Освобождаем ключ всегда: и после успеха, и после падения (его уже
+        # залогировал spawn).
         if _jobs.get(key) is done:
             _jobs.pop(key, None)
+
     task.add_done_callback(finished)
     return task
 

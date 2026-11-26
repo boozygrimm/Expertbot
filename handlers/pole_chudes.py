@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ai_logic import generate_with_retry
 from database import db
 from config import get_msk_now
+from background import spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ async def turn_timeout_task(chat_id, user_id, bot):
         
         await update_main_message(bot, chat_id)
         msg = await bot.send_message(chat_id, "⏳ Время вышло! Игрок уснул, барабан снова свободен. 🎰")
-        asyncio.create_task(delete_after_delay(msg, 10))
+        spawn(delete_after_delay(msg, 10))
 
 @router.message(Command("stop", "хватит"), lambda msg: msg.chat.id in active_games)
 async def stop_game(message: types.Message):
@@ -187,7 +188,7 @@ async def stop_game(message: types.Message):
         del active_games[chat_id]
         
         # Запускаем фоновую очистку (открепление и удаление главного сообщения игры)
-        asyncio.create_task(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
+        spawn(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
         
         # Отвечаем игрокам, раскрывая интригу
         await message.answer(
@@ -198,15 +199,15 @@ async def stop_game(message: types.Message):
         )
     else:
         ans = await message.answer("А мы сейчас и не играем! 🤷‍♂️")
-        asyncio.create_task(delete_after_delay(ans, 10))
-        asyncio.create_task(delete_after_delay(message, 10))
+        spawn(delete_after_delay(ans, 10))
+        spawn(delete_after_delay(message, 10))
 
 @router.message(Command("pole"))
 async def start_game(message: types.Message):
     chat_id = message.chat.id
     if chat_id in active_games:
         msg = await message.answer("✋ Тише! Тут еще старая игра идет, не мешай!")
-        asyncio.create_task(delete_after_delay(msg, 10))
+        spawn(delete_after_delay(msg, 10))
         return
 
     status_msg = await message.answer("⏳ Готовим студию, запрашиваем архив слов...")
@@ -286,7 +287,7 @@ async def start_game(message: types.Message):
     except Exception as e:
         logger.debug("Failed to pin pole game status message in chat %s: %s", chat_id, e)
         
-    asyncio.create_task(delete_after_delay(message))
+    spawn(delete_after_delay(message))
 
 @router.callback_query(F.data == "spin_drum")
 async def handle_spin(callback: types.CallbackQuery):
@@ -349,7 +350,7 @@ async def handle_spin(callback: types.CallbackQuery):
                 except Exception as e:
                     logging.error(f"Ошибка БД в поле чудес: {e}")
 
-                asyncio.create_task(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
+                spawn(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
                 del active_games[chat_id]
                 
                 await callback.message.edit_text(
@@ -391,8 +392,8 @@ async def handle_full_word_text(message: types.Message):
     
     if game["current_turn"] != user_id:
         ans = await message.reply("Сейчас не твой ход крутить барабан! ✋")
-        asyncio.create_task(delete_after_delay(ans))
-        asyncio.create_task(delete_after_delay(message))
+        spawn(delete_after_delay(ans))
+        spawn(delete_after_delay(message))
         return
 
     if game["timeout_task"]:
@@ -429,7 +430,7 @@ async def handle_full_word_text(message: types.Message):
         except Exception as e:
             logging.error(f"Ошибка БД при победе словом: {e}")
         
-        asyncio.create_task(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
+        spawn(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
         del active_games[chat_id]
         
         await message.answer(
@@ -447,9 +448,9 @@ async def handle_full_word_text(message: types.Message):
         
         ans = await message.reply(f"❌ Ошибка! Это не '{user_word}'. Ход переходит дальше.")
         await update_main_message(message.bot, chat_id)
-        asyncio.create_task(delete_after_delay(ans))
+        spawn(delete_after_delay(ans))
         
-    asyncio.create_task(delete_after_delay(message))
+    spawn(delete_after_delay(message))
 
 @router.callback_query(F.data.startswith("cl_"))
 async def handle_letter(callback: types.CallbackQuery):
@@ -500,7 +501,7 @@ async def handle_letter(callback: types.CallbackQuery):
             except Exception as e:
                 logging.error(f"Ошибка БД в поле чудес: {e}")
             
-            asyncio.create_task(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
+            spawn(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
             del active_games[chat_id]
             
             await callback.message.edit_text(
@@ -555,8 +556,8 @@ async def show_top(message: types.Message):
         top_score = await cursor_score.to_list(length=25)
         if not top_wins and not top_score:
             msg = await message.answer("📊 Статистика пока пуста.")
-            asyncio.create_task(delete_after_delay(msg, 180))
-            asyncio.create_task(delete_after_delay(message, 180))
+            spawn(delete_after_delay(msg, 180))
+            spawn(delete_after_delay(message, 180))
             return
 
         period_text = f"за {days} дн." if days else "за всё время"
@@ -582,12 +583,12 @@ async def show_top(message: types.Message):
         text += "```\n"
         
         msg = await message.answer(text, parse_mode="Markdown")
-        asyncio.create_task(delete_after_delay(msg, 180))
-        asyncio.create_task(delete_after_delay(message, 180))
+        spawn(delete_after_delay(msg, 180))
+        spawn(delete_after_delay(message, 180))
         
     except Exception as e:
         logging.error(f"Ошибка команды /топполе: {e}")
         msg = await message.answer("Произошла ошибка при загрузке топа.")
-        asyncio.create_task(delete_after_delay(msg, 10))
-        asyncio.create_task(delete_after_delay(message, 10))
+        spawn(delete_after_delay(msg, 10))
+        spawn(delete_after_delay(message, 10))
         

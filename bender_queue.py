@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 import uuid
+from background import spawn
 
 logger = logging.getLogger(__name__)
 QUEUE_ID = 'bender-video'
@@ -105,7 +106,7 @@ class VideoQueue:
             try:
                 await self.ensure()
                 if await self.acquire():
-                    heartbeat = asyncio.create_task(self.heartbeat())
+                    heartbeat = spawn(self.heartbeat())
                     item = await self.head()
                     if item:
                         # process returns True only when a confirmed busy reply

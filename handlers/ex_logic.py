@@ -26,6 +26,7 @@ from handlers.photo_context import has_request_photo, add_photo_context
 from handlers.recent_context import add_recent_context
 from handlers.voice_context import add_voice_reply_context
 from owner_preferences import current as get_owner_preferences
+from background import spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -480,7 +481,7 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
             msg = await message.reply(
                 "❌ Не смог подобрать или отправить трек. Возможно, источник временно недоступен."
             )
-            asyncio.create_task(delete_after(msg, 15))
+            spawn(delete_after(msg, 15))
         return
 
     if intent == "SEARCH":
@@ -499,7 +500,7 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
             else:
                 msg = await status_msg.edit_text(result)
                 if "❌" in result:
-                    asyncio.create_task(delete_after(msg, 15))
+                    spawn(delete_after(msg, 15))
         except Exception as e:
             logger.error(
                 "Search error: chat_id=%s user_id=%s query=%s error=%s",
@@ -512,7 +513,7 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
                 "🤖 Бендер: ❌ Поиск сейчас не сработал. Возможно, недоступен поисковик "
                 "или ИИ-обработка ответа. Попробуй позже!"
             )
-            asyncio.create_task(delete_after(msg, 15))
+            spawn(delete_after(msg, 15))
         return
 
     if intent == "GOSSIP":

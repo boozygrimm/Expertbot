@@ -5,6 +5,7 @@ from database import db
 from handlers.pole_chudes import delete_after_delay 
 import re
 from config import get_msk_now
+from background import spawn
 
 router = Router()
 
@@ -36,7 +37,7 @@ async def show_global_top(message: types.Message):
                 "(Напиши: `/img запрос` или *«Экс, нарисуй...»*)", 
                 parse_mode="Markdown"
             )
-            asyncio.create_task(delete_after_delay(msg, 60))
+            spawn(delete_after_delay(msg, 60))
             return
 
         text = "🏆 **РЕЙТИНГ ЧАТА (ВСЕ ИГРЫ)** 🏆\n\n"
@@ -54,8 +55,8 @@ async def show_global_top(message: types.Message):
         text += "Напиши: `/img запрос` или *«Экс, нарисуй...»*"
         
         await msg.edit_text(text, parse_mode="Markdown")
-        asyncio.create_task(delete_after_delay(msg, 180))
-        asyncio.create_task(delete_after_delay(message, 180))
+        spawn(delete_after_delay(msg, 180))
+        spawn(delete_after_delay(message, 180))
         
     except Exception as e:
         await msg.edit_text("❌ Ошибка при подсчете казны.")

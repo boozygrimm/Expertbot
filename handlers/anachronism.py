@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from ai_logic import generate_with_retry
 from config import get_msk_now
+from background import spawn
 
 router = Router()
 
@@ -126,7 +127,7 @@ async def start_anachronism(message: types.Message):
         remaining = await db.db.anachronism_cache.count_documents({})
         if remaining <= 1:
             # ТИХАЯ генерация в фоне. Бот не будет ждать окончания этого процесса!
-            asyncio.create_task(fetch_anachronism_questions())
+            spawn(fetch_anachronism_questions())
 
     # 4. Списываем комиссию и ставку как НОВУЮ ТРАНЗАКЦИЮ
     new_attempts = attempts + 1
@@ -182,7 +183,7 @@ async def start_anachronism(message: types.Message):
     }
     
     # Запускаем отложенную очистку памяти
-    asyncio.create_task(cleanup_game_session(game_msg.message_id))
+    spawn(cleanup_game_session(game_msg.message_id))
     
 @router.callback_query(F.data.startswith("anach:"))
 async def process_anachronism_answer(callback: types.CallbackQuery):

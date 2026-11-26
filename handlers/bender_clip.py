@@ -25,6 +25,7 @@ from handlers.admin_panel import get_chat_feature_flags
 from handlers.photo_context import has_request_photo, add_photo_context
 from handlers.recent_context import add_recent_context
 from handlers.voice_context import add_voice_reply_context
+from background import spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -256,7 +257,7 @@ async def process_queued_video(queue, bot, item):
 
     first_status = choose_status(kind=item.get('kind', 'video'))
     await _edit_status(bot, item, first_status)
-    rotation = asyncio.create_task(_queue_rotation(bot, item, first_status))
+    rotation = spawn(_queue_rotation(bot, item, first_status))
     try:
         if stage == 'queued':
             try:

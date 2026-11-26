@@ -7,6 +7,7 @@ from ai_logic import recognize_media
 from config import ADMIN_ID, get_msk_now
 from handlers.admin_panel import is_feature_enabled
 from handlers.audio_transcription import start_transcription, _store_result
+from background import spawn
 
 async def background_vision_update(bot, message_id, chat_id, file_id, is_animation=False):
     """Фоновое распознавание медиа"""
@@ -107,7 +108,7 @@ class ChatLoggerMiddleware(BaseMiddleware):
 
             # Existing photo logging stays independent of the speech pipeline.
             if has_media and file_id:
-                asyncio.create_task(
+                spawn(
                     background_vision_update(event.bot, event.message_id, event.chat.id, file_id, is_animation)
                 )
             if is_speech and saved:
