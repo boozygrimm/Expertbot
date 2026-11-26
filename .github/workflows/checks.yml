@@ -53,5 +53,8 @@ jobs:
       - name: Установить зависимости
         run: npm ci --prefix miniapp_preview
 
+      - name: Проверить, что страницы RAID собраны из текущих исходников
+        run: python miniapp_preview/check_build.py
+
       - name: Прогнать тесты
         run: npm test --prefix miniapp_preview

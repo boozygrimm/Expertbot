@@ -26,6 +26,26 @@ Telegram-бот на `aiogram` с несколькими режимами раб
 `miniapp_preview/`, `lunapark-raid*.html`). Это отдельный самодостаточный
 браузерный пробник без серверной части; к алхимии он не обращается.
 
+### Пересборка страниц RAID
+
+`lunapark-raid.html` и `lunapark-raid-magitech.html` в корне — **собранные**
+файлы, а не источник. Исходники: `miniapp_preview/raid*.html|css|js`,
+`raid_monsters.json`, `skull_sprites.json` и ассеты в `miniapp_preview/assets/`.
+Правится исходник, страница пересобирается, и в коммит попадают оба файла:
+
+```bash
+npm install --prefix miniapp_preview      # один раз, нужен Node.js 20+
+npm run build --prefix miniapp_preview    # обе страницы
+npm test --prefix miniapp_preview         # 858+ браузерных проверок
+```
+
+`/raid_test` и описание в пульте владельца ссылаются на
+`lunapark-raid-magitech.html` на GitHub Pages; классическая страница остаётся
+отдельным входом. Каждая сборка вписывает в страницу `<meta name="raid-build">`
+— хеш всех входов. Если он не совпадает с исходниками, Pages отдаст старую
+игру, поэтому проверка `python miniapp_preview/check_build.py` (она же в CI)
+падает на устаревшей странице. Баннер сборки виден и в самом приложении.
+
 ## Текущее состояние
 
 Бот отвечает текстом, видеокружком или голосовым (в зависимости от настроек),
