@@ -12,3 +12,4 @@ __pycache__/
 
 # Node test dependencies for the RAID preview
 miniapp_preview/node_modules/
+pytest.log

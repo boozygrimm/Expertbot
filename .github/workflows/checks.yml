@@ -14,9 +14,9 @@ jobs:
     name: Python-тесты
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -36,15 +36,27 @@ jobs:
           TELEGRAM_TOKEN: 123456:TESTTOKEN
           PYTHON_DOTENV_DISABLED: '1'
           PYTHONPATH: .
-        run: python -m pytest tests/ -q
+        # Имена упавших тестов дублируются в аннотации: полный лог Actions
+        # лежит в отдельном хранилище и не всегда доступен инструментам.
+        run: |
+          set +e
+          python -m pytest tests/ -q > pytest.log 2>&1
+          status=$?
+          tail -25 pytest.log
+          if [ "$status" -ne 0 ]; then
+            grep -E '^(FAILED|ERROR)' pytest.log | head -25 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$status"
 
   miniapp:
     name: Тесты мини-приложения RAID
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
