@@ -73,7 +73,12 @@ print(json.dumps(sorted(names), ensure_ascii=False))
         result = subprocess.run([sys.executable, '-c', script], cwd=ROOT, text=True,
                                 capture_output=True, timeout=30, check=True)
         attached = set(json.loads(result.stdout))
-        self.assertTrue(registered_command_literals() <= attached)
+        expected = registered_command_literals()
+        if os.getenv('NEWS_INTAKE_ENABLED', '').strip() != '1':
+            # The legacy manual-news block is attached only with this flag
+            # (see app_setup.py), so its literals are legitimately absent.
+            expected -= {'news', 'news_list', 'news_ready', 'news_digest', 'news_digest_status'}
+        self.assertTrue(expected <= attached)
 
     def test_local_documentation_links_exist(self):
         for filename in ('README.md', 'COMMANDS.md', 'PROJECT_ANALYSIS.md',
@@ -112,7 +117,7 @@ class HelpTests(unittest.IsolatedAsyncioTestCase):
                     'text': '/' + command})
                 self.assertTrue(await Command(command)(msg, bot=None))
         # An argument is not part of aiogram's command name.
-        self.assertEqual(Command.extract_command('/экс помощь').command, 'экс')
+        self.assertEqual(Command('экс').extract_command('/экс помощь').command, 'экс')
 
     async def test_help_and_panel_details_fit_telegram_limit(self):
         flags = admin_panel.get_default_feature_flags()

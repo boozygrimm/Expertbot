@@ -205,7 +205,7 @@ from handlers import owner_video_sender as sender, owner_tools_panel as tools, l
 async def run():
     database = AsyncMongoMockClient().test
     fake = SimpleNamespace(db=database, auth_chats=database.auth_chats, settings=database.settings,
-                           alchemy_players=database.alchemy_players, messages=database.messages)
+                           messages=database.messages)
     await database.auth_chats.insert_one({'chat_id':-101,'title':'Друзья','status':'approved'})
     bot = Bot('123456:TESTTOKEN'); calls=[]
     async def request(bot_arg, method, **kwargs):

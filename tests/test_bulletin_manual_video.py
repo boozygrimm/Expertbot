@@ -231,7 +231,7 @@ from tests.test_owner_drafts import SOURCE
 
 async def run():
     db=AsyncMongoMockClient().test
-    fake=SimpleNamespace(db=db, settings=db.settings, alchemy_players=db.alchemy_players, messages=db.messages)
+    fake=SimpleNamespace(db=db, settings=db.settings, messages=db.messages)
     await owner_bulletin_sources.create(db,ADMIN_ID,47,[{'url':'https://t.me/ExampleNews/102','title':'Видео'},
                                                       {'url':'https://example.com/2','title':'Новость'}])
     await owner_bulletin_sources.collect(db,ADMIN_ID,47,AsyncMock(return_value={'summary':SOURCE,

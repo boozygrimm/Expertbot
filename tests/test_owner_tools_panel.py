@@ -76,7 +76,7 @@ from handlers import owner_tools_panel as tools, owner_control_panel, news_owner
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players, messages=database.messages)
+    fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages)
     bot = Bot('123456:TESTTOKEN')
     sent = []
     async def request(bot_arg, method, **kwargs):
@@ -367,7 +367,7 @@ from handlers import owner_tools_panel, image_gen
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN')
     calls = []
     async def request(bot_arg, method, **kwargs):

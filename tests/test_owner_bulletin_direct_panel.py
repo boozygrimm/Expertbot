@@ -314,7 +314,7 @@ import tempfile, threading
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN'); sent = []; sequence = 500
     async def request(bot_arg, method, **kwargs):
         nonlocal sequence
@@ -424,7 +424,7 @@ from tests.test_owner_drafts import SOURCE
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players, messages=database.messages)
+    fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages)
     bot = Bot('123456:TESTTOKEN'); sequence = 500
     async def request(bot_arg, method, **kwargs):
         nonlocal sequence

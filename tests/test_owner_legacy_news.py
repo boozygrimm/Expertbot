@@ -180,7 +180,7 @@ from handlers import owner_legacy_news, owner_tools_panel, news_intake, logger
 async def run():
     database = AsyncMongoMockClient().test
     fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages,
-                           alchemy_players=database.alchemy_players)
+                           )
     bot = Bot('123456:TESTTOKEN')
     sent = []
     async def request(bot_arg, method, **kwargs):

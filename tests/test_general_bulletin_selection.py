@@ -200,7 +200,7 @@ from news_prototype import owner_trial
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database)
     for n, topic in enumerate(('games','science')):
         await database.news_general_candidates.insert_one({'_id':str(n), 'url':f'https://example.com/{n}',
             'title':f'News {n}', 'category_override':topic})

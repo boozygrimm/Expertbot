@@ -22,7 +22,7 @@ class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
         database = AsyncMongoMockClient().test
         db = SimpleNamespace(settings=database.settings, auth_chats=database.auth_chats,
                              personas=database.personas, messages=database.messages,
-                             alchemy_players=database.alchemy_players)
+                             )
         await db.auth_chats.insert_one({'chat_id': -101, 'status': 'approved'})
         await db.settings.insert_one({'setting': 'feature_panel', 'chat_id': -101,
             'features': {'reports': False, 'daily_reports': False, 'assistant': True}})

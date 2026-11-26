@@ -322,7 +322,7 @@ from tests.test_owner_drafts import SOURCE, DRAFT
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN')
     sent = []
     sequence = 500
