@@ -1,0 +1,46 @@
+# Всё, что не нужно работающему боту. Образ собирается из этого каталога, и без
+# исключений в него попадают чужие артефакты: ~98 МБ истории git, 34 МБ
+# miniapp_preview (с node_modules), 19 МБ скриншотов дизайна и тесты.
+
+# История и локальные настройки git
+.git
+.gitattributes
+.gitignore
+
+# Окружения и кеши
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.arena
+.claude
+
+# Тесты и их зависимости: в образе бота они не нужны
+tests
+requirements-test.txt
+
+# Исходники RAID и node_modules. Сами собранные страницы нужны боту: пульт
+# читает из lunapark-raid-magitech.html номер сборки для /raid_test.
+miniapp_preview
+lunapark-raid.html
+
+# Документация: бот её не читает, все тексты для чата живут в коде
+*.md
+
+# Медиа-заготовки. Префикс / — только корневой assets:
+# video_prototype/assets нужны студии кружков.
+design
+/assets
+video_prototype/out
+*.mp4
+*.mp3
+
+# Служебное
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log

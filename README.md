@@ -386,6 +386,13 @@ docker build -t expertbot .
 docker run --env-file .env -p 7860:7860 expertbot
 ```
 
+Образ работает не от root (UID 10001) и объявляет `HEALTHCHECK` на
+`http://127.0.0.1:7860/`: бот работает по long polling, поэтому «жив» — это
+ответ локального healthcheck-сервера. В образ не попадают история git, тесты,
+`miniapp_preview` и дизайн-макеты — состав ограничивает `.dockerignore`;
+`lunapark-raid-magitech.html` остаётся, потому что пульт владельца читает из
+него номер сборки для `/raid_test`.
+
 ## Структура проекта
 
 ```text
