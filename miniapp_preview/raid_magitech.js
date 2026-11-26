@@ -4633,6 +4633,26 @@
         pendingHapticKill = pendingHapticBoss = pendingHapticDamage = pendingHapticHit = false;
       }
     }));
+    // Diagnostic calls are deliberately synchronous, bypass the combat queue,
+    // preference and browser fallback, and never claim physical delivery.
+    document.querySelectorAll('[data-haptic-test]').forEach(button => button.addEventListener('click', () => {
+      const status = button.closest('.haptics-test')?.querySelector('.haptics-test-status');
+      let message;
+      try {
+        const feedback = window.Telegram?.WebApp?.HapticFeedback;
+        const impact = button.dataset.hapticTest === 'impact';
+        const method = impact ? 'impactOccurred' : 'notificationOccurred';
+        if (typeof feedback?.[method] !== 'function') {
+          message = 'Метод Telegram недоступен. Откройте рейд кнопкой в Telegram и проверьте загрузку SDK.';
+        } else {
+          feedback[method](impact ? 'medium' : 'success');
+          message = 'Запрос отправлен в Telegram. Почувствовали вибрацию? Приложение не может это проверить.';
+        }
+      } catch (ignored) {
+        message = 'Telegram отклонил запрос вибрации. Проверьте клиент и системные настройки.';
+      }
+      if (status) { status.textContent = message; status.hidden = false; }
+    }));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         clearTimeout(hapticTimer); hapticTimer = 0;
@@ -7120,7 +7140,7 @@
       if (!GAME_SETTINGS) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); closeGameSettings(); return; }
       if (event.key !== 'Tab') return;
-      const controls = [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled)')];
+      const controls = [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled), summary')].filter(node => !node.closest('details:not([open])') || node.tagName === 'SUMMARY');
       const first = controls[0], last = controls[controls.length - 1];
       if (!wrap.contains(document.activeElement) || event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
         event.preventDefault(); (event.shiftKey ? last : first)?.focus();
