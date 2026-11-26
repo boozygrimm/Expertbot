@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="f63628d2fb69">
+<meta name="raid-build" content="8ff108c8f114">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -2204,6 +2204,30 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .mech-cockpit-art { left:8%; top:47%; }
 }
 
+/* The same tactile controls in the garage, pause menu and on the board. */
+.visual-settings label.settings-row { display:flex; justify-content:space-between; gap:12px; min-height:48px; padding:4px 0; border-bottom:1px solid #b6c1a31f; }
+.visual-settings label.settings-row input { appearance:none; -webkit-appearance:none; position:relative; flex:none; width:42px; height:24px; margin:0; border:1px solid #91aa8f80; border-radius:999px; background:#071f20; cursor:pointer; }
+.visual-settings label.settings-row input::before { content:''; position:absolute; left:3px; top:3px; width:16px; height:16px; border-radius:50%; background:#9cb09f; }
+.visual-settings label.settings-row input:checked { background:#c5ba86; border-color:#e0d19e; }
+.visual-settings label.settings-row input:checked::before { transform:translateX(18px); background:#1b3730; }
+.visual-settings .settings-row small { display:block; margin-top:3px; color:#b2c5b0; font-size:10px; }
+.visual-settings .haptics-preference, .game-settings-card .haptics-combat-settings { margin:0; padding:0; border:0; }
+.visual-settings .haptics-preference legend, .game-settings-card .haptics-combat-settings legend { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
+.haptics-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:62px; padding:5px 0; border-bottom:1px solid #b6c1a31f; }
+.haptics-title { color:#e8ebd9; font-size:14px; }
+.haptics-segments, .haptics-combat-settings .haptics-segments { flex:none; display:grid; grid-template-columns:repeat(3,1fr); position:relative; width:132px; max-width:none; margin:0; overflow:visible; border:0; background:transparent; }
+.haptics-segments::before { content:''; position:absolute; top:10px; left:3px; right:3px; height:24px; border:1px solid #91aa8f80; border-radius:999px; background:#071f20; pointer-events:none; }
+.haptics-segments:has(input[value="important"]:checked)::before, .haptics-segments:has(input[value="all"]:checked)::before { background:#c5ba86; border-color:#e0d19e; }
+.visual-settings .haptics-segments label, .game-settings-card .haptics-segments label { position:relative; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:0; min-width:0; min-height:54px; padding:0; border:0; background:transparent; color:#d9e4d1; font-size:9px; font-weight:400; cursor:pointer; }
+.haptics-segments label:has(input[value="off"]) { order:0; }
+.haptics-segments label:has(input[value="important"]) { order:1; }
+.haptics-segments label:has(input[value="all"]) { order:2; }
+.haptics-segments label::before { content:''; position:absolute; top:14px; left:50%; width:16px; height:16px; transform:translateX(-50%); border-radius:50%; background:transparent; }
+.haptics-segments label:has(input:checked)::before { background:#1b3730; }
+.haptics-segments label:has(input[value="off"]:checked)::before { background:#9cb09f; }
+.haptics-segments label:has(input:checked) span { color:#f0dba1; font-weight:700; }
+.haptics-segments label:has(input:focus-visible) { outline:2px solid #eed18f; outline-offset:-2px; border-radius:8px; }
+
 </style>
 </head>
 <body>
@@ -2239,7 +2263,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка f63628d2fb69</p>
+    <p class="build-label">Сборка 8ff108c8f114</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -2255,14 +2279,14 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <summary><svg class="picker-tool-icon picker-eye-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 16c3.5-5.7 8-8.5 13-8.5s9.5 2.8 13 8.5c-3.5 5.7-8 8.5-13 8.5S6.5 21.7 3 16Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m8 9-2-4m7 2-1-5m7 5 2-5m4 8 3-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><ellipse cx="16" cy="16" rx="4" ry="6" fill="#e85c36" stroke="currentColor" stroke-width="1.1"/><path d="M16 11.8v8.4" stroke="#2b100e" stroke-width="2.2" stroke-linecap="round"/><path d="m11 22-2 3m12-3 2 3" fill="none" stroke="#e85c36" stroke-width="1.2" stroke-linecap="round"/></svg><span>Настройки</span></summary>
         <div class="picker-visual-panel">
           <fieldset><legend>Отображение · только этот профиль</legend>
-            <label><input type="checkbox" data-raid-visual="shells" checked> Кружки / стеклянная оболочка</label>
-            <label><input type="checkbox" data-raid-visual="animations" checked> Анимации</label>
+            <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+            <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
           </fieldset>
-          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+            <label title="Отключить тактильные отклики"><input type="radio" name="haptics-garage" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
             <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-garage" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
             <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-garage" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-            <label title="Отключить тактильные отклики"><input type="radio" name="haptics-garage" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-          </div></fieldset>
+          </div></div></fieldset>
           <p>Вибрация работает на поддерживаемых устройствах; выбор сохраняется отдельно от рейда.</p>
           <p>Без кружков остаются картинки, числа и игровые метки. Без анимаций длительность хода прежняя.</p>
           <p data-raid-motion-note hidden></p>
@@ -2405,11 +2429,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
     </fieldset>
     <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-    <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+    <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+      <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
       <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
       <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-      <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-    </div></fieldset>
+    </div></div></fieldset>
     <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
     <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
     <p class="settings-note" data-raid-motion-note hidden></p>
@@ -2425,7 +2449,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка f63628d2fb69</p>
+    <p class="build-label">Сборка 8ff108c8f114</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2433,14 +2457,14 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <details class="visual-settings" id="menu-visual">
       <summary>Вид, движение и вибрация</summary>
       <fieldset><legend>Отображение · только этот профиль</legend>
-        <label><input type="checkbox" data-raid-visual="shells" checked> Кружки / стеклянная оболочка</label>
-        <label><input type="checkbox" data-raid-visual="animations" checked> Анимации</label>
+        <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+        <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
       </fieldset>
-      <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+      <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+        <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
         <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-menu" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
         <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-menu" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-        <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-      </div></fieldset>
+      </div></div></fieldset>
       <p>Настройки вида и вибрации сохраняются отдельно от рейда. Выделение, стихии, статусы и длительность хода не меняются.</p>
       <p data-raid-motion-note hidden></p>
       <p data-raid-visual-status role="status" aria-live="polite" hidden></p>
@@ -2464,7 +2488,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка f63628d2fb69</p>
+      <p class="build-label" id="updates-build">Сборка 8ff108c8f114</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Коротко о последнем изменении. Остальные выпуски — в истории ниже.</p>
@@ -2592,7 +2616,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка f63628d2fb69.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 8ff108c8f114.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>

@@ -6070,7 +6070,7 @@ test('raid haptics setting persists modes and coalesces enemy kills with boss pr
   assert.match(html, /name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"/);
   assert.match(html, /name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"/);
   assert.equal((html.match(/data-raid-haptics/g) || []).length, 9, 'three positions are available in garage, menu and combat settings');
-  assert.match(css, /\.haptics-segments \{ display: grid; grid-template-columns:repeat\(3,/);
+  assert.match(css, /\.haptics-segments, \.haptics-combat-settings \.haptics-segments \{[^}]*grid-template-columns:repeat\(3,1fr\)/);
   assert.match(html, /<b>Настройки и тексты боя\.<\/b>[\s\S]*?трёхпозиционный тумблер[\s\S]*?пятипозиционный тумблер/);
   assert.match(js, /const choices = \['fire', 'air', 'earth', 'water', ''\]/);
   assert.match(css, /\.affinity-segments \{ display:grid; grid-template-columns:repeat\(5,/);

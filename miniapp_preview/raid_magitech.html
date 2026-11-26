@@ -59,14 +59,14 @@
         <summary><svg class="picker-tool-icon picker-eye-icon" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 16c3.5-5.7 8-8.5 13-8.5s9.5 2.8 13 8.5c-3.5 5.7-8 8.5-13 8.5S6.5 21.7 3 16Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m8 9-2-4m7 2-1-5m7 5 2-5m4 8 3-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><ellipse cx="16" cy="16" rx="4" ry="6" fill="#e85c36" stroke="currentColor" stroke-width="1.1"/><path d="M16 11.8v8.4" stroke="#2b100e" stroke-width="2.2" stroke-linecap="round"/><path d="m11 22-2 3m12-3 2 3" fill="none" stroke="#e85c36" stroke-width="1.2" stroke-linecap="round"/></svg><span>Настройки</span></summary>
         <div class="picker-visual-panel">
           <fieldset><legend>Отображение · только этот профиль</legend>
-            <label><input type="checkbox" data-raid-visual="shells" checked> Кружки / стеклянная оболочка</label>
-            <label><input type="checkbox" data-raid-visual="animations" checked> Анимации</label>
+            <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+            <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
           </fieldset>
-          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+            <label title="Отключить тактильные отклики"><input type="radio" name="haptics-garage" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
             <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-garage" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
             <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-garage" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-            <label title="Отключить тактильные отклики"><input type="radio" name="haptics-garage" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-          </div></fieldset>
+          </div></div></fieldset>
           <p>Вибрация работает на поддерживаемых устройствах; выбор сохраняется отдельно от рейда.</p>
           <p>Без кружков остаются картинки, числа и игровые метки. Без анимаций длительность хода прежняя.</p>
           <p data-raid-motion-note hidden></p>
@@ -209,11 +209,11 @@
       <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
     </fieldset>
     <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-    <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+    <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+      <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
       <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
       <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-      <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-    </div></fieldset>
+    </div></div></fieldset>
     <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
     <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
     <p class="settings-note" data-raid-motion-note hidden></p>
@@ -237,14 +237,14 @@
     <details class="visual-settings" id="menu-visual">
       <summary>Вид, движение и вибрация</summary>
       <fieldset><legend>Отображение · только этот профиль</legend>
-        <label><input type="checkbox" data-raid-visual="shells" checked> Кружки / стеклянная оболочка</label>
-        <label><input type="checkbox" data-raid-visual="animations" checked> Анимации</label>
+        <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+        <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
       </fieldset>
-      <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+      <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+        <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
         <label title="Вибрация на убийства, боссов и сильный урон"><input type="radio" name="haptics-menu" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
         <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-menu" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-        <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-      </div></fieldset>
+      </div></div></fieldset>
       <p>Настройки вида и вибрации сохраняются отдельно от рейда. Выделение, стихии, статусы и длительность хода не меняются.</p>
       <p data-raid-motion-note hidden></p>
       <p data-raid-visual-status role="status" aria-live="polite" hidden></p>

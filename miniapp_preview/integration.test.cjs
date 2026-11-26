@@ -4167,7 +4167,7 @@ test('magitech controls: vibration is three-position radio in garage/menu/combat
     assert.equal(haptics.length, 9);
     for (const group of ['haptics-garage', 'haptics-menu', 'haptics-combat']) {
       const radios = haptics.filter(input => input.name === group);
-      assert.deepEqual(radios.map(input => input.value), ['important', 'all', 'off']);
+      assert.deepEqual(radios.map(input => input.value), ['off', 'important', 'all']);
       assert.ok(radios.every(input => input.type === 'radio' && input.labels.length));
       assert.equal(radios.filter(input => input.checked).length, 1);
     }
