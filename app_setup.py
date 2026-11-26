@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import os
+import time
 
 from aiohttp import web
 from aiogram import Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.types import BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats, BotCommandScopeChat
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import SchedulerNotRunningError
 
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from bot_instance import bot
@@ -209,6 +212,29 @@ async def deliver_owner_news_trial():
         await _locked(db.db.news_locks, 'owner-trial-review', deliver)
     except Exception as exc:
         logging.warning('Не удалось передать пробный сюжет: %s', type(exc).__name__)
+
+
+async def stop_scheduler(scheduler: AsyncIOScheduler, timeout: float = 5.0) -> None:
+    """Остановить планировщик по-настоящему, а не «поставить в очередь».
+
+    `AsyncIOScheduler.shutdown()` — это `@run_in_event_loop`: он лишь кладёт
+    остановку в `call_soon_threadsafe` и сразу возвращается. Один вызов в
+    корутине ничего не гасит, поэтому уступаем цикл (обычный `sleep` заблокировал
+    бы и саму остановку) и ждём, пока состояние действительно станет
+    «остановлен» — иначе джобы успевают сработать поверх закрытия.
+    """
+    if not scheduler.running:
+        return
+    try:
+        scheduler.shutdown(wait=False)
+    except SchedulerNotRunningError:
+        # Остановку уже поставили раньше — просто дожидаемся её.
+        pass
+    deadline = time.monotonic() + timeout
+    while scheduler.running and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    if scheduler.running:
+        raise TimeoutError('Планировщик не остановился за отведённое время')
 
 
 def create_scheduler() -> AsyncIOScheduler:
