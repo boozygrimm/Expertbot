@@ -2249,13 +2249,3 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .affinity-choice { font-size:9px; }
 }
 
-/* Diagnostic controls are collapsed by default and independent of combat mode. */
-.haptics-test { margin:6px 0; padding:0; color:#c5d1bd; font-size:11px; }
-.visual-settings .haptics-test summary, .game-settings-card .haptics-test summary { min-height:40px; padding:10px 0; color:#dfd0a1; font-size:11px; cursor:pointer; }
-.visual-settings .haptics-test p, .game-settings-card .haptics-test p { margin:4px 0 8px; color:#b9c8b8; font-size:10px; line-height:1.4; }
-.haptics-test-actions { display:flex; gap:8px; }
-.haptics-test-actions button { flex:1; min-width:0; min-height:40px; padding:7px 5px; border:1px solid #9d9b74; border-radius:9px; background:#17332e; color:#eee2be; font:600 11px/1.2 system-ui,sans-serif; cursor:pointer; }
-.haptics-test-actions button:focus-visible { outline:2px solid #eed18f; outline-offset:2px; }
-
-.haptics-test-actions { flex-wrap:wrap; }
-.haptics-test-actions button { flex:1 1 45%; }
