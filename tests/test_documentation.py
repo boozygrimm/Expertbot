@@ -80,6 +80,21 @@ print(json.dumps(sorted(names), ensure_ascii=False))
             expected -= {'news', 'news_list', 'news_ready', 'news_digest', 'news_digest_status'}
         self.assertTrue(expected <= attached)
 
+    def test_env_example_lists_every_variable_the_code_reads(self):
+        """Новая переменная окружения без строки в .env.example — тихая поломка
+        установки: человек не узнает, что её вообще можно задать."""
+        import re
+        used = set()
+        for path in ROOT.rglob('*.py'):
+            if '.git' in path.parts or path.parts[0] == 'tests':
+                continue
+            text = path.read_text(encoding='utf-8', errors='ignore')
+            used.update(re.findall(r"os\.(?:getenv|environ\.get)\(\s*['\"]([A-Z0-9_]+)['\"]", text))
+            used.update(re.findall(r"os\.environ\[\s*['\"]([A-Z0-9_]+)['\"]\s*\]", text))
+        used.discard('PATH')  # системная, а не настройка бота
+        documented = set(re.findall(r'^#?\s*([A-Z0-9_]+)=', (ROOT / '.env.example').read_text(encoding='utf-8'), re.M))
+        self.assertEqual(sorted(used - documented), [], 'переменные без строки в .env.example')
+
     def test_local_documentation_links_exist(self):
         for filename in ('README.md', 'COMMANDS.md', 'VIDEO_NOTES_PLAN.md',
                          'tests/README.md', 'video_prototype/README.md'):
