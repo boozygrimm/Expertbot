@@ -5875,7 +5875,7 @@ test('magitech direct settings source: compact board overlay reuses preferences/
   assert.match(section, /activeDrag/); assert.match(section, /stopImmediatePropagation/); assert.match(section, /bindReadOnlyDismiss\(close, closeGameSettings/);
   assert.match(html, /id="settings-btn"[^>]*aria-haspopup="dialog"[^>]*aria-controls="game-settings"[^>]*aria-expanded="false"/);
   assert.equal((html.match(/id="sound-on"/g) || []).length, 1);
-  assert.equal((html.match(/role="switch"/g) || []).length, 4);
+  assert.equal((html.match(/role="switch"/g) || []).length, 8); // Board, garage and pause visual switches.
   assert.match(css, /\.game-settings\s*\{[^}]*position:\s*fixed/);
   assert.match(css, /\.game-settings-card\s*\{[^}]*272px[^}]*border-radius:\s*28px/);
   assert.match(css, /\.settings-row\s*\{[^}]*min-height:\s*48px/);

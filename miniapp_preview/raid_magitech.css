@@ -2218,3 +2218,33 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .haptics-segments label:has(input[value="off"]:checked)::before { background:#9cb09f; }
 .haptics-segments label:has(input:checked) span { color:#f0dba1; font-weight:700; }
 .haptics-segments label:has(input:focus-visible) { outline:2px solid #eed18f; outline-offset:-2px; border-radius:8px; }
+
+/* Keep the selected radio transparent: the thumb, not its whole hit area,
+   is highlighted. Explicitly override the older segmented-button rule. */
+.haptics-segments label:has(input:checked) { background:transparent; color:#d9e4d1; font-weight:400; }
+.haptics-segments label:has(input:checked) span { color:#f0dba1; font-weight:700; }
+
+/* Affinity is a set of distinct, touch-sized choices, not a solid bar. */
+.mech-detail-body .picker-affinity-field { width:min(340px,100%); margin:8px 0 0; }
+.mech-detail-body .picker-affinity-field legend { margin:0 auto 9px; font-size:11px; }
+.affinity-segments { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; overflow:visible; border:0; border-radius:0; background:transparent; }
+.affinity-choice { min-height:40px; padding:4px 2px; border:1px solid #b6bd9470; border-radius:10px; background:#102825; color:#d8d9bb; font:10px/1.15 system-ui,sans-serif; }
+.affinity-choice + .affinity-choice { border-left:1px solid #b6bd9470; }
+.affinity-choice:has(input:checked), .affinity-choice:nth-child(n):has(input:checked) { border-color:#e6d397; background:#c5ba86; color:#15241f; box-shadow:0 0 0 2px #d7c27b25; font-weight:700; }
+.affinity-choice:has(input:focus-visible) { outline:2px solid #fff0b1; outline-offset:2px; }
+
+/* The garage home stays circular. Detail content needs a scrollable panel:
+   clipping a round fixed-height viewport hid the footer on small screens. */
+.mech-detail-body.mech-info-view {
+  width:min(390px,92vw); height:auto; min-height:0; max-height:min(82vh,620px);
+  padding:24px 22px; border-radius:24px; overflow-y:auto !important;
+  justify-content:flex-start; gap:8px;
+}
+.mech-detail-body.mech-info-view::before { inset:7px; border-radius:18px; }
+.mech-detail-body.mech-info-view > * { flex-shrink:0; }
+.mech-detail-body.mech-info-view .mech-detail-footer { transform:none; margin:8px auto 0; }
+@media (max-width:360px) {
+  .mech-detail-body.mech-info-view { padding:20px 16px; }
+  .affinity-segments { gap:3px; }
+  .affinity-choice { font-size:9px; }
+}
