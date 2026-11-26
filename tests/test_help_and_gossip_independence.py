@@ -14,7 +14,7 @@ from aiogram.types import Update, User
 from mongomock_motor import AsyncMongoMockClient
 
 from app_setup import configure_dispatcher
-from handlers import admin_panel, alc_base, alc_build, alc_intro, auth, ex_logic, logger, reports
+from handlers import admin_panel, auth, ex_logic, logger, reports
 
 
 class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
@@ -62,13 +62,10 @@ class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
         get_me = AsyncMock(return_value=User(id=123456, is_bot=True, first_name='Бендер', username='ExpertBot'))
         try:
             with patch.object(auth, 'db', db), patch.object(admin_panel, 'db', db), \
-                 patch.object(alc_build, 'db', db), patch.object(logger, 'db', db), patch.object(ex_logic, 'db', db), \
+                 patch.object(logger, 'db', db), patch.object(ex_logic, 'db', db), \
                  patch.object(reports, 'db', db), patch.object(bot, 'get_me', get_me), \
                  patch.object(bot.session, 'make_request', new=AsyncMock(side_effect=telegram)), \
-                 patch.object(reports, 'run_expert_report', new_callable=AsyncMock) as run, \
-                 patch.object(alc_intro, 'get_intro_session', new=AsyncMock(return_value=None)), \
-                 patch.object(alc_base, 'get_base_content', new=AsyncMock(return_value=('Штаб открыт', None))), \
-                 patch.object(alc_intro, 'run_new_intro', new_callable=AsyncMock) as intro:
+                 patch.object(reports, 'run_expert_report', new_callable=AsyncMock) as run:
                 # The previous reports flag is disabled throughout. Both slash
                 # and plain variants go to the gossip engine and keep counts.
                 for text, expected in [('/gossip 25', 25), ('сплетни 55', 55),
@@ -115,12 +112,13 @@ class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await message('/help@OtherBot')
                 self.assertFalse(any('Экс: краткая справка' in (getattr(r, 'text', '') or '')
                                      for r in requests[start:]))
-                for text in ('/start alcbase', '/start@ExpertBot alcbase'):
+                # The former alchemy deep links are gone: /start alcbase must
+                # not answer with the removed base screen or reach the intro.
+                for text in ('/start alcbase', '/start@ExpertBot alcbase', '/start alcintro'):
                     start = len(requests)
                     await message(text, group=False)
-                    self.assertTrue(any(getattr(r, 'text', '') == 'Штаб открыт' for r in requests[start:]))
-                await message('/start alcintro', group=False)
-                intro.assert_awaited_once()
+                    self.assertFalse(any(getattr(r, 'text', '') == 'Штаб открыт'
+                                         for r in requests[start:]))
 
                 # Ex requests still respect the assistant switch, unlike the
                 # independent direct gossip commands.

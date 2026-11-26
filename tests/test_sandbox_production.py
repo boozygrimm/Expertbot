@@ -113,8 +113,7 @@ class SandboxIsolationTests(unittest.TestCase):
                'PYTHONPATH': str(root), 'PYTHON_DOTENV_DISABLED': '1',
                'MONGO_URI': 'invalid-must-not-be-used', 'TELEGRAM_TOKEN': 'invalid-must-not-be-used'}
         code = ("import sys; import miniapp_backend.sandbox; "
-                "assert not {'database', 'config', 'handlers.alc_core', 'handlers.alc_production', "
-                "'miniapp_backend.production'} & set(sys.modules)")
+                "assert not {'database', 'config', 'handlers.alc_core'} & set(sys.modules)")
         run = subprocess.run([sys.executable, '-c', code], cwd=root, env=env, capture_output=True, text=True, timeout=15)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 

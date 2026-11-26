@@ -31,10 +31,17 @@ MongoDB. Дополнительно изолированный прототип 
 идентификаторов запусков и реальная Mongo ещё не проверены. Песочница использует
 внедряемый расчёт производства и копии таблиц, чтобы не импортировать модули,
 инициализирующие настоящий клиент Mongo. Для неё миры и их бонусы не заданы;
-результаты сопоставлены с Python-ботом на выбранных сценариях, но копии правил
-могут разойтись. Запуск в песочнице проверяет лимит линий; старый обработчик
-сам этот лимит не проверяет, хотя ограничивает выбор в интерфейсе. Условия
-перехода — в `GAMEPLAY_SAFETY.md`.
+копии таблиц производства больше не с чем сверять: текстовые обработчики
+алхимии из бота удалены, эталон остался только здесь. Условия перехода —
+в `GAMEPLAY_SAFETY.md`.
+
+Текстовой алхимии в боте больше нет: `handlers/alc_*` (кроме
+`handlers/alc_recipes.py` с данными рецептов) удалены, вместе с ними удалён
+адаптер `production.py`, который брал правила у старых обработчиков. Расчёт
+производства живёт в `production_engine.py` с внедряемыми параметрами, песочница
+передаёт свои таблицы. Сверочные тесты с ботом (`production_characterization`,
+`sandbox_production_parity`, `alchemy_parity`) удалены, потому что сверять стало
+не с чем.
 
 ## Как устроен Telegram-стенд
 
@@ -81,7 +88,7 @@ allowlist и выдаёт случайный короткоживущий bearer
 
 ```sh
 python -m pip install aiohttp motor mongomock-motor aiogram python-dotenv Pillow apscheduler==3.10.4
-python -m unittest -v tests.test_miniapp_backend tests.test_miniapp_sessions tests.test_lunapark_sandbox tests.test_miniapp_crafting tests.test_miniapp_isolated_store tests.test_miniapp_production tests.test_sandbox_production
+python -m unittest -v tests.test_miniapp_backend tests.test_miniapp_sessions tests.test_lunapark_sandbox tests.test_miniapp_crafting tests.test_miniapp_isolated_store tests.test_sandbox_production
 npm ci --prefix miniapp_preview
 MINIAPP_PYTHON="$(command -v python)" npm test --prefix miniapp_preview
 ```

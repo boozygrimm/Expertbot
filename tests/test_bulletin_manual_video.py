@@ -224,7 +224,7 @@ from aiogram.methods import SendMessage, SendPhoto
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, logger
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, logger
 from news_prototype import owner_bulletin, owner_bulletin_sources, owner_trial, news_worker_client
 from tests.test_bulletin_foundation import response
 from tests.test_owner_drafts import SOURCE
@@ -259,7 +259,6 @@ async def run():
             'from':{'id':123456,'is_bot':True,'first_name':'Bot'},'text':'panel'}}})
         await asyncio.wait_for(dp.feed_update(bot,update),5)
     with patch.object(panel,'db',fake), patch.object(tools,'db',fake), patch.object(logger,'db',fake), \
-         patch.object(alc_build,'db',fake), patch.object(alc_intro,'get_intro_session',AsyncMock(return_value=None)), \
          patch.object(owner_trial,'drafts_enabled',AsyncMock(return_value=True)), \
          patch.object(news_worker_client,'NewsWorkerClient',return_value=client), \
          patch.object(bot,'download',AsyncMock(side_effect=download)), \

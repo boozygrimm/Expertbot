@@ -195,7 +195,7 @@ from aiogram.types import Update
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import general_news_panel, owner_bulletin_panel, owner_tools_panel, alc_build, alc_intro
+from handlers import general_news_panel, owner_bulletin_panel, owner_tools_panel
 from news_prototype import owner_trial
 
 async def run():
@@ -211,8 +211,7 @@ async def run():
         return True
     dp = configure_dispatcher()
     with patch.object(general_news_panel, 'db', fake), patch.object(owner_bulletin_panel, 'db', fake), \
-         patch.object(owner_tools_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(owner_tools_panel, 'db', fake), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}

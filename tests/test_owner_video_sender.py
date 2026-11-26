@@ -200,7 +200,7 @@ from aiogram.types import Update, Message
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_video_sender as sender, owner_tools_panel as tools, logger, alc_build, alc_intro, voice_rec
+from handlers import owner_video_sender as sender, owner_tools_panel as tools, logger, voice_rec
 
 async def run():
     database = AsyncMongoMockClient().test
@@ -221,7 +221,6 @@ async def run():
             'id':str(i),'chat_instance':'owner','from':user,'data':data,'message':{
             'message_id':23,'date':1760000000,'chat':chat,'from':{'id':123456,'is_bot':True,'first_name':'Bot'},'text':'panel'}}})), 5)
     with patch.object(sender,'db',fake), patch.object(tools,'db',fake), patch.object(logger,'db',fake), \
-         patch.object(alc_build,'db',fake), patch.object(alc_intro,'get_intro_session',AsyncMock(return_value=None)), \
          patch.object(bot,'get_chat',AsyncMock(return_value=SimpleNamespace(id=-101,type='supergroup',title='Друзья'))), \
          patch.object(bot,'get_me',AsyncMock(return_value=SimpleNamespace(id=123456))), \
          patch.object(bot,'get_chat_member',AsyncMock(return_value=SimpleNamespace(status='member'))), \

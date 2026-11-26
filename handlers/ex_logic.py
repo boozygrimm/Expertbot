@@ -1,7 +1,6 @@
 import re
 import html
 import random
-import time
 import asyncio
 import logging
 import urllib.parse
@@ -40,51 +39,6 @@ CHAT_MUSIC_FALSE_POSITIVES = (
     "напевай",
 )
 
-# Таймауты для шпоры: {user_id: timestamp}
-spora_cooldowns = {}
-
-# Вероятность использования кэша (80%)
-SPORA_CACHE_HIT_RATE = 0.8
-
-
-def normalize_recipe_key(ing1: str, ing2: str, res: str) -> str:
-    """Создает нормализованный ключ рецепта для кэша."""
-    def normalize(s: str) -> str:
-        return " ".join(s.strip().lower().split())
-    return f"{normalize(ing1)}|{normalize(ing2)}|{normalize(res)}"
-
-
-async def get_cached_spora_response(recipe_key: str) -> str | None:
-    """Получает кэшированный ответ для рецепта."""
-    cached = await db.spora_cache.find_one({"recipe_key": recipe_key})
-    if cached:
-        # Обновляем счетчик использования
-        await db.spora_cache.update_one(
-            {"_id": cached["_id"]},
-            {"$inc": {"used_count": 1}}
-        )
-        return cached.get("response")
-    return None
-
-
-async def save_spora_response(recipe_key: str, response: str, persona_id: str = "bender"):
-    """Сохраняет ответ в кэш."""
-    await db.spora_cache.update_one(
-        {"recipe_key": recipe_key},
-        {
-            "$set": {
-                "response": response,
-                "persona_id": persona_id,
-                "updated_at": get_msk_now()
-            },
-            "$setOnInsert": {
-                "created_at": get_msk_now(),
-                "used_count": 0
-            }
-        },
-        upsert=True
-    )
-
 HELP_TEXT = (
     "🤖 **Экс: краткая справка**\n\n"
     "**Как обратиться:** начни текст, голосовое или кружок со слова «Экс» или «Эксперт». "
@@ -100,7 +54,6 @@ HELP_TEXT = (
     "• Картинки: `/img кот самурай` или *«Экс, нарисуй кота»*\n"
     "• Кружок напрямую: `/bender вопрос` или *«Экс, кружок вопрос»*\n"
     "• Сплетни: `/gossip 50`; игры: `/pole`, `/vis`, `/anachronism`, `/topgame`\n"
-    "• Алхимия: `/base`, `/pohod`; рецепт: *«Экс, шпора спирт»*\n"
     "• Социальные действия и настройки профиля: `/соцсправка`\n\n"
     "`/voice on` и `/voice off` управляют публикацией расшифровки в чат; в группе переключать её могут администраторы и владелец бота. "
     "Если модуль «Голосовые» включён, новые голосовые и кружки могут распознаваться "
@@ -117,37 +70,6 @@ async def delete_after(msg: types.Message, delay: int = 120):
         await msg.delete()
     except Exception as e:
         logger.debug("Failed to delete delayed message: chat_id=%s message_id=%s error=%s", msg.chat.id, msg.message_id, e)
-
-
-def find_alchemy_recipe(query: str) -> tuple[str, str, str] | None:
-    """Ищет рецепт алхимии по названию результата. Возвращает (ингредиент1, ингредиент2, результат) или None."""
-    from handlers.alc_recipes import BATTLE_UNITS, ELEMENTS, RECIPES
-
-    def normalize_name(value: str) -> str:
-        normalized = value.strip().lower().replace("ё", "е")
-        return " ".join(normalized.split())
-
-    def get_el_name(k):
-        el = ELEMENTS.get(k, k)
-        if isinstance(el, str):
-            parts = el.split(" ", 1)
-            return parts[1] if len(parts) > 1 else el
-        return str(k)
-
-    query_norm = normalize_name(query)
-
-    for ingredients, result in RECIPES.items():
-        # Пропускаем боевые юниты
-        if result in BATTLE_UNITS:
-            continue
-
-        result_name = normalize_name(get_el_name(result))
-        if query_norm in {result_name, normalize_name(result)}:
-            ing1 = ELEMENTS.get(ingredients[0], ingredients[0])
-            ing2 = ELEMENTS.get(ingredients[1], ingredients[1])
-            res = ELEMENTS.get(result, result)
-            return ing1, ing2, res
-    return None
 
 
 async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
@@ -173,9 +95,6 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
         count = match.group(1) or "50"
         return "GOSSIP", count
 
-    if match := re.match(r"^шпора(?:\s+(.+))?$", text_lower):
-        return "SPORA", (match.group(1) or "").strip()
-
     if "крути барабан" in text_lower:
         return "POLE", query
     if "палач" in text_lower or "виселица" in text_lower:
@@ -187,7 +106,7 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
     prompt = (
         "Ты — строгий классификатор намерений бота.\n"
         "Определи намерение пользователя. Ответь СТРОГО в формате: INTENT|CLEAN_QUERY\n"
-        "Доступные INTENT: SEARCH, MUSIC, WEATHER, IMAGE, GOSSIP, SPORA, CHAT.\n\n"
+        "Доступные INTENT: SEARCH, MUSIC, WEATHER, IMAGE, GOSSIP, CHAT.\n\n"
         "ПРАВИЛА:\n"
         "1. Если запрос — это шутка, реакция, ругательство или обычный диалог "
         "(например: 'Не хами', 'Ути пути', 'Привет') — ВСЕГДА выбирай CHAT.\n"
@@ -211,7 +130,7 @@ async def analyze_intent(query: str, context: str = "") -> tuple[str, str]:
             intent, clean_query = res_text.split("|", 1)
             intent = intent.strip().upper()
             clean_query = clean_query.strip()
-            if intent in ["MUSIC", "SEARCH", "WEATHER", "IMAGE", "GOSSIP", "SPORA"]:
+            if intent in ["MUSIC", "SEARCH", "WEATHER", "IMAGE", "GOSSIP"]:
                 return intent, clean_query
     except Exception as e:
         logger.debug("Intent analysis fallback to CHAT: query=%s error=%s", query, e)
@@ -598,96 +517,6 @@ async def handle_ex_request(message: types.Message, *, prefer_voice=False):
 
     if intent == "GOSSIP":
         await send_persona_selection(message, parse_gossip_count(clean_query))
-        return
-
-    if intent == "SPORA":
-        user_id = message.from_user.id
-        now = int(time.time())
-
-        # Проверка таймаута (5 минут) - только для результативных запросов
-        if user_id in spora_cooldowns:
-            elapsed = now - spora_cooldowns[user_id]
-            if elapsed < 300:
-                remaining = 300 - elapsed
-                minutes = remaining // 60
-                seconds = remaining % 60
-                return await message.reply(f"⏳ Подожди ещё {minutes} мин {seconds} сек перед следующим запросом.")
-
-        # Пустой запрос - подсказка
-        if not clean_query:
-            return await message.reply("🤖 Бендер: Укажи, что именно хочешь создать. Например: **Экс, шпора спирт**", parse_mode="Markdown")
-
-        match = find_alchemy_recipe(clean_query)
-        if not match:
-            return await message.reply("🤖 Бендер: Даже я не знаю, как это сделать. Попробуй другое название.")
-
-        ing1, ing2, res = match
-        recipe_key = normalize_recipe_key(ing1, ing2, res)
-
-        # Получаем личность Бендера
-        persona = await db.personas.find_one({"p_id": "bender"})
-        if not persona:
-            spora_cooldowns[user_id] = now
-            text = f"📖 **Шпора**\n\n{res} = {ing1} + {ing2}"
-            return await message.reply(text, parse_mode="Markdown")
-
-        # Проверяем кэш с вероятностью 80%
-        use_cache = random.random() < SPORA_CACHE_HIT_RATE
-        cached_response = None
-
-        if use_cache:
-            cached_response = await get_cached_spora_response(recipe_key)
-            if cached_response:
-                spora_cooldowns[user_id] = now
-                try:
-                    await message.reply(
-                        f"{persona['emoji']} **{persona['name']}**: {cached_response}\n\n📖 {res} = {ing1} + {ing2}",
-                        parse_mode="Markdown",
-                    )
-                except Exception:
-                    await message.reply(f"{persona['emoji']} {persona['name']}: {cached_response}\n\n📖 {res} = {ing1} + {ing2}")
-                return
-
-        # Генерируем новый ответ
-        loading_data = persona.get("loading", ["Думаю..."])
-        loading_text = random.choice(loading_data) if isinstance(loading_data, list) else loading_data
-        status_msg = await message.reply(loading_text)
-
-        try:
-            prompt = (
-                f"ТЫ: {persona['name']}. {persona.get('prompt', '')}\n\n"
-                f"ЗАДАНИЕ: Пользователь хочет узнать рецепт алхимии. "
-                f"Результат: {res} (ингредиенты: {ing1} + {ing2}). "
-                f"Напиши короткий, смешной ответ в своем стиле, который объяснит рецепт. "
-                f"Максимум 200 знаков."
-            )
-
-            response = await generate_with_retry(prompt)
-        except Exception as e:
-            logger.warning(f"Spora AI error: {e}")
-            response = None
-
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-
-        # Устанавливаем таймаут только при успешном поиске рецепта
-        spora_cooldowns[user_id] = now
-
-        if response:
-            # Сохраняем в кэш
-            await save_spora_response(recipe_key, response, persona.get("p_id", "bender"))
-
-            try:
-                await message.reply(
-                    f"{persona['emoji']} **{persona['name']}**: {response}\n\n📖 {res} = {ing1} + {ing2}",
-                    parse_mode="Markdown",
-                )
-            except Exception:
-                await message.reply(f"{persona['emoji']} {persona['name']}: {response}\n\n📖 {res} = {ing1} + {ing2}")
-        else:
-            await message.reply(f"📖 **Шпора**\n\n{res} = {ing1} + {ing2}", parse_mode="Markdown")
         return
 
     if not await is_feature_enabled(message.chat.id, "assistant"):

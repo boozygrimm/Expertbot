@@ -315,7 +315,7 @@ from aiogram.methods import SendMessage, SendPhoto
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, news_owner_panel, alc_build, alc_intro
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, news_owner_panel
 from news_prototype import owner_drafts, owner_trial
 from tests.test_bulletin_foundation import response
 from tests.test_owner_drafts import SOURCE, DRAFT
@@ -337,8 +337,7 @@ async def run():
         return True
     dp = configure_dispatcher()
     with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
-         patch.object(news_owner_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(news_owner_panel, 'db', fake), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(panel, 'make_bulletin', AsyncMock(side_effect=lambda s: response(s))) as editor, \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):

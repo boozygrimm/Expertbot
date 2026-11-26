@@ -4,7 +4,6 @@ import os
 
 from app_setup import configure_dispatcher, create_scheduler, set_commands, start_healthcheck_server
 from bot_instance import bot 
-from handlers.alc_heritage import ensure_default_lore
 from personas import init_personas
 from database import db
 from handlers.bender_clip import process_queued_video, video_queue
@@ -31,7 +30,6 @@ async def main():
     # Apply the owner-requested political auto-filter before jobs can start.
     from news_prototype.general_auto import migrate_politics_preference
     await migrate_politics_preference(db.db)
-    await ensure_default_lore()
     await init_personas()
     await set_commands(bot)
 

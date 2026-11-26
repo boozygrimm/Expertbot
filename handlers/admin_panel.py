@@ -90,12 +90,6 @@ FEATURES = OrderedDict({
         "default": False,
         "hint": "Взрослые RP-действия."
     },
-    "alchemy": {
-        "label": "Алхимия",
-        "icon": "⚗️",
-        "default": True,
-        "hint": "Походы, база, лаборатория, квесты и постройки."
-    },
     "daily_reports": {
         "label": "Суточный отчёт",
         "icon": "⏱",
@@ -111,20 +105,6 @@ SOCIAL_SAFE_TRIGGERS = [
 SOCIAL_18_TRIGGERS = [
     "засосать", "шлёпнуть", "связать", "раздеть", "наказать", "выпороть", "шмальнуть"
 ]
-
-ALCHEMY_CALLBACK_PREFIXES = (
-    "alc:",
-    "alc_use:",
-    "alc_page:",
-    "lab_",
-    "build_",
-    "quest_",
-    "prod_",
-    "crucible_",
-    "retort_",
-    "altar_open",
-    "quests_open",
-)
 
 GAME_CALLBACK_PREFIXES = (
     "spin_drum",
@@ -430,8 +410,6 @@ def detect_message_feature(message: types.Message):
         return None
     if lower_text.startswith(("/vis", "/виселица", "/pole", "/anachronism", "/анахронизм", "/ставка", "/topgame", "/топигр", "/очки")):
         return "games"
-    if lower_text.startswith(("/base", "/база", "/pohod", "/поход", "/добыча", "/regen_quests")):
-        return "alchemy"
     if lower_text.startswith(("/set_daily", "/cron", "/stop_daily")):
         return "daily_reports"
 
@@ -459,8 +437,6 @@ def detect_callback_feature(callback: types.CallbackQuery):
         return "daily_reports"
     if data in GAME_CALLBACK_PREFIXES or any(data.startswith(prefix) for prefix in GAME_CALLBACK_PREFIXES):
         return "games"
-    if data == "altar_open" or data == "quests_open" or any(data.startswith(prefix) for prefix in ALCHEMY_CALLBACK_PREFIXES):
-        return "alchemy"
     return None
 
 

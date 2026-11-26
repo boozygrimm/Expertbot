@@ -410,7 +410,7 @@ from aiogram.methods import SendMessage
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_news_actions, owner_tools_panel, news_owner_panel, news_owner_drafts, alc_build, alc_intro
+from handlers import owner_news_actions, owner_tools_panel, news_owner_panel, news_owner_drafts
 from news_prototype import owner_drafts, owner_trial
 from tests.test_owner_drafts import DRAFT, SOURCE
 
@@ -425,7 +425,6 @@ async def run():
     dp = configure_dispatcher()
     with patch.object(owner_news_actions, 'db', fake), patch.object(owner_tools_panel, 'db', fake), \
          patch.object(news_owner_panel, 'db', fake), patch.object(news_owner_drafts, 'db', fake), \
-         patch.object(alc_build, 'db', fake), patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         for n in (10, 11):

@@ -128,8 +128,7 @@ class HelpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_documented_deterministic_intents(self):
         cases = [('найди инфу про Пифагора', 'SEARCH'), ('погода Питер', 'WEATHER'),
-                 ('найди песню Rammstein', 'MUSIC'), ('нарисуй кота', 'IMAGE'),
-                 ('шпора спирт', 'SPORA')]
+                 ('найди песню Rammstein', 'MUSIC'), ('нарисуй кота', 'IMAGE')]
         for query, intent in cases:
             with self.subTest(query=query):
                 actual, _ = await ex_logic.analyze_intent(query)

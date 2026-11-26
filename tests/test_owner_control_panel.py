@@ -177,7 +177,7 @@ from aiogram.types import Update
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_control_panel, news_owner_panel, alc_build, alc_intro
+from handlers import owner_control_panel, news_owner_panel
 
 async def run():
     database = AsyncMongoMockClient().test
@@ -189,13 +189,12 @@ async def run():
         return True
     dp = configure_dispatcher()
     with patch.object(owner_control_panel, 'db', fake), patch.object(news_owner_panel, 'db', fake), \
-         patch.object(alc_build, 'db', fake), patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         msg = {'message_id':1, 'date':1760000000, 'chat':{'id':ADMIN_ID, 'type':'private'},
                'from':{'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}, 'text':'/panel'}
         await dp.feed_update(bot, Update.model_validate({'update_id':1, 'message':msg}))
         assert any(isinstance(m, SendMessage) and 'Пульт владельца' in m.text for m in sent)
-        for i, data in enumerate(('owner_panel:group_menu', 'owner_panel:alchemy', 'owner_panel:alchemy_admin',
+        for i, data in enumerate(('owner_panel:group_menu',
                                   'owner_panel:media', 'owner_panel:images', 'owner_panel:search',
                                   'owner_panel:news', 'news_panel:collection', 'news_panel:scripts',
                                   'news_panel:editions', 'news_panel:settings', 'owner_panel:status'), 2):
@@ -204,8 +203,8 @@ async def run():
                              'from':{'id':123456,'is_bot':True,'first_name':'Bot'}, 'text':'Panel'}}
             await dp.feed_update(bot, Update.model_validate({'update_id':i, 'callback_query':cb}))
         edits = [m.text for m in sent if isinstance(m, EditMessageText)]
-        assert len(edits) == 12, edits
-        for text, expected in zip(edits, ('Группы', 'Алхимия', 'Управление алхимией',
+        assert len(edits) == 10, edits
+        for text, expected in zip(edits, ('Группы',
                                           'Картинки и поиск', 'Рисование', 'поиске',
                                           '📰 Новости', 'Crypto Sensei', 'Сценарии',
                                           'Вестники и выпуски', 'Настройки новостей', 'Статус пульта')):
@@ -263,32 +262,28 @@ class OwnerNavigationTests(unittest.IsolatedAsyncioTestCase):
     async def test_main_sections_and_backward_compatibility(self):
         markup = (await panel.home_content())[1]
         # Every private screen ends with refresh + close, so the panel must too.
-        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 2, 2, 1, 1, 1, 1])
+        self.assertEqual([len(row) for row in markup.inline_keyboard], [1, 2, 2, 2, 2, 1, 1, 1])
         self.assertEqual(callbacks(markup), {'owner_panel:news', 'ovideo:open', 'owner_panel:group_menu',
-                         'owner_panel:alchemy', 'owner_panel:media', 'owner_panel:help',
+                         'owner_panel:media', 'owner_panel:help',
                          'owner_panel:home', 'owner_panel:close', 'owner_panel:status', 'owner_panel:raid_test',
                          'gnews:home', 'news_panel:scripts', 'news_panel:editions'})
         for route, expected, back in [
             ('group_menu', {'owner_panel:groups', 'owner_tools:reports', 'owner_tools:points'}, 'owner_panel:home'),
-            ('alchemy', {'owner_tools:base', 'owner_panel:alchemy_ref', 'owner_panel:alchemy_admin'}, 'owner_panel:home'),
-            ('alchemy_ref', {'owner_tools:recipes', 'owner_tools:recipe', 'owner_tools:lorehelp'}, 'owner_panel:alchemy'),
-            ('alchemy_admin', {'owner_tools:lore', 'owner_tools:regen', 'owner_tools:seed', 'owner_tools:pack',
-                               'owner_tools:clear', 'owner_tools:reset'}, 'owner_panel:alchemy'),
             ('media', {'owner_panel:images', 'owner_panel:search'}, 'owner_panel:home'),
             ('help', {'owner_tools:help', 'owner_panel:commands'}, 'owner_panel:home'),
-            ('tools', {'ovideo:open', 'owner_panel:alchemy', 'owner_panel:group_menu'}, 'owner_panel:home'),
+            ('tools', {'ovideo:open', 'owner_panel:group_menu'}, 'owner_panel:home'),
         ]:
             markup = await self.click('owner_panel:' + route)
             self.assertEqual(callbacks(markup), expected | {back, 'owner_panel:close',
                                                              'owner_panel:' + route})
-        self.assertGreaterEqual(self.state.clear.await_count, 7)
+        self.assertGreaterEqual(self.state.clear.await_count, 4)
 
     async def test_sections_are_owner_only_and_do_not_launch_any_actions(self):
         from handlers import auth
         from news_prototype import general_queue
         with patch.object(auth, 'admin_chats_menu', AsyncMock()) as groups, \
              patch.object(general_queue, 'poll', AsyncMock()) as poll:
-            for route in ('group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help', 'tools'):
+            for route in ('group_menu', 'media', 'help', 'tools'):
                 await self.click('owner_panel:' + route)
             groups.assert_not_awaited(); poll.assert_not_awaited()
             self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
@@ -450,7 +445,7 @@ from aiogram.methods import SendMessage, EditMessageText, DeleteMessage, GetMe
 from aiogram.types import Update, User
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_control_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, auth, logger
+from handlers import owner_control_panel as panel, owner_tools_panel as tools, auth, logger
 
 class NoDatabase:
     def __getattr__(self, name):
@@ -469,10 +464,8 @@ async def run():
     chat = {'id':ADMIN_ID, 'type':'private'}
     auth_db = SimpleNamespace(auth_chats=SimpleNamespace(find_one=AsyncMock(return_value={'status':'approved'})))
     try:
-        with patch.object(panel, 'db', NoDatabase()), patch.object(alc_build, 'db', NoDatabase()), \
-             patch.object(tools, 'db', NoDatabase()), patch.object(logger, 'db', NoDatabase()), \
+        with patch.object(panel, 'db', NoDatabase()), patch.object(tools, 'db', NoDatabase()), patch.object(logger, 'db', NoDatabase()), \
              patch.object(auth, 'db', auth_db), \
-             patch.object(alc_intro, 'get_intro_session', AsyncMock(side_effect=AssertionError('root entry reached intro'))), \
              patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
             context = dp.fsm.get_context(bot=bot, chat_id=ADMIN_ID, user_id=ADMIN_ID)
             for i, waiting in enumerate((None, tools.OwnerInput.waiting, 'PanelState:waiting_for_daily_time', 'LegacyForm:waiting'), 1):
@@ -1235,7 +1228,7 @@ from aiogram.types import Update, User
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_control_panel as panel, owner_tools_panel as tools, alc_intro, auth, logger
+from handlers import owner_control_panel as panel, owner_tools_panel as tools, auth, logger
 
 class NoDatabase:
     def __getattr__(self, name): raise AssertionError('Unexpected database access: '+name)
@@ -1268,7 +1261,6 @@ async def run():
         with patch.object(panel,'db',SimpleNamespace(settings=settings)), patch.object(tools,'db',NoDatabase()), \
              patch.object(logger,'db',NoDatabase()), \
              patch.object(auth,'db',SimpleNamespace(auth_chats=SimpleNamespace(find_one=AsyncMock(return_value={'status':'approved'})))), \
-             patch.object(alc_intro,'get_intro_session',AsyncMock(side_effect=AssertionError('composer reached broad intro'))), \
              patch.object(bot.session,'make_request',AsyncMock(side_effect=request)):
             context = dp.fsm.get_context(bot=bot,chat_id=ADMIN_ID,user_id=ADMIN_ID)
             await context.set_state(tools.OwnerInput.waiting)

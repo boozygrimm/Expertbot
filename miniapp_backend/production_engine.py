@@ -5,8 +5,9 @@ from copy import deepcopy
 def calculate_production_loot(player: dict, now: int, *, rng, stations, storage_capacity, get_used_slots, get_world_effects) -> dict | None:
     """Calculate one production tick without modifying the supplied profile.
 
-    Offline copy of the existing scheduler rules, checked by characterization
-    tests. This does not modify or make the scheduler concurrency-safe.
+    Self-contained copy of the production rules that used to live in the bot's
+    scheduler. The bot no longer has any alchemy tick, so this module is the
+    reference now; it is not connected to production data.
     """
     inv = deepcopy(player.get("inventory", {}))
     slots = deepcopy(player.get("production_slots", []))

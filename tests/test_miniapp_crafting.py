@@ -1,8 +1,4 @@
 from copy import deepcopy
-import os
-from pathlib import Path
-import subprocess
-import sys
 import unittest
 
 from handlers.alc_recipes import RECIPES, is_battle_unit
@@ -70,17 +66,6 @@ class CraftTransitionTests(unittest.TestCase):
         for malformed in ({'inventory': None}, {'inventory': {'w': True, 'f': 1}}, {'inventory': {'w': 1, 'f': 1}, 'discovered': None}):
             with self.subTest(player=malformed), self.assertRaises(CraftRejected):
                 craft_transition(malformed, ['w', 'f'])
-
-
-class ExistingPythonParityTests(unittest.TestCase):
-    def test_real_python_handler_with_mocked_io(self):
-        root = Path(__file__).resolve().parent.parent
-        env = {'PATH': os.environ.get('PATH', ''), 'HOME': os.environ.get('HOME', '/tmp'),
-               'PYTHONPATH': str(root), 'PYTHONIOENCODING': 'utf-8', 'PYTHON_DOTENV_DISABLED': '1',
-               'MONGO_URI': 'mongodb://127.0.0.1:27017', 'TELEGRAM_TOKEN': '123456:FAKE_TEST_TOKEN'}
-        result = subprocess.run([sys.executable, '-m', 'tests.alchemy_parity_fixture'], cwd=root,
-                                env=env, text=True, capture_output=True, timeout=15)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

@@ -4,7 +4,6 @@ from aiogram.types import BotCommand
 USER_PRIVATE_COMMAND_SPECS = [
     ("help", "Справка по боту"),
     ("support", "Связаться с владельцем"),
-    ("base", "🏕 Главный Штаб"),
 ]
 
 ADMIN_PRIVATE_COMMAND_SPECS = [
@@ -13,10 +12,6 @@ ADMIN_PRIVATE_COMMAND_SPECS = [
     ("cron", "⏱ Настройка отчетов"),
     ("chats", "🔐 Управление чатами"),
     ("support", "Связаться с владельцем"),
-    ("base", "🏕 Главный Штаб"),
-    ("regen_quests", "Перезапуск квестов"),
-    ("lore_edit", "Редактор Наследия"),
-    ("lore_help", "Справка по лору"),
     ("panel", "Панель управления"),
     ("raid_test", "Рейд · тест Mini App"),
 ]
@@ -27,8 +22,6 @@ GROUP_COMMAND_SPECS = [
     ("gossip", "Сплетни чата"),
     ("song", "Найти музыку"),
     ("bender", "Ответ Бендера кружком (если включён)"),
-    ("base", "🏕 Главный Штаб в личке"),
-    ("pohod", "Поход в алхимии"),
     ("anachronism", "Игра Анахронизм"),
     ("vis", "Виселица"),
     ("pole", "Поле чудес"),
