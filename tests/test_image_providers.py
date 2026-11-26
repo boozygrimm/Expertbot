@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 import unittest
 from types import SimpleNamespace
@@ -520,3 +521,43 @@ class ImageHandlerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ErrorDepthTests(unittest.TestCase):
+    """Глубина проверяется явно: у CPython 3.12 другой порог сканера JSON.
+
+    Регресс из CI: тест «слишком глубокая ошибка = malformed» проходил на 3.11
+    за счёт RecursionError и падал на 3.12, где та же нагрузка разбирается.
+    """
+
+    def test_shallow_structures_are_accepted(self):
+        self.assertFalse(providers._too_deep({'errors': [{'code': 1, 'message': 'x'}]}))
+        self.assertFalse(providers._too_deep(None))
+        self.assertFalse(providers._too_deep('строка'))
+
+    def test_structure_at_the_limit_is_still_accepted(self):
+        node = 1
+        for _ in range(providers._MAX_ERROR_DEPTH - 1):
+            node = {'k': node}
+        self.assertFalse(providers._too_deep(node))
+
+    def test_one_level_past_the_limit_is_rejected(self):
+        node = 1
+        for _ in range(providers._MAX_ERROR_DEPTH):
+            node = {'k': node}
+        self.assertTrue(providers._too_deep(node))
+
+    def test_deep_lists_are_rejected_too(self):
+        node = 1
+        for _ in range(500):
+            node = [node]
+        self.assertTrue(providers._too_deep(node))
+
+    def test_limit_covers_what_json_can_return_for_the_error_body(self):
+        """1200 вложенных скобок разбираются на 3.12 — значит нужен свой предел."""
+        raw = b'[' * 1200 + b'0' + b']' * 1200
+        try:
+            payload = json.loads(raw)  # 3.11: RecursionError, 3.12: успех
+        except RecursionError:
+            self.skipTest('на этой версии Python нагрузка не разбирается вовсе')
+        self.assertTrue(providers._too_deep(payload))
