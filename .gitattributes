@@ -1,0 +1,17 @@
+# Собранные страницы RAID: их не ревьюят построчно, диффы бесполезны.
+lunapark-raid.html          linguist-generated=true -diff
+lunapark-raid-magitech.html linguist-generated=true -diff
+
+# Ассеты и медиа — бинарники, git не должен пытаться их сливать.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.gif  binary
+*.mp3  binary
+*.mp4  binary
+*.wav  binary
+*.ico  binary
+
+# Тексты — с LF, чтобы не ловить «все строки изменились» на Windows.
+* text=auto eol=lf
