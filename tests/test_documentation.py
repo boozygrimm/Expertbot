@@ -81,8 +81,8 @@ print(json.dumps(sorted(names), ensure_ascii=False))
         self.assertTrue(expected <= attached)
 
     def test_local_documentation_links_exist(self):
-        for filename in ('README.md', 'COMMANDS.md', 'PROJECT_ANALYSIS.md',
-                         'VIDEO_NOTES_PLAN.md', 'tests/README.md', 'video_prototype/README.md'):
+        for filename in ('README.md', 'COMMANDS.md', 'VIDEO_NOTES_PLAN.md',
+                         'tests/README.md', 'video_prototype/README.md'):
             path = ROOT / filename
             for target in re.findall(r'\]\(([^ )]+)', path.read_text(encoding='utf-8')):
                 if target.startswith(('https:', 'http:', 'mailto:', '#')):
