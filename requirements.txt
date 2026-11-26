@@ -1,21 +1,27 @@
-aiogram
-motor
-google-genai
-python-dotenv
-aiohttp
-dnspython
-opencv-python-headless
-ddgs
-musicdl
-beautifulsoup4
-requests
-pycryptodomex
-yt-dlp
-apscheduler==3.10.4
-Pillow>=10.0.0
+# Зависимости бота. Версии ограничены сверху, потому что проект пересобирается
+# в python:3.12-slim без lock-файла: без границ новая мажорная версия приезжает
+# сама и ломает запуск. Тестовые зависимости — в requirements-test.txt.
+
+# aiogram 3.26+ не работает на Python 3.11 (внутри typing ломается
+# `TypeError: unhashable type: 'FailFast'`), а локальные тесты идут и на 3.11.
+aiogram>=3.15,<3.26
+motor>=3.6,<4
+google-genai>=1.0,<4
+python-dotenv>=1.0,<2
+aiohttp>=3.10,<4
+dnspython>=2.6,<3
+opencv-python-headless>=4.10,<6
+ddgs>=9,<10
+musicdl>=2.10,<3
+beautifulsoup4>=4.12,<5
+requests>=2.31,<3
+pycryptodomex>=3.20,<4
+# yt-dlp требует частых обновлений из-за изменений на стороне сайтов.
+yt-dlp>=2024.1.1
+# apscheduler 4.x сменил API планировщика, код рассчитан на 3.x.
+apscheduler>=3.10,<4
+Pillow>=10.0.0,<14
 # pymorphy3 — поддерживаемый форк pymorphy2 (тот же API, словари pymorphy3-dicts-ru
 # ставятся автоматически). pymorphy2 0.9.1 не работает на Python 3.11+: внутри
 # вызывается удалённый inspect.getargspec, и импорт роняет handlers/social_rp.py.
-pymorphy3
-pytest>=7.0.0
-pytest-asyncio>=0.21.0
+pymorphy3>=2.0,<3
