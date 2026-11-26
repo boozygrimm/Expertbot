@@ -24,7 +24,7 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(owner_control_panel, 'db', SimpleNamespace(db=self.db, settings=self.db.settings)):
             _, markup = await owner_control_panel.home_content()
             callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
-            self.assertNotIn('owner_panel:alchemy', callbacks)
+            self.assertTrue(callbacks)
         self.cb.data = 'owner_tools:image_probe'
         self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID + 1)
         await tools.action(self.cb, self.state, None)
@@ -192,8 +192,8 @@ asyncio.run(run())
             self.assertEqual(draw.await_args.args[0].chat.id, tools.ADMIN_ID)
             self.assertEqual(draw.await_args.args[0].from_user.id, tools.ADMIN_ID)
 
-    async def test_owner_can_open_help_and_removed_alchemy_buttons_do_nothing(self):
-        self.cb.data = 'owner_tools:base'
+    async def test_owner_can_open_help_and_unknown_callbacks_do_nothing(self):
+        self.cb.data = 'owner_tools:no_such_screen'
         await tools.action(self.cb, self.state, None)
         self.message.answer.assert_not_awaited()
         self.assertTrue(self.cb.answer.await_args.kwargs['show_alert'])

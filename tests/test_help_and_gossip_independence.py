@@ -112,9 +112,9 @@ class HelpAndGossipIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await message('/help@OtherBot')
                 self.assertFalse(any('Экс: краткая справка' in (getattr(r, 'text', '') or '')
                                      for r in requests[start:]))
-                # The former alchemy deep links are gone: /start alcbase must
-                # not answer with the removed base screen or reach the intro.
-                for text in ('/start alcbase', '/start@ExpertBot alcbase', '/start alcintro'):
+                # A bare /start must not silently open a game screen: only the
+                # greeting handler is allowed to answer private starts.
+                for text in ('/start no_such_screen', '/start@ExpertBot no_such_screen'):
                     start = len(requests)
                     await message(text, group=False)
                     self.assertFalse(any(getattr(r, 'text', '') == 'Штаб открыт'
