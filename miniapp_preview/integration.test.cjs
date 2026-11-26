@@ -4122,6 +4122,7 @@ test('magitech haptics: combat feedback is immediate and off silences it', async
   const b = await openMagitech({ start: false, setup(w) {
     w.Telegram = { WebApp: { HapticFeedback: {
       impactOccurred(kind) { calls.push(['impact', kind]); },
+      selectionChanged() { calls.push(['selection']); },
       notificationOccurred(kind) { calls.push(['notification', kind]); },
     } } };
   } });
@@ -4133,10 +4134,10 @@ test('magitech haptics: combat feedback is immediate and off silences it', async
     const enemy = b.raid.makeSkull(false, true, 3); enemy.hp = enemy.maxHp = 20;
     b.raid.state.board[0] = { type: 'skull', skull: enemy };
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'heavy']], 'combat feedback fires synchronously');
+    assert.deepEqual(calls, [['impact', 'soft'], ['selection']], 'combat feedback fires synchronously');
     radios.find(input => input.value === 'off').click();
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'heavy']]);
+    assert.deepEqual(calls, [['impact', 'soft'], ['selection']]);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -4146,6 +4147,7 @@ test('magitech haptics: important mode immediately signals kills and bosses but 
   const b = await openMagitech({ start: false, setup(w) {
     w.Telegram = { WebApp: { HapticFeedback: {
       impactOccurred(kind) { calls.push(['impact', kind]); },
+      selectionChanged() { calls.push(['selection']); },
       notificationOccurred(kind) { calls.push(['notification', kind]); },
     } } };
   } });
@@ -4157,11 +4159,39 @@ test('magitech haptics: important mode immediately signals kills and bosses but 
     assert.deepEqual(calls, []);
     r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(0, 100, { direct:false });
-    assert.deepEqual(calls, [['impact', 'heavy']]);
+    assert.deepEqual(calls, [['selection']]);
     r.state.board[1] = { type:'skull', skull:Object.assign(r.makeSkull(true), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(1, 100, { direct:false });
-    assert.deepEqual(calls, [['impact', 'heavy'], ['impact', 'heavy']]);
+    assert.deepEqual(calls, [['selection'], ['selection']]);
     assert.equal(d.querySelectorAll('.haptics-test, [data-haptic-test]').length, 0);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech haptics: selecting enemies responds once per addition and respects off mode', async () => {
+  const calls = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    w.Telegram = { WebApp: { HapticFeedback: { selectionChanged() { calls.push('selection'); } } } };
+  } });
+  try {
+    const r = b.raid, w = b.dom.window, d = w.document;
+    r.setSelectedClassId('adventurer'); r.newGame(2718);
+    r.state.board[0] = { type:'skull', skull:r.makeSkull(false) };
+    r.state.board[1] = { type:'skull', skull:r.makeSkull(false) };
+    r.state.board[2] = { type:'sword' };
+    const cell = i => d.querySelector(`.cell[data-idx="${i}"]`);
+    raidPointer(w, cell(0), 'pointerdown');
+    assert.deepEqual(calls, ['selection']);
+    d.elementFromPoint = () => cell(1); raidPointer(w, w, 'pointermove');
+    assert.deepEqual(calls, ['selection', 'selection']);
+    raidPointer(w, w, 'pointermove');
+    d.elementFromPoint = () => cell(2); raidPointer(w, w, 'pointermove');
+    assert.deepEqual(calls, ['selection', 'selection']);
+    raidPointer(w, w, 'pointercancel');
+    d.querySelector('[name="haptics-combat"][value="off"]').click();
+    raidPointer(w, cell(0), 'pointerdown');
+    assert.deepEqual(calls, ['selection', 'selection']);
+    raidPointer(w, w, 'pointercancel');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
