@@ -2636,6 +2636,7 @@
     if (!canChainSelect(cellIdx, chain) || (chain.length && !isAdjacent(chain[chain.length - 1], cellIdx))) return;
     const firstSelection = chain.length === 0;
     chain.push(cellIdx);
+    if (S.board[cellIdx].type === 'skull') queueCombatHaptic('selection');
     S.chainType = chainTypeForCell(S.board[chain[0]]);
     if (firstSelection && S.board[cellIdx].type === 'sword') audioSwordSelect();
     else if (firstSelection && S.board[cellIdx].type === 'coin') audioCoinSelect();
@@ -4575,7 +4576,9 @@
     let delivered = false;
     try {
       const feedback = window.Telegram?.WebApp?.HapticFeedback;
-      if (typeof feedback?.impactOccurred === 'function') {
+      if (kind !== 'confirmation' && typeof feedback?.selectionChanged === 'function') {
+        feedback.selectionChanged(); delivered = true;
+      } else if (typeof feedback?.impactOccurred === 'function') {
         feedback.impactOccurred(kind === 'confirmation' ? 'soft' : 'heavy'); delivered = true;
       }
     } catch (ignored) { /* Try the browser API if the host bridge rejects this call. */ }
@@ -4588,7 +4591,8 @@
   }
   function queueCombatHaptic(kind, boss = false) {
     if (!hapticsEnabled()) return;
-    if (kind === 'kill') emitHaptic(boss ? 'boss' : 'kill');
+    if (kind === 'selection') emitHaptic('selection');
+    else if (kind === 'kill') emitHaptic(boss ? 'boss' : 'kill');
     else if (kind === 'damage') emitHaptic('damage');
     else if (kind === 'hit' && hapticsMode === 'all') emitHaptic('hit');
   }
