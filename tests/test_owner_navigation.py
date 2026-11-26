@@ -76,7 +76,7 @@ class PrivateScreensTests(unittest.IsolatedAsyncioTestCase):
         self.state = SimpleNamespace(clear=AsyncMock(), get_data=AsyncMock(return_value={}))
 
     async def test_every_panel_screen_has_back_close_and_refresh(self):
-        screens = ['home', 'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help']
+        screens = ['home', 'group_menu', 'media', 'help']
         for screen in screens:
             self.callback.data = 'owner_panel:' + screen
             await panel.control_action(self.callback, self.state)
@@ -84,7 +84,7 @@ class PrivateScreensTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(screen=screen):
                 self.assertIn(CLOSE_CALLBACK, callbacks(markup))
                 self.assertIn('owner_panel:' + screen, callbacks(markup), 'нет «Обновить»')
-                back = callbacks(markup) & {'owner_panel:home', 'owner_panel:alchemy', 'owner_panel:media'}
+                back = callbacks(markup) & {'owner_panel:home', 'owner_panel:media'}
                 self.assertTrue(back, 'нет «Назад»')
 
     async def test_media_subscreens_and_status_return_to_their_own_section(self):
@@ -99,9 +99,9 @@ class PrivateScreensTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('owner_panel:' + route, callbacks(markup))
 
     async def test_screens_name_their_position_in_the_path(self):
-        self.callback.data = 'owner_panel:alchemy_ref'
+        self.callback.data = 'owner_panel:media'
         await panel.control_action(self.callback, self.state)
-        self.assertIn('Пульт › Алхимия › Рецепты и справка', self.message.edit_text.await_args.args[0])
+        self.assertIn('Пульт › Картинки и поиск', self.message.edit_text.await_args.args[0])
 
     async def test_home_reports_counts_and_points_at_every_section(self):
         await self.db.news_owner_drafts.insert_one({'owner_id': panel.ADMIN_ID, 'stage': 'draft_ready'})
@@ -109,7 +109,7 @@ class PrivateScreensTests(unittest.IsolatedAsyncioTestCase):
             text, markup = await panel.home_content()
         self.assertIn('готово к проверке: 1', text)
         self.assertTrue({'owner_panel:news', 'gnews:home', 'news_panel:scripts', 'news_panel:editions',
-                         'ovideo:open', 'owner_panel:status', 'owner_panel:alchemy', 'owner_panel:group_menu',
+                         'ovideo:open', 'owner_panel:status', 'owner_panel:group_menu',
                          'owner_panel:media', 'owner_panel:help'} <= callbacks(markup))
         self.assertIn('❌ Закрыть', labels(markup))
         self.assertIn('🔄 Обновить', labels(markup))

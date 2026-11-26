@@ -1,2 +1,15 @@
+# Дополнительные зависимости тестов. Устанавливаются вместе с requirements.txt:
+#   python -m pip install -r requirements.txt -r requirements-test.txt
+
+# Сам pytest живёт здесь, а не в требованиях бота: тестовый фреймворк не нужен
+# в образе, который запускает main.py.
+pytest>=7.0,<10
+pytest-asyncio>=0.21,<2
+
 # Optional MongoDB simulator for persistent video queue tests.
 mongomock-motor>=0.0.36
+
+# Бинарник ffmpeg для видео-тестов. 21 модуль импортирует этот пакет на уровне
+# модуля, поэтому без него pytest падает на сборке (не skip), а тесты, которым
+# нужен настоящий `ffprobe`, честно пропускаются через shutil.which.
+imageio-ffmpeg>=0.6

@@ -9,11 +9,10 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import ADMIN_ID
 from database import db
 from news_prototype import news_image_fetch, owner_drafts, owner_program, owner_trial
 from handlers import owner_tools_panel as tools
-from handlers.owner_nav import add_nav, ensure_nav
+from handlers.owner_nav import add_nav
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -313,5 +312,5 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
         logger.warning('Не удалось выполнить действие с новостью: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось выполнить действие. Открой карточку заново.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)

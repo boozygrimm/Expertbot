@@ -175,12 +175,12 @@ from aiogram.methods import SendMessage
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_legacy_news, owner_tools_panel, news_intake, logger, alc_build, alc_intro
+from handlers import owner_legacy_news, owner_tools_panel, news_intake, logger
 
 async def run():
     database = AsyncMongoMockClient().test
     fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages,
-                           alchemy_players=database.alchemy_players)
+                           )
     bot = Bot('123456:TESTTOKEN')
     sent = []
     async def request(bot_arg, method, **kwargs):
@@ -190,8 +190,7 @@ async def run():
            'NEWS_REVIEW_ENABLED':'0', 'NEWS_COLLECTION_ENABLED':'0'}
     with patch.dict(os.environ, env), patch.object(owner_legacy_news, 'db', fake), \
          patch.object(owner_tools_panel, 'db', fake), patch.object(news_intake, 'db', fake), \
-         patch.object(logger, 'db', fake), patch.object(alc_build, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(logger, 'db', fake), \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         dp = configure_dispatcher()
         user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}

@@ -206,12 +206,10 @@ def fetch_post(url: str) -> Post:
     """
     canonical, post_id = canonical_post(url)
     targets = [f'/{post_id}?embed=1', f'/{post_id}?embed=1&single=1']
-    last = None
     for index, target in enumerate(targets):
         try:
             return _fetch_one(canonical, post_id, target)
-        except _GroupedAttempt as exc:
-            last = exc
+        except _GroupedAttempt:
             if index + 1 >= len(targets):
                 raise SourceError('Пост входит в альбом; текст недоступен без ?single') from None
     raise SourceError('Не удалось безопасно получить пост Telegram') from None

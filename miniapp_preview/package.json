@@ -1,8 +1,9 @@
 {
-  "name": "expertbot-lunapark-preview",
+  "name": "expertbot-lunapark-raid-preview",
   "private": true,
   "scripts": {
-    "test": "node --test test.mjs integration.test.cjs telegram_integration.test.cjs"
+    "test": "node --test test.mjs integration.test.cjs",
+    "build": "python build_raid.py && python build_raid_magitech.py"
   },
   "devDependencies": {
     "jsdom": "26.1.0"

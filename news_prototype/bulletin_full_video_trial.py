@@ -7,7 +7,6 @@ not verified speaker alignment or phoneme-level lip sync.
 from __future__ import annotations
 
 import json
-import math
 import os
 from pathlib import Path
 import secrets

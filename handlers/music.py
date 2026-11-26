@@ -4,7 +4,6 @@ import logging
 import os
 import tempfile
 import uuid
-from pathlib import Path
 
 import yt_dlp
 from aiogram import F, Router, types

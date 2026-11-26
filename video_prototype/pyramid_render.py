@@ -1,6 +1,6 @@
 """Separate trial: an illuminated eye-in-pyramid sigil between the flasks."""
 import math
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 if __package__:
     from .render import SIZE

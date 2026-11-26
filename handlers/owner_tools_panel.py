@@ -99,29 +99,6 @@ async def ask(callback, state: FSMContext, action: str, prompt: str, *, answer_t
         await owner_video_sender.track_bot_message(state, token, sent, callback.message.bot, callback.message.chat.id)
 
 
-async def profile_choice(callback, state, action_name: str, size: str = ''):
-    # IDs are included alongside names to disambiguate equal display names.
-    players = await db.db.alchemy_players.find({}, {'user_id': 1, 'user_name': 1}).sort('user_id', -1).limit(20).to_list(length=20)
-    b = InlineKeyboardBuilder()
-    code = size if action_name == 'pack' else action_name
-    for player in players:
-        number = player.get('user_id')
-        if type(number) is not int or number <= 0:
-            continue
-        name = str(player.get('user_name') or 'Игрок')[:40]
-        b.button(text=f'{name} · {number}', callback_data=f'owner_tools:profile:{code}:{number}')
-    b.button(text='⌨️ Ввести ID вручную', callback_data=f'owner_tools:profileinput:{code}')
-    b.adjust(1)
-    add_nav(b, back='owner_panel:alchemy_admin', back_label='‹ Управление алхимией',
-            refresh='owner_tools:' + action_name)
-    await state.clear()
-    await callback.answer()
-    label = f'промопак {size.upper()}' if action_name == 'pack' else ('удалить профиль' if action_name == 'reset' else 'очистить инвентарь')
-    await callback.message.answer(f'Выбери игрока ({label}). Показаны до 20 профилей; можно ввести ID вручную. '
-        'Профиль алхимии общий для всех групп. Далее потребуется подтверждение.',
-        reply_markup=b.as_markup(), parse_mode=None)
-
-
 class _LimitedVideoBuffer(io.BytesIO):
     def write(self, data):
         from news_prototype.bulletin_manual_media import MAX_BYTES
@@ -461,35 +438,6 @@ async def receive_input(message: types.Message, state: FSMContext):
             from handlers import news_owner_drafts
             await getattr(news_owner_drafts, handler)(proxy(message, message.from_user, text=content,
                                                              for_program=data.get('for_program', False)))
-        elif action == 'recipe':
-            await state.clear()
-            from handlers.alc_lab import cmd_recipe_cheatsheet
-            await cmd_recipe_cheatsheet(proxy(message, message.from_user, text=text), SimpleNamespace(args=text))
-        elif action in ('pack', 'clear'):
-            if not text.isdecimal() or not 1 <= len(text) <= 15 or int(text) < 1:
-                raise ValueError('Нужен ID игрока')
-            player_id = int(text)
-            player = await db.db.alchemy_players.find_one({'user_id': player_id})
-            if not player:
-                if action == 'pack':
-                    await state.update_data(action='pack_new_name', player_id=player_id, size=data['size'])
-                    await message.answer('Профиль не найден. Если это новый игрок, пришли его имя; иначе отмени ввод. Перед созданием и выдачей будет подтверждение.', parse_mode=None)
-                else:
-                    await message.answer('Профиль с таким ID не найден. Проверь ID или отмени ввод.', parse_mode=None)
-                return
-            name = str(player.get('user_name') or 'Игрок')[:100]
-            await state.clear()
-            desc = (f'Выдать игроку {name} (ID {player_id}) промопак размера {data["size"].upper()}?'
-                    if action == 'pack' else f'Очистить весь инвентарь игрока {name} (ID {player_id})? Это необратимо.')
-            await new_confirmation(message, message.from_user.id, action, desc,
-                                   player_id=player_id, player_name=name, size=data.get('size'))
-        elif action == 'pack_new_name':
-            if len(text) > 100 or '\n' in text:
-                raise ValueError('Нужно имя игрока одной строкой')
-            await state.clear()
-            await new_confirmation(message, message.from_user.id, 'pack',
-                f'Создать профиль игрока {text} (ID {data["player_id"]}) и выдать промопак {data["size"].upper()}? Проверь ID.',
-                player_id=data['player_id'], player_name=text, size=data['size'], allow_create=True)
         elif action in ('points', 'points_amount'):
             parts = text.split() if action == 'points' else [str(data['player_id']), text]
             if len(parts) != 2 or not parts[0].isascii() or not parts[0].isdigit() or len(parts[0]) > 15:
@@ -517,17 +465,6 @@ async def receive_input(message: types.Message, state: FSMContext):
             await new_confirmation(message, message.from_user.id, 'points',
                 f'Изменить очки на {data["amount"]:+d} новому игроку {text} (ID {data["player_id"]}) в группе «{data["chat_title"]}» (ID {data["chat_id"]})? Проверь ID и группу.',
                 chat_id=data['chat_id'], player_id=data['player_id'], player_name=text, amount=data['amount'], allow_new=True)
-        elif action == 'reset':
-            if not text.isdecimal() or not 1 <= len(text) <= 15 or int(text) < 1:
-                raise ValueError('Нужен ID игрока')
-            player_id = int(text)
-            player = await db.db.alchemy_players.find_one({'user_id': player_id})
-            if not player:
-                await message.answer('Игрок с таким ID не найден. Проверь ID или отмени ввод.', parse_mode=None)
-                return
-            await state.clear()
-            await new_confirmation(message, message.from_user.id, 'reset',
-                f'Удалить профиль алхимии игрока {player_id}? Действие необратимо.', player_id=player_id)
         else:
             await state.clear()
             await message.answer('Ввод устарел. Открой /panel.', parse_mode=None)
@@ -584,12 +521,6 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
         if op == 'draw':
             await ask(callback, state, 'draw', 'Напиши, что нарисовать (до 500 символов). Действуют обычные бесплатные попытки и стоимость в очках; запрос потребуется подтвердить.')
             return
-        if op == 'base':
-            await state.clear()
-            from handlers.alc_base import cmd_base
-            await callback.answer()
-            await cmd_base(proxy(callback.message, callback.from_user))
-            return
         if op == 'help':
             await state.clear()
             from handlers.ex_logic import HELP_TEXT
@@ -616,51 +547,6 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     await new_confirmation(callback.message, callback.from_user.id, 'trial_next',
                         'Освободить слот после отправленного видео? Новая задача автоматически не запустится.',
                         finished_id=finished_id)
-            return
-        if op == 'recipe':
-            await ask(callback, state, 'recipe', 'Напиши точное название результата алхимии.')
-            return
-        if op == 'clear':
-            await profile_choice(callback, state, 'clear')
-            return
-        if op == 'pack':
-            b = InlineKeyboardBuilder()
-            for size in ('s', 'm', 'l', 'xl'):
-                b.button(text=size.upper(), callback_data=f'owner_tools:packsize:{size}')
-            b.adjust(4)
-            add_nav(b, back='owner_panel:alchemy_admin', back_label='‹ Управление алхимией',
-                    refresh='owner_tools:pack')
-            await callback.answer()
-            await callback.message.answer('Выбери размер промопака:', reply_markup=b.as_markup(), parse_mode=None)
-            return
-        if op == 'packsize' and len(parts) == 3 and parts[2] in ('s', 'm', 'l', 'xl'):
-            await profile_choice(callback, state, 'pack', parts[2])
-            return
-        if op == 'profileinput' and len(parts) == 3 and parts[2] in ('clear', 'reset', 's', 'm', 'l', 'xl'):
-            code = parts[2]
-            await ask(callback, state, code if code in ('clear', 'reset') else 'pack',
-                      'Пришли числовой Telegram ID игрока. Профиль алхимии общий для всех групп. Перед изменением потребуется подтверждение.',
-                      size=None if code in ('clear', 'reset') else code)
-            return
-        if op == 'profile' and len(parts) == 4 and parts[2] in ('clear', 'reset', 's', 'm', 'l', 'xl'):
-            code, value = parts[2], parts[3]
-            if not value.isascii() or not value.isdigit() or not 1 <= len(value) <= 15 or int(value) < 1:
-                raise ValueError('Неверный игрок')
-            player_id = int(value)
-            player = await db.db.alchemy_players.find_one({'user_id': player_id})
-            if not player:
-                return await callback.answer('Профиль не найден.', show_alert=True)
-            name = str(player.get('user_name') or 'Игрок')[:100]
-            await state.clear()
-            await callback.answer()
-            if code == 'clear':
-                desc = f'Очистить весь инвентарь игрока {name} (ID {player_id})? Это необратимо.'
-            elif code == 'reset':
-                desc = f'Удалить профиль алхимии игрока {name} (ID {player_id})? Это необратимо.'
-            else:
-                desc = f'Выдать игроку {name} (ID {player_id}) промопак размера {code.upper()}?'
-            await new_confirmation(callback.message, callback.from_user.id, code if code in ('clear', 'reset') else 'pack',
-                                   desc, player_id=player_id, player_name=name, size=None if code in ('clear', 'reset') else code)
             return
         if op == 'points':
             from handlers.admin_cron import get_known_groups
@@ -725,39 +611,12 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                       'Пришли сумму изменения, например 100 или -100. Перед изменением будет подтверждение.',
                       chat_id=group_id, chat_title=title, player_id=player_id)
             return
-        if op == 'reset':
-            await profile_choice(callback, state, 'reset')
-            return
         if op == 'reports':
             from handlers.admin_cron import cmd_set_daily
             await callback.answer()
             await cmd_set_daily(proxy(callback.message, callback.from_user), bot, state)
             return
-        if op == 'lore':
-            from handlers.alc_heritage import lore_edit
-            # The legacy editor seeds defaults on open and deletes this old ID.
-            # Do not hide that potentially destructive migration behind a menu button.
-            if await db.db.alchemy_lore.find_one({'id': 'forge_legacy'}):
-                await callback.answer()
-                await new_confirmation(callback.message, callback.from_user.id, 'lore_open',
-                    'Открытие редактора удалит старую запись наследия forge_legacy. Продолжить?')
-            else:
-                await callback.answer()
-                await lore_edit(proxy(callback.message, callback.from_user), SimpleNamespace(args=''), state)
-            return
-        if op == 'lorehelp':
-            from handlers.alc_heritage import lore_help
-            await callback.answer()
-            await lore_help(proxy(callback.message, callback.from_user))
-            return
-        if op == 'recipes':
-            from handlers.alc_lab import cmd_recipe_cheatsheet
-            await callback.answer()
-            await cmd_recipe_cheatsheet(proxy(callback.message, callback.from_user), SimpleNamespace(args=''))
-            return
         prompts = {
-            'regen': 'Перегенерировать квесты для всех игроков? Это изменит их текущие задания.',
-            'seed': 'Обновить стартовые наследия из файла? Старая запись forge_legacy, если она существует, будет удалена.',
             'image_probe': 'Проверить Cloudflare и OVHcloud? Это реальные запросы, они расходуют квоту.',
             'search_probe': 'Проверить поиск картинки? Это реальный запрос, который может расходовать квоту.',
         }
@@ -827,31 +686,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
             await callback.message.edit_text('Выполняю действие. Повторное нажатие не запустит его снова.', parse_mode=None)
             message = proxy(callback.message, callback.from_user)
             name, data = record['action'], record['data']
-            if name == 'regen':
-                from handlers.alc_quests import admin_regen_quests
-                await admin_regen_quests(message)
-            elif name == 'lore_open':
-                from handlers.alc_heritage import lore_edit
-                await lore_edit(message, SimpleNamespace(args=''), state)
-            elif name == 'seed':
-                from handlers.alc_heritage import lore_edit
-                await lore_edit(message, SimpleNamespace(args='seed'), state)
-            elif name == 'reset':
-                from handlers.alc_core import admin_hard_reset
-                await admin_hard_reset(message, SimpleNamespace(args=str(data['player_id'])))
-            elif name in ('pack', 'clear'):
-                from handlers import alc_core
-                player = await db.db.alchemy_players.find_one({'user_id': data['player_id']})
-                if not player and not (name == 'pack' and data.get('allow_create')):
-                    await message.answer('Профиль игрока больше не найден.', parse_mode=None)
-                else:
-                    target = SimpleNamespace(id=data['player_id'], first_name=data['player_name'], is_bot=False)
-                    message.reply_to_message = SimpleNamespace(from_user=target)
-                    if name == 'pack':
-                        await alc_core.admin_promo(message, SimpleNamespace(args=data['size']))
-                    else:
-                        await alc_core.admin_clear_inv(message)
-            elif name == 'points':
+            if name == 'points':
                 if not data.get('allow_new') and not await db.db.economy.find_one({'chat_id': data['chat_id'], 'user_id': data['player_id']}):
                     await message.answer('Игрок больше не найден в выбранной группе.', parse_mode=None)
                 else:
@@ -1013,7 +848,7 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                 await owner_bulletin_panel.prepare_selected(message, callback.from_user.id, data)
             elif name == 'build_program':
                 from news_prototype import owner_program
-                from handlers import news_owner_drafts, owner_news_actions
+                from handlers import news_owner_drafts
                 if not await owner_trial.drafts_enabled(db.db):
                     await message.answer('Подготовка сценариев выключена.', parse_mode=None)
                 else:
@@ -1042,8 +877,8 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
                     logger.debug('Не удалось убрать подтверждение вестника: %s', type(exc).__name__)
                     try:
                         await callback.message.edit_text('Действие завершено. Результат ниже.', reply_markup=None, parse_mode=None)
-                    except Exception:
-                        pass
+                    except Exception as edit_error:
+                        logger.debug('Не удалось обновить экран инструмента: %s', type(edit_error).__name__)
             return
         await callback.answer('Неизвестное действие.', show_alert=True)
     except Exception as exc:
@@ -1053,5 +888,6 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
         except Exception:
             try:
                 await callback.message.answer('Не удалось подтвердить результат. Проверь состояние в панели; не повторяй действие вслепую.', parse_mode=None)
-            except Exception:
-                pass
+            except Exception as answer_error:
+                logger.debug('Не удалось сообщить о неподтверждённом результате: %s',
+                             type(answer_error).__name__)

@@ -16,7 +16,7 @@ import tempfile
 import threading
 
 from PIL import Image, ImageOps
-from news_prototype import (bender_trial, bulletin_animation, bulletin_contract,
+from news_prototype import (bender_trial, bulletin_animation,
     bulletin_dialogue_audio, bulletin_duo_content_probe, bulletin_full_video_trial,
     bulletin_layered_video, bulletin_preflight, bulletin_remote_animation,
     bulletin_timing, bulletin_video_insert_trial, bulletin_wide_screen,

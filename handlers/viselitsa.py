@@ -1,5 +1,4 @@
 import re
-import random
 import asyncio
 import logging
 import time
@@ -11,6 +10,7 @@ from ai_logic import generate_with_retry
 from database import db
 from config import get_msk_now
 from handlers.pole_chudes import unpin_and_delete_after_delay, delete_after_delay
+from background import spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ async def start_hangman(message: types.Message):
     chat_id = message.chat.id
     if chat_id in active_hangman_games:
         msg = await message.answer("✋ Палач уже занят, доиграйте текущую партию!")
-        asyncio.create_task(delete_after_delay(msg, 5))
+        spawn(delete_after_delay(msg, 5))
         return
 
     status_msg = await message.answer("⏳ Палач точит топор, подбираем слово...")
@@ -107,7 +107,7 @@ async def start_hangman(message: types.Message):
         await status_msg.pin(disable_notification=True)
     except Exception as e:
         logger.debug("Failed to pin hangman status message in chat %s: %s", chat_id, e)
-    asyncio.create_task(delete_after_delay(message))
+    spawn(delete_after_delay(message))
 
 def get_hangman_kb(game):
     builder = InlineKeyboardBuilder()
@@ -136,7 +136,7 @@ async def update_hangman_message(bot, chat_id):
     errors = game["errors"]
     
     scoreboard_lines = [f"👤 {p['name']}: {p['score']} очк." for p in game["players"].values() if p['score'] > 0]
-    score_text = f"\n**Счёт игроков:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
+    score_text = "\n**Счёт игроков:**\n" + "\n".join(scoreboard_lines) + "\n━━━━━━━━━━━━━━━━━━━━" if scoreboard_lines else ""
     
     turn_status = "🟢 Ждем смельчака! Жми 'Взять ход'."
     if game["current_turn"] is not None:
@@ -178,12 +178,7 @@ async def hm_timeout_task(chat_id, user_id, bot):
         
         await update_hangman_message(bot, chat_id)
         msg = await bot.send_message(chat_id, "⏳ Время вышло! Игрок задрожал от страха и пропустил ход.")
-        asyncio.create_task(delete_after_delay(msg, 5))
-    
-    await update_hangman_message(message.bot, chat_id)
-    try: await status_msg.pin(disable_notification=True)
-    except Exception: pass
-    asyncio.create_task(delete_after_delay(message))
+        spawn(delete_after_delay(msg, 5))
 
 @router.callback_query(F.data == "hm_take_turn")
 async def hm_handle_take_turn(callback: types.CallbackQuery):
@@ -260,7 +255,7 @@ async def hm_handle_letter(callback: types.CallbackQuery):
             except Exception as e:
                 logging.error(f"Ошибка БД в виселице: {e}")
 
-            asyncio.create_task(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
+            spawn(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
             del active_hangman_games[chat_id]
             
             await callback.message.edit_text(
@@ -281,7 +276,7 @@ async def hm_handle_letter(callback: types.CallbackQuery):
         
         if game["errors"] >= MAX_ERRORS:
             final_word = game['word']
-            asyncio.create_task(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
+            spawn(unpin_and_delete_after_delay(callback.message.bot, chat_id, game["main_msg_id"]))
             del active_hangman_games[chat_id]
             
             await callback.message.edit_text(
@@ -293,7 +288,7 @@ async def hm_handle_letter(callback: types.CallbackQuery):
             )
             return await callback.answer("Смерть...", show_alert=True)
 
-        await callback.answer(f"❌ Ошибка! Строится виселица...", show_alert=True)
+        await callback.answer("❌ Ошибка! Строится виселица...", show_alert=True)
         # Ошибся — теряет ход
         game["current_turn"] = None
         game["last_move_time"] = time.time()
@@ -307,9 +302,9 @@ async def hm_stop_game(message: types.Message):
         game = active_hangman_games[chat_id]
         if game["timeout_task"]: game["timeout_task"].cancel()
         del active_hangman_games[chat_id]
-        asyncio.create_task(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
+        spawn(unpin_and_delete_after_delay(message.bot, chat_id, game["main_msg_id"]))
         await message.answer("🛑 Виселица разобрана. Расходимся.")
     else:
         ans = await message.answer("А мы никого и не вешаем! 🤷‍♂️")
-        asyncio.create_task(delete_after_delay(ans, 5))
+        spawn(delete_after_delay(ans, 5))
         

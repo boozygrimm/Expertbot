@@ -465,5 +465,5 @@ async def action(callback: types.CallbackQuery, state: FSMContext, bot):
         logger.warning('Не удалось открыть отправку видео: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось проверить группу или выполнить действие. Проверь состояние.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)

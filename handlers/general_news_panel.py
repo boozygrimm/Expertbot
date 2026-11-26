@@ -808,8 +808,8 @@ async def callback_action(callback: types.CallbackQuery, state: FSMContext):
         logger.warning('Не удалось управлять общей подборкой: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось выполнить действие. Открой подборку заново.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)
 
 
 async def prepare_confirmed(message, owner_id: int, key: str):

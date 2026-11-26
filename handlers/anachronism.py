@@ -2,7 +2,6 @@ import json
 import re
 import asyncio
 import random
-from datetime import datetime
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -10,11 +9,46 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import db
 from ai_logic import generate_with_retry
 from config import get_msk_now
+from background import spawn
 
 router = Router()
 
-# Словарь для хранения активных игр в памяти (связка ID сообщения и данных игры)
+# Словарь для хранения активных игр в памяти (связка ID сообщения и данных игры).
+# Ключ — id сообщения, значение — состояние партии, включая ключ идемпотентности.
 active_anachronism_games = {}
+
+GAME_TYPE = 'anachronism'
+WIN_MULTIPLIER = 2.5
+
+
+def game_key(msg_id: int) -> str:
+    """Один ключ на партию: связывает ставку, попытку и выплату."""
+    return f'{GAME_TYPE}:{msg_id}'
+
+
+async def pay_once(key: str, *, chat_id: int, user_id: int, user_name: str, score: int) -> bool:
+    """Начислить очки ровно один раз на ключ.
+
+    Вместо транзакций Mongo (нужен replica set, а бот работает и на standalone)
+    используем отметку в отдельной коллекции: повторный вызов с тем же ключом
+    не создаёт вторую запись, а значит и второе начисление. Очки при этом
+    остаются обычной строкой в `economy`, как и у остальных игр.
+    """
+    marked = await db.db.anachronism_payments.update_one(
+        {'_id': key}, {'$setOnInsert': {'chat_id': chat_id, 'user_id': user_id, 'score': score,
+                                        'date': get_msk_now()}}, upsert=True)
+    if marked.upserted_id is None:
+        return False
+    try:
+        await db.economy.insert_one({
+            'game_type': GAME_TYPE, 'key': key, 'chat_id': chat_id,
+            'user_id': user_id, 'user_name': user_name, 'score': score, 'date': get_msk_now(),
+        })
+    except Exception:
+        # Без записи в экономике отметка врала бы, поэтому снимаем её.
+        await db.db.anachronism_payments.delete_one({'_id': key})
+        raise
+    return True
 
 BATCH_PROMPT = """Ты — циничный архивариус забытых и самых абсурдных эпох. Твоя задача — сгенерировать 5 уникальных JSON-объектов для хардкорной игры "3 лжи, 1 истина" (Анахронизм).
 Тематика: малоизвестная дикая история, безумная гастрономия древности или забытые ретро-технологии.
@@ -88,6 +122,11 @@ async def start_anachronism(message: types.Message):
     if bet <= 0:
         return await message.answer("⚠️ Ставка должна быть больше нуля!")
 
+    if bet > balance:
+        return await message.answer(
+            f"❌ Ставка больше баланса. В этом чате у тебя {balance} очков."
+        )
+
     # 2. Рассчитываем стоимость входа (комиссию Архива) ПО ЭКСПОНЕНТЕ
     today_str = get_msk_now().strftime("%Y-%m-%d")
     
@@ -111,41 +150,42 @@ async def start_anachronism(message: types.Message):
 
     status_msg = await message.answer("⏳ Открываю Архив Времени... (проверка крипто-хэшей)")
 
-    # 3. Получаем вопрос из кэша и ТИХО пополняем его
+    # 3. Сначала берём вопрос, и только потом списываем очки: иначе за сбой
+    #    генерации игрок платил бы впустую.
     question_doc = await db.db.anachronism_cache.find_one_and_delete({})
-    
+
     if not question_doc:
-        # Если кэш вообще пуст - ждем (блокирующий вызов)
+        # Кэш пуст: ждём генерацию, но деньги ещё не тронуты.
         await status_msg.edit_text("⏳ Архив пуст. Генерирую новые временные аномалии. Это займет около 10-15 секунд...")
         success = await fetch_anachronism_questions()
         if not success:
             return await status_msg.edit_text("❌ Временная аномалия нестабильна. Архив не ответил. Попробуйте позже.")
         question_doc = await db.db.anachronism_cache.find_one_and_delete({})
+        if not question_doc:
+            return await status_msg.edit_text("❌ Архив пуст. Попробуйте позже.")
     else:
-        # Если вопрос есть, проверяем, сколько осталось в базе
         remaining = await db.db.anachronism_cache.count_documents({})
         if remaining <= 1:
-            # ТИХАЯ генерация в фоне. Бот не будет ждать окончания этого процесса!
-            asyncio.create_task(fetch_anachronism_questions())
+            # Тихая генерация в фоне: бот не ждёт её окончания.
+            spawn(fetch_anachronism_questions(), name='anachronism-refill')
 
-    # 4. Списываем комиссию и ставку как НОВУЮ ТРАНЗАКЦИЮ
-    new_attempts = attempts + 1
-    
-    await db.game_data.update_one(
-        {"user_id": user_id, "chat_id": chat_id, "type": "anach_stats"},
-        {"$set": {"date": today_str, "attempts": new_attempts}},
-        upsert=True
-    )
-    
-    # Добавляем минусовую транзакцию
+    # 4. Списываем ставку вместе с комиссией одной строкой. Счётчик попыток
+    #    двигаем только после успешного списания: если база откажет, игрок не
+    #    потеряет право на бесплатный первый вход.
     await db.economy.insert_one({
-        "game_type": "anachronism_bet",
+        "game_type": GAME_TYPE,
+        "key": f'{game_key(status_msg.message_id)}:bet',
         "chat_id": chat_id,
         "user_id": user_id,
         "user_name": user_name,
         "score": -total_required,
-        "date": get_msk_now()
+        "date": get_msk_now(),
     })
+    await db.game_data.update_one(
+        {"user_id": user_id, "chat_id": chat_id, "type": "anach_stats"},
+        {"$set": {"date": today_str, "attempts": attempts + 1}},
+        upsert=True
+    )
 
     # 5. Формируем интерфейс и РАНДОМИЗИРУЕМ ОТВЕТЫ
     options = question_doc.get("options", [])
@@ -158,7 +198,7 @@ async def start_anachronism(message: types.Message):
         builder.button(text=f"Вариант {i+1}", callback_data=f"anach:{i}")
     builder.adjust(1)
     
-    fee_text = f"Бесплатный вход" if fee == 0 else f"Сбор Архива: -{fee}"
+    fee_text = "Бесплатный вход" if fee == 0 else f"Сбор Архива: -{fee}"
     text = (
         f"🎩 **ПРОЕКТ «АНАХРОНИЗМ»**\n"
         f"Игрок: {user_name}\n"
@@ -173,16 +213,19 @@ async def start_anachronism(message: types.Message):
     await status_msg.delete()
     game_msg = await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     
-    # Сохраняем стейт игры
+    # Сохраняем стейт игры: ключ общий для всех записей этой партии.
     active_anachronism_games[game_msg.message_id] = {
         "user_id": user_id,
+        "user_name": user_name,
+        "chat_id": chat_id,
         "bet": bet,
-        "options": options, # Сохраняем уже перемешанный список
-        "status": "active"
+        "key": game_key(game_msg.message_id),
+        "options": options,  # уже перемешанный список
+        "status": "active",
     }
-    
+
     # Запускаем отложенную очистку памяти
-    asyncio.create_task(cleanup_game_session(game_msg.message_id))
+    spawn(cleanup_game_session(game_msg.message_id), name='anachronism-cleanup')
     
 @router.callback_query(F.data.startswith("anach:"))
 async def process_anachronism_answer(callback: types.CallbackQuery):
@@ -212,17 +255,12 @@ async def process_anachronism_answer(callback: types.CallbackQuery):
     result_text = callback.message.text + "\n\n---\n"
     
     if is_win:
-        win_amount = int(bet * 2.5) # Возврат ставки + 150% выигрыш
-        
-        await db.economy.insert_one({
-            "game_type": "anachronism_win",
-            "chat_id": callback.message.chat.id,
-            "user_id": callback.from_user.id,
-            "user_name": callback.from_user.first_name,
-            "score": win_amount,
-            "date": get_msk_now()
-        })
-        
+        win_amount = int(bet * WIN_MULTIPLIER)  # возврат ставки + 150% выигрыша
+
+        # Двойной клик по кнопке не должен платить дважды: ключ партии один.
+        await pay_once(game['key'], chat_id=game['chat_id'], user_id=game['user_id'],
+                       user_name=game['user_name'], score=win_amount)
+
         result_text += f"✅ **ИСТИНА!**\n{selected_opt.get('comment', 'Комментарий утерян в архиве.')}\n\n"
         result_text += f"💰 Вы сорвали куш: +{win_amount} очков!"
         await callback.answer("Победа!", show_alert=False)

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault('MONGO_URI', 'mongodb://localhost:27017')
 os.environ.setdefault('TELEGRAM_TOKEN', '123456:TESTTOKEN')
 from mongomock_motor import AsyncMongoMockClient
+from config import ADMIN_ID
 from handlers import owner_news_actions as news, owner_tools_panel as tools, news_owner_drafts
 from news_prototype import news_image_fetch, owner_drafts, owner_program, owner_trial
 from tests.test_owner_drafts import DRAFT, SOURCE
@@ -19,17 +20,17 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         for module in (news, tools, news_owner_drafts):
             p = patch.object(module, 'db', fake); p.start(); self.addCleanup(p.stop)
         p = patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)); p.start(); self.addCleanup(p.stop)
-        self.user = SimpleNamespace(id=news.ADMIN_ID)
-        self.message = SimpleNamespace(chat=SimpleNamespace(id=news.ADMIN_ID, type='private'), message_id=321,
+        self.user = SimpleNamespace(id=ADMIN_ID)
+        self.message = SimpleNamespace(chat=SimpleNamespace(id=ADMIN_ID, type='private'), message_id=321,
             answer=AsyncMock(), answer_photo=AsyncMock(), reply=AsyncMock(), edit_text=AsyncMock())
         self.callback = SimpleNamespace(from_user=self.user, message=self.message, answer=AsyncMock(), data='')
         self.state = SimpleNamespace(clear=AsyncMock(), set_state=AsyncMock(), update_data=AsyncMock(), get_data=AsyncMock())
 
     async def ready(self, number):
-        await owner_drafts.create(self.db, news.ADMIN_ID, number, f'https://t.me/ExampleNews/{number}', '')
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, number, AsyncMock(return_value={'summary': SOURCE}),
+        await owner_drafts.create(self.db, ADMIN_ID, number, f'https://t.me/ExampleNews/{number}', '')
+        await owner_drafts.process_new(self.db, ADMIN_ID, number, AsyncMock(return_value={'summary': SOURCE}),
                                        AsyncMock(return_value=DRAFT))
-        return await owner_drafts.get(self.db, news.ADMIN_ID, number)
+        return await owner_drafts.get(self.db, ADMIN_ID, number)
 
     async def action(self, data):
         self.callback.data = data
@@ -37,10 +38,10 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_card_requires_current_revision_owner_and_confirmation(self):
         item = await self.ready(12)
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         buttons = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
         approve = next(b.callback_data for row in buttons for b in row if b.text.startswith('🎬'))
-        self.callback.from_user = SimpleNamespace(id=news.ADMIN_ID + 1)
+        self.callback.from_user = SimpleNamespace(id=ADMIN_ID + 1)
         await self.action(approve)
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
         self.callback.from_user = self.user
@@ -55,27 +56,27 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_draft_shows_reason_and_one_retry_button(self):
         from news_prototype import editor_client
-        await owner_drafts.create(self.db, news.ADMIN_ID, 15, 'https://t.me/ExampleNews/15', '')
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, 15, AsyncMock(return_value={'summary': SOURCE}),
+        await owner_drafts.create(self.db, ADMIN_ID, 15, 'https://t.me/ExampleNews/15', '')
+        await owner_drafts.process_new(self.db, ADMIN_ID, 15, AsyncMock(return_value={'summary': SOURCE}),
                                        AsyncMock(side_effect=editor_client.EditorialError('q', code='http')))
-        item = await owner_drafts.get(self.db, news.ADMIN_ID, 15)
+        item = await owner_drafts.get(self.db, ADMIN_ID, 15)
         self.assertEqual(item['stage'], 'editor_failed')
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         buttons = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
         retry = next(b.callback_data for row in buttons for b in row if b.text.startswith('🔄'))
         detail = news_owner_drafts.editor_failure_text(item)
         self.assertIn('HTTP', detail)
-        self.assertEqual(await owner_drafts.retry(self.db, news.ADMIN_ID, 15, AsyncMock(return_value=DRAFT)), 'draft_ready')
+        self.assertEqual(await owner_drafts.retry(self.db, ADMIN_ID, 15, AsyncMock(return_value=DRAFT)), 'draft_ready')
         # The stale card must not retry again once the draft is no longer failed.
         await self.action(retry)
-        self.assertEqual((await owner_drafts.get(self.db, news.ADMIN_ID, 15))['stage'], 'draft_ready')
+        self.assertEqual((await owner_drafts.get(self.db, ADMIN_ID, 15))['stage'], 'draft_ready')
 
     async def test_needs_source_explains_album_posts(self):
         from news_prototype.telegram_post import GroupedPost, GROUPED_MESSAGE
-        await owner_drafts.create(self.db, news.ADMIN_ID, 31, 'https://t.me/exploitex/38046', '')
+        await owner_drafts.create(self.db, ADMIN_ID, 31, 'https://t.me/exploitex/38046', '')
         fetch = AsyncMock(side_effect=GroupedPost(GROUPED_MESSAGE))
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, 31, fetch, AsyncMock())
-        item = await owner_drafts.get(self.db, news.ADMIN_ID, 31)
+        await owner_drafts.process_new(self.db, ADMIN_ID, 31, fetch, AsyncMock())
+        item = await owner_drafts.get(self.db, ADMIN_ID, 31)
         self.assertEqual(item['stage'], 'needs_source')
         detail = news_owner_drafts.source_failure_text(item)
         self.assertIn('альбом', detail)
@@ -103,7 +104,7 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_edit_mode_uses_captured_revision_and_validation(self):
         item = await self.ready(12)
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         buttons = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
         edit = next(b.callback_data for row in buttons for b in row if b.text.startswith('✏️'))
         await self.action(edit)
@@ -126,12 +127,12 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         from news_prototype import news_image_codec
         out = BytesIO(); Image.new('RGB', (40, 40), 'red').save(out, format='PNG')
         image = news_image_codec.make_thumbnail(out.getvalue())
-        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12,
+        await owner_drafts.create(self.db, ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        await owner_drafts.process_new(self.db, ADMIN_ID, 12,
             AsyncMock(return_value={'summary': SOURCE, 'media': {'kind':'photo', 'url':'https://cdn4.telesco.pe/file/x'}}),
             AsyncMock(return_value=DRAFT), AsyncMock(return_value=image),
             AsyncMock(return_value={'description':'На картинке красный квадрат.', 'regions': [[100, 100, 900, 900]]}))
-        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        item = await owner_drafts.get(self.db, ADMIN_ID, 12)
         self.message.from_user = self.user
         self.message.panel_mode = True
         await news_owner_drafts.show(self.message, 12, item=item)
@@ -165,12 +166,12 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         from news_prototype.news_image_codec import make_thumbnail
         out = BytesIO(); Image.new('RGB', (40, 40), 'red').save(out, format='PNG')
         image = make_thumbnail(out.getvalue())
-        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12,
+        await owner_drafts.create(self.db, ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        await owner_drafts.process_new(self.db, ADMIN_ID, 12,
             AsyncMock(return_value={'summary': SOURCE, 'media': {'kind': 'photo', 'url': 'https://cdn4.telesco.pe/file/x'}}),
             AsyncMock(return_value=DRAFT), AsyncMock(return_value=image),
             AsyncMock(return_value={'description': 'Тест', 'regions': [[100, 100, 900, 900]]}))
-        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        item = await owner_drafts.get(self.db, ADMIN_ID, 12)
         self.message.from_user = self.user; self.message.panel_mode = True
         await news_owner_drafts.show(self.message, 12, item=item, for_program=True)
         media = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
@@ -181,14 +182,14 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         await self.action(focus)
         confirm = await self.db.owner_panel_confirmations.find_one({'action': 'nofocus'})
         self.assertTrue(confirm['data']['for_program'])
-        self.assertTrue((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_regions'))
+        self.assertTrue((await owner_drafts.get(self.db, ADMIN_ID, 12))['script'].get('image_regions'))
         self.callback.data = 'owner_tools:run:' + confirm['_id']
         self.message.answer.reset_mock()
         await tools.action(self.callback, self.state, None)
         self.assertEqual(self.message.answer.await_count, 1)
         self.assertIn('Автоматические области убраны', self.message.answer.await_args.args[0])
         self.assertTrue(any(b.callback_data == 'newsact:choose' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
-        updated = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        updated = await owner_drafts.get(self.db, ADMIN_ID, 12)
         self.assertNotIn('image_regions', updated['script'])
         self.assertTrue(updated['script']['image_b64'])
         media = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row if b.text == '🖼 Проверить картинку')
@@ -196,22 +197,22 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         remove = next(b.callback_data for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row if b.text == '🖼 Убрать картинку')
         await self.action(remove)
         confirm = await self.db.owner_panel_confirmations.find_one({'action': 'noimage'})
-        self.assertTrue((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_b64'))
+        self.assertTrue((await owner_drafts.get(self.db, ADMIN_ID, 12))['script'].get('image_b64'))
         self.callback.data = 'owner_tools:run:' + confirm['_id']
         self.message.answer.reset_mock()
         await tools.action(self.callback, self.state, None)
         self.assertEqual(self.message.answer.await_count, 1)
         self.assertIn('Изображение убрано', self.message.answer.await_args.args[0])
-        self.assertFalse((await owner_drafts.get(self.db, news.ADMIN_ID, 12))['script'].get('image_b64'))
+        self.assertFalse((await owner_drafts.get(self.db, ADMIN_ID, 12))['script'].get('image_b64'))
         self.assertTrue(any(b.callback_data == 'newsact:choose' for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row))
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
 
     async def test_expired_and_foreign_media_card_are_rejected(self):
         item = await self.ready(12)
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         doc = await self.db.owner_news_cards.find_one({})
         media = 'newsact:media:' + doc['_id']
-        self.callback.from_user = SimpleNamespace(id=news.ADMIN_ID + 1)
+        self.callback.from_user = SimpleNamespace(id=ADMIN_ID + 1)
         await self.action(media)
         self.message.answer_photo.assert_not_awaited()
         self.callback.from_user = self.user
@@ -262,7 +263,7 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         item['image_analysis'] = 'analyzed'
         item['image_description'] = '🦔' * 2500
         with patch('news_prototype.news_image_codec.decode_thumbnail', return_value=b'image'):
-            await news_owner_drafts.show_image_details(self.message, news.ADMIN_ID, item)
+            await news_owner_drafts.show_image_details(self.message, ADMIN_ID, item)
         texts = [c.args[0] for c in self.message.answer.await_args_list]
         self.assertGreater(len(texts), 1)
         self.assertTrue(all(len(t.encode('utf-16-le')) // 2 <= 4096 for t in texts))
@@ -284,14 +285,14 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
             await tools.action(self.callback, self.state, None)
             await tools.action(self.callback, self.state, None)
             show.assert_awaited_once()
-        program = await owner_program.get(self.db, news.ADMIN_ID, 321)
+        program = await owner_program.get(self.db, ADMIN_ID, 321)
         self.assertEqual(program['stage'], 'ready_for_review')
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 0)
 
     async def test_selection_includes_only_confirmed_delivered_draft(self):
         await self.ready(10)
         item = await self.ready(11)
-        await owner_drafts.approve(self.db, news.ADMIN_ID, 11, item['revision'])
+        await owner_drafts.approve(self.db, ADMIN_ID, 11, item['revision'])
         await self.action('newsact:choose')
         session = await self.db.owner_news_selections.find_one({'stage': 'open'})
         self.assertEqual([entry['number'] for entry in session['items']], [10])
@@ -310,7 +311,7 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         self.callback.data = 'owner_tools:run:' + conf['_id']
         with patch.object(news_owner_drafts, 'show_program', AsyncMock()):
             await tools.action(self.callback, self.state, None)
-        self.assertEqual(len((await owner_program.get(self.db, news.ADMIN_ID, 321))['stories']), 2)
+        self.assertEqual(len((await owner_program.get(self.db, ADMIN_ID, 321))['stories']), 2)
         self.assertEqual(await self.db.news_owner_trial_jobs.count_documents({}), 1)
 
     async def test_changed_draft_or_expired_selection_cannot_build(self):
@@ -347,13 +348,13 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         from news_prototype import news_image_codec
         from io import BytesIO
         from PIL import Image
-        await owner_drafts.create(self.db, news.ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
+        await owner_drafts.create(self.db, ADMIN_ID, 12, 'https://t.me/ExampleNews/12', '')
         article = {'summary': SOURCE, 'media': {'url': 'https://cdn4.telesco.pe/file/x', 'kind': 'photo'}}
-        await owner_drafts.process_new(self.db, news.ADMIN_ID, 12, AsyncMock(return_value=article),
+        await owner_drafts.process_new(self.db, ADMIN_ID, 12, AsyncMock(return_value=article),
                                        AsyncMock(return_value=DRAFT),
                                        AsyncMock(side_effect=fetch_mod.ArticleError('Изображение недоступно')))
-        item = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        item = await owner_drafts.get(self.db, ADMIN_ID, 12)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         buttons = [b for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
         retry = next(b.callback_data for b in buttons if 'загрузку картинки' in b.text)
         data = BytesIO(); Image.new('RGB', (160, 90), 'blue').save(data, format='JPEG')
@@ -361,20 +362,20 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(news_image_fetch, 'fetch_thumbnail', AsyncMock(return_value=thumbnail)), \
              patch.object(news_owner_drafts, 'analyze_image', AsyncMock(return_value={'description': 'мем'})):
             await self.action(retry)
-        fresh = await owner_drafts.get(self.db, news.ADMIN_ID, 12)
+        fresh = await owner_drafts.get(self.db, ADMIN_ID, 12)
         self.assertIn('image_b64', fresh['script'])
         self.assertEqual(fresh['stage'], 'draft_ready')
         texts = '\n'.join(c.args[0] for c in self.message.answer.await_args_list if c.args)
         self.assertIn('Картинка загружена заново', texts)
         # With the picture attached the button is gone.
-        await news.card(self.message, news.ADMIN_ID, 'draft', fresh)
+        await news.card(self.message, ADMIN_ID, 'draft', fresh)
         labels = [b.text for row in self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard for b in row]
         self.assertFalse(any('загрузку картинки' in label for label in labels))
         self.assertTrue(any('Проверить картинку' in label for label in labels))
 
     async def test_confirmation_uses_captured_approval_revision_once(self):
         item = await self.ready(12)
-        await news.card(self.message, news.ADMIN_ID, 'draft', item)
+        await news.card(self.message, ADMIN_ID, 'draft', item)
         markup = self.message.answer.await_args.kwargs['reply_markup']
         approve = next(b.callback_data for row in markup.inline_keyboard for b in row if b.text.startswith('🎬'))
         await self.action(approve)
@@ -388,9 +389,9 @@ class NewsActionsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_program_page_rejects_invalid_or_stale_card(self):
         first = await self.ready(10); await self.ready(11)
-        await owner_program.create(self.db, news.ADMIN_ID, 300, [10,11])
-        program = await owner_program.get(self.db, news.ADMIN_ID, 300)
-        await news.card(self.message, news.ADMIN_ID, 'program', program)
+        await owner_program.create(self.db, ADMIN_ID, 300, [10,11])
+        program = await owner_program.get(self.db, ADMIN_ID, 300)
+        await news.card(self.message, ADMIN_ID, 'program', program)
         markup = self.message.answer.await_args.kwargs['reply_markup']
         approve = markup.inline_keyboard[0][0].callback_data
         await self.db.news_owner_programs.update_one({'_id': program['_id']}, {'$set': {'revision':'e'*64}})
@@ -410,13 +411,13 @@ from aiogram.methods import SendMessage
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_news_actions, owner_tools_panel, news_owner_panel, news_owner_drafts, alc_build, alc_intro
+from handlers import owner_news_actions, owner_tools_panel, news_owner_panel, news_owner_drafts
 from news_prototype import owner_drafts, owner_trial
 from tests.test_owner_drafts import DRAFT, SOURCE
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN')
     sent = []
     async def request(bot_arg, method, **kwargs):
@@ -425,7 +426,6 @@ async def run():
     dp = configure_dispatcher()
     with patch.object(owner_news_actions, 'db', fake), patch.object(owner_tools_panel, 'db', fake), \
          patch.object(news_owner_panel, 'db', fake), patch.object(news_owner_drafts, 'db', fake), \
-         patch.object(alc_build, 'db', fake), patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         for n in (10, 11):

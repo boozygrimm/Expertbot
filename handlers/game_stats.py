@@ -1,12 +1,13 @@
-import asyncio
+import logging
 from aiogram import Router, types
 from aiogram.filters import Command
 from database import db
 from handlers.pole_chudes import delete_after_delay 
-import re
-from config import get_msk_now
+from config import ADMIN_ID, get_msk_now
+from background import spawn
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 @router.message(Command("topgame", "топигр", "очки"))
 async def show_global_top(message: types.Message):
@@ -26,6 +27,7 @@ async def show_global_top(message: types.Message):
             {"$limit": 15} 
         ]
         
+        # motor отдаёт курсор синхронно; сначала берём его, потом уже ждём.
         cursor = db.economy.aggregate(pipeline)
         top_players = await cursor.to_list(length=15)
         
@@ -36,7 +38,7 @@ async def show_global_top(message: types.Message):
                 "(Напиши: `/img запрос` или *«Экс, нарисуй...»*)", 
                 parse_mode="Markdown"
             )
-            asyncio.create_task(delete_after_delay(msg, 60))
+            spawn(delete_after_delay(msg, 60))
             return
 
         text = "🏆 **РЕЙТИНГ ЧАТА (ВСЕ ИГРЫ)** 🏆\n\n"
@@ -54,16 +56,15 @@ async def show_global_top(message: types.Message):
         text += "Напиши: `/img запрос` или *«Экс, нарисуй...»*"
         
         await msg.edit_text(text, parse_mode="Markdown")
-        asyncio.create_task(delete_after_delay(msg, 180))
-        asyncio.create_task(delete_after_delay(message, 180))
+        spawn(delete_after_delay(msg, 180))
+        spawn(delete_after_delay(message, 180))
         
     except Exception as e:
+        logger.warning('Не удалось посчитать рейтинг чата %s: %s', chat_id, e)
         await msg.edit_text("❌ Ошибка при подсчете казны.")
 
 @router.message(Command("промокод"))
 async def admin_promo_code(message: types.Message):
-    ADMIN_ID = 980561369 
-    
     if message.from_user.id != ADMIN_ID:
         return await message.answer("❌ Эта команда доступна только Создателю бота.")
 

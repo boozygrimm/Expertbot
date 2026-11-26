@@ -83,7 +83,7 @@ async def test_status_empty_and_database_failure_and_unauthorized(ctx):
 
 @pytest.mark.asyncio
 async def test_close_only_owner_and_navigation_screens(ctx):
-    for route in ('group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help', 'tools'):
+    for route in ('group_menu', 'media', 'help', 'tools'):
         _, markup = panel.section_content(route)
         assert 'owner_panel:close' in callbacks(markup)
         assert any(k.startswith('owner_panel:') and k not in ('owner_panel:close',) for k in callbacks(markup) if k)

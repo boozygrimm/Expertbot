@@ -328,3 +328,42 @@ async def test_button_and_automatic_editor_share_lock():
     assert result['status'] == 'busy' and result['ready'] == 0
     prepare.assert_not_awaited()
     assert await general_auto.usage(db) == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_can_be_stopped_without_leaving_jobs_running():
+    """Регресс: main.py не гасил планировщик, и джобы жили поверх закрытия."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    scheduler = AsyncIOScheduler()
+    async def nothing_to_do():
+        return None
+
+    scheduler.add_job(nothing_to_do, 'interval', minutes=30)
+    scheduler.start()
+    assert scheduler.running
+    assert scheduler.get_jobs(), 'без джобов проверка ничего не доказывает'
+    # shutdown() у AsyncIOScheduler только ставит остановку в очередь, поэтому
+    # проверяем что состояние реально сменилось, а не что вызов сделан.
+    from app_setup import stop_scheduler
+    await stop_scheduler(scheduler)
+    assert not scheduler.running
+
+
+@pytest.mark.asyncio
+async def test_plain_async_shutdown_does_not_stop_the_scheduler_by_itself():
+    """Документируем причину обёртки: голый shutdown() только ставит остановку в очередь."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app_setup import stop_scheduler
+    scheduler = AsyncIOScheduler()
+
+    async def nothing_to_do():
+        return None
+
+    scheduler.add_job(nothing_to_do, 'interval', minutes=30)
+    scheduler.start()
+    scheduler.shutdown(wait=False)
+    assert scheduler.running, 'это поведение apscheduler, а не наша ошибка'
+    # Повторный shutdown() поднял бы SchedulerNotRunningError, поэтому
+    # обёртка обязана уметь дождаться уже поставленной остановки.
+    await stop_scheduler(scheduler)
+    assert not scheduler.running

@@ -1,5 +1,4 @@
 import re
-import asyncio
 import logging
 from aiogram import Router, types, F
 from aiogram.filters import Command
@@ -12,6 +11,7 @@ from database import db
 from ai_logic import get_daily_summary
 from config import ADMIN_ID, get_msk_now
 from handlers.admin_panel import is_feature_enabled
+from background import spawn
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -288,7 +288,7 @@ async def cmd_stop_daily_group(message: types.Message, bot):
     )
 
     if result.modified_count > 0:
-        await message.answer(f"⏸ Ежедневный отчет для этого чата отключен.", parse_mode="Markdown")
+        await message.answer("⏸ Ежедневный отчет для этого чата отключен.", parse_mode="Markdown")
     else:
         await message.answer("⚠️ Для этого чата нет активных отчетов.")
 
@@ -309,7 +309,7 @@ async def check_all_chats(bot, now):
         if chat_id:
             if not await is_feature_enabled(chat_id, "daily_reports"):
                 continue
-            asyncio.create_task(run_specific_daily_job(bot, chat_id))
+            spawn(run_specific_daily_job(bot, chat_id))
 
 async def run_specific_daily_job(bot, chat_id):
     logger.info(f"Запускаю расписание ежедневного отчета для {chat_id}!")

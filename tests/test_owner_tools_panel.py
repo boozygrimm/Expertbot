@@ -23,8 +23,9 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
     async def test_buttons_and_access(self):
         with patch.object(owner_control_panel, 'db', SimpleNamespace(db=self.db, settings=self.db.settings)):
             _, markup = await owner_control_panel.home_content()
-            self.assertIn('owner_panel:alchemy', [b.callback_data for row in markup.inline_keyboard for b in row])
-        self.cb.data = 'owner_tools:regen'
+            callbacks = [b.callback_data for row in markup.inline_keyboard for b in row]
+            self.assertTrue(callbacks)
+        self.cb.data = 'owner_tools:image_probe'
         self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID + 1)
         await tools.action(self.cb, self.state, None)
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
@@ -32,27 +33,6 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
         self.message.chat.type = 'group'
         await tools.action(self.cb, self.state, None)
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
-
-    async def test_confirmation_is_single_use_and_cancel(self):
-        from handlers import alc_quests
-        self.cb.data = 'owner_tools:regen'
-        await tools.action(self.cb, self.state, None)
-        row = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0]
-        token_data = row[0].callback_data
-        self.cb.data = token_data
-        with patch.object(alc_quests, 'admin_regen_quests', AsyncMock()) as regen:
-            await tools.action(self.cb, self.state, None)
-            await tools.action(self.cb, self.state, None)
-            regen.assert_awaited_once()
-        self.cb.data = 'owner_tools:regen'
-        await tools.action(self.cb, self.state, None)
-        markup = self.message.answer.await_args.kwargs['reply_markup']
-        self.cb.data = markup.inline_keyboard[1][0].callback_data
-        await tools.action(self.cb, self.state, None)
-        self.cb.data = markup.inline_keyboard[0][0].callback_data
-        with patch.object(alc_quests, 'admin_regen_quests', AsyncMock()) as regen:
-            await tools.action(self.cb, self.state, None)
-            regen.assert_not_awaited()
 
     async def test_prepare_input_validation_and_dispatch(self):
         from handlers import news_owner_drafts
@@ -67,19 +47,6 @@ class OwnerToolsTests(unittest.IsolatedAsyncioTestCase):
             prepare.assert_awaited_once()
             self.assertEqual(prepare.await_args.args[0].text, '/news_prepare https://t.me/example/123')
             self.state.clear.assert_awaited_once()
-
-    async def test_reset_requires_existing_player_and_confirmation(self):
-        self.message.from_user = self.user
-        self.message.text = '42'
-        self.state.get_data.return_value = {'action':'reset'}
-        await tools.receive_input(self.message, self.state)
-        self.state.clear.assert_not_awaited()
-        await self.db.alchemy_players.insert_one({'user_id': 42})
-        await tools.receive_input(self.message, self.state)
-        self.state.clear.assert_awaited_once()
-        record = await self.db.owner_panel_confirmations.find_one({})
-        self.assertEqual(record['data']['player_id'], 42)
-        self.assertEqual(await self.db.alchemy_players.count_documents({}), 1)
 
     async def test_cron_rejects_other_users_and_bad_group(self):
         self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID+1)
@@ -105,11 +72,11 @@ from aiogram.types import Update
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_tools_panel as tools, owner_control_panel, news_owner_drafts, alc_build, alc_intro, logger
+from handlers import owner_tools_panel as tools, owner_control_panel, news_owner_drafts, logger
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players, messages=database.messages)
+    fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages)
     bot = Bot('123456:TESTTOKEN')
     sent = []
     async def request(bot_arg, method, **kwargs):
@@ -117,7 +84,6 @@ async def run():
         return True
     dp = configure_dispatcher()
     with patch.object(tools, 'db', fake), patch.object(owner_control_panel, 'db', fake), patch.object(logger, 'db', fake), \
-         patch.object(alc_build, 'db', fake), patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
          patch.object(tools.owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(news_owner_drafts, 'prepare', AsyncMock()) as prepare, \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
@@ -175,29 +141,6 @@ asyncio.run(run())
         self.state.clear.assert_not_awaited()
         self.assertEqual(await self.db.owner_panel_confirmations.count_documents({}), 0)
 
-    async def test_clear_and_pack_require_confirmation(self):
-        from handlers import alc_core
-        self.message.from_user = self.user
-        self.message.text = '42'
-        await self.db.alchemy_players.insert_one({'user_id':42, 'user_name':'Alice', 'inventory': {'w':10}})
-        self.state.get_data.return_value = {'action':'clear'}
-        await tools.receive_input(self.message, self.state)
-        self.assertEqual((await self.db.alchemy_players.find_one({'user_id':42}))['inventory'], {'w':10})
-        conf = await self.db.owner_panel_confirmations.find_one({})
-        self.cb.data = 'owner_tools:run:' + conf['_id']
-        with patch.object(alc_core, 'db', SimpleNamespace(alchemy_players=self.db.alchemy_players)):
-            await tools.action(self.cb, self.state, None)
-        self.assertEqual((await self.db.alchemy_players.find_one({'user_id':42}))['inventory'], {})
-        self.state.get_data.return_value = {'action':'pack','size':'m'}
-        await tools.receive_input(self.message, self.state)
-        conf = await self.db.owner_panel_confirmations.find_one({'action':'pack'})
-        self.cb.data = 'owner_tools:run:' + conf['_id']
-        with patch.object(alc_core, 'admin_promo', AsyncMock()) as promo:
-            await tools.action(self.cb, self.state, None)
-            args = promo.await_args.args
-            self.assertEqual(args[0].reply_to_message.from_user.id, 42)
-            self.assertEqual(args[1].args, 'm')
-
     async def test_all_cron_callbacks_and_fsm_reject_non_owner(self):
         self.cb.from_user = SimpleNamespace(id=tools.ADMIN_ID + 1)
         self.cb.data = 'c_set:-123'
@@ -231,23 +174,6 @@ asyncio.run(run())
             await tools.action(self.cb, self.state, None)
         self.state.update_data.assert_not_awaited()
 
-    async def test_profiles_button_selects_exact_player_with_confirmation(self):
-        await self.db.alchemy_players.insert_one({'user_id':42, 'user_name':'Alice', 'inventory': {'w':5}})
-        self.cb.data = 'owner_tools:clear'
-        await tools.action(self.cb, self.state, None)
-        buttons = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard
-        data = next(b.callback_data for row in buttons for b in row if 'Alice' in b.text)
-        self.cb.data = data
-        await tools.action(self.cb, self.state, None)
-        conf = await self.db.owner_panel_confirmations.find_one({})
-        self.assertEqual((conf['action'], conf['data']['player_id']), ('clear', 42))
-        self.assertEqual((await self.db.alchemy_players.find_one({'user_id':42}))['inventory'], {'w':5})
-        self.cb.data = 'owner_tools:profile:reset:42'
-        await tools.action(self.cb, self.state, None)
-        conf = await self.db.owner_panel_confirmations.find_one({'action':'reset'})
-        self.assertEqual(conf['data']['player_id'], 42)
-        self.assertEqual(await self.db.alchemy_players.count_documents({}), 1)
-
     async def test_image_generation_prompt_and_explicit_confirmation(self):
         from handlers import image_gen
         self.message.from_user = self.user
@@ -266,12 +192,11 @@ asyncio.run(run())
             self.assertEqual(draw.await_args.args[0].chat.id, tools.ADMIN_ID)
             self.assertEqual(draw.await_args.args[0].from_user.id, tools.ADMIN_ID)
 
-    async def test_owner_can_open_base_and_help_via_buttons(self):
-        from handlers import alc_base
-        self.cb.data = 'owner_tools:base'
-        with patch.object(alc_base, 'cmd_base', AsyncMock()) as base:
-            await tools.action(self.cb, self.state, None)
-            self.assertEqual(base.await_args.args[0].from_user.id, tools.ADMIN_ID)
+    async def test_owner_can_open_help_and_unknown_callbacks_do_nothing(self):
+        self.cb.data = 'owner_tools:no_such_screen'
+        await tools.action(self.cb, self.state, None)
+        self.message.answer.assert_not_awaited()
+        self.assertTrue(self.cb.answer.await_args.kwargs['show_alert'])
         self.cb.data = 'owner_tools:help'
         await tools.action(self.cb, self.state, None)
         from handlers.ex_logic import HELP_TEXT
@@ -321,38 +246,6 @@ asyncio.run(run())
         await tools.action(self.cb, self.state, None)
         row = await self.db.economy.find_one({})
         self.assertEqual((row['chat_id'], row['user_id'], row['user_name'], row['score']), (-123,88,'Новичок',75))
-
-    async def test_pack_can_create_new_profile_only_after_confirmation(self):
-        from handlers import alc_core
-        self.message.from_user = self.user
-        self.message.text = '88'
-        self.state.get_data.return_value = {'action':'pack', 'size':'s'}
-        await tools.receive_input(self.message, self.state)
-        self.assertEqual(self.state.update_data.await_args.kwargs['action'], 'pack_new_name')
-        self.assertEqual(await self.db.alchemy_players.count_documents({}), 0)
-        self.message.text = 'Новичок'
-        self.state.get_data.return_value = {'action':'pack_new_name', 'player_id':88, 'size':'s'}
-        await tools.receive_input(self.message, self.state)
-        conf = await self.db.owner_panel_confirmations.find_one({'action':'pack'})
-        self.assertTrue(conf['data']['allow_create'])
-        self.cb.data = 'owner_tools:run:' + conf['_id']
-        with patch.object(alc_core, 'admin_promo', AsyncMock()) as promo:
-            await tools.action(self.cb, self.state, None)
-            self.assertEqual(promo.await_args.args[0].reply_to_message.from_user.id, 88)
-            self.assertEqual(promo.await_args.args[0].reply_to_message.from_user.first_name, 'Новичок')
-
-    async def test_open_lore_warns_before_legacy_deletion(self):
-        from handlers import alc_heritage
-        await self.db.alchemy_lore.insert_one({'id':'forge_legacy', 'name':'старое наследие'})
-        self.cb.data = 'owner_tools:lore'
-        with patch.object(alc_heritage, 'lore_edit', AsyncMock()) as lore:
-            await tools.action(self.cb, self.state, None)
-            lore.assert_not_awaited()
-            self.assertIn('удалит', self.message.answer.await_args.args[0])
-            conf = await self.db.owner_panel_confirmations.find_one({'action':'lore_open'})
-            self.cb.data = 'owner_tools:run:' + conf['_id']
-            await tools.action(self.cb, self.state, None)
-            lore.assert_awaited_once()
 
     async def test_probe_cancel_closes_confirmation_and_never_runs(self):
         from handlers import image_gen
@@ -470,19 +363,18 @@ from aiogram.types import Update
 from mongomock_motor import AsyncMongoMockClient
 from config import ADMIN_ID
 from app_setup import configure_dispatcher
-from handlers import owner_tools_panel, image_gen, alc_build, alc_intro
+from handlers import owner_tools_panel, image_gen
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN')
     calls = []
     async def request(bot_arg, method, **kwargs):
         calls.append(method)
         return True
     dp = configure_dispatcher()
-    with patch.object(owner_tools_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+    with patch.object(owner_tools_panel, 'db', fake), \
          patch.object(image_gen, 'cmd_image_probe', AsyncMock()) as probe, \
          patch.object(bot.session, 'make_request', AsyncMock(side_effect=request)):
         user = {'id':ADMIN_ID, 'is_bot':False, 'first_name':'Owner'}
@@ -549,10 +441,10 @@ asyncio.run(run())
         from aiogram.fsm.storage.base import StorageKey
         storage = MemoryStorage()
         state = FSMContext(storage, StorageKey(bot_id=1, chat_id=tools.ADMIN_ID, user_id=tools.ADMIN_ID))
-        self.cb.data = 'owner_tools:recipe'
+        self.cb.data = 'owner_tools:search_query'
         await tools.action(self.cb, state, None)
         old_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
-        self.cb.data = 'owner_tools:search_query'
+        self.cb.data = 'owner_tools:draw'
         await tools.action(self.cb, state, None)
         new_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
         before = await state.get_data()
@@ -579,7 +471,7 @@ asyncio.run(run())
 
     async def test_legacy_input_cancel_works_only_for_legacy_state(self):
         self.state.get_state.return_value = tools.OwnerInput.waiting.state
-        self.state.get_data.return_value = {'action':'recipe'}
+        self.state.get_data.return_value = {'action':'search_query'}
         self.cb.data = 'owner_tools:cancel_input'
         await tools.action(self.cb, self.state, None)
         self.state.clear.assert_awaited_once()
@@ -592,7 +484,7 @@ asyncio.run(run())
         from aiogram.fsm.storage.base import StorageKey
         storage = MemoryStorage()
         state = FSMContext(storage, StorageKey(bot_id=1, chat_id=tools.ADMIN_ID, user_id=tools.ADMIN_ID))
-        self.cb.data = 'owner_tools:recipe'
+        self.cb.data = 'owner_tools:search_query'
         await tools.action(self.cb, state, None)
         old_button = self.message.answer.await_args.kwargs['reply_markup'].inline_keyboard[0][0].callback_data
         entered, proceed = asyncio.Event(), asyncio.Event()

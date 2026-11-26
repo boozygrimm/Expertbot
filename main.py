@@ -2,13 +2,14 @@ import asyncio
 import logging
 import os
 
-from app_setup import configure_dispatcher, create_scheduler, set_commands, start_healthcheck_server
+from app_setup import (configure_dispatcher, create_scheduler, set_commands, start_healthcheck_server,
+                       stop_scheduler)
 from bot_instance import bot 
-from handlers.alc_heritage import ensure_default_lore
 from personas import init_personas
 from database import db
 from handlers.bender_clip import process_queued_video, video_queue
 from handlers.response_choice import run_choice_cleanup
+from background import wait_background
 
 async def run_news_idle(queue):
     """Share the existing media queue; runtime settings can change without restart."""
@@ -31,7 +32,6 @@ async def main():
     # Apply the owner-requested political auto-filter before jobs can start.
     from news_prototype.general_auto import migrate_politics_preference
     await migrate_politics_preference(db.db)
-    await ensure_default_lore()
     await init_personas()
     await set_commands(bot)
 
@@ -52,9 +52,20 @@ async def main():
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
+        # Порядок важен: сначала перестаём принимать новую работу, затем
+        # отменяем текущую и дожидаемся фоновых задач, и только потом гасим
+        # HTTP-сервер.
+        try:
+            await stop_scheduler(scheduler)
+        except TimeoutError:
+            logging.warning('Планировщик не остановился за 5 с; выходим')
         queue_task.cancel()
         cleanup_task.cancel()
         await asyncio.gather(queue_task, cleanup_task, return_exceptions=True)
+        try:
+            await wait_background(timeout=10)
+        except TimeoutError:
+            logging.warning('Фоновые задачи не завершились за 10 с; выходим')
         await runner.cleanup()
 
 if __name__ == "__main__":

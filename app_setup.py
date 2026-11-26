@@ -1,23 +1,23 @@
+import asyncio
 import logging
 import os
+import time
 
 from aiohttp import web
 from aiogram import Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.types import BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats, BotCommandScopeChat
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import SchedulerNotRunningError
 
 from bot_commands import ADMIN_PRIVATE_COMMAND_SPECS, GROUP_COMMAND_SPECS, USER_PRIVATE_COMMAND_SPECS, build_bot_commands
 from bot_instance import bot
 from config import ADMIN_ID, MSK, get_msk_now
 from handlers import (
     reports, pole_chudes, ex_logic, music, web_search,
-    admin_cron, admin_panel, bender_clip, response_choice, viselitsa, game_stats, anachronism, image_gen, auth, social_rp, alc_core, alc_base, alc_lab, alc_build, alc_crucible, alc_production, alc_quests, alc_achievements, alc_expeditions, alc_raids, alc_heritage, alc_intro
+    admin_cron, admin_panel, bender_clip, response_choice, viselitsa, game_stats, anachronism, image_gen, auth, social_rp
 )
 from handlers import voice_rec
-from handlers.alc_expeditions import notify_arrived_expeditions, process_expeditions_tick
-from handlers.alc_raids import process_random_fort_events
-from handlers.alc_tasks import check_alchemy_stamina, collect_production_loot, process_barracks_upkeep, process_heritage_income
 from handlers.admin_panel import FeatureAccessMiddleware
 from handlers.auth import AuthMiddleware
 from handlers.ex_logic import HELP_TEXT
@@ -71,21 +71,9 @@ def configure_dispatcher() -> Dispatcher:
     dp.message.register(receive_raid_announcement, RaidAnnouncementInput.description,
                         lambda message: not (message.text or '').startswith('/'))
 
-    # Сначала ставим наш игровой штаб, чтобы он первым проверял команду /start alcbase
-    dp.include_router(alc_base.router)
-    dp.include_router(alc_intro.router)
-    dp.include_router(alc_achievements.router)
-    dp.include_router(alc_heritage.router)
-    dp.include_router(alc_quests.router)
-    dp.include_router(alc_lab.router)
-    dp.include_router(alc_build.router)
-    dp.include_router(alc_expeditions.router)
-    dp.include_router(alc_raids.router)
     dp.include_router(admin_panel.router)
     dp.include_router(auth.router)
     dp.include_router(admin_cron.router)
-    dp.include_router(alc_crucible.router)
-    dp.include_router(alc_production.router)
     dp.include_router(pole_chudes.router)
     dp.include_router(reports.router)
     dp.include_router(music.router)
@@ -99,7 +87,6 @@ def configure_dispatcher() -> Dispatcher:
     dp.include_router(owner_tools_panel.router)
     dp.include_router(voice_rec.router)
     dp.include_router(social_rp.router)
-    dp.include_router(alc_core.router)
 
     # Явный запрос кружка должен перехватываться до общего обработчика Экса.
     # Owner-only handlers are always registered; persistent settings gate their
@@ -227,16 +214,32 @@ async def deliver_owner_news_trial():
         logging.warning('Не удалось передать пробный сюжет: %s', type(exc).__name__)
 
 
+async def stop_scheduler(scheduler: AsyncIOScheduler, timeout: float = 5.0) -> None:
+    """Остановить планировщик по-настоящему, а не «поставить в очередь».
+
+    `AsyncIOScheduler.shutdown()` — это `@run_in_event_loop`: он лишь кладёт
+    остановку в `call_soon_threadsafe` и сразу возвращается. Один вызов в
+    корутине ничего не гасит, поэтому уступаем цикл (обычный `sleep` заблокировал
+    бы и саму остановку) и ждём, пока состояние действительно станет
+    «остановлен» — иначе джобы успевают сработать поверх закрытия.
+    """
+    if not scheduler.running:
+        return
+    try:
+        scheduler.shutdown(wait=False)
+    except SchedulerNotRunningError:
+        # Остановку уже поставили раньше — просто дожидаемся её.
+        pass
+    deadline = time.monotonic() + timeout
+    while scheduler.running and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    if scheduler.running:
+        raise TimeoutError('Планировщик не остановился за отведённое время')
+
+
 def create_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_cron_time, "cron", minute="*")
-    scheduler.add_job(check_alchemy_stamina, "interval", minutes=10)
-    scheduler.add_job(collect_production_loot, "interval", hours=1)
-    scheduler.add_job(process_heritage_income, "cron", hour=3, minute=5, timezone=MSK)
-    scheduler.add_job(process_barracks_upkeep, "cron", hour=3, minute=10, timezone=MSK)
-    scheduler.add_job(process_expeditions_tick, "interval", minutes=1)
-    scheduler.add_job(notify_arrived_expeditions, "interval", minutes=2)
-    scheduler.add_job(process_random_fort_events, "cron", hour="*/2", minute=15)
     # Each stage is opt-in; no news publication or group forwarding is added.
     scheduler.add_job(deliver_owner_news_trial, 'interval', minutes=1, max_instances=1, coalesce=True)
     # Jobs stay registered so the owner can switch collection on without a restart.

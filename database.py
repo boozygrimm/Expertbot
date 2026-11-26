@@ -1,6 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_URI
-import datetime
 import logging
 import math
 
@@ -29,13 +28,6 @@ class Database:
         
         # КОЛЛЕКЦИЯ ДЛЯ ПРОФИЛЕЙ СОЦИАЛЬНОГО РП
         self.profiles = self.db.profiles
-
-        # НОВАЯ КОЛЛЕКЦИЯ ДЛЯ АЛХИМИИ (Глобальные профили)
-        self.alchemy_players = self.db.alchemy_players
-        self.alchemy_lore = self.db.alchemy_lore
-
-        # КОЛЛЕКЦИЯ ДЛЯ КЭША ШПОРЫ
-        self.spora_cache = self.db.spora_cache
         
     async def ensure_message_retention(self):
         """Extend the existing message TTL without rebuilding its index.
@@ -86,10 +78,5 @@ class Database:
         await self.ex_response_choices.create_index("cleanup_at", sparse=True)
         # Индекс для авторизованных чатов
         await self.auth_chats.create_index("chat_id", unique=True)
-        # Индекс для алхимических профилей
-        await self.alchemy_players.create_index("user_id", unique=True)
-        await self.alchemy_lore.create_index("id", unique=True)
-        # Индекс для кэша шпоры
-        await self.spora_cache.create_index("recipe_key", unique=True)
 
 db = Database()

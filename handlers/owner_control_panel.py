@@ -52,7 +52,7 @@ def raid_preview_content(*, owner=True, updates_enabled=True):
             'Эта версия заменяет классический тест во входе /raid_test. '
             'Прогресс классики остаётся отдельно и сюда не переносится.\n'
             'Запуск из своей лички после допуска владельца. Сам пробник на Pages публичный.\n'
-            'Без рабочей игровой базы, серверных наград и переноса прогресса алхимии. '
+            'Без рабочей игровой базы, серверных наград и переноса прогресса. '
             'У каждого свой прогресс: сохранения локальные — забег, классы, настройки, рекорды и достижения. '
             'Данные не переносятся между устройствами и могут отличаться от обычного браузера.\n\n'
             'Скриншоты не блокируем. Выход из игры: «Меню → Закрыть Mini App».\n'
@@ -520,8 +520,8 @@ async def raid_announcement_action(callback: types.CallbackQuery, state: FSMCont
         logger.warning('Не удалось выполнить объявление Рейда: %s', type(exc).__name__)
         try:
             await callback.answer('Действие не завершено. Проверь итог; не повторяй рассылку вслепую.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)
     finally:
         if broadcast_lock:
             _raid_broadcast_lock.release()
@@ -551,7 +551,6 @@ async def home_content():
             'Разделы\n'
             '📰 Новости — сбор, сценарии и выпуски\n'
             '🎬 Видео в чат — отправить своё видео в группу\n'
-            '⚗️ Алхимия — штаб, рецепты и управление игрой\n'
             '👥 Группы — доступ, расписания и очки\n'
             '🎨 Картинки и поиск — общие настройки всех чатов\n\n'
             'Настройки картинок и поиска действуют во всех чатах. '
@@ -564,11 +563,10 @@ async def home_content():
     builder.button(text='🎞 Вестники и выпуски', callback_data='news_panel:editions')
     builder.button(text='🎬 Видео в чат', callback_data='ovideo:open')
     builder.button(text='📊 Статус', callback_data='owner_panel:status')
-    builder.button(text='⚗️ Алхимия', callback_data='owner_panel:alchemy')
     builder.button(text='👥 Группы', callback_data='owner_panel:group_menu')
     builder.button(text='🎨 Картинки и поиск', callback_data='owner_panel:media')
     builder.button(text='❓ Справка', callback_data='owner_panel:help')
-    builder.adjust(1, 2, 2, 2, 2, 1)
+    builder.adjust(1, 2, 2, 2, 2)
     builder.row(types.InlineKeyboardButton(text='⚔️ Рейд · тест', callback_data='owner_panel:raid_test'))
     add_nav(builder, refresh='owner_panel:home')
     return text, builder.as_markup()
@@ -582,25 +580,6 @@ def section_content(section):
             ('⏱ Расписания отчётов', 'owner_tools:reports'),
             ('🏅 Очки игрока в группе', 'owner_tools:points'),
         ], 'owner_panel:home'),
-        'alchemy': ('⚗️ Алхимия\nПульт › Алхимия', 'Штаб, справочники и управление игрой.', [
-            ('🏕 Штаб алхимии', 'owner_tools:base'),
-            ('📚 Рецепты и справка', 'owner_panel:alchemy_ref'),
-            ('🛠 Управление алхимией', 'owner_panel:alchemy_admin'),
-        ], 'owner_panel:home'),
-        'alchemy_ref': ('📚 Рецепты и справка\nПульт › Алхимия › Рецепты и справка', '', [
-            ('📖 Все рецепты', 'owner_tools:recipes'),
-            ('🔎 Найти рецепт', 'owner_tools:recipe'),
-            ('📜 Справка по наследиям', 'owner_tools:lorehelp'),
-        ], 'owner_panel:alchemy'),
-        'alchemy_admin': ('🛠 Управление алхимией\nПульт › Алхимия › Управление',
-                          'Проверь действие перед запуском: некоторые изменения необратимы.', [
-            ('✏️ Редактор наследий', 'owner_tools:lore'),
-            ('🔁 Перезапустить квесты', 'owner_tools:regen'),
-            ('🌱 Обновить начальные наследия', 'owner_tools:seed'),
-            ('🎁 Выдать промопак игроку', 'owner_tools:pack'),
-            ('🧹 Очистить инвентарь игрока', 'owner_tools:clear'),
-            ('🗑 Удалить профиль алхимии', 'owner_tools:reset'),
-        ], 'owner_panel:alchemy'),
         'media': ('🎨 Картинки и поиск\nПульт › Картинки и поиск', 'Настройки действуют во всех чатах.', [
             ('🖌 Рисование', 'owner_panel:images'),
             ('🌐 Картинки в поиске', 'owner_panel:search'),
@@ -614,7 +593,6 @@ def section_content(section):
         'tools': ('🧰 Инструменты\nПульт › Инструменты', 'Выбери раздел.', [
             ('🎬 Видео в чат', 'ovideo:open'),
             ('👥 Группы', 'owner_panel:group_menu'),
-            ('⚗️ Алхимия', 'owner_panel:alchemy'),
         ], 'owner_panel:home'),
     }
     head, lead, actions, back = menus[section]
@@ -901,7 +879,7 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
         return
     action = (callback.data or '').partition(':')[2]
     if state and action in ('home', 'news', 'close', 'tools', 'images', 'search', 'groups',
-                            'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help',
+                            'group_menu', 'media', 'help',
                             'commands', 'worker', 'status', 'raid_test'):
         # Leaving a section must also release an unfinished text input, or the
         # next non-command message would be swallowed by that old form.
@@ -910,8 +888,8 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             if get_data:
                 try:
                     await get_data()
-                except Exception:
-                    pass
+                except Exception as refresh_error:
+                    logger.debug('Не удалось обновить данные экрана: %s', type(refresh_error).__name__)
             await state.clear()
     try:
         if action == 'close':
@@ -946,7 +924,7 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
             text, markup = await status_content()
         elif action == 'worker':
             text, markup = await worker_content()
-        elif action in ('tools', 'group_menu', 'alchemy', 'alchemy_ref', 'alchemy_admin', 'media', 'help'):
+        elif action in ('tools', 'group_menu', 'media', 'help'):
             text, markup = section_content(action)
         elif action == 'commands':
             text, markup = commands_content()
@@ -969,5 +947,5 @@ async def control_action(callback: types.CallbackQuery, state: FSMContext = None
         logger.warning('Не удалось выполнить действие пульта: %s', type(exc).__name__)
         try:
             await callback.answer('Не удалось выполнить действие. Открой пульт заново.', show_alert=True)
-        except Exception:
-            pass
+        except Exception as answer_error:
+            logger.debug('Не удалось показать предупреждение: %s', type(answer_error).__name__)

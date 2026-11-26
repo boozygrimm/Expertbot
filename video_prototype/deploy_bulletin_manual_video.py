@@ -307,8 +307,8 @@ def deploy(stage: Path):
                     print('Воркер обновлён: прежние возможности и ручная загрузка видео подтверждены.', flush=True)
                     print('Рендер и публикация не запускались.', flush=True)
                     return
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f'Проверка health не удалась, повтор: {type(exc).__name__}', flush=True)
             time.sleep(1)
         raise SafetyError('Новый health не подтвердился')
     except Exception:

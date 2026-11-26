@@ -1,6 +1,5 @@
 import io
 import asyncio
-import aiohttp
 import logging
 import os
 import random
@@ -14,7 +13,7 @@ from ai_image_prompt import (
 )
 from ai_music_query import normalize_music_query as _normalize_music_query
 from ai_summaries import collect_chunk_summaries, split_text_into_chunks
-from config import GEMINI_KEYS, GEMINI_GAME_KEY, GROQ_KEYS, get_msk_now
+from config import GEMINI_KEYS, GEMINI_GAME_KEY, get_msk_now
 from models import (
     GEMINI_CHAT_MODEL,
     GROQ_IMAGE_PROMPT_MODEL,
@@ -23,9 +22,7 @@ from models import (
     OPENROUTER_VISION_MODEL,
 )
 from ai_providers import (
-    OPENROUTER_KEYS,
     fire_gemini_key,
-    fire_groq_key,
     is_gemini_alive,
     make_rest_request as _make_rest_request,
     trip_gemini_breaker,

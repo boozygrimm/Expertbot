@@ -1,0 +1,72 @@
+name: Проверки
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: Python-тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+
+      - name: Установить зависимости
+        run: python -m pip install --upgrade pip -r requirements.txt -r requirements-test.txt
+
+      - name: Проверить синтаксис и импорты
+        run: python -m compileall -q .
+
+      - name: Прогнать тесты
+        env:
+          MONGO_URI: mongodb://localhost:27017
+          TELEGRAM_TOKEN: 123456:TESTTOKEN
+          PYTHON_DOTENV_DISABLED: '1'
+          PYTHONPATH: .
+        # Имена упавших тестов дублируются в аннотации: полный лог Actions
+        # лежит в отдельном хранилище и не всегда доступен инструментам.
+        run: |
+          set +e
+          python -m pytest tests/ -q > pytest.log 2>&1
+          status=$?
+          tail -25 pytest.log
+          if [ "$status" -ne 0 ]; then
+            grep -E '^(FAILED|ERROR)' pytest.log | head -25 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit "$status"
+
+  miniapp:
+    name: Тесты мини-приложения RAID
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: miniapp_preview/package-lock.json
+
+      - name: Установить зависимости
+        run: npm ci --prefix miniapp_preview
+
+      - name: Проверить, что страницы RAID собраны из текущих исходников
+        run: python miniapp_preview/check_build.py
+
+      - name: Прогнать тесты
+        run: npm test --prefix miniapp_preview

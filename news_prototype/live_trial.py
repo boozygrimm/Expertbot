@@ -17,6 +17,7 @@ import uuid
 
 from news_prototype import article_fetch, editor_client, news_queue, story_editor
 from news_prototype.news_worker_client import NewsWorkerClient, valid_id
+from background import spawn
 
 DB_NAME = 'beleyakov_db'
 QUEUE_NAME = 'bender_video_queue'
@@ -154,7 +155,7 @@ async def drive_once(db, data: dict, client) -> str:
     queue = VideoQueue(shared)
     if not await queue.acquire():
         return 'queue_in_use'
-    heartbeat = asyncio.create_task(queue.heartbeat())
+    heartbeat = spawn(queue.heartbeat())
     try:
         await news_queue.run_idle_once(queue, jobs, client)
         job = await jobs.find_one({'candidate_id': 'trial:' + data['trial_id']})

@@ -300,7 +300,7 @@ from aiogram.methods import SendMessage, SendPhoto
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, news_owner_panel, alc_build, alc_intro
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, news_owner_panel
 from news_prototype import owner_daily, owner_trial, article_fetch
 from tests.test_bulletin_foundation import response
 from tests.test_owner_drafts import SOURCE
@@ -314,7 +314,7 @@ import tempfile, threading
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players)
+    fake = SimpleNamespace(db=database, settings=database.settings)
     bot = Bot('123456:TESTTOKEN'); sent = []; sequence = 500
     async def request(bot_arg, method, **kwargs):
         nonlocal sequence
@@ -328,8 +328,7 @@ async def run():
     dp = configure_dispatcher()
     items = [{'title':f'Новость {n}', 'url':f'https://example.com/{n}'} for n in range(5)]
     with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), \
-         patch.object(news_owner_panel, 'db', fake), patch.object(alc_build, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+         patch.object(news_owner_panel, 'db', fake), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(owner_trial, 'runtime_enabled', AsyncMock(return_value=True)), \
          patch.object(owner_daily, 'recent_items', AsyncMock(return_value=items)), \
@@ -419,13 +418,13 @@ from aiogram.methods import SendMessage
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, logger
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, logger
 from news_prototype import owner_daily, owner_trial, article_fetch
 from tests.test_owner_drafts import SOURCE
 
 async def run():
     database = AsyncMongoMockClient().test
-    fake = SimpleNamespace(db=database, settings=database.settings, alchemy_players=database.alchemy_players, messages=database.messages)
+    fake = SimpleNamespace(db=database, settings=database.settings, messages=database.messages)
     bot = Bot('123456:TESTTOKEN'); sequence = 500
     async def request(bot_arg, method, **kwargs):
         nonlocal sequence
@@ -450,8 +449,7 @@ async def run():
     async def fetch(url):
         if url.endswith('/missing'): raise OSError()
         return {'summary':SOURCE}
-    with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), patch.object(alc_build, 'db', fake), patch.object(logger, 'db', fake), \
-         patch.object(alc_intro, 'get_intro_session', AsyncMock(return_value=None)), \
+    with patch.object(panel, 'db', fake), patch.object(tools, 'db', fake), patch.object(logger, 'db', fake), \
          patch.object(owner_trial, 'drafts_enabled', AsyncMock(return_value=True)), \
          patch.object(owner_daily, 'recent_items', AsyncMock(return_value=[])), \
          patch.object(article_fetch, 'fetch_article', AsyncMock(side_effect=fetch)), \

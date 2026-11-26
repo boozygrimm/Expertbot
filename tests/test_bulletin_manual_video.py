@@ -76,7 +76,7 @@ async def test_upload_endpoint_auth_and_existing_client(tmp_path, source_mp4):
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     base = f'http://127.0.0.1:{server.server_port}'; data = source_mp4.read_bytes(); digest = hashlib.sha256(data).hexdigest()
     try:
-        with patch.object(worker.shutil, 'which', return_value='ffmpeg'), \
+        with patch('shutil.which', return_value='ffmpeg'), \
              patch.object(source, 'inspect', return_value=(2., 320, 180, True)), \
              patch('news_prototype.news_worker_client.validate_url', return_value=base):
             client = NewsWorkerClient(base, 'secret')
@@ -122,7 +122,7 @@ async def test_confirmed_manual_fragment_renders_and_keeps_queue_compatibility(t
     root = tmp_path / 'news-jobs'; root.mkdir(); job = root / 'job'; job.mkdir()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with patch.object(source, 'inspect', return_value=(2., 320, 180, True)), \
-         patch.object(bulletin_pipeline.shutil, 'which', return_value='ffprobe'), \
+         patch('shutil.which', return_value='ffprobe'), \
          patch.object(bulletin_dialogue_audio, 'request_one', return_value=(wav(), 1.0)) as tts:
         media.save(root, digest, blob, ffmpeg=ffmpeg, ffprobe='ffprobe')
         output = bulletin_pipeline.run(script, job/'work', ffmpeg, ['fake'])
@@ -132,7 +132,7 @@ async def test_confirmed_manual_fragment_renders_and_keeps_queue_compatibility(t
     # Missing fragment fails before any TTS.
     (root/'.bulletin-manual-video'/(digest+'.mp4')).unlink()
     job2 = root / 'job2'; job2.mkdir()
-    with patch.object(bulletin_pipeline.shutil, 'which', return_value='ffprobe'), \
+    with patch('shutil.which', return_value='ffprobe'), \
          patch.object(bulletin_dialogue_audio, 'request_one') as tts:
         with pytest.raises((ValueError, OSError)):
             bulletin_pipeline.run(script, job2/'work', ffmpeg, ['fake'])
@@ -224,14 +224,14 @@ from aiogram.methods import SendMessage, SendPhoto
 from mongomock_motor import AsyncMongoMockClient
 from app_setup import configure_dispatcher
 from config import ADMIN_ID
-from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, alc_build, alc_intro, logger
+from handlers import owner_bulletin_panel as panel, owner_tools_panel as tools, logger
 from news_prototype import owner_bulletin, owner_bulletin_sources, owner_trial, news_worker_client
 from tests.test_bulletin_foundation import response
 from tests.test_owner_drafts import SOURCE
 
 async def run():
     db=AsyncMongoMockClient().test
-    fake=SimpleNamespace(db=db, settings=db.settings, alchemy_players=db.alchemy_players, messages=db.messages)
+    fake=SimpleNamespace(db=db, settings=db.settings, messages=db.messages)
     await owner_bulletin_sources.create(db,ADMIN_ID,47,[{'url':'https://t.me/ExampleNews/102','title':'Видео'},
                                                       {'url':'https://example.com/2','title':'Новость'}])
     await owner_bulletin_sources.collect(db,ADMIN_ID,47,AsyncMock(return_value={'summary':SOURCE,
@@ -259,7 +259,6 @@ async def run():
             'from':{'id':123456,'is_bot':True,'first_name':'Bot'},'text':'panel'}}})
         await asyncio.wait_for(dp.feed_update(bot,update),5)
     with patch.object(panel,'db',fake), patch.object(tools,'db',fake), patch.object(logger,'db',fake), \
-         patch.object(alc_build,'db',fake), patch.object(alc_intro,'get_intro_session',AsyncMock(return_value=None)), \
          patch.object(owner_trial,'drafts_enabled',AsyncMock(return_value=True)), \
          patch.object(news_worker_client,'NewsWorkerClient',return_value=client), \
          patch.object(bot,'download',AsyncMock(side_effect=download)), \

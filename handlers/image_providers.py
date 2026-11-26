@@ -120,6 +120,25 @@ def _cloudflare_failure(status, payload=None, *, body_state='parsed'):
     )
 
 
+# Ответ провайдера разбирается только на фиксированную глубину. Глубже —
+# заведомо не описание ошибки, а попытка вымотать парсер и стек.
+_MAX_ERROR_DEPTH = 24
+
+
+def _too_deep(value, limit=_MAX_ERROR_DEPTH) -> bool:
+    """True, если структура вложена глубже limit (обход без рекурсии)."""
+    stack = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(node, dict):
+            stack.extend((item, depth + 1) for item in node.values())
+        elif isinstance(node, list):
+            stack.extend((item, depth + 1) for item in node)
+    return False
+
+
 async def _cloudflare_http_error(response):
     try:
         raw = await _read_bounded(response, MAX_ERROR_BYTES)
@@ -127,9 +146,16 @@ async def _cloudflare_http_error(response):
         return _cloudflare_failure(response.status, body_state='too_large')
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
         return _cloudflare_failure(response.status, body_state='unreadable')
+    if _too_deep(raw):
+        # Свой лимит, а не надежда на RecursionError: у CPython 3.12 другой
+        # порог сканера, и «слишком глубокая» полезная нагрузка разбиралась
+        # бы молча — исход проверки зависел бы от версии интерпретатора.
+        return _cloudflare_failure(response.status, body_state='malformed')
     try:
         payload = json.loads(raw)
     except (ValueError, TypeError, RecursionError):
+        return _cloudflare_failure(response.status, body_state='malformed')
+    if _too_deep(payload):
         return _cloudflare_failure(response.status, body_state='malformed')
     return _cloudflare_failure(response.status, payload)
 
