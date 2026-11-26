@@ -4575,10 +4575,8 @@
     let delivered = false;
     try {
       const feedback = window.Telegram?.WebApp?.HapticFeedback;
-      if ((kind === 'boss' || kind === 'damage') && typeof feedback?.notificationOccurred === 'function') {
-        feedback.notificationOccurred(kind === 'boss' ? 'success' : 'warning'); delivered = true;
-      } else if (typeof feedback?.impactOccurred === 'function') {
-        feedback.impactOccurred(kind === 'kill' ? 'medium' : kind === 'hit' ? 'soft' : 'light'); delivered = true;
+      if (typeof feedback?.impactOccurred === 'function') {
+        feedback.impactOccurred(kind === 'confirmation' ? 'soft' : 'heavy'); delivered = true;
       }
     } catch (ignored) { /* Try the browser API if the host bridge rejects this call. */ }
     if (delivered) return;
@@ -4609,7 +4607,7 @@
       syncControls();
       // Confirm a manual selection synchronously within the user's gesture.
       // This is also a practical capability check for browser Vibration API.
-      if (hapticsMode !== 'off') emitHaptic('hit');
+      if (hapticsMode !== 'off') emitHaptic('confirmation');
     }));
   }
 

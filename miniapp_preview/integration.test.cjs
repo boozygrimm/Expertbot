@@ -4133,10 +4133,10 @@ test('magitech haptics: combat feedback is immediate and off silences it', async
     const enemy = b.raid.makeSkull(false, true, 3); enemy.hp = enemy.maxHp = 20;
     b.raid.state.board[0] = { type: 'skull', skull: enemy };
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']], 'combat feedback fires synchronously');
+    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'heavy']], 'combat feedback fires synchronously');
     radios.find(input => input.value === 'off').click();
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']]);
+    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'heavy']]);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -4157,10 +4157,10 @@ test('magitech haptics: important mode immediately signals kills and bosses but 
     assert.deepEqual(calls, []);
     r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(0, 100, { direct:false });
-    assert.deepEqual(calls, [['impact', 'medium']]);
+    assert.deepEqual(calls, [['impact', 'heavy']]);
     r.state.board[1] = { type:'skull', skull:Object.assign(r.makeSkull(true), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(1, 100, { direct:false });
-    assert.deepEqual(calls, [['impact', 'medium'], ['notification', 'success']]);
+    assert.deepEqual(calls, [['impact', 'heavy'], ['impact', 'heavy']]);
     assert.equal(d.querySelectorAll('.haptics-test, [data-haptic-test]').length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }

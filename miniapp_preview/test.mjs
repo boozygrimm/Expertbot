@@ -6076,9 +6076,8 @@ test('raid haptics setting persists modes and emits combat feedback without a qu
   assert.match(css, /\.affinity-segments \{ display:grid; grid-template-columns:repeat\(5,/);
   assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
   assert.match(js, /HAPTICS_KEY = 'raid\.magitech\.haptics\.v1'/);
-  assert.match(js, /feedback\.notificationOccurred\(kind === 'boss' \? 'success' : 'warning'\)/);
   assert.match(js, /damage >= Math\.max\(3, Math\.ceil\(S\.hero\.maxHp \* \.25\)\)/);
-  assert.match(js, /feedback\.impactOccurred\(kind === 'kill' \? 'medium' : kind === 'hit' \? 'soft' : 'light'\)/);
+  assert.match(js, /feedback\.impactOccurred\(kind === 'confirmation' \? 'soft' : 'heavy'\)/);
   const haptics = js.slice(js.indexOf('  // --- haptics'), js.indexOf('  // --- audio'));
   assert.match(haptics, /if \(kind === 'kill'\) emitHaptic\(boss \? 'boss' : 'kill'\)/);
   assert.doesNotMatch(haptics, /setTimeout|hapticTimer|flushCombatHaptic/);
