@@ -2578,7 +2578,10 @@ test('magitech material SFX: SDK deactivation silences current clips and drops n
     unlock(); [0,1,2].forEach(i => b.raid.tryExtendChain(i)); assert.ok(played.length > 0);
     const playedBeforeDeactivate = played.length;
     stub.fire('deactivated'); assert.ok(paused.length >= 1, 'deactivation pauses and resets the active material clip');
+    assert.equal(b.raid.state.selected.length, 0, 'a pause drops the half-built chain');
+    // Пока приложение в хосте, ввод не принадлежит игре.
     b.raid.tryExtendChain(3); assert.equal(played.length, playedBeforeDeactivate);
+    assert.equal(b.raid.state.selected.length, 0, 'input while paused cannot start a chain');
     stub.fire('activated'); assert.equal(played.length, playedBeforeDeactivate, 'returning to the host is silent, not a replay queue');
     b.raid.tryExtendChain(4); assert.ok(played.length > playedBeforeDeactivate, 'a fresh pick may sound after reactivation');
     assert.equal(orbGameplay(b), before, 'SFX/host lifecycle cannot award resources, move the turn or draw RNG');

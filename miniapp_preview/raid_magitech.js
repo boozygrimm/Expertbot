@@ -2622,6 +2622,9 @@
   }
 
   function tryExtendChain(cellIdx) {
+    // Пока пользователь в хосте (Telegram-пауза), ввод не наш: иначе первое
+    // же нажатие после возврата «доклеивалось» к цепочке, начатой до паузы.
+    if (!audioHostActive) return;
     if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || SAVE_CONFLICT || S.resolving || S.over || S.pendingModal || cellIdx < 0 || cellIdx >= CELL_COUNT) return;
     const chain = S.selected;
     const repeated = chain.indexOf(cellIdx);
@@ -7031,7 +7034,12 @@
       viewport();
       for (const event of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged']) telegramCall(tg, 'onEvent', event, viewport);
       telegramCall(tg, 'onEvent', 'activated', event => { audioHostActive = true; viewport(event); syncIntroMusic(); });
-      telegramCall(tg, 'onEvent', 'deactivated', () => { closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); stopIntroMusic(); closeRetune(false); cancelPointerGesture(); saveRun(); });
+      telegramCall(tg, 'onEvent', 'deactivated', () => {
+        closeGameSettings(false); audioHostActive = false; stopMaterialAudio(); stopIntroMusic(); closeRetune(false);
+        // Уход в хост бросает недостроенную цепочку: возвращение начинается
+        // с чистого выбора, а не с продолжения прежнего.
+        cancelPointerGesture(); if (S && !S.resolving) clearChain(); saveRun();
+      });
       telegramCall(tg.BackButton, 'onClick', telegramBack);
       document.addEventListener('click', syncTelegramChrome);
       // Includes Escape and programmatic reader/editor changes, without timers
@@ -7376,6 +7384,7 @@
     closeRunHistory,
     get historyStatus() { return { ...HISTORY_STATUS }; },
     tryExtendChain,
+    clearChain,
     resolveChain,
     activateSkill,
     setSelectedClassId,
