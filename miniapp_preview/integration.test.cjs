@@ -4117,7 +4117,7 @@ function settingsKey(b, key, extra = {}) {
   return w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
 }
 
-test('magitech haptics: selected mode reaches Telegram feedback on combat events and off cancels pending feedback', async () => {
+test('magitech haptics: combat feedback is immediate and off silences it', async () => {
   const calls = [];
   const b = await openMagitech({ start: false, setup(w) {
     w.Telegram = { WebApp: { HapticFeedback: {
@@ -4133,12 +4133,35 @@ test('magitech haptics: selected mode reaches Telegram feedback on combat events
     const enemy = b.raid.makeSkull(false, true, 3); enemy.hp = enemy.maxHp = 20;
     b.raid.state.board[0] = { type: 'skull', skull: enemy };
     b.raid.hitSkullAt(0, 0, { direct: false });
-    await new Promise(resolve => setTimeout(resolve, 90));
-    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']]);
+    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']], 'combat feedback fires synchronously');
     radios.find(input => input.value === 'off').click();
     b.raid.hitSkullAt(0, 0, { direct: false });
-    await new Promise(resolve => setTimeout(resolve, 90));
     assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']]);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech haptics: important mode immediately signals kills and bosses but not nonlethal hits', async () => {
+  const calls = [];
+  const b = await openMagitech({ start: false, setup(w) {
+    w.Telegram = { WebApp: { HapticFeedback: {
+      impactOccurred(kind) { calls.push(['impact', kind]); },
+      notificationOccurred(kind) { calls.push(['notification', kind]); },
+    } } };
+  } });
+  try {
+    const r = b.raid, d = b.dom.window.document;
+    r.setSelectedClassId('adventurer'); r.newGame(2718);
+    r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:20, maxHp:20, def:0 }) };
+    r.hitSkullAt(0, 1, { direct:false });
+    assert.deepEqual(calls, []);
+    r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
+    r.hitSkullAt(0, 100, { direct:false });
+    assert.deepEqual(calls, [['impact', 'medium']]);
+    r.state.board[1] = { type:'skull', skull:Object.assign(r.makeSkull(true), { hp:1, maxHp:1, def:0 }) };
+    r.hitSkullAt(1, 100, { direct:false });
+    assert.deepEqual(calls, [['impact', 'medium'], ['notification', 'success']]);
+    assert.equal(d.querySelectorAll('.haptics-test, [data-haptic-test]').length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -4155,63 +4178,6 @@ test('magitech haptics: browser fallback receives synchronous confirmation when 
     assert.deepEqual(calls, [12]);
     d.querySelector('[name="haptics-menu"][value="off"]').click();
     assert.deepEqual(calls, [12]);
-    assert.deepEqual(b.errors, []);
-  } finally { b.dom.window.close(); }
-});
-
-test('haptic diagnostics call each Telegram method synchronously even when combat vibration is off', async () => {
-  const calls = [];
-  const b = await openMagitech({ start: false, setup(w) {
-    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value() { calls.push('browser'); } });
-    w.Telegram = { WebApp: { HapticFeedback: {
-      impactOccurred(kind) { calls.push(['impact', kind]); },
-      notificationOccurred(kind) { calls.push(['notification', kind]); },
-    } } };
-  } });
-  try {
-    const d = b.dom.window.document;
-    d.querySelector('[name="haptics-garage"][value="off"]').click();
-    for (const container of d.querySelectorAll('.haptics-test')) {
-      container.querySelector('[data-haptic-test="impact"]').click();
-      container.querySelector('[data-haptic-test="notification"]').click();
-      assert.match(container.querySelector('[role="status"]').textContent, /не может это проверить/);
-    }
-    assert.deepEqual(calls, Array.from({ length: 3 }, () => [['impact', 'medium'], ['notification', 'success']]).flat());
-    assert.ok([...d.querySelectorAll('[data-raid-haptics][value="off"]')].every(radio => radio.checked));
-    assert.deepEqual(b.errors, []);
-  } finally { b.dom.window.close(); }
-});
-
-test('haptic diagnostics report missing and throwing Telegram methods without browser fallback', async () => {
-  const calls = [];
-  const b = await openMagitech({ start: false, setup(w) {
-    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value() { calls.push('browser'); } });
-  } });
-  try {
-    const w = b.dom.window, box = w.document.querySelector('.haptics-test'), status = box.querySelector('[role="status"]');
-    box.querySelector('[data-haptic-test="impact"]').click();
-    assert.match(status.textContent, /недоступен/);
-    w.Telegram = { WebApp: { HapticFeedback: { notificationOccurred() { throw new Error('unsupported'); } } } };
-    box.querySelector('[data-haptic-test="notification"]').click();
-    assert.match(status.textContent, /отклонил запрос/);
-    assert.deepEqual(calls, []);
-    assert.deepEqual(b.errors, []);
-  } finally { b.dom.window.close(); }
-});
-
-test('haptic diagnostics independently test browser vibration and unsupported Telegram versions', async () => {
-  const calls = [];
-  const b = await openMagitech({ start: false, setup(w) {
-    Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value(ms) { calls.push(ms); return true; } });
-    w.Telegram = { WebApp: { isVersionAtLeast: () => false, HapticFeedback: { impactOccurred() { calls.push('telegram'); } } } };
-  } });
-  try {
-    const box = b.dom.window.document.querySelector('.haptics-test'), status = box.querySelector('[role="status"]');
-    box.querySelector('[data-haptic-test="impact"]').click();
-    assert.match(status.textContent, /не поддерживается/);
-    box.querySelector('[data-haptic-test="browser"]').click();
-    assert.deepEqual(calls, [100]);
-    assert.match(status.textContent, /не может это проверить/);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
