@@ -3849,7 +3849,9 @@
     for (const target of skulls) target.damage = primaryChainDamage(target.idx, chain, effective, damage);
     // Fractional elemental sums round ONCE in damageSkull, not per sword.
     // Keep legacy previews unchanged, including their old fractional boundary.
-    const lethals = skulls.filter(target => target.skull.type !== 32 && (ELEMENTAL_COMBAT ? Math.round(target.damage) : target.damage) >= target.skull.hp + target.skull.def);
+    const targetLethal = target => (ELEMENTAL_COMBAT ? Math.round(target.damage) : target.damage) >= target.skull.hp + Math.max(0, target.skull.def || 0);
+    const lethals = skulls.filter(target => target.skull.type !== 32 && targetLethal(target));
+    const phylacteries = skulls.filter(target => target.skull.type === 32 && targetLethal(target));
     const interior = S.runeActive ? interiorCells(chain) : [];
     // Base-resource projection only: no RNG, no menu selection assumptions.
     // Extra tokens, special rewards and new Corrosive spawns are not predicted.
@@ -3891,7 +3893,7 @@
       for (const key of ['xpGained', 'goldGained', 'upGained', 'armorGained', 'healGained']) resources[key] += delta[key];
     }
     return { kind: S.chainType, count: chain.length, effectiveLength: effective.length, damage,
-      swordCount, skulls, lethals, interior, resources, specialRewards, acid, mana };
+      swordCount, skulls, lethals, phylacteries, interior, resources, specialRewards, acid, mana };
   }
 
   function renderChainTip() {
@@ -3903,7 +3905,13 @@
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
-    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
+    if (preview.swordCount || preview.skulls.length) {
+      parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`);
+      const phylacteryCount = preview.phylacteries?.length || 0;
+      const killableCount = preview.skulls.length - phylacteryCount;
+      if (killableCount > 0 || !phylacteryCount) parts.push(`Убито ${preview.lethals.length}/${killableCount}`);
+      if (phylacteryCount > 0) parts.push(phylacteryCount === 1 ? 'Лич → филактерий' : `Лич → филактерий ×${phylacteryCount}`);
+    }
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
     if (res.goldGained) parts.push(`+${res.goldGained} золота`);
@@ -3921,7 +3929,7 @@
 
   function renderSelection() {
     qsa('.cell').forEach(c => c.classList.remove('selected'));
-    qsa('.cell').forEach(c => c.classList.remove('lethal', 'rune-inside', 'rune-protected'));
+    qsa('.cell').forEach(c => c.classList.remove('lethal', 'phylactery-ready', 'rune-inside', 'rune-protected'));
     S.selected.forEach(idx => {
       const cellEl = qs(`.cell[data-idx="${idx}"]`);
       if (cellEl) cellEl.classList.add('selected');
@@ -3932,13 +3940,17 @@
       node.classList.add('rune-inside');
       node.classList.toggle('rune-protected', cell.type === 'skull' && (cell.skull.special || cell.skull.boss));
     }
-    // lethal skulls in the chain: highlight + cross out
+    // lethal skulls in the chain: highlight + cross out; Lich at lethal damage: gold phylactery highlight
     if (S.selected.length >= 3) {
       const p = chainPreview();
       if (p && p.skulls && p.skulls.length > 0) {
         p.lethals.forEach(x => {
           const cellEl = qs(`.cell[data-idx="${x.idx}"]`);
           if (cellEl) cellEl.classList.add('lethal');
+        });
+        (p.phylacteries || []).forEach(x => {
+          const cellEl = qs(`.cell[data-idx="${x.idx}"]`);
+          if (cellEl) cellEl.classList.add('phylactery-ready');
         });
       }
     }

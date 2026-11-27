@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="d868910eeb0e">
+<meta name="raid-build" content="d81d5120cb1f">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1264,7 +1264,7 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
    The socket remains fixed for hit testing; only its identity-keyed orb moves.
    Six material textures are cosmetic, not six new combat statuses. */
 #board { overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 50% 0%,#173938 0%,#0a2024 50%,#081b21 100%); }
-#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.frozen,
+#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.phylactery-ready, #board .cell.frozen,
 #board .cell.burned, #board .cell.cripple-target {
   border: 0 !important; border-radius: 50%; background: transparent;
   box-shadow: none !important; overflow: visible; opacity: 1;
@@ -1480,6 +1480,8 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 #board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
 #board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
 #board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
+#board .cell.phylactery-ready .raid-orb { border-color: #ffe28a; box-shadow: 0 0 14px rgba(244, 198, 72, 0.85), inset 0 0 10px rgba(255, 224, 128, 0.62); }
+.cell.phylactery-ready { border-color: #f4c648; box-shadow: 0 0 18px rgba(244, 198, 72, 0.72), inset 0 0 12px rgba(255, 224, 128, 0.42); z-index: 6; }
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
 .raid-orb.primed .orb-material { opacity: .18; }
@@ -2653,7 +2655,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка d868910eeb0e</p>
+    <p class="build-label">Сборка d81d5120cb1f</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -2839,7 +2841,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка d868910eeb0e</p>
+    <p class="build-label">Сборка d81d5120cb1f</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -2878,16 +2880,17 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка d868910eeb0e</p>
+      <p class="build-label" id="updates-build">Сборка d81d5120cb1f</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="32"><b>Компактная боевая шапка и кнопки в стиле игры.</b> Верхние надписи убраны, слоты умений подняты на их место рядом с круглыми медальонами настроек, параметров и меню — поле 6×6 и нижняя панель помещаются выше и свободнее.</li>
+        <li data-release="33"><b>Подсказка перехода Лича в филактерий.</b> Когда в цепочке мечей набирается достаточно урона по Личу, в строке подсказки теперь пишется «Лич → филактерий», а его клетка подсвечивается золотым.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="32"><b>Компактная боевая шапка и кнопки в стиле игры.</b> Верхние надписи убраны, слоты умений подняты на их место рядом с круглыми медальонами настроек, параметров и меню — поле 6×6 и нижняя панель помещаются выше и свободнее.</li>
           <li data-release="31"><b>Два звука зелий.</b> Открытие бутылки звучит при выборе первой плитки зелья; звон стекла запускается при активации цепочки.</li>
           <li data-release="30"><b>Новые иконки умений.</b> Все 43 умения получили глянцевые овальные медальоны в золотой оправе, а пустой слот — стилизованное гнездо. Эффекты и перезарядка навыков не менялись.</li>
           <li data-release="29"><b>Настройки и тексты боя.</b> Вибрация — трёхпозиционный тумблер в гараже, меню и бою; склонность пилота — пятипозиционный тумблер в карточке меха. В описаниях особых врагов указаны актуальные имена пилотов, а устаревшее «череп» заменено на «враг» там, где речь о противниках.</li>
@@ -3009,7 +3012,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка d868910eeb0e.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка d81d5120cb1f.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -6904,7 +6907,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     for (const target of skulls) target.damage = primaryChainDamage(target.idx, chain, effective, damage);
     // Fractional elemental sums round ONCE in damageSkull, not per sword.
     // Keep legacy previews unchanged, including their old fractional boundary.
-    const lethals = skulls.filter(target => target.skull.type !== 32 && (ELEMENTAL_COMBAT ? Math.round(target.damage) : target.damage) >= target.skull.hp + target.skull.def);
+    const targetLethal = target => (ELEMENTAL_COMBAT ? Math.round(target.damage) : target.damage) >= target.skull.hp + Math.max(0, target.skull.def || 0);
+    const lethals = skulls.filter(target => target.skull.type !== 32 && targetLethal(target));
+    const phylacteries = skulls.filter(target => target.skull.type === 32 && targetLethal(target));
     const interior = S.runeActive ? interiorCells(chain) : [];
     // Base-resource projection only: no RNG, no menu selection assumptions.
     // Extra tokens, special rewards and new Corrosive spawns are not predicted.
@@ -6946,7 +6951,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       for (const key of ['xpGained', 'goldGained', 'upGained', 'armorGained', 'healGained']) resources[key] += delta[key];
     }
     return { kind: S.chainType, count: chain.length, effectiveLength: effective.length, damage,
-      swordCount, skulls, lethals, interior, resources, specialRewards, acid, mana };
+      swordCount, skulls, lethals, phylacteries, interior, resources, specialRewards, acid, mana };
   }
 
   function renderChainTip() {
@@ -6958,7 +6963,13 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
-    if (preview.swordCount || preview.skulls.length) parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`, `Убито ${preview.lethals.length}/${preview.skulls.length}`);
+    if (preview.swordCount || preview.skulls.length) {
+      parts.push(`Урон ${preview.damage}${runPilotAffinity()?.element ? ' (до стихий и склонности)' : ELEMENTAL_COMBAT ? ' (нейтр.)' : ''}`);
+      const phylacteryCount = preview.phylacteries?.length || 0;
+      const killableCount = preview.skulls.length - phylacteryCount;
+      if (killableCount > 0 || !phylacteryCount) parts.push(`Убито ${preview.lethals.length}/${killableCount}`);
+      if (phylacteryCount > 0) parts.push(phylacteryCount === 1 ? 'Лич → филактерий' : `Лич → филактерий ×${phylacteryCount}`);
+    }
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
     if (res.goldGained) parts.push(`+${res.goldGained} золота`);
@@ -6976,7 +6987,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
 
   function renderSelection() {
     qsa('.cell').forEach(c => c.classList.remove('selected'));
-    qsa('.cell').forEach(c => c.classList.remove('lethal', 'rune-inside', 'rune-protected'));
+    qsa('.cell').forEach(c => c.classList.remove('lethal', 'phylactery-ready', 'rune-inside', 'rune-protected'));
     S.selected.forEach(idx => {
       const cellEl = qs(`.cell[data-idx="${idx}"]`);
       if (cellEl) cellEl.classList.add('selected');
@@ -6987,13 +6998,17 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       node.classList.add('rune-inside');
       node.classList.toggle('rune-protected', cell.type === 'skull' && (cell.skull.special || cell.skull.boss));
     }
-    // lethal skulls in the chain: highlight + cross out
+    // lethal skulls in the chain: highlight + cross out; Lich at lethal damage: gold phylactery highlight
     if (S.selected.length >= 3) {
       const p = chainPreview();
       if (p && p.skulls && p.skulls.length > 0) {
         p.lethals.forEach(x => {
           const cellEl = qs(`.cell[data-idx="${x.idx}"]`);
           if (cellEl) cellEl.classList.add('lethal');
+        });
+        (p.phylacteries || []).forEach(x => {
+          const cellEl = qs(`.cell[data-idx="${x.idx}"]`);
+          if (cellEl) cellEl.classList.add('phylactery-ready');
         });
       }
     }
