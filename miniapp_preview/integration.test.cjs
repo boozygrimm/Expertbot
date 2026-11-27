@@ -3025,23 +3025,27 @@ test('magitech elemental built: rounded target lethality is truthful in the sele
 
 // First-entry release notes are UI metadata, never a run/save migration.
 const updatesKey = magitechKey('raid:updatesSeenBuild');
+const updatesReleaseKey = magitechKey('raid:updatesSeenRelease');
 const updateBuild = b => b.dom.window.document.querySelector('meta[name="raid-build"]').content;
+const latestUpdateRelease = b => String(Math.max(...[...b.dom.window.document.querySelectorAll('#updates-modal li[data-release]')].map(n => Number(n.dataset.release))));
 const updateLayer = b => b.dom.window.document.querySelector('#updates-modal');
 const acknowledgeUpdate = b => b.dom.window.document.querySelector('#updates-close').click();
 
 test('magitech update notice: first entry explains this release/history, never starts a run, and acknowledgement suppresses only this build', async () => {
   let b = await openMagitech({ start: false, dismissUpdates: false });
   try {
-    const doc = b.dom.window.document, build = updateBuild(b);
+    const doc = b.dom.window.document, build = updateBuild(b), latest = latestUpdateRelease(b);
     assert.ok(updateLayer(b)?.classList.contains('show'));
     assert.equal(updateLayer(b).hidden, false); assert.equal(updateLayer(b).getAttribute('aria-modal'), 'true');
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(updatesKey), null);
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
-    assert.match(doc.querySelector('#updates-current').textContent, /Склонность пилота.*перед каждым рейдом/s);
-    assert.match(doc.querySelector('#updates-current').textContent, /30%.*20%.*25%/s);
-    assert.match(doc.querySelector('#updates-current').textContent, /уровня 3.*5%/s);
-    assert.match(doc.querySelector('#updates-current').textContent, /не постоянная/);
+    assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
+    assert.match(doc.querySelector('#updates-current').textContent, /Новые иконки умений/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Склонность пилота.*перед каждым рейдом/s);
+    assert.match(doc.querySelector('#updates-history').textContent, /30%.*20%.*25%/s);
+    assert.match(doc.querySelector('#updates-history').textContent, /уровня 3.*5%/s);
+    assert.match(doc.querySelector('#updates-history').textContent, /не постоянная/);
     assert.match(doc.querySelector('#updates-history').textContent, /Выход после поражения.*К выбору меха.*Закрыть Mini App/s);
     assert.match(doc.querySelector('#updates-history').textContent, /Настройки прямо на игровом экране/);
     assert.match(doc.querySelector('#updates-history').textContent, /шестерёнк/);
@@ -3072,14 +3076,52 @@ test('magitech update notice: first entry explains this release/history, never s
     acknowledgeUpdate(b);
     assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
     assert.equal(b.dom.window.localStorage.getItem(updatesKey), build);
+    assert.equal(b.dom.window.localStorage.getItem(updatesReleaseKey), latest);
     const saved = raidStorage(b.dom.window); b.dom.window.close();
     b = await openMagitech({ saved, start: false, dismissUpdates: false });
     assert.equal(updateLayer(b).hidden, true); assert.equal(b.raid.state, null);
     b.dom.window.document.querySelector('#picker-updates').click();
     assert.equal(updateLayer(b).hidden, false, 'the history remains available after acknowledgement');
+    assert.equal(b.dom.window.document.querySelector('#updates-current').hidden, true, 'already-read updates do not repeat above the fold');
+    assert.equal(b.dom.window.document.querySelectorAll('#updates-current li').length, 0);
+    assert.equal(b.dom.window.document.querySelector('#updates-history').open, true);
     acknowledgeUpdate(b);
     assert.equal(b.dom.window.localStorage.getItem(updatesKey), build);
+    assert.equal(b.dom.window.localStorage.getItem(updatesReleaseKey), latest);
     assert.equal(b.raid.state, null); assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech update notice: shows only unread releases since last seen release and suppresses already-read builds', async () => {
+  let b = await openMagitech({ start: false, dismissUpdates: false });
+  const latest = Number(latestUpdateRelease(b));
+  b.dom.window.close();
+  // Returning player who missed 2 releases sees exactly those 2 unread entries above the fold.
+  b = await openMagitech({
+    saved: { [updatesKey]: '000000000000', [updatesReleaseKey]: String(latest - 2) },
+    start: false,
+    dismissUpdates: false,
+  });
+  try {
+    const doc = b.dom.window.document;
+    assert.equal(updateLayer(b).hidden, false);
+    const unread = [...doc.querySelectorAll('#updates-current li')].map(n => Number(n.dataset.release));
+    assert.deepEqual(unread, [latest, latest - 1]);
+    assert.equal(doc.querySelector('#updates-history').open, false);
+    assert.ok([...doc.querySelectorAll('#updates-history li')].every(n => Number(n.dataset.release) <= latest - 2));
+    acknowledgeUpdate(b);
+    assert.equal(b.dom.window.localStorage.getItem(updatesReleaseKey), String(latest));
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+  // Player who already read the latest release does not get nagged even if the build hash changed.
+  b = await openMagitech({
+    saved: { [updatesKey]: '000000000000', [updatesReleaseKey]: String(latest) },
+    start: false,
+    dismissUpdates: false,
+  });
+  try {
+    assert.equal(updateLayer(b).hidden, true);
+    assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
@@ -3187,7 +3229,10 @@ test('magitech update notice: late Telegram SDK defers the automatic popup until
     doc.querySelector('script[src="https://telegram.org/js/telegram-web-app.js"]').onload();
     assert.equal(updateLayer(b).hidden, false); assert.equal(b.raid.state, null);
     acknowledgeUpdate(b);
-    assert.deepEqual(raidStorage(b.dom.window), { [magitechAccountKey(703, 'raid:updatesSeenBuild')]: updateBuild(b) });
+    assert.deepEqual(raidStorage(b.dom.window), {
+      [magitechAccountKey(703, 'raid:updatesSeenBuild')]: updateBuild(b),
+      [magitechAccountKey(703, 'raid:updatesSeenRelease')]: latestUpdateRelease(b),
+    });
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -3237,7 +3282,7 @@ for (const legacy of [false, true]) for (const kind of ['level', 'gold', 'armor'
     assert.equal(b.raid.saveRun(), true);
     const key = magitechKey('raid:activeRun'), saved = raidStorage(b.dom.window);
     if (legacy) saved[key] = JSON.stringify(releasedMagitechCheckpoint(JSON.parse(saved[key])));
-    saved[updatesKey] = 'previous build';
+    saved[updatesKey] = 'previous build'; delete saved[updatesReleaseKey];
     const raw = saved[key], expected = JSON.parse(raw); b.dom.window.close();
     b = await openMagitech({ saved, start: false, dismissUpdates: false });
     const doc = b.dom.window.document;
@@ -3268,7 +3313,7 @@ test('magitech update notice: opening/closing at startup does not resume an in-f
     b.raid.resolveChain(); b.raid.saveRun();
     const saved = raidStorage(b.dom.window), key = magitechKey('raid:activeRun');
     assert.equal(JSON.parse(saved[key]).next.phase, 'match-chain');
-    saved[updatesKey] = 'previous build'; b.dom.window.close();
+    saved[updatesKey] = 'previous build'; delete saved[updatesReleaseKey]; b.dom.window.close();
     b = await openMagitech({ saved, start: false, dismissUpdates: false });
     await new Promise(resolve => setTimeout(resolve, 1000));
     assert.equal(b.raid.state, null); assert.equal(b.dom.window.localStorage.getItem(key), saved[key]);
