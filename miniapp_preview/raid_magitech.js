@@ -3512,6 +3512,7 @@
     return animation;
   }
   const BOARD_FX = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, raf: 0, items: [] };
+  let LAST_BOARD_ANIM_END = 0;
 
   function clearBoardFxCanvas() {
     BOARD_FX.items.length = 0;
@@ -3730,6 +3731,7 @@
   function finishOrbAnimations() {
     for (const finish of [...ORB_ANIMATIONS.values()]) finish();
     clearBoardFxCanvas();
+    LAST_BOARD_ANIM_END = 0;
     // Also clear anticipation; cancellation never runs a gameplay continuation.
     for (const view of ORB_VIEWS.values()) {
       view.motion = null; delete view.node.dataset.motion;
@@ -3856,10 +3858,10 @@
       { transform: `scale(${climax || boss ? 1.18 : 1.13})`, opacity: .96, offset: .24 },
       { transform: 'scale(.08)', opacity: 0 },
     ], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
-    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: Math.max(360, duration + 200), delay }, () => burst.remove());
   }
-  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 440, pitch = 0) {
-    if (Math.abs(dx) + Math.abs(dy) < 1) return;
+  function moveOrb(view, dx, dy, incoming, delay, pitch = 0) {
+    if (Math.abs(dx) + Math.abs(dy) < 1) return 0;
     view.motion?.cancel();
     const falling = Math.abs(dx) < 1 && dy < 0;
     view.node.dataset.motion = incoming ? 'refill' : falling ? 'fall' : 'shift';
@@ -3867,16 +3869,16 @@
     if (falling) {
       const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
       const rows = Math.max(1, Math.abs(dy) / cellPitch);
-      // Unhurried, smooth gravity duration scaling with distance (1 row ~355ms, 3 rows ~417ms).
-      const naturalDur = Math.round(270 + Math.sqrt(rows) * 85);
-      duration = Math.max(220, Math.min(naturalDur, maxDuration));
+      // Natural per-orb fall duration determined strictly by its own drop distance —
+      // never compressed by chain length (1 row ~335ms, 3 rows ~441ms, 6 rows ~545ms).
+      duration = Math.round(190 + Math.sqrt(rows) * 145);
       frames = [
         { transform: `translate3d(0,${dy}px,0)`, opacity: 1 },
         { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
       easing = 'cubic-bezier(.30,.08,.42,1)';
     } else {
-      duration = Math.min(340, maxDuration);
+      duration = 340;
       frames = [
         { transform: `translate3d(${dx}px,${dy}px,0)`, opacity: incoming ? .35 : 1 },
         { transform: 'translate3d(0,0,0)', opacity: 1 },
@@ -3888,7 +3890,8 @@
       if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
     });
     view.motion = animation;
-    if (!animation) delete view.node.dataset.motion;
+    if (!animation) { delete view.node.dataset.motion; return 0; }
+    return delay + duration;
   }
 
   function renderCell(cell, idx, view) {
@@ -3995,31 +3998,37 @@
     // Only actual disappearances participate: never burst a surviving target
     // or an arrow-skipped resource. Area/Rune victims have no gesture order.
     const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
-    const step = ordered.length > 1 ? Math.min(32, 120 / (ordered.length - 1)) : 0;
+    // Sequential per-orb pop cadence (never crushed into a fixed 120ms cap):
+    // 62ms/orb for normal chains, gently tapering down to 36ms/orb on huge snakes.
+    const step = ordered.length > 1 ? Math.max(36, 62 - Math.max(0, ordered.length - 6) * 2) : 0;
+    const corePopDur = 160;
     const delays = new Map(ordered.map((key, index) => [key, index * step]));
     const orderIdx = new Map(ordered.map((key, index) => [key, index]));
-    // Per-column readiness: each column begins its gravity cascade as soon as
-    // every disappearing core in that column has collapsed, so columns flow in
-    // a natural wave without overlapping solid ghosts.
+    // Per-column readiness: each column starts dropping as soon as all its own
+    // disappearing orbs have finished popping — no column waits on the far side.
     const colFallDelay = Array(COLS).fill(null);
     const chainIntensity = ordered.length >= 8 ? 1.35 : ordered.length >= 5 ? 1.18 : 1;
     const dense = removed.length >= 12;
+    let animEndMs = 0;
+    const canAnimate = previous.size > 0 && !orbReducedMotion() && typeof board.animate === 'function';
     for (const [key, view] of removed) {
       const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
-      const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
+      const d = delays.get(key) || 0, coreDur = delays.has(key) ? corePopDur : 240;
       const doneAt = d + coreDur;
       if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
       const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
       const idxInChain = orderIdx.get(key);
       const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
       const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
-      burstOrb(view, rects.get(key), boardRect, d, coreDur, {
+      const r = rects.get(key);
+      if (canAnimate && r?.width) animEndMs = Math.max(animEndMs, doneAt);
+      burstOrb(view, r, boardRect, d, coreDur, {
         intensity: chainIntensity + progress * .2,
         climax, boss: isBoss, explosive: isExplosive, dense,
       });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
-    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + corePopDur : 240)) : 65;
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
       const key = keys[r * COLS + c];
@@ -4064,23 +4073,28 @@
       // Never force startTime to document.timeline.currentTime here: during a
       // long input/layout task it is the PREVIOUS frame's timestamp and would
       // skip the beginning (or all) of a fall on a slow device.
-      const FALL_BUDGET = 540;
+      // Each orb drops individually at its own natural pace (+45ms per orb bottom-up
+      // in the column), never squeezed into a fixed global time cap.
       for (const plan of plans) {
         const { view, idx, old, moved, rect } = plan;
         if (!rect.width) continue;
         const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
         const rank = rankOf.get(plan) || 0;
-        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 320);
-        const orbDelay = baseColDelay + Math.min(rank * 10, maxExtra);
-        const orbMaxDur = Math.max(260, FALL_BUDGET - orbDelay);
-        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
+        const orbDelay = baseColDelay + rank * 45;
+        if (moved && old?.width) animEndMs = Math.max(animEndMs, moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, pitch));
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[col];
-          if (row < count) moveOrb(view, 0, -pitch * count, true, orbDelay, orbMaxDur, pitch);
-          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, orbMaxDur), delay: ordered.length ? baseColDelay : 0, fill: 'both' });
+          if (row < count) animEndMs = Math.max(animEndMs, moveOrb(view, 0, -pitch * count, true, orbDelay, pitch));
+          else {
+            const appearDelay = ordered.length ? baseColDelay : 0;
+            if (animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260, delay: appearDelay, fill: 'both' })) {
+              animEndMs = Math.max(animEndMs, appearDelay + 260);
+            }
+          }
         }
       }
     }
+    if (chainOrder.length || removed.length) LAST_BOARD_ANIM_END = animEndMs;
     ORB_VIEWS = next;
     if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
       for (const overlay of firePulses) {
@@ -5481,7 +5495,12 @@
     if (next.phase === 'chain') {
       const result = next.result;
       if (result.xpGained > 0 || result.goldGained > 0) log(`⚔ +${result.xpGained} XP · +${result.goldGained} золота · убийств ${result.kills}`);
-      if (next.committed) { scheduleRunStep({ phase: 'enemy' }, 550); return; }
+      if (next.committed) {
+        const enemyDelay = LAST_BOARD_ANIM_END > 0 ? Math.max(550, Math.round(LAST_BOARD_ANIM_END + 90)) : 550;
+        LAST_BOARD_ANIM_END = 0;
+        scheduleRunStep({ phase: 'enemy' }, enemyDelay);
+        return;
+      }
     } else if (next.phase === 'ready' && !hasLegalChain(S.board)) {
       ensureChainable(); log('♻ Нет ходов — поле перемешано');
     }
