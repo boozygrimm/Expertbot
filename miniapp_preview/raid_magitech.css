@@ -3491,6 +3491,457 @@ html[data-raid-idle="1"] .mech-portrait-ring {
   animation-play-state: paused !important;
 }
 
+/* --- #51: Locked mech unlock banner in circular garage --------------------- */
+.picker-card-btn.locked .mech-card-status {
+  color: #f4d381;
+  letter-spacing: .02em;
+}
+.mech-detail-body.mech-garage-home.is-locked > .mech-go-button {
+  opacity: 0;
+  pointer-events: none;
+}
+.mech-detail-body.mech-garage-home.is-locked .mech-garage-hero {
+  top: 3%;
+  height: 54%;
+}
+.mech-detail-body.mech-garage-home.is-locked .mech-garage-hero .mech-detail-portrait {
+  width: clamp(118px, 34vw, 162px);
+  filter: grayscale(.32) brightness(.9);
+}
+.mech-detail-body.mech-garage-home.is-locked .mech-cockpit-art {
+  opacity: .22;
+}
+.mech-unlock-callout {
+  position: absolute;
+  z-index: 4;
+  left: 11%;
+  right: 11%;
+  bottom: 10%;
+  padding: 10px 12px 9px;
+  border-radius: 14px;
+  border: 1px solid #e7c46ccc;
+  background: linear-gradient(170deg, rgba(16, 30, 34, 0.96), rgba(11, 18, 26, 0.98));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 224, 140, 0.16);
+  color: #e9e4d2;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mech-unlock-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mech-unlock-trophy {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px rgba(246, 200, 92, 0.55));
+}
+.mech-unlock-title {
+  margin: 0;
+  font: 700 12px/1.2 system-ui, sans-serif;
+  color: #ffe39b;
+}
+.mech-unlock-desc {
+  margin: 0;
+  font: 400 11px/1.35 system-ui, sans-serif;
+  color: #d6e4e8;
+}
+.mech-unlock-desc b {
+  color: #fff2c6;
+}
+.mech-unlock-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 224, 140, 0.18);
+  font: 600 10px/1.25 system-ui, sans-serif;
+  color: #8de6c7;
+}
+.mech-unlock-warn {
+  color: #ffb878;
+}
+.mech-unlock-guide-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(141, 230, 199, 0.55);
+  background: rgba(24, 58, 56, 0.9);
+  color: #c8fff0;
+  font: 600 10px/1.1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.mech-unlock-guide-btn:hover,
+.mech-unlock-guide-btn:focus-visible {
+  background: rgba(34, 84, 78, 0.98);
+  border-color: #9bf5d9;
+}
+@media (max-width: 720px) {
+  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero {
+    top: 2%;
+  }
+  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero .mech-detail-portrait {
+    width: clamp(96px, 28vw, 134px);
+  }
+  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero h3 {
+    font-size: clamp(16px, 4.4vw, 20px);
+  }
+  .mech-unlock-callout {
+    left: 10%;
+    right: 10%;
+    bottom: 9%;
+    padding: 8px 10px 7px;
+    gap: 4px;
+  }
+  .mech-unlock-trophy { width: 22px; height: 22px; flex-basis: 22px; }
+  .mech-unlock-title { font-size: 11px; }
+  .mech-unlock-desc { font-size: 10px; line-height: 1.3; }
+  .mech-unlock-meta { font-size: 9.5px; }
+  .mech-unlock-guide-btn { font-size: 9.5px; padding: 4px 9px; }
+}
+
+/* --- #51: Interactive animated beginner guide ------------------------------ */
+.beginner-guide-card {
+  width: min(100%, 460px);
+  max-height: 90dvh;
+  padding: 14px 14px 16px;
+  background: linear-gradient(165deg, #162231 0%, #0d1522 100%);
+  border: 1px solid #d2b46a88;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.72);
+}
+.beginner-guide-card h3 {
+  margin: 0 0 4px;
+  font-size: 19px;
+}
+.beginner-guide-card .guide-lead {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 12px;
+  color: #b9d4e4;
+}
+.guide-player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.guide-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.guide-tab {
+  min-height: 34px;
+  padding: 6px 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(16, 26, 40, 0.85);
+  color: #a9c0d4;
+  font: 600 11px/1.15 system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.guide-tab.active {
+  background: linear-gradient(180deg, rgba(40, 88, 80, 0.95), rgba(21, 52, 52, 0.95));
+  border-color: #7ee8c7;
+  color: #f4fffb;
+  box-shadow: 0 0 12px rgba(114, 230, 193, 0.22);
+}
+.guide-stage {
+  padding: 10px;
+  border-radius: 14px;
+  background: radial-gradient(ellipse at 50% 0%, #15313a 0%, #0b1822 75%);
+  border: 1px solid rgba(126, 232, 199, 0.22);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+.guide-preview-bar {
+  width: 100%;
+  min-height: 26px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(8, 16, 24, 0.78);
+  border: 1px solid rgba(244, 208, 120, 0.34);
+  color: #ffe39c;
+  font: 700 11.5px/1.25 system-ui, sans-serif;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.guide-mini-board {
+  position: relative;
+  width: 216px;
+  height: 216px;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 45%, #122d36, #08151d);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  user-select: none;
+}
+.guide-line-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+.guide-line-glow {
+  fill: none;
+  stroke: rgba(114, 230, 193, 0.36);
+  stroke-width: 11;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.guide-line-path {
+  fill: none;
+  stroke: #9bf7da;
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.guide-tiles {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  gap: 6px;
+}
+.guide-tile {
+  position: relative;
+  border-radius: 50%;
+  border: 1.5px solid rgba(215, 232, 242, 0.22);
+  background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.14), rgba(12, 26, 36, 0.72));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, opacity 220ms ease;
+}
+.guide-tile svg,
+.guide-tile img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.guide-tile-tag {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(8, 12, 18, 0.88);
+  color: #f2f7fa;
+  font: 700 8.5px/1.15 system-ui, sans-serif;
+  white-space: nowrap;
+}
+.guide-tile.is-special {
+  border-color: #f3c867;
+  box-shadow: 0 0 12px rgba(243, 200, 103, 0.45);
+}
+.guide-tile.is-trophy {
+  border-color: #ffe285;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 217, 108, 0.3), rgba(26, 20, 10, 0.85));
+  box-shadow: 0 0 16px rgba(255, 214, 96, 0.6);
+}
+.guide-tile.is-selected {
+  border-color: #8bf7d5;
+  background: radial-gradient(circle at 50% 45%, rgba(114, 230, 193, 0.32), rgba(16, 52, 54, 0.88));
+  box-shadow: 0 0 14px rgba(114, 230, 193, 0.55);
+  transform: scale(1.06);
+}
+.guide-tile.is-lethal {
+  border-color: #ff6e79;
+  box-shadow: 0 0 15px rgba(255, 92, 108, 0.72);
+}
+.guide-tile.is-lethal::after {
+  content: '☠';
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: 12px;
+  line-height: 1;
+  color: #ff8e97;
+  text-shadow: 0 1px 4px #000;
+}
+.guide-tile.is-popped {
+  opacity: 0.16;
+  transform: scale(0.72);
+}
+.guide-finger {
+  position: absolute;
+  z-index: 4;
+  left: 36px;
+  top: 36px;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  pointer-events: none;
+  opacity: 0;
+  transition: left 360ms cubic-bezier(.28, .82, .35, 1), top 360ms cubic-bezier(.28, .82, .35, 1), opacity 180ms ease, transform 140ms ease;
+}
+.guide-finger.visible {
+  opacity: 1;
+}
+.guide-finger.tapping {
+  transform: scale(0.84);
+}
+.guide-finger-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 236, 166, 0.82);
+  background: rgba(255, 224, 130, 0.18);
+  box-shadow: 0 0 12px rgba(255, 220, 120, 0.65);
+}
+.guide-finger-dot {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: #fff4d1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+}
+.guide-toast {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(10, 22, 30, 0.94);
+  border: 1.5px solid #ffd875;
+  color: #fff2be;
+  font: 700 12px/1.2 system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.72);
+}
+.guide-caption {
+  width: 100%;
+  text-align: center;
+}
+.guide-caption h4 {
+  margin: 0 0 4px;
+  font: 700 14px/1.25 system-ui, sans-serif;
+  color: #8de6c7;
+}
+.guide-caption p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.42;
+  color: #d6e4ef;
+}
+.guide-caption b {
+  color: #ffe59e;
+}
+.guide-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.guide-nav-btn {
+  min-height: 32px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(210, 188, 123, 0.45);
+  background: rgba(18, 34, 46, 0.85);
+  color: #eadcb6;
+  font: 600 11.5px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.guide-nav-btn:hover,
+.guide-nav-btn:focus-visible {
+  border-color: #f3d78a;
+  background: rgba(28, 56, 66, 0.95);
+}
+.guide-dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.guide-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  display: block;
+}
+.guide-dots i.on {
+  background: #7ee8c7;
+  box-shadow: 0 0 8px rgba(126, 232, 199, 0.7);
+}
+.guide-cheatsheet {
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(9, 17, 26, 0.72);
+  padding: 7px 10px;
+}
+.guide-cheatsheet summary {
+  cursor: pointer;
+  font: 600 12px/1.3 system-ui, sans-serif;
+  color: #e8d5a2;
+}
+.guide-cheatsheet-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.guide-cheatsheet-body p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.guide-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.beginner-guide-card .guide-actions button {
+  margin: 0;
+}
+.guide-primary-btn {
+  background: linear-gradient(120deg, #dfc379, #b28f44 52%, #dfc379);
+  border-color: #ffe39b;
+  color: #161812;
+  font-weight: 700;
+}
+/* In-combat tip when player chains enemies without swords */
+.chain-tip-hint {
+  color: #ffe395;
+  font-weight: 700;
+}
+html[data-raid-motion="off"] .guide-finger,
+html[data-raid-motion="off"] .guide-tile {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-finger,
+  .guide-tile {
+    transition: none !important;
+  }
+}
+
+
 
 
 
