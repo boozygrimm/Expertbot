@@ -3511,15 +3511,16 @@
     animation.onfinish = animation.oncancel = finish;
     return animation;
   }
-  function finishOrbAnimations() {
-    for (const finish of [...ORB_ANIMATIONS.values()]) finish();
-    // Also clear anticipation; cancellation never runs a gameplay continuation.
-    for (const view of ORB_VIEWS.values()) {
-      view.motion = null; delete view.node.dataset.motion;
-      view.node.classList.remove('primed');
-      view.node.style.removeProperty('--prime-delay');
+  const BOARD_FX = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, raf: 0, items: [] };
+  let LAST_BOARD_ANIM_END = 0;
+
+  function clearBoardFxCanvas() {
+    BOARD_FX.items.length = 0;
+    if (BOARD_FX.raf) { cancelAnimationFrame(BOARD_FX.raf); BOARD_FX.raf = 0; }
+    if (BOARD_FX.ctx && BOARD_FX.canvas) {
+      BOARD_FX.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      BOARD_FX.ctx.clearRect(0, 0, BOARD_FX.canvas.width, BOARD_FX.canvas.height);
     }
-    el('board-fx')?.replaceChildren();
   }
   function ensureBoardFx() {
     const board = el('board');
@@ -3530,6 +3531,215 @@
       layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
     }
     return layer;
+  }
+  function ensureBoardFxCanvas(boardRect) {
+    if (orbReducedMotion() || !boardRect?.width || !boardRect?.height) return null;
+    const layer = ensureBoardFx();
+    if (!layer) return null;
+    let canvas = BOARD_FX.canvas;
+    if (!canvas || canvas.parentNode !== layer) {
+      canvas = el('board-fx-canvas') || document.createElement('canvas');
+      canvas.id = 'board-fx-canvas';
+      canvas.setAttribute('aria-hidden', 'true');
+      layer.appendChild(canvas);
+      BOARD_FX.canvas = canvas;
+      if (typeof window.CanvasRenderingContext2D === 'function' && !/jsdom/i.test(navigator.userAgent || '')) {
+        try { BOARD_FX.ctx = canvas.getContext('2d'); }
+        catch (ignored) { BOARD_FX.ctx = null; }
+      } else {
+        BOARD_FX.ctx = null;
+      }
+    }
+    if (!BOARD_FX.ctx) return null;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.round(boardRect.width), h = Math.round(boardRect.height);
+    if (BOARD_FX.w !== w || BOARD_FX.h !== h || BOARD_FX.dpr !== dpr) {
+      BOARD_FX.w = w; BOARD_FX.h = h; BOARD_FX.dpr = dpr;
+      canvas.width = Math.max(1, Math.round(w * dpr));
+      canvas.height = Math.max(1, Math.round(h * dpr));
+    }
+    return BOARD_FX.ctx;
+  }
+  function parseOrbRgb(rgbStr) {
+    const m = String(rgbStr || '').match(/(\d+)\D+(\d+)\D+(\d+)/);
+    return m ? `${m[1]},${m[2]},${m[3]}` : '244,223,161';
+  }
+  function startBoardFxLoop() {
+    if (BOARD_FX.raf || !BOARD_FX.ctx || !BOARD_FX.items.length) return;
+    const tick = now => {
+      BOARD_FX.raf = 0;
+      const ctx = BOARD_FX.ctx;
+      if (!ctx || !BOARD_FX.canvas?.isConnected || orbReducedMotion()) { clearBoardFxCanvas(); return; }
+      const dpr = BOARD_FX.dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h);
+      const alive = [];
+      for (const fx of BOARD_FX.items) {
+        if (now < fx.start) { alive.push(fx); continue; }
+        const t = (now - fx.start) / fx.dur;
+        if (t >= 1) continue;
+        alive.push(fx);
+        if (fx.kind === 'surge') drawChainSurgeFx(ctx, fx, t);
+        else drawOrbBurstFx(ctx, fx, t);
+      }
+      BOARD_FX.items = alive;
+      if (alive.length) BOARD_FX.raf = requestAnimationFrame(tick);
+      else ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h);
+    };
+    BOARD_FX.raf = requestAnimationFrame(tick);
+  }
+  function drawChainSurgeFx(ctx, fx, t) {
+    const pts = fx.pts, segs = fx.segs, total = fx.total;
+    if (pts.length < 2 || total < 1) return;
+    const fade = t < .16 ? t / .16 : t > .78 ? (1 - t) / .22 : 1;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.strokeStyle = `rgba(${fx.rgb},${(0.26 * fade).toFixed(3)})`;
+    ctx.lineWidth = 11; ctx.stroke();
+    ctx.strokeStyle = `rgba(255,246,214,${(0.7 * fade).toFixed(3)})`;
+    ctx.lineWidth = 2.8; ctx.stroke();
+    // Moving energy pulse along the chain polyline.
+    const prog = Math.min(1, t / .86);
+    const eased = prog < .5 ? 2 * prog * prog : 1 - Math.pow(-2 * prog + 2, 2) / 2;
+    const headDist = eased * total;
+    const tailDist = Math.max(0, headDist - Math.min(82, total * .36));
+    ctx.beginPath();
+    let started = false, headX = pts[0].x, headY = pts[0].y;
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (s.end < tailDist) continue;
+      if (s.start > headDist) break;
+      const u0 = Math.max(0, (tailDist - s.start) / s.len);
+      const u1 = Math.min(1, (headDist - s.start) / s.len);
+      const x0 = s.x0 + (s.x1 - s.x0) * u0, y0 = s.y0 + (s.y1 - s.y0) * u0;
+      const x1 = s.x0 + (s.x1 - s.x0) * u1, y1 = s.y0 + (s.y1 - s.y0) * u1;
+      if (!started) { ctx.moveTo(x0, y0); started = true; }
+      ctx.lineTo(x1, y1);
+      headX = x1; headY = y1;
+    }
+    if (started) {
+      ctx.strokeStyle = `rgba(255,255,255,${(0.95 * fade).toFixed(3)})`;
+      ctx.lineWidth = 5.4; ctx.stroke();
+      const r = 10 + 4 * fade;
+      const g = ctx.createRadialGradient(headX, headY, 0, headX, headY, r);
+      g.addColorStop(0, `rgba(255,255,255,${(0.95 * fade).toFixed(3)})`);
+      g.addColorStop(0.45, `rgba(${fx.rgb},${(0.65 * fade).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${fx.rgb},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(headX, headY, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawOrbBurstFx(ctx, fx, t) {
+    const { cx, cy, r, rgb, type, climax, boss, explosive, particles } = fx;
+    const scale = climax || boss || explosive ? 1.24 : 1;
+    ctx.save();
+    // 1. Core bloom flash
+    if (t < .62) {
+      const ft = t / .62;
+      const alpha = (ft < .22 ? ft / .22 : 1 - (ft - .22) / .78) * .88;
+      const fr = r * (.42 + ft * 1.05) * scale;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, fr);
+      grad.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
+      grad.addColorStop(.42, `rgba(${rgb},${(alpha * .78).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, fr, 0, Math.PI * 2); ctx.fill();
+    }
+    // 2. Expanding shockwave ring
+    if (t < .86) {
+      const rt = t / .86, ease = 1 - Math.pow(1 - rt, 2.2);
+      const rr = r * (.36 + ease * 1.18) * scale;
+      ctx.strokeStyle = `rgba(${rgb},${((1 - rt) * .9).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, (2.4 - rt * 1.4) * scale);
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
+    }
+    // 3. Echo ring for shields, enemies, bosses & climax
+    if ((climax || boss || explosive || type === 'shield' || type === 'skull') && t > .11 && t < .95) {
+      const et = (t - .11) / .84, ease = 1 - Math.pow(1 - et, 2);
+      const er = r * (.3 + ease * 1.38) * scale;
+      ctx.strokeStyle = `rgba(255,255,255,${((1 - et) * .68).toFixed(3)})`;
+      ctx.lineWidth = Math.max(.8, 1.6 - et);
+      ctx.beginPath(); ctx.arc(cx, cy, er, 0, Math.PI * 2); ctx.stroke();
+    }
+    // 4. 4-point star flare for coins, trophy, climax & bosses
+    if ((type === 'coin' || type === 'trophy' || climax || boss || explosive) && t < .68) {
+      const st = t / .68, alpha = st < .25 ? st / .25 : 1 - (st - .25) / .75;
+      const len = r * (.55 + st * .82) * scale, wid = Math.max(1.6, r * .13 * (1 - st * .55));
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(.24 * st);
+      ctx.fillStyle = `rgba(255,252,232,${(alpha * .92).toFixed(3)})`;
+      for (let a = 0; a < 2; a++) {
+        ctx.beginPath();
+        ctx.moveTo(-len, 0); ctx.lineTo(0, -wid); ctx.lineTo(len, 0); ctx.lineTo(0, wid);
+        ctx.closePath(); ctx.fill();
+        ctx.rotate(Math.PI / 2);
+      }
+      ctx.restore();
+    }
+    // 5. Crisp diagonal slash for swords
+    if (type === 'sword' && t < .58) {
+      const st = t / .58, alpha = st < .22 ? st / .22 : 1 - (st - .22) / .78;
+      const half = r * (0.4 + st * 1.05);
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(-0.73);
+      ctx.strokeStyle = `rgba(235,252,255,${(alpha * .95).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1.2, 2.8 * (1 - st * .5));
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
+      ctx.restore();
+    }
+    // 6. Ballistic sparks, droplets, star-glints & shards
+    const easeP = 1 - Math.pow(1 - t, 1.85);
+    const alphaP = t < .12 ? t / .12 : Math.max(0, 1 - (t - .12) / .88);
+    for (const p of particles) {
+      const px = cx + p.dx * easeP;
+      const py = cy + p.dy * easeP + p.grav * t * t;
+      const sz = p.sz * (1 - t * .68);
+      if (sz < .4 || alphaP <= .01) continue;
+      if (p.shape === 'spark') {
+        const prevEase = Math.max(0, 1 - Math.pow(1 - Math.max(0, t - .09), 1.85));
+        const tx = cx + p.dx * prevEase;
+        const ty = cy + p.dy * prevEase + p.grav * Math.max(0, t - .09) * Math.max(0, t - .09);
+        ctx.strokeStyle = p.bright ? `rgba(255,255,255,${alphaP.toFixed(3)})` : `rgba(${rgb},${alphaP.toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.1, sz * .58);
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(px, py); ctx.stroke();
+      } else if (p.shape === 'droplet') {
+        ctx.fillStyle = `rgba(${rgb},${(alphaP * .92).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${(alphaP * .75).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(px - sz * .28, py - sz * .28, sz * .34, 0, Math.PI * 2); ctx.fill();
+      } else if (p.shape === 'glint') {
+        ctx.save(); ctx.translate(px, py); ctx.rotate(p.rot * t);
+        ctx.fillStyle = `rgba(255,248,214,${alphaP.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(0, -sz * 1.45); ctx.lineTo(sz * .45, 0); ctx.lineTo(0, sz * 1.45); ctx.lineTo(-sz * .45, 0);
+        ctx.closePath(); ctx.fill();
+        ctx.rotate(Math.PI / 2); ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.save(); ctx.translate(px, py); ctx.rotate(p.rot * t);
+        ctx.fillStyle = p.bright ? `rgba(255,255,255,${alphaP.toFixed(3)})` : `rgba(${rgb},${(alphaP * .95).toFixed(3)})`;
+        ctx.fillRect(-sz * .7, -sz * .55, sz * 1.4, sz * 1.1);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+  function finishOrbAnimations() {
+    for (const finish of [...ORB_ANIMATIONS.values()]) finish();
+    clearBoardFxCanvas();
+    LAST_BOARD_ANIM_END = 0;
+    // Also clear anticipation; cancellation never runs a gameplay continuation.
+    for (const view of ORB_VIEWS.values()) {
+      view.motion = null; delete view.node.dataset.motion;
+      view.node.classList.remove('primed');
+      view.node.style.removeProperty('--prime-delay');
+    }
+    el('board-fx')?.replaceChildren();
+    BOARD_FX.canvas = null; BOARD_FX.ctx = null; BOARD_FX.w = 0; BOARD_FX.h = 0;
   }
   function resetOrbPresentation() {
     finishOrbAnimations();
@@ -3566,39 +3776,57 @@
       if (!surgeRgb) surgeRgb = node.style.getPropertyValue('--orb-rgb').trim();
     }
     if (orbReducedMotion() || indices.length < 2) return;
-    const layer = ensureBoardFx();
-    if (!layer) return;
-    layer.querySelectorAll('.chain-surge').forEach(n => n.remove());
+    const board = el('board');
+    const boardRect = board?.getBoundingClientRect();
+    if (!ensureBoardFxCanvas(boardRect)) return;
     const pts = indices.map(cellCenter);
-    let totalLen = 0;
-    for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    if (totalLen < 2) return;
-    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'chain-surge');
-    svg.setAttribute('aria-hidden', 'true');
-    if (surgeRgb) svg.style.setProperty('--surge-rgb', surgeRgb);
-    const makePath = cls => {
-      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      p.setAttribute('d', d); p.setAttribute('class', cls);
-      return p;
-    };
-    const glow = makePath('surge-glow'), core = makePath('surge-core'), bolt = makePath('surge-bolt');
-    const boltLen = Math.max(24, Math.min(84, totalLen * 0.34));
-    bolt.style.strokeDasharray = `${boltLen.toFixed(1)} ${(totalLen + boltLen + 16).toFixed(1)}`;
-    bolt.style.strokeDashoffset = `${boltLen.toFixed(1)}`;
-    svg.append(glow, core, bolt);
-    layer.appendChild(svg);
-    animateOrb(bolt, [
-      { strokeDashoffset: boltLen.toFixed(1), opacity: .85 },
-      { strokeDashoffset: (-totalLen).toFixed(1), opacity: 1 },
-    ], { duration: 340, easing: 'cubic-bezier(.42,0,.28,1)', fill: 'forwards' });
-    animateOrb(svg, [
-      { opacity: .25 },
-      { opacity: 1, offset: .18 },
-      { opacity: .95, offset: .82 },
-      { opacity: 0 },
-    ], { duration: 405, easing: 'ease-out', fill: 'forwards' }, () => svg.remove());
+    const segs = [];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const len = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      if (len > .5) {
+        segs.push({ x0: pts[i - 1].x, y0: pts[i - 1].y, x1: pts[i].x, y1: pts[i].y, start: total, end: total + len, len });
+        total += len;
+      }
+    }
+    if (total < 2) return;
+    BOARD_FX.items = BOARD_FX.items.filter(item => item.kind !== 'surge');
+    BOARD_FX.items.push({ kind: 'surge', pts, segs, total, rgb: parseOrbRgb(surgeRgb), start: performance.now(), dur: 405 });
+    startBoardFxLoop();
+  }
+  function addOrbBurstFx(boardRect, cx, cy, size, rgbStr, type, delay, orbId, opts = {}) {
+    if (!ensureBoardFxCanvas(boardRect)) return;
+    const climax = !!opts.climax, boss = !!opts.boss, explosive = !!opts.explosive;
+    const intensity = Math.max(.9, Math.min(1.4, opts.intensity ?? 1));
+    const seed = Math.imul(Number(orbId) || 1, 2654435761) >>> 0;
+    const count = boss || explosive ? 12 : climax ? 10 : opts.dense ? 7 : 9;
+    const radius = size * (.68 + intensity * .2);
+    const particles = [];
+    for (let i = 0; i < count; i++) {
+      const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
+      const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
+      const angle = (i / count) * Math.PI * 2 + (h1 - .5) * .55;
+      const dist = radius * (.58 + h2 * .56);
+      const shape = type === 'potion' ? 'droplet'
+        : type === 'coin' || type === 'trophy' ? (i % 2 ? 'glint' : 'spark')
+        : type === 'sword' || type === 'arrow' || type === 'chain' ? 'spark'
+        : (i % 2 ? 'shard' : 'spark');
+      particles.push({
+        dx: Math.cos(angle) * dist,
+        dy: Math.sin(angle) * dist - size * .08,
+        grav: 10 + h1 * 16,
+        sz: 2.2 + h2 * 2.8,
+        rot: (h2 - .5) * 6.5,
+        bright: i % 3 === 0,
+        shape,
+      });
+    }
+    BOARD_FX.items.push({
+      kind: 'burst', cx, cy, r: size * .52, rgb: parseOrbRgb(rgbStr), type,
+      climax, boss, explosive, particles,
+      start: performance.now() + delay, dur: 380,
+    });
+    startBoardFxLoop();
   }
   function burstOrb(view, rect, boardRect, delay = 0, duration = 240, opts = {}) {
     view.motion?.cancel();
@@ -3610,66 +3838,30 @@
     const type = view.node.dataset.type || '';
     const climax = !!opts.climax, boss = !!opts.boss || view.node.classList.contains('boss');
     const explosive = !!opts.explosive || view.node.classList.contains('explosive');
-    const intensity = Math.max(.9, Math.min(1.4, opts.intensity ?? 1));
-    const dense = !!opts.dense;
+    const left = rect.left - boardRect.left - board.clientLeft;
+    const top = rect.top - boardRect.top - board.clientTop;
+    const rgb = view.node.style.getPropertyValue('--orb-rgb');
+    addOrbBurstFx(boardRect, left + rect.width / 2, top + rect.height / 2, rect.width, rgb, type, delay, view.node.dataset.orbId, {
+      intensity: opts.intensity, climax, boss, explosive, dense: opts.dense,
+    });
+    // Minimal 1-node DOM ghost for the collapsing orb; all sparks/rings/flashes render on the single canvas.
     const burst = document.createElement('div');
-    burst.className = 'orb-burst' + (climax || boss || explosive ? ' climax' : '');
+    burst.className = 'orb-burst';
     burst.dataset.orbId = view.node.dataset.orbId;
     burst.dataset.type = type;
     if (view.node.dataset.element) burst.dataset.element = view.node.dataset.element;
-    burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
-    const flash = document.createElement('i'); flash.className = 'orb-burst-flash'; burst.appendChild(flash);
-    const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
-    if (climax || boss || explosive || (!dense && (type === 'shield' || type === 'skull'))) {
-      const echo = document.createElement('i'); echo.className = 'orb-burst-ring-echo'; burst.appendChild(echo);
-    }
-    if (type === 'coin' || type === 'trophy' || climax || boss || explosive) {
-      const star = document.createElement('i'); star.className = 'orb-burst-star'; burst.appendChild(star);
-    }
-    if (type === 'potion') {
-      const mist = document.createElement('i'); mist.className = 'orb-burst-mist'; burst.appendChild(mist);
-    }
-    // Deterministic cosmetic scatter from orbId (never touches gameplay RNG).
-    const seed = Math.imul(Number(view.node.dataset.orbId) || 1, 2654435761) >>> 0;
-    const shardCount = dense ? 4 : boss || explosive ? 7 : climax ? 7 : 6;
-    const radius = rect.width * (.64 + intensity * .18);
-    for (let i = 0; i < shardCount; i++) {
-      const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
-      const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
-      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .52;
-      const dist = radius * (.62 + h2 * .48);
-      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .06;
-      const shard = document.createElement('i');
-      const variant = type === 'potion' ? ' droplet'
-        : type === 'coin' || type === 'trophy' ? (i % 2 ? ' glint' : ' spark')
-        : type === 'sword' || type === 'arrow' || type === 'chain' ? (i % 3 ? ' spark' : '')
-        : (i % 2 ? ' heavy' : ' spark');
-      shard.className = 'orb-shard' + variant;
-      shard.style.setProperty('--dx', dx.toFixed(1) + 'px');
-      shard.style.setProperty('--dy', dy.toFixed(1) + 'px');
-      shard.style.setProperty('--grav', (7 + h1 * 10).toFixed(1) + 'px');
-      shard.style.setProperty('--sz', (6.5 + h2 * 5).toFixed(1) + '%');
-      shard.style.setProperty('--sc', (.85 + h1 * .38).toFixed(2));
-      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 180) + 'deg');
-      shard.style.setProperty('--sdur', (.28 + h2 * .10).toFixed(2) + 's');
-      burst.appendChild(shard);
-    }
+    burst.style.cssText = `left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${rgb};--burst-delay:${delay}ms`;
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
-    if (type === 'sword') {
-      const slash = document.createElement('i'); slash.className = 'weapon-impact-slash'; burst.appendChild(slash);
-      const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
-    }
     layer.appendChild(burst);
-    // Pure compositor-only transform + opacity (no animated filter) for smooth 60fps mobile WebView.
     animateOrb(view.node, [
       { transform: 'scale(1)', opacity: 1 },
       { transform: `scale(${climax || boss ? 1.18 : 1.13})`, opacity: .96, offset: .24 },
       { transform: 'scale(.08)', opacity: 0 },
     ], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
-    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: Math.max(360, duration + 200), delay }, () => burst.remove());
   }
-  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390, pitch = 0) {
-    if (Math.abs(dx) + Math.abs(dy) < 1) return;
+  function moveOrb(view, dx, dy, incoming, delay, pitch = 0) {
+    if (Math.abs(dx) + Math.abs(dy) < 1) return 0;
     view.motion?.cancel();
     const falling = Math.abs(dx) < 1 && dy < 0;
     view.node.dataset.motion = incoming ? 'refill' : falling ? 'fall' : 'shift';
@@ -3677,17 +3869,16 @@
     if (falling) {
       const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
       const rows = Math.max(1, Math.abs(dy) / cellPitch);
-      const naturalDur = Math.round(215 + Math.sqrt(rows) * 68);
-      duration = Math.max(180, Math.min(naturalDur, maxDuration));
-      // Pure 2-keyframe single-easing translate3d on GPU compositor: zero mid-flight
-      // stalls (#board overflow:hidden clips incoming orbs naturally at the top edge).
+      // Natural per-orb fall duration determined strictly by its own drop distance —
+      // never compressed by chain length (1 row ~335ms, 3 rows ~441ms, 6 rows ~545ms).
+      duration = Math.round(190 + Math.sqrt(rows) * 145);
       frames = [
         { transform: `translate3d(0,${dy}px,0)`, opacity: 1 },
         { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
-      easing = 'cubic-bezier(.26,.08,.34,1.04)';
+      easing = 'cubic-bezier(.30,.08,.42,1)';
     } else {
-      duration = Math.min(300, maxDuration);
+      duration = 340;
       frames = [
         { transform: `translate3d(${dx}px,${dy}px,0)`, opacity: incoming ? .35 : 1 },
         { transform: 'translate3d(0,0,0)', opacity: 1 },
@@ -3699,7 +3890,8 @@
       if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
     });
     view.motion = animation;
-    if (!animation) delete view.node.dataset.motion;
+    if (!animation) { delete view.node.dataset.motion; return 0; }
+    return delay + duration;
   }
 
   function renderCell(cell, idx, view) {
@@ -3801,36 +3993,42 @@
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
     const removed = [...previous].filter(([key]) => !keys.includes(key));
-    if (removed.length) el('board-fx')?.querySelectorAll('.chain-surge').forEach(n => n.remove());
+    if (removed.length) BOARD_FX.items = BOARD_FX.items.filter(item => item.kind !== 'surge');
     // Gesture order is local presentation data captured before settlement.
     // Only actual disappearances participate: never burst a surviving target
     // or an arrow-skipped resource. Area/Rune victims have no gesture order.
     const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
-    const step = ordered.length > 1 ? Math.min(32, 120 / (ordered.length - 1)) : 0;
+    // Sequential per-orb pop cadence (never crushed into a fixed 120ms cap):
+    // 62ms/orb for normal chains, gently tapering down to 36ms/orb on huge snakes.
+    const step = ordered.length > 1 ? Math.max(36, 62 - Math.max(0, ordered.length - 6) * 2) : 0;
+    const corePopDur = 160;
     const delays = new Map(ordered.map((key, index) => [key, index * step]));
     const orderIdx = new Map(ordered.map((key, index) => [key, index]));
-    // Per-column readiness: each column begins its gravity cascade as soon as
-    // every disappearing core in that column has collapsed, so columns flow in
-    // a natural wave without overlapping solid ghosts.
+    // Per-column readiness: each column starts dropping as soon as all its own
+    // disappearing orbs have finished popping — no column waits on the far side.
     const colFallDelay = Array(COLS).fill(null);
     const chainIntensity = ordered.length >= 8 ? 1.35 : ordered.length >= 5 ? 1.18 : 1;
     const dense = removed.length >= 12;
+    let animEndMs = 0;
+    const canAnimate = previous.size > 0 && !orbReducedMotion() && typeof board.animate === 'function';
     for (const [key, view] of removed) {
       const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
-      const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
+      const d = delays.get(key) || 0, coreDur = delays.has(key) ? corePopDur : 240;
       const doneAt = d + coreDur;
       if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
       const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
       const idxInChain = orderIdx.get(key);
       const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
       const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
-      burstOrb(view, rects.get(key), boardRect, d, coreDur, {
+      const r = rects.get(key);
+      if (canAnimate && r?.width) animEndMs = Math.max(animEndMs, doneAt);
+      burstOrb(view, r, boardRect, d, coreDur, {
         intensity: chainIntensity + progress * .2,
         climax, boss: isBoss, explosive: isExplosive, dense,
       });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
-    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + corePopDur : 240)) : 65;
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
       const key = keys[r * COLS + c];
@@ -3875,23 +4073,28 @@
       // Never force startTime to document.timeline.currentTime here: during a
       // long input/layout task it is the PREVIOUS frame's timestamp and would
       // skip the beginning (or all) of a fall on a slow device.
-      const FALL_BUDGET = 530;
+      // Each orb drops individually at its own natural pace (+45ms per orb bottom-up
+      // in the column), never squeezed into a fixed global time cap.
       for (const plan of plans) {
         const { view, idx, old, moved, rect } = plan;
         if (!rect.width) continue;
         const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
         const rank = rankOf.get(plan) || 0;
-        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 230);
-        const orbDelay = baseColDelay + Math.min(rank * 12, maxExtra);
-        const orbMaxDur = Math.max(200, FALL_BUDGET - orbDelay);
-        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
+        const orbDelay = baseColDelay + rank * 45;
+        if (moved && old?.width) animEndMs = Math.max(animEndMs, moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, pitch));
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[col];
-          if (row < count) moveOrb(view, 0, -pitch * count, true, orbDelay, orbMaxDur, pitch);
-          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, orbMaxDur), delay: ordered.length ? baseColDelay : 0, fill: 'both' });
+          if (row < count) animEndMs = Math.max(animEndMs, moveOrb(view, 0, -pitch * count, true, orbDelay, pitch));
+          else {
+            const appearDelay = ordered.length ? baseColDelay : 0;
+            if (animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260, delay: appearDelay, fill: 'both' })) {
+              animEndMs = Math.max(animEndMs, appearDelay + 260);
+            }
+          }
         }
       }
     }
+    if (chainOrder.length || removed.length) LAST_BOARD_ANIM_END = animEndMs;
     ORB_VIEWS = next;
     if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
       for (const overlay of firePulses) {
@@ -5292,7 +5495,12 @@
     if (next.phase === 'chain') {
       const result = next.result;
       if (result.xpGained > 0 || result.goldGained > 0) log(`⚔ +${result.xpGained} XP · +${result.goldGained} золота · убийств ${result.kills}`);
-      if (next.committed) { scheduleRunStep({ phase: 'enemy' }, 550); return; }
+      if (next.committed) {
+        const enemyDelay = LAST_BOARD_ANIM_END > 0 ? Math.max(550, Math.round(LAST_BOARD_ANIM_END + 90)) : 550;
+        LAST_BOARD_ANIM_END = 0;
+        scheduleRunStep({ phase: 'enemy' }, enemyDelay);
+        return;
+      }
     } else if (next.phase === 'ready' && !hasLegalChain(S.board)) {
       ensureChainable(); log('♻ Нет ходов — поле перемешано');
     }
