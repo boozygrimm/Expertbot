@@ -174,7 +174,10 @@
   <section class="hud hud-console" aria-label="Статус героя">
     <div class="hud-weapon-slot" id="hud-weapon">
       <div class="hud-weapon-frame">
-        <img id="hud-weapon-art" class="weapon-texture hud-weapon-art" src="" alt="" aria-hidden="true" draggable="false">
+        <div class="hud-weapon-stage" id="hud-weapon-stage">
+          <img id="hud-weapon-art" class="weapon-texture hud-weapon-art" src="" alt="" aria-hidden="true" draggable="false">
+          <img id="hud-weapon-glint" class="weapon-texture hud-weapon-glint" src="" alt="" aria-hidden="true" draggable="false">
+        </div>
         <div class="hud-weapon-stats">
           <b id="hud-weapon-val">2</b>
           <small id="hud-weapon-base">+3 база</small>
@@ -212,12 +215,12 @@
 
     <div class="hud-tubes-zone">
       <div class="hud-tube-col hud-tube-xp" id="hud-xp" title="Опыт">
-        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3.2 2.5 5.4 5.9.7-4.4 4.1 1.2 5.8L12 16.3 6.8 19.2 8 13.4 3.6 9.3l5.9-.7Z" fill="currentColor"/></svg></span>
+        <span class="hud-tube-icon hud-xp-crystal" aria-hidden="true"><svg viewBox="0 0 28 28"><defs><linearGradient id="hud-xp-g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f7dcff"/><stop offset="45%" stop-color="#c46bff"/><stop offset="100%" stop-color="#5d1a9c"/></linearGradient><linearGradient id="hud-xp-g2" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff" stop-opacity=".92"/><stop offset="60%" stop-color="#df9eff" stop-opacity=".35"/><stop offset="100%" stop-color="#3c0e6b" stop-opacity=".75"/></linearGradient></defs><polygon points="14,1.5 18.2,9.4 26.5,14 18.2,18.6 14,26.5 9.8,18.6 1.5,14 9.8,9.4" fill="url(#hud-xp-g1)" stroke="#f6ddff" stroke-width="1.2" stroke-linejoin="round"/><polygon points="14,1.5 18.2,9.4 14,14 9.8,9.4" fill="#ffffff" opacity=".58"/><polygon points="14,14 18.2,9.4 26.5,14 18.2,18.6" fill="url(#hud-xp-g2)" opacity=".72"/><polygon points="14,14 9.8,18.6 14,26.5 18.2,18.6" fill="#3a0d68" opacity=".48"/><circle cx="14" cy="14" r="2.2" fill="#fff6ff"/></svg></span>
         <div class="hud-tube-track"><i id="xp-bar" class="fill-xp"></i></div>
         <span class="hud-tube-val" id="xp-text">0/100</span>
       </div>
       <div class="hud-tube-col hud-tube-up" id="hud-upgrade" title="Апгрейд">
-        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4.5 5.5 11l2.1 2.1L12 8.7l4.4 4.4 2.1-2.1Zm0 6.8-6.5 6.5 2.1 2.1L12 15.5l4.4 4.4 2.1-2.1Z" fill="currentColor"/></svg></span>
+        <span class="hud-tube-icon hud-upgrade-skill-icon" id="hud-upgrade-icon" aria-hidden="true"></span>
         <div class="hud-tube-track"><i id="upgrade-bar" class="fill-upgrade"></i></div>
         <span class="hud-tube-val" id="upgrade-text">0/100</span>
       </div>
@@ -320,11 +323,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
+        <li data-release="39"><b>Живая нижняя панель боя и узнаваемые символы.</b> Оружие уменьшено на 5% (с поправкой под топор, молот и булаву) и получило блик по силуэту; над апгрейдом стоит медальон умения «Апгрейд», над опытом — гранёный кристалл; панель мягко дышит и откликается на удары, лечение, броню, сбор ресурсов и смену снаряжения (с учётом настройки «Анимации»).</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
           <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
           <li data-release="36"><b>Новая нижняя панель боя и переименование «Апгрейд».</b> Внизу теперь единая магитех-панель с полной фигуркой текущего меха и встроенной шкалой жизни, актуальными мечом и щитом из магазина с цифрами поверх них, вертикальными колбами опыта, апгрейда и монет и медальоном трофея. Лишняя строка логов убрана, а умение «Затачивание» переименовано в «Апгрейд».</li>
           <li data-release="35"><b>Звуки умений сбора ресурсов.</b> Умения сбора щитов, зелий и монет (Ремонт, Лечение, Эликсир, Кладовая, Шок, Благоговение) теперь тоже проигрывают звуки активации соответствующих цепочек.</li>

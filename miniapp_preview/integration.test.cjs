@@ -2708,9 +2708,11 @@ test('magitech battle console HUD: shows full mech, synced weapon/shield art wit
     assert.deepEqual([...doc.querySelectorAll('.hud-console > div')].map(n => n.id || n.className), ['hud-weapon', 'hud-hp', 'hud-armor', 'hud-tubes-zone'], 'HUD order is Weapon -> Mech -> Shield -> Tubes');
     assert.ok(doc.querySelector('.board-foot #hud-trophy'), 'trophy badge lives in board-foot without overlapping HUD tubes');
     assert.ok(doc.querySelector('#hud-gold .hud-coin-3d'), 'spinning 3D coin sits directly above the gold stack column');
+    assert.ok(doc.querySelector('#hud-upgrade-icon svg[data-skill-art="enchant"]'), 'upgrade tube uses the enchant skill medallion icon');
     assert.equal(doc.querySelector('#hud-mech-art').getAttribute('src'), `miniapp_preview/assets/mech_${r.state.classId}.png`);
     assert.match(doc.querySelector('#hud-mech-name').textContent, /Ур\. 1/);
     assert.ok(doc.querySelector('#hud-weapon-art').getAttribute('src').startsWith('data:image/webp;base64,'));
+    assert.equal(doc.querySelector('#hud-weapon-glint').getAttribute('src'), doc.querySelector('#hud-weapon-art').getAttribute('src'), 'weapon glint matches equipped weapon art');
     assert.match(doc.querySelector('#hud-shield-art').getAttribute('src'), /miniapp_preview\/assets\/raid_shield_\d\.png/);
     assert.equal(doc.querySelector('#hud-weapon-val').textContent, String(r.state.hero.weaponDamage));
     assert.match(doc.querySelector('#hud-weapon-base').textContent, /\+\d+ база/);
@@ -2719,12 +2721,16 @@ test('magitech battle console HUD: shows full mech, synced weapon/shield art wit
     assert.match(doc.querySelector('#xp-bar').style.height, /%$/);
     assert.match(doc.querySelector('#upgrade-bar').style.height, /%$/);
     assert.match(doc.querySelector('#gold-bar').style.height, /%$/);
-    // Switching shield item updates the HUD shield art immediately when HUD renders.
+    // Switching weapon/shield updates the HUD art, wide-weapon fit, and triggers gear-swap pulse.
+    const weaponItem = r.state.equipment.find(e => e.slot === 'weapon');
     const shieldItem = r.state.equipment.find(e => e.slot === 'shield');
+    r.equipItem({ ...weaponItem, suffixIndex: 3, appearance: 14 });
     r.equipItem({ ...shieldItem, suffixIndex: 2, appearance: 162 });
     // Skill enchant is renamed to "Апгрейд" and triggers renderHUD/renderSkills on cast.
     r.state.skills = ['enchant']; r.state.skillCooldowns = {}; r.state.pendingModal = null; r.state.resolving = false;
     r.activateSkill('enchant');
+    assert.equal(doc.querySelector('#hud-weapon-stage').dataset.weaponWide, '1', 'hammer/axe/mace flagged as wide weapon');
+    assert.equal(doc.querySelector('#hud-weapon-glint').dataset.weaponArt, 'techno-hammer-v2');
     assert.equal(doc.querySelector('#hud-shield-art').getAttribute('src'), 'miniapp_preview/assets/raid_shield_2.png');
     assert.equal(doc.querySelector('[data-skill-id="enchant"] .skill-name').textContent, 'Апгрейд');
     assert.deepEqual(b.errors, []);
@@ -3183,8 +3189,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Крупный меч, плоская стопка и крутящаяся монетка/);
-    assert.match(doc.querySelector('#updates-history').textContent, /Выровненная нижняя панель боя/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Живая нижняя панель боя и узнаваемые символы/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Крупный меч, плоская стопка и крутящаяся монетка/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
