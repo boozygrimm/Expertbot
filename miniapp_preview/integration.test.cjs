@@ -2184,11 +2184,11 @@ test('magitech orbs: the real chain drops the SAME identical-looking nodes down 
     const fall = b.dom.window.__orbTest.created.find(a => a.target === original[0]);
     assert.match(fall.frames[0].transform, /^translate3d\(0,/);
     assert.ok(Math.abs(parseFloat(fall.frames[0].transform.split(',')[1]) + 120) < .001, 'preserve subpixel geometry, not an integer-only string');
-    assert.equal(fall.frames.at(-1).transform, 'translate3d(0,0,0) scaleX(1) scaleY(1)');
-    assert.equal(fall.frames.length, 4, 'gravity fall includes settle and micro-bounce');
+    assert.equal(fall.frames.at(-1).transform, 'translate3d(0,0,0)');
+    assert.equal(fall.frames.length, 2, 'single continuous compositor fall without mid-flight stalls');
     const refill = b.dom.window.__orbTest.created.find(a => a.target === orbAt(b, 0));
-    assert.match(refill.frames[0].transform, /^translate3d\(0,-120px,0\)/);
-    assert.equal(refill.frames[0].opacity, 0); assert.equal(refill.frames[1].opacity, 1);
+    assert.equal(refill.frames[0].transform, 'translate3d(0,-120px,0)');
+    assert.equal(refill.frames.length, 2);
     assert.equal(orbAt(b, 0).dataset.motion, 'refill');
     for (const id of victims) {
       const burst = b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${id}"]`);
@@ -3197,8 +3197,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Живая физика падения плиток и эффектный взрыв цепочек/);
-    assert.match(doc.querySelector('#updates-history').textContent, /Аккуратные кабошон-блик и каустика на плитках/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Шёлковое 60-fps падение плиток без стоп-кадров/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Живая физика падения плиток и эффектный взрыв цепочек/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
@@ -3957,9 +3957,9 @@ for (const path of [[31,30,24], [24,30,31], [0,7,14,15,20,27,28,35], chainSnake.
         const colReady = colEnd.get(cellIdx % 6) || 0;
         assert.ok(a.options.delay >= colReady - 0.01, 'column fall starts only when that column\'s burst cores are gone');
         assert.ok(a.options.delay + a.options.duration <= 535, 'keep clean headroom before the 550ms enemy wait ends');
-        assert.ok(a.frames.length >= 4, 'gravity fall uses accelerate + settle + micro-bounce keyframes');
-        assert.equal(a.frames.at(-1).transform, 'translate3d(0,0,0) scaleX(1) scaleY(1)');
-        assert.ok(a.frames[0].easing && a.frames[0].easing.startsWith('cubic-bezier('), 'gravity fall segment accelerates');
+        assert.equal(a.frames.length, 2, 'smooth 2-keyframe compositor fall');
+        assert.equal(a.frames.at(-1).transform, 'translate3d(0,0,0)');
+        assert.equal(a.options.easing, 'cubic-bezier(.26,.08,.34,1.04)');
       }
       const before=orbGameplay(b);h.finish();assert.equal(orbGameplay(b),before,'animation completion never pays or advances');
       assert.deepEqual(b.errors,[]);
