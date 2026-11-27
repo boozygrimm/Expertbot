@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="af9010e26245">
+<meta name="raid-build" content="167b2c672309">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1275,19 +1275,27 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb {
   position: absolute; inset: 2%; display: grid; place-items: center;
   container-type: inline-size; border-radius: 50%; isolation: isolate; overflow: hidden;
-  /* Readability pass: no permanent coloured fill or milky glass highlight. */
-  border: 1px solid #9ab5b54d; background: none;
-  box-shadow: inset 0 1px 0 #e7f4ed1a,0 1px 2px #0004;
+  /* Glass cabochon lens: crisp specular highlight above and soft caustic glow below. */
+  border: 1px solid #9ab5b559; background: none;
+  box-shadow: inset 0 1px 1px rgba(235, 252, 248, 0.2), inset 0 -2px 4px rgb(var(--orb-rgb, 148 220 214) / 0.12), 0 1px 2px #0005;
   pointer-events: none; backface-visibility: hidden;
 }
 .raid-orb::before {
-  content: ''; position: absolute; z-index: 4; left: 17%; top: 8%; width: 38%; height: 14%;
-  border-radius: 50%; transform: rotate(-28deg); background: none;
-  border-top: 1px solid #e9f7f22e; pointer-events: none;
+  content: ''; position: absolute; z-index: 4; left: 15%; right: 15%; top: 4%; height: 34%;
+  border-radius: 50% / 60% 60% 40% 40%;
+  background:
+    radial-gradient(ellipse 56% 42% at 38% 24%, rgba(255, 255, 255, 0.48) 0%, rgba(236, 252, 250, 0.14) 55%, transparent 100%),
+    linear-gradient(180deg, rgba(244, 254, 252, 0.32) 0%, rgba(220, 246, 244, 0.08) 48%, transparent 100%);
+  pointer-events: none;
 }
 .raid-orb::after {
-  content: ''; position: absolute; z-index: 4; right: 10%; bottom: 15%; width: 14%; height: 24%;
-  border-right: 1px solid #ffffff26; border-radius: 50%; transform: rotate(34deg); pointer-events: none;
+  content: ''; position: absolute; z-index: 4; left: 16%; right: 16%; bottom: 3%; height: 22%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 78% 62% at 50% 82%, rgba(242, 255, 252, 0.34) 0%, rgb(var(--orb-rgb, 152 224 218) / 0.28) 46%, transparent 82%);
+  filter: blur(1.2px);
+  mix-blend-mode: screen;
+  pointer-events: none;
 }
 /* Quiet selection material: hidden/paused at rest, not a filled tile.
    No spinning conic bands, blinking highlights or orb pulsing. */
@@ -1466,7 +1474,7 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .orb-charge { top: auto; bottom: 7%; }
 .raid-orb.special { border: 2px solid #efce8d; box-shadow: inset 0 0 0 1px #614726,0 0 7px #e8ba5450; }
 .raid-orb.boss { border: 2px solid #ffc5a0; box-shadow: inset 0 0 0 2px #722f3d,0 0 9px #e8ab6350; }
-.raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; transform: none; }
+.raid-orb.boss::after { inset: 4%; width: auto; height: auto; border: 1px dashed #ffe8ba99; background: none; filter: none; mix-blend-mode: normal; transform: none; }
 /* A selected path gets a restrained fill; undo/cancel removes it via the
    existing selected class. No animation callback controls damage/rewards. */
 #board .cell.selected .raid-orb {
@@ -3429,7 +3437,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка af9010e26245</p>
+    <p class="build-label">Сборка 167b2c672309</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -3661,7 +3669,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка af9010e26245</p>
+    <p class="build-label">Сборка 167b2c672309</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -3700,16 +3708,17 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка af9010e26245</p>
+      <p class="build-label" id="updates-build">Сборка 167b2c672309</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="39"><b>Живая нижняя панель боя и узнаваемые символы.</b> Оружие уменьшено на 5% (с поправкой под топор, молот и булаву) и получило блик по силуэту; над апгрейдом стоит медальон умения «Апгрейд», над опытом — гранёный кристалл; панель мягко дышит и откликается на удары, лечение, броню, сбор ресурсов и смену снаряжения (с учётом настройки «Анимации»).</li>
+        <li data-release="40"><b>Стеклянные кабошоны плиток и локация в кнопке «Продолжить».</b> Чёрточки на кружках плиток заменены на верхний стеклянный кабошон-блик и нижний каустический отсвет, а на экране гаража кнопка «Продолжить» теперь сразу показывает локацию забега: Лес, Кузня, Разлом или Храм.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="39"><b>Живая нижняя панель боя и узнаваемые символы.</b> Оружие уменьшено на 5% (с поправкой под топор, молот и булаву) и получило блик по силуэту; над апгрейдом стоит медальон умения «Апгрейд», над опытом — гранёный кристалл; панель мягко дышит и откликается на удары, лечение, броню, сбор ресурсов и смену снаряжения (с учётом настройки «Анимации»).</li>
           <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
           <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
           <li data-release="36"><b>Новая нижняя панель боя и переименование «Апгрейд».</b> Внизу теперь единая магитех-панель с полной фигуркой текущего меха и встроенной шкалой жизни, актуальными мечом и щитом из магазина с цифрами поверх них, вертикальными колбами опыта, апгрейда и монет и медальоном трофея. Лишняя строка логов убрана, а умение «Затачивание» переименовано в «Апгрейд».</li>
@@ -3838,7 +3847,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка af9010e26245.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 167b2c672309.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -4798,10 +4807,10 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
 
   const RAID_MONSTER_ART = (typeof window !== 'undefined' && window.RAID_MONSTER_ART) || {};
   const RAID_REGIONS = {
-    earth: { title: 'Забытый лес', element: 'Земля', index: '03' },
-    fire: { title: 'Пылающая кузня', element: 'Огонь', index: '01' },
-    air: { title: 'Небесный разлом', element: 'Воздух', index: '02' },
-    water: { title: 'Затопленный храм', element: 'Вода', index: '04' },
+    earth: { title: 'Забытый лес', short: 'Лес', element: 'Земля', index: '03' },
+    fire: { title: 'Пылающая кузня', short: 'Кузня', element: 'Огонь', index: '01' },
+    air: { title: 'Небесный разлом', short: 'Разлом', element: 'Воздух', index: '02' },
+    water: { title: 'Затопленный храм', short: 'Храм', element: 'Вода', index: '04' },
   };
   const RAID_PORTRAITS = {
     fire: ['fire_spark', 'fire_crab', 'fire_demon', 'fire_dragon'],
@@ -6374,6 +6383,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (!SAVED_RUN) return null;
     const { state, savedAt } = SAVED_RUN;
     return { classId: state.classId, mode: state.mode, difficulty: state.difficulty, turn: state.turn, hp: state.hero.hp, level: state.hero.level,
+      region: Object.hasOwn(RAID_REGIONS, SAVED_RUN.region) ? SAVED_RUN.region : RAID_REGION,
       pendingModal: SAVED_RUN.menu?.kind || null, combatRules: SAVED_RUN.combat?.rules || 'classic-v1', savedAt };
   }
   function restoreMenuChoices(menu) {
@@ -11610,10 +11620,15 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const resume = el('picker-resume'), info = savedRunInfo();
     if (resume) {
       resume.hidden = !(S && !S.over || info);
-      resume.textContent = info?.combatRules === 'elements-affinity-v1' ? 'Продолжить · стихии'
-        : info?.combatRules === 'classic-v1' ? 'Продолжить · прежние правила' : 'Продолжить';
-      resume.title = S && !S.over ? 'Вернуться в текущий забег'
-        : info ? `Продолжить рейд меха «${CLASS_BY_ID[info.classId].name}», ход ${info.turn}` : 'Продолжить забег';
+      const resumeRegion = S && !S.over && Object.hasOwn(RAID_REGIONS, RUN_REGION) ? RUN_REGION
+        : info && Object.hasOwn(RAID_REGIONS, info.region) ? info.region : null;
+      const loc = resumeRegion ? RAID_REGIONS[resumeRegion] : null;
+      const isLegacy = !(S && !S.over) && info?.combatRules === 'classic-v1';
+      resume.textContent = isLegacy
+        ? (loc ? `Продолжить · ${loc.short} · прежние правила` : 'Продолжить · прежние правила')
+        : (loc ? `Продолжить · ${loc.short}` : 'Продолжить');
+      resume.title = S && !S.over ? `Вернуться в текущий забег${loc ? ` (${loc.title})` : ''}`
+        : info ? `Продолжить рейд меха «${CLASS_BY_ID[info.classId].name}»${loc ? ` · ${loc.title}` : ''}, ход ${info.turn}` : 'Продолжить забег';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;
