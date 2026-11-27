@@ -3075,7 +3075,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Два звука зелий/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Компактная боевая шапка/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Два звука зелий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Новые иконки умений/);
     assert.match(doc.querySelector('#updates-history').textContent, /Склонность пилота.*перед каждым рейдом/s);
     assert.match(doc.querySelector('#updates-history').textContent, /30%.*20%.*25%/s);

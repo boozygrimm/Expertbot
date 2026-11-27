@@ -2405,4 +2405,204 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   height: 28px;
 }
 
+/* Visually hidden helper: keeps screen-reader/test title hooks without taking header space */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* Compact unified combat top bar: 4 skill slots in place of removed titles + 3 styled round medallions */
+.shell {
+  padding-top: 8px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 0 5px;
+}
+.brand .skills-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+.brand .skills {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  min-height: 60px;
+}
+.brand .skill {
+  min-width: 0;
+  min-height: 60px;
+  padding: 3px 2px 2px;
+  gap: 2px;
+  border-radius: 10px;
+  border: 1px solid rgba(208, 184, 118, 0.44);
+  background: radial-gradient(ellipse at 50% 24%, rgba(44, 88, 78, 0.44), rgba(9, 24, 24, 0.94) 76%);
+  box-shadow: inset 0 1px 0 rgba(255, 242, 198, 0.16), 0 2px 7px rgba(0, 0, 0, 0.44);
+}
+.brand .skill.empty {
+  border: 1px solid rgba(168, 154, 106, 0.24);
+  background: linear-gradient(180deg, rgba(6, 18, 19, 0.78), rgba(12, 30, 30, 0.6));
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.48), 0 1px 0 rgba(255, 236, 178, 0.06);
+  opacity: 0.9;
+}
+.brand .skill .skill-icon {
+  width: min(100%, 54px);
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+.brand .skill .skill-name {
+  min-height: 2.2em;
+  max-height: 2.35em;
+  overflow: hidden;
+  font-size: 8px;
+  line-height: 1.1;
+  padding-inline: 1px;
+}
+.brand .skill .cd {
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  padding: 0 3px;
+  font-size: 8px;
+}
+
+/* Match all three header buttons to the game's fire-forged round medallion style */
+.brand-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.brand-actions .icon-btn,
+.brand-actions .settings-toggle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(226, 203, 134, 0.72);
+  background: var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  color: #f6e3b2;
+  box-shadow: 0 0 12px rgba(240, 82, 45, 0.34), 0 3px 8px rgba(0, 0, 0, 0.58), inset 0 0 0 1px rgba(255, 205, 110, 0.26);
+  filter: drop-shadow(0 0 5px rgba(239, 89, 43, 0.42));
+  cursor: pointer;
+  transition: transform 0.14s ease, filter 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.brand-actions .icon-btn .ui-glyph {
+  width: 19px;
+  height: 19px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+.brand-actions .icon-btn:hover,
+.brand-actions .icon-btn:focus-visible,
+.brand-actions .settings-toggle[aria-expanded="true"] {
+  border-color: #ffe294;
+  background: var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  color: #fff4d1;
+  box-shadow: 0 0 16px rgba(255, 128, 56, 0.54), 0 3px 10px rgba(0, 0, 0, 0.62), inset 0 0 0 1px rgba(255, 224, 146, 0.46);
+  filter: brightness(1.08) drop-shadow(0 0 7px rgba(255, 114, 52, 0.64));
+}
+.brand-actions .icon-btn:active {
+  transform: scale(0.93);
+  filter: brightness(0.95) drop-shadow(0 0 8px rgba(255, 106, 54, 0.72));
+}
+
+/* Slimmer status bar and styled combat/dialog buttons to match magitech metal & gold */
+.status-line {
+  padding: 4px 8px;
+  margin-bottom: 5px;
+  border-radius: 6px;
+  border: 1px solid rgba(196, 174, 110, 0.34);
+  background: linear-gradient(180deg, rgba(19, 44, 41, 0.92), rgba(10, 26, 26, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 240, 194, 0.1);
+  color: #dfd9b8;
+  font-size: 9px;
+}
+.menu-card .btn,
+.modal-card .btn,
+.help-card .btn,
+.retune-actions .btn {
+  border-radius: 9px;
+  border: 1px solid #efd896;
+  background: linear-gradient(180deg, #ecd89a 0%, #c8ad67 52%, #a88d4c 100%);
+  color: #14241d;
+  box-shadow: inset 0 1px 0 rgba(255, 250, 226, 0.52), 0 3px 10px rgba(0, 0, 0, 0.42);
+  text-shadow: 0 1px 0 rgba(255, 248, 220, 0.35);
+}
+.menu-card .btn.secondary,
+.modal-card .btn.secondary,
+.help-card .btn.secondary,
+.retune-actions .btn.secondary {
+  border-color: rgba(194, 172, 112, 0.56);
+  background: linear-gradient(180deg, #1d3c36 0%, #102624 100%);
+  color: #efe2b8;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 192, 0.16), 0 3px 9px rgba(0, 0, 0, 0.38);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.retune-elements button {
+  border-radius: 8px;
+  border-color: rgba(188, 168, 110, 0.46);
+  background: linear-gradient(180deg, #173432, #0c2122);
+  color: #eee4c2;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 192, 0.12);
+}
+.retune-elements button[aria-pressed="true"] {
+  border-color: #f3dc98;
+  background: linear-gradient(180deg, #35584f, #1c3a35);
+  box-shadow: 0 0 10px rgba(240, 206, 118, 0.28), inset 0 1px 0 rgba(255, 246, 212, 0.28);
+}
+
+@media (max-width: 480px) {
+  .shell { padding-inline: 10px; }
+  .telegram-preview .shell {
+    padding-left: calc(10px + var(--raid-inset-left));
+    padding-right: calc(10px + var(--raid-inset-right));
+  }
+}
+@media (max-width: 420px) {
+  .brand { gap: 5px; }
+  .brand-actions { gap: 4px; }
+  .brand-actions .icon-btn,
+  .brand-actions .settings-toggle { width: 38px; height: 38px; }
+  .brand-actions .icon-btn .ui-glyph { width: 17px; height: 17px; }
+  .brand .skills { min-height: 58px; gap: 3px; }
+  .brand .skill { min-height: 58px; padding: 3px 1px 2px; }
+  .brand .skill .skill-name { font-size: 7.5px; }
+}
+@media (max-width: 374px) {
+  .brand { gap: 4px; }
+  .brand-actions { gap: 3px; }
+  .brand-actions .icon-btn,
+  .brand-actions .settings-toggle { width: 34px; height: 34px; }
+  .brand-actions .icon-btn .ui-glyph { width: 15px; height: 15px; }
+  .brand .skills { min-height: 54px; gap: 3px; }
+  .brand .skill { min-height: 54px; }
+  .brand .skill .skill-name { font-size: 7px; }
+}
+@media (max-height: 560px) {
+  .brand .skills { min-height: 52px; }
+  .brand .skill { min-height: 52px; padding: 2px 1px; }
+  .brand .skill .skill-icon { width: min(100%, 44px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-actions .icon-btn,
+  .brand-actions .settings-toggle { transition: none !important; }
+}
+
+
 

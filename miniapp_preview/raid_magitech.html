@@ -121,23 +121,23 @@
 </div>
 
 <div class="shell">
-  <!-- top brand -->
+  <!-- top combat bar: skills in place of the removed title + styled medallions -->
   <header class="brand">
-    <div class="brand-logo">
+    <div class="brand-logo sr-only">
       <div class="brand-text">
         <small data-raid-combat-title>RAID / СТИХИИ</small>
         <strong data-raid-region-title>Забытый лес</strong>
       </div>
     </div>
+    <div class="skills-head">
+      <div class="skills" id="skills" aria-label="Умения"></div>
+    </div>
     <div class="brand-actions">
-      <button class="icon-btn settings-toggle" id="settings-btn" type="button" title="Настройки игры" aria-label="Настройки игры" aria-haspopup="dialog" aria-controls="game-settings" aria-expanded="false"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="m9.5 3-.6 2-1.8 1-2-.5-2.5 4.3L4.1 11v2L2.6 14.2l2.5 4.3 2-.5 1.8 1 .6 2h5l.6-2 1.8-1 2 .5 2.5-4.3-1.5-1.2v-2l1.5-1.2-2.5-4.3-2 .5-1.8-1-.6-2Z"/><circle cx="12" cy="12" r="3"/></g></svg></button>
-      <button class="icon-btn" id="stats-btn" type="button" title="Мех, пилот и итоговые параметры" aria-label="Мех, пилот и итоговые параметры"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3M9 16h6m-3-3v6"/></g></svg></button>
-      <button class="icon-btn" id="menu-btn" type="button" title="Меню рейда">Меню</button>
+      <button class="icon-btn settings-toggle" id="settings-btn" type="button" title="Настройки игры" aria-label="Настройки игры" aria-haspopup="dialog" aria-controls="game-settings" aria-expanded="false"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="m9.5 3-.6 2-1.8 1-2-.5-2.5 4.3L4.1 11v2L2.6 14.2l2.5 4.3 2-.5 1.8 1 .6 2h5l.6-2 1.8-1 2 .5 2.5-4.3-1.5-1.2v-2l1.5-1.2-2.5-4.3-2 .5-1.8-1-.6-2Z"/><circle cx="12" cy="12" r="3"/></g></svg></button>
+      <button class="icon-btn" id="stats-btn" type="button" title="Мех, пилот и итоговые параметры" aria-label="Мех, пилот и итоговые параметры"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.2" r="3.1"/><path d="M5.2 20.5v-2.6a6.8 6.8 0 0 1 13.6 0v2.6"/><path d="M9.4 15.8h5.2M12 13.2v5.2"/></g></svg></button>
+      <button class="icon-btn menu-toggle" id="menu-btn" type="button" title="Меню рейда" aria-label="Меню рейда"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></g><path d="M12 10.6 13.4 12 12 13.4 10.6 12Z" fill="currentColor"/></svg><span class="sr-only">Меню</span></button>
     </div>
   </header>
-  <div class="skills-head">
-    <div class="skills" id="skills" aria-label="Умения"></div>
-  </div>
 
   <div class="status-line" id="status-line">Ход 0 · Уровень 1 · Очки 0</div>
   <p class="save-warning" id="save-status" role="status" aria-live="polite" hidden></p>
@@ -275,11 +275,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="31"><b>Два звука зелий.</b> Открытие бутылки звучит при выборе первой плитки зелья; звон стекла запускается при активации цепочки.</li>
+        <li data-release="32"><b>Компактная боевая шапка и кнопки в стиле игры.</b> Верхние надписи убраны, слоты умений подняты на их место рядом с круглыми медальонами настроек, параметров и меню — поле 6×6 и нижняя панель помещаются выше и свободнее.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="31"><b>Два звука зелий.</b> Открытие бутылки звучит при выборе первой плитки зелья; звон стекла запускается при активации цепочки.</li>
           <li data-release="30"><b>Новые иконки умений.</b> Все 43 умения получили глянцевые овальные медальоны в золотой оправе, а пустой слот — стилизованное гнездо. Эффекты и перезарядка навыков не менялись.</li>
           <li data-release="29"><b>Настройки и тексты боя.</b> Вибрация — трёхпозиционный тумблер в гараже, меню и бою; склонность пилота — пятипозиционный тумблер в карточке меха. В описаниях особых врагов указаны актуальные имена пилотов, а устаревшее «череп» заменено на «враг» там, где речь о противниках.</li>
           <li data-release="28"><b>Кабины мехов и выбор пилота.</b> В карточках мехов появились пустые кабины с индивидуальными головами; пилота можно выбрать отдельно, выбор подписывается в карточке и сохраняется.</li>

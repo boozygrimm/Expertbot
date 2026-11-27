@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Два звука зелий/);
+  assert.match(current, /Компактная боевая шапка/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Два звука зелий/);
   assert.match(archive, /Новые иконки умений/);
   assert.match(archive, /Настройки и тексты боя/);
   assert.match(archive, /Новый кубок-трофей/);
@@ -6023,7 +6024,10 @@ test('all circular garage and region controls use the generated fire medallion w
   const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
   assert.match(css, /\.picker-tool-icon \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat/);
   assert.match(css, /\.mech-garage-side-actions \.mech-garage-icon-button \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat[\s\S]*?box-shadow:0 0 18px/);
+  const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   assert.match(css, /\.region-emblem-launch \{[\s\S]*?background:var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat;[\s\S]*?drop-shadow\(0 0 12px/);
+  assert.match(css, /\.brand-actions \.icon-btn,[\s\S]*?background:\s*var\(--raid-round-button-texture\) center \/ 100% 100% no-repeat;/);
+  assert.match(html, /<header class="brand">[\s\S]*?<div class="brand-logo sr-only">[\s\S]*?<div class="skills-head">[\s\S]*?<div class="brand-actions">/);
   assert.match(builder, /ROUND_BUTTON_TEXTURE = 'assets\/raid_round_button_texture\.webp'/);
 });
 
