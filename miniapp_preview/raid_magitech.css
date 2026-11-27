@@ -3492,6 +3492,21 @@ html[data-raid-idle="1"] .mech-portrait-ring {
 }
 
 /* --- #51: Locked mech button & unlock info view in circular garage --------- */
+.class-picker:not(.region-mode-open) .pick-name {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.class-picker:not(.region-mode-open) .picker-card-btn[data-class-id="adventurer"] .pick-name {
+  font-size: clamp(7.5px, 2.08vw, 13px);
+  letter-spacing: -0.04em;
+}
+@media (max-width: 420px) {
+  .class-picker:not(.region-mode-open) .picker-card-btn[data-class-id="ranger"] .pick-name,
+  .class-picker:not(.region-mode-open) .picker-card-btn[data-class-id="raider"] .pick-name {
+    font-size: clamp(8px, 2.25vw, 13px);
+    letter-spacing: -0.03em;
+  }
+}
 .picker-card-btn.locked .mech-card-status {
   color: #f4d381;
   letter-spacing: .02em;
