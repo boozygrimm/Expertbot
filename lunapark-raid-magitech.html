@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="1dc389852a44">
+<meta name="raid-build" content="280be28a08b9">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1490,7 +1490,6 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed {
   border-color: rgb(var(--orb-rgb, 244 223 161) / .85);
-  box-shadow: 0 0 12px rgb(var(--orb-rgb, 244 223 161) / .52), inset 0 0 10px rgb(var(--orb-rgb, 244 223 161) / .34);
 }
 .raid-orb.primed .orb-core { animation: orb-prime .40s cubic-bezier(.34,1.2,.64,1) var(--prime-delay,0ms) both; }
 .raid-orb.primed .orb-material { opacity: .28; }
@@ -1514,49 +1513,45 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: none; filter: none; }
 .raid-orb[data-motion] { will-change: transform, opacity; }
-#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; }
+#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; contain: layout style paint; }
 .chain-surge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .chain-surge path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.chain-surge path.surge-glow { stroke: rgb(var(--surge-rgb, 244 223 161) / .48); stroke-width: 11; filter: blur(3px); }
-.chain-surge path.surge-core { stroke: #fff7dc; stroke-width: 3.2; opacity: .78; filter: drop-shadow(0 0 5px rgb(var(--surge-rgb, 244 223 161) / .9)); }
-.chain-surge path.surge-bolt { stroke: #ffffff; stroke-width: 6.2; filter: drop-shadow(0 0 8px rgb(var(--surge-rgb, 244 223 161))); }
+.chain-surge path.surge-glow { stroke: rgb(var(--surge-rgb, 244 223 161) / .32); stroke-width: 13; }
+.chain-surge path.surge-core { stroke: #fff4cf; stroke-width: 3.2; opacity: .82; }
+.chain-surge path.surge-bolt { stroke: #ffffff; stroke-width: 6; }
 .orb-burst { position: absolute; pointer-events: none; --burst-scale: 1; }
 .orb-burst.climax { --burst-scale: 1.24; }
 .orb-burst .orb-ghost { inset: 0; width: 100%; height: 100%; }
 .orb-burst-flash {
   position: absolute; inset: -16%; border-radius: 50%; opacity: 0; pointer-events: none;
-  background: radial-gradient(circle, rgba(255,255,255,.95) 0%, rgb(var(--orb-rgb) / .76) 38%, rgb(var(--orb-rgb) / .18) 64%, transparent 78%);
-  mix-blend-mode: screen;
-  animation: orb-burst-flash .28s cubic-bezier(.16,.84,.3,1) var(--burst-delay,0ms) forwards;
+  background: radial-gradient(circle, rgba(255,255,255,.92) 0%, rgb(var(--orb-rgb) / .72) 38%, rgb(var(--orb-rgb) / .18) 64%, transparent 78%);
+  animation: orb-burst-flash .26s cubic-bezier(.16,.84,.3,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-ring {
   position: absolute; inset: 4%; opacity: 0;
   border: 2px solid rgb(var(--orb-rgb) / .92); border-radius: 50%;
-  box-shadow: 0 0 10px rgb(var(--orb-rgb) / .82), inset 0 0 6px rgba(255,255,255,.35);
-  animation: orb-burst-ring .36s cubic-bezier(.16,.85,.32,1) var(--burst-delay,0ms) forwards;
+  animation: orb-burst-ring .34s cubic-bezier(.16,.85,.32,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-ring-echo {
   position: absolute; inset: 8%; opacity: 0;
-  border: 1.5px solid rgba(255,255,255,.76); border-radius: 50%;
-  box-shadow: 0 0 8px rgb(var(--orb-rgb) / .72);
-  animation: orb-burst-ring-echo .38s cubic-bezier(.16,.85,.32,1) calc(var(--burst-delay,0ms) + 42ms) forwards;
+  border: 1.5px solid rgba(255,255,255,.78); border-radius: 50%;
+  animation: orb-burst-ring-echo .36s cubic-bezier(.16,.85,.32,1) calc(var(--burst-delay,0ms) + 40ms) forwards;
 }
 .orb-burst-star {
-  position: absolute; left: 50%; top: 50%; width: 120%; height: 120%;
-  margin: -60% 0 0 -60%; opacity: 0; pointer-events: none;
-  animation: orb-burst-star .30s cubic-bezier(.16,.86,.32,1) var(--burst-delay,0ms) forwards;
+  position: absolute; left: 50%; top: 50%; width: 118%; height: 118%;
+  margin: -59% 0 0 -59%; opacity: 0; pointer-events: none;
+  animation: orb-burst-star .28s cubic-bezier(.16,.86,.32,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-star::before, .orb-burst-star::after {
   content: ''; position: absolute; left: 50%; top: 50%; width: 100%; height: 10%;
   transform: translate(-50%,-50%); border-radius: 99px;
-  background: linear-gradient(90deg, transparent 0%, rgb(var(--orb-rgb) / .7) 30%, #ffffff 50%, rgb(var(--orb-rgb) / .7) 70%, transparent 100%);
-  filter: drop-shadow(0 0 5px rgb(var(--orb-rgb) / .9));
+  background: linear-gradient(90deg, transparent 0%, rgb(var(--orb-rgb) / .72) 30%, #ffffff 50%, rgb(var(--orb-rgb) / .72) 70%, transparent 100%);
 }
 .orb-burst-star::after { transform: translate(-50%,-50%) rotate(90deg); }
 .orb-burst-mist {
   position: absolute; inset: -10%; border-radius: 50%; opacity: 0; pointer-events: none;
-  background: radial-gradient(circle, rgb(var(--orb-rgb) / .52) 0%, rgb(var(--orb-rgb) / .18) 54%, transparent 78%);
-  animation: orb-burst-mist .36s ease-out var(--burst-delay,0ms) forwards;
+  background: radial-gradient(circle, rgb(var(--orb-rgb) / .5) 0%, rgb(var(--orb-rgb) / .16) 54%, transparent 78%);
+  animation: orb-burst-mist .34s ease-out var(--burst-delay,0ms) forwards;
 }
 .orb-shard {
   position: absolute; left: 50%; top: 50%;
@@ -1564,16 +1559,15 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   margin: calc(var(--sz, 9%) / -2) 0 0 calc(var(--sz, 9%) / -2);
   opacity: 0; border-radius: 2px;
   background: linear-gradient(135deg, #ffffff 0%, rgb(var(--orb-rgb)) 56%);
-  box-shadow: 0 0 6px rgb(var(--orb-rgb) / .88);
-  animation: orb-shard var(--sdur, .36s) cubic-bezier(.18,.78,.32,1) var(--burst-delay,0ms) forwards;
+  animation: orb-shard var(--sdur, .34s) cubic-bezier(.18,.78,.32,1) var(--burst-delay,0ms) forwards;
 }
-.orb-shard.spark { width: 15%; height: 4.4%; margin: -2.2% 0 0 -7.5%; border-radius: 99px; }
+.orb-shard.spark { width: 14%; height: 4.4%; margin: -2.2% 0 0 -7%; border-radius: 99px; }
 .orb-shard.droplet {
   border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, #ffffff 0%, rgb(var(--orb-rgb)) 68%);
 }
 .orb-shard.glint {
-  clip-path: polygon(50% 0%, 66% 34%, 100% 50%, 66% 66%, 50% 100%, 34% 66%, 0% 50%, 34% 34%);
+  border-radius: 1px;
   background: radial-gradient(circle, #ffffff 0%, rgb(var(--orb-rgb)) 76%);
 }
 .orb-shard.heavy { border-radius: 30% 70% 45% 55%; }
@@ -1612,10 +1606,10 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
 @keyframes orb-prime {
-  0% { transform: scale(1); filter: brightness(1); }
-  26% { transform: scale(.91); filter: brightness(1.08); }
-  68% { transform: scale(1.15); filter: brightness(1.42) drop-shadow(0 0 6px rgb(var(--orb-rgb) / .78)); }
-  100% { transform: scale(1.06); filter: brightness(1.24); }
+  0% { transform: scale(1); }
+  26% { transform: scale(.91); }
+  68% { transform: scale(1.14); }
+  100% { transform: scale(1.06); }
 }
 @keyframes orb-burst-flash {
   0% { opacity: 0; transform: scale(.32); }
@@ -3529,7 +3523,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 1dc389852a44</p>
+    <p class="build-label">Сборка 280be28a08b9</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -3761,7 +3755,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 1dc389852a44</p>
+    <p class="build-label">Сборка 280be28a08b9</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -3800,16 +3794,17 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 1dc389852a44</p>
+      <p class="build-label" id="updates-build">Сборка 280be28a08b9</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="42"><b>Живая физика падения плиток и эффектный взрыв цепочек.</b> После отпускания пальца по цепочке пробегает световой разряд с волновой зарядкой, каждая плитка взрывается яркой вспышкой, ударным кольцом и тематическими искрами/каплями (с лёгкой отдачей доски на длинных комбо и боссах), а падающие плитки осыпаются живым каскадом по столбцам с гравитационным ускорением и упругим микро-отскоком при посадке.</li>
+        <li data-release="43"><b>Шёлковое 60-fps падение плиток без стоп-кадров.</b> Убраны тяжёлые софт-фильтры из взрывов и рывки при старте падения: все плитки (включая выезжающие сверху) теперь падают единым плавным GPU-движением с естественным мягким приземлением.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="42"><b>Живая физика падения плиток и эффектный взрыв цепочек.</b> После отпускания пальца по цепочке пробегает световой разряд с волновой зарядкой, каждая плитка взрывается яркой вспышкой, ударным кольцом и тематическими искрами/каплями (с лёгкой отдачей доски на длинных комбо и боссах), а падающие плитки осыпаются живым каскадом по столбцам с гравитационным ускорением и упругим микро-отскоком при посадке.</li>
           <li data-release="41"><b>Аккуратные кабошон-блик и каустика на плитках.</b> Верхний блик и нижний каустический отсвет уменьшены и разнесены по диагонали (верх-лево и низ-право вдоль кромки сферы), чтобы не перекрывать центр плитки.</li>
           <li data-release="40"><b>Стеклянные кабошоны плиток и локация в кнопке «Продолжить».</b> Чёрточки на кружках плиток заменены на верхний стеклянный кабошон-блик и нижний каустический отсвет, а на экране гаража кнопка «Продолжить» теперь сразу показывает локацию забега: Лес, Кузня, Разлом или Храм.</li>
           <li data-release="39"><b>Живая нижняя панель боя и узнаваемые символы.</b> Оружие уменьшено на 5% (с поправкой под топор, молот и булаву) и получило блик по силуэту; над апгрейдом стоит медальон умения «Апгрейд», над опытом — гранёный кристалл; панель мягко дышит и откликается на удары, лечение, броню, сбор ресурсов и смену снаряжения (с учётом настройки «Анимации»).</li>
@@ -3941,7 +3936,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 1dc389852a44.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 280be28a08b9.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -7587,19 +7582,6 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       { opacity: 0 },
     ], { duration: 405, easing: 'ease-out', fill: 'forwards' }, () => svg.remove());
   }
-  function triggerBoardRecoil(strength, delay = 0) {
-    if (orbReducedMotion() || strength < .8) return;
-    const board = el('board');
-    if (!board || typeof board.animate !== 'function') return;
-    const s = Math.min(3.2, strength);
-    animateOrb(board, [
-      { transform: 'translate3d(0,0,0)' },
-      { transform: `translate3d(${(-s * .55).toFixed(1)}px,${(s * .85).toFixed(1)}px,0)`, offset: .22 },
-      { transform: `translate3d(${(s * .45).toFixed(1)}px,${(-s * .5).toFixed(1)}px,0)`, offset: .52 },
-      { transform: `translate3d(${(-s * .2).toFixed(1)}px,${(s * .22).toFixed(1)}px,0)`, offset: .78 },
-      { transform: 'translate3d(0,0,0)' },
-    ], { duration: 150, delay, easing: 'ease-out' });
-  }
   function burstOrb(view, rect, boardRect, delay = 0, duration = 240, opts = {}) {
     view.motion?.cancel();
     view.node.classList.remove('primed');
@@ -7610,7 +7592,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     const type = view.node.dataset.type || '';
     const climax = !!opts.climax, boss = !!opts.boss || view.node.classList.contains('boss');
     const explosive = !!opts.explosive || view.node.classList.contains('explosive');
-    const intensity = Math.max(.9, Math.min(1.5, opts.intensity ?? 1));
+    const intensity = Math.max(.9, Math.min(1.4, opts.intensity ?? 1));
+    const dense = !!opts.dense;
     const burst = document.createElement('div');
     burst.className = 'orb-burst' + (climax || boss || explosive ? ' climax' : '');
     burst.dataset.orbId = view.node.dataset.orbId;
@@ -7619,7 +7602,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
     const flash = document.createElement('i'); flash.className = 'orb-burst-flash'; burst.appendChild(flash);
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
-    if (climax || boss || explosive || type === 'shield' || type === 'skull') {
+    if (climax || boss || explosive || (!dense && (type === 'shield' || type === 'skull'))) {
       const echo = document.createElement('i'); echo.className = 'orb-burst-ring-echo'; burst.appendChild(echo);
     }
     if (type === 'coin' || type === 'trophy' || climax || boss || explosive) {
@@ -7630,14 +7613,14 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     }
     // Deterministic cosmetic scatter from orbId (never touches gameplay RNG).
     const seed = Math.imul(Number(view.node.dataset.orbId) || 1, 2654435761) >>> 0;
-    const shardCount = boss || explosive ? 9 : climax ? 8 : 6;
-    const radius = rect.width * (.66 + intensity * .18);
+    const shardCount = dense ? 4 : boss || explosive ? 7 : climax ? 7 : 6;
+    const radius = rect.width * (.64 + intensity * .18);
     for (let i = 0; i < shardCount; i++) {
       const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
       const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
-      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .56;
-      const dist = radius * (.62 + h2 * .52);
-      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .08;
+      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .52;
+      const dist = radius * (.62 + h2 * .48);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .06;
       const shard = document.createElement('i');
       const variant = type === 'potion' ? ' droplet'
         : type === 'coin' || type === 'trophy' ? (i % 2 ? ' glint' : ' spark')
@@ -7646,11 +7629,11 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       shard.className = 'orb-shard' + variant;
       shard.style.setProperty('--dx', dx.toFixed(1) + 'px');
       shard.style.setProperty('--dy', dy.toFixed(1) + 'px');
-      shard.style.setProperty('--grav', (7 + h1 * 11).toFixed(1) + 'px');
-      shard.style.setProperty('--sz', (6.5 + h2 * 5.5).toFixed(1) + '%');
-      shard.style.setProperty('--sc', (.85 + h1 * .42).toFixed(2));
-      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 220) + 'deg');
-      shard.style.setProperty('--sdur', (.30 + h2 * .11).toFixed(2) + 's');
+      shard.style.setProperty('--grav', (7 + h1 * 10).toFixed(1) + 'px');
+      shard.style.setProperty('--sz', (6.5 + h2 * 5).toFixed(1) + '%');
+      shard.style.setProperty('--sc', (.85 + h1 * .38).toFixed(2));
+      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 180) + 'deg');
+      shard.style.setProperty('--sdur', (.28 + h2 * .10).toFixed(2) + 's');
       burst.appendChild(shard);
     }
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
@@ -7659,13 +7642,12 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
     }
     layer.appendChild(burst);
-    // Backwards fill holds an untriggered ghost in its original socket. Its
-    // ring/shards stay hidden until the same delay (CSS forwards fill only).
+    // Pure compositor-only transform + opacity (no animated filter) for smooth 60fps mobile WebView.
     animateOrb(view.node, [
-      { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' },
-      { transform: `scale(${climax || boss ? 1.2 : 1.15})`, opacity: .98, filter: 'brightness(1.6)', offset: .24 },
-      { transform: 'scale(.08)', opacity: 0, filter: 'brightness(1.85)' },
-    ], { duration, delay, easing: 'cubic-bezier(.32,0,.78,.36)', fill: 'both' }, () => view.node.remove());
+      { transform: 'scale(1)', opacity: 1 },
+      { transform: `scale(${climax || boss ? 1.18 : 1.13})`, opacity: .96, offset: .24 },
+      { transform: 'scale(.08)', opacity: 0 },
+    ], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
     animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
   }
   function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390, pitch = 0) {
@@ -7677,32 +7659,20 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     if (falling) {
       const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
       const rows = Math.max(1, Math.abs(dy) / cellPitch);
-      const naturalDur = Math.round(180 + Math.sqrt(rows) * 70);
-      duration = Math.max(150, Math.min(naturalDur, maxDuration));
-      const impact = Math.min(1, .42 + Math.sqrt(rows) * .28);
-      const settleY = +(1.2 + impact * 1.4).toFixed(1);
-      const bounceY = +(2.2 + impact * 4.2).toFixed(1);
-      const sx = +(1 + .03 + impact * .035).toFixed(3);
-      const sy = +(1 - .032 - impact * .034).toFixed(3);
-      frames = incoming ? [
-        { transform: `translate3d(0,${dy}px,0) scaleX(.975) scaleY(1.035)`, opacity: 0, easing: 'cubic-bezier(.38,0,.84,.54)' },
-        { transform: `translate3d(0,${+(dy * .91).toFixed(2)}px,0) scaleX(.978) scaleY(1.03)`, opacity: 1, offset: .16, easing: 'cubic-bezier(.42,.08,.86,.58)' },
-        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .78, easing: 'cubic-bezier(.22,.68,.38,1)' },
-        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
-        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
-      ] : [
-        { transform: `translate3d(0,${dy}px,0) scaleX(.982) scaleY(1.026)`, opacity: 1, easing: 'cubic-bezier(.42,0,.86,.58)' },
-        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .77, easing: 'cubic-bezier(.22,.68,.38,1)' },
-        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
-        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      const naturalDur = Math.round(215 + Math.sqrt(rows) * 68);
+      duration = Math.max(180, Math.min(naturalDur, maxDuration));
+      // Pure 2-keyframe single-easing translate3d on GPU compositor: zero mid-flight
+      // stalls (#board overflow:hidden clips incoming orbs naturally at the top edge).
+      frames = [
+        { transform: `translate3d(0,${dy}px,0)`, opacity: 1 },
+        { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
-      easing = 'linear';
+      easing = 'cubic-bezier(.26,.08,.34,1.04)';
     } else {
       duration = Math.min(300, maxDuration);
       frames = [
-        { transform: `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) scale(1)`, opacity: incoming ? .25 : 1 },
-        { transform: `translate3d(${(dx * .35).toFixed(1)}px,${(dy * .35).toFixed(1)}px,0) scale(1.045)`, opacity: 1, offset: .45 },
-        { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
+        { transform: `translate3d(${dx}px,${dy}px,0)`, opacity: incoming ? .35 : 1 },
+        { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
       easing = 'cubic-bezier(.22,1,.36,1)';
     }
@@ -7825,37 +7795,24 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     // every disappearing core in that column has collapsed, so columns flow in
     // a natural wave without overlapping solid ghosts.
     const colFallDelay = Array(COLS).fill(null);
-    let hasBossBurst = false, hasExplosiveBurst = false, skullBursts = 0;
-    const chainIntensity = ordered.length >= 8 ? 1.4 : ordered.length >= 5 ? 1.2 : 1;
+    const chainIntensity = ordered.length >= 8 ? 1.35 : ordered.length >= 5 ? 1.18 : 1;
+    const dense = removed.length >= 12;
     for (const [key, view] of removed) {
       const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
       const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
       const doneAt = d + coreDur;
       if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
       const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
-      if (isBoss) hasBossBurst = true;
-      if (isExplosive) hasExplosiveBurst = true;
-      if (view.node.dataset.type === 'skull') skullBursts++;
       const idxInChain = orderIdx.get(key);
       const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
       const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
       burstOrb(view, rects.get(key), boardRect, d, coreDur, {
-        intensity: chainIntensity + progress * .22,
-        climax, boss: isBoss, explosive: isExplosive,
+        intensity: chainIntensity + progress * .2,
+        climax, boss: isBoss, explosive: isExplosive, dense,
       });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
     const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
-    if (removed.length && !orbReducedMotion()) {
-      const recoil = hasBossBurst || hasExplosiveBurst ? 3.0
-        : ordered.length >= 8 ? 2.6
-        : ordered.length >= 5 || skullBursts >= 2 ? 1.8
-        : 0;
-      if (recoil > 0) {
-        const climaxDelay = ordered.length ? Math.min(120, Math.round((ordered.length - 1) * step)) : 0;
-        triggerBoardRecoil(recoil, climaxDelay);
-      }
-    }
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
       const key = keys[r * COLS + c];
@@ -7906,9 +7863,9 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
         if (!rect.width) continue;
         const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
         const rank = rankOf.get(plan) || 0;
-        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 210);
-        const orbDelay = baseColDelay + Math.min(rank * 18, maxExtra);
-        const orbMaxDur = Math.max(185, FALL_BUDGET - orbDelay);
+        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 230);
+        const orbDelay = baseColDelay + Math.min(rank * 12, maxExtra);
+        const orbMaxDur = Math.max(200, FALL_BUDGET - orbDelay);
         if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[col];

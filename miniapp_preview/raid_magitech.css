@@ -1481,7 +1481,6 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed {
   border-color: rgb(var(--orb-rgb, 244 223 161) / .85);
-  box-shadow: 0 0 12px rgb(var(--orb-rgb, 244 223 161) / .52), inset 0 0 10px rgb(var(--orb-rgb, 244 223 161) / .34);
 }
 .raid-orb.primed .orb-core { animation: orb-prime .40s cubic-bezier(.34,1.2,.64,1) var(--prime-delay,0ms) both; }
 .raid-orb.primed .orb-material { opacity: .28; }
@@ -1505,49 +1504,45 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: none; filter: none; }
 .raid-orb[data-motion] { will-change: transform, opacity; }
-#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; }
+#board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; contain: layout style paint; }
 .chain-surge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .chain-surge path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.chain-surge path.surge-glow { stroke: rgb(var(--surge-rgb, 244 223 161) / .48); stroke-width: 11; filter: blur(3px); }
-.chain-surge path.surge-core { stroke: #fff7dc; stroke-width: 3.2; opacity: .78; filter: drop-shadow(0 0 5px rgb(var(--surge-rgb, 244 223 161) / .9)); }
-.chain-surge path.surge-bolt { stroke: #ffffff; stroke-width: 6.2; filter: drop-shadow(0 0 8px rgb(var(--surge-rgb, 244 223 161))); }
+.chain-surge path.surge-glow { stroke: rgb(var(--surge-rgb, 244 223 161) / .32); stroke-width: 13; }
+.chain-surge path.surge-core { stroke: #fff4cf; stroke-width: 3.2; opacity: .82; }
+.chain-surge path.surge-bolt { stroke: #ffffff; stroke-width: 6; }
 .orb-burst { position: absolute; pointer-events: none; --burst-scale: 1; }
 .orb-burst.climax { --burst-scale: 1.24; }
 .orb-burst .orb-ghost { inset: 0; width: 100%; height: 100%; }
 .orb-burst-flash {
   position: absolute; inset: -16%; border-radius: 50%; opacity: 0; pointer-events: none;
-  background: radial-gradient(circle, rgba(255,255,255,.95) 0%, rgb(var(--orb-rgb) / .76) 38%, rgb(var(--orb-rgb) / .18) 64%, transparent 78%);
-  mix-blend-mode: screen;
-  animation: orb-burst-flash .28s cubic-bezier(.16,.84,.3,1) var(--burst-delay,0ms) forwards;
+  background: radial-gradient(circle, rgba(255,255,255,.92) 0%, rgb(var(--orb-rgb) / .72) 38%, rgb(var(--orb-rgb) / .18) 64%, transparent 78%);
+  animation: orb-burst-flash .26s cubic-bezier(.16,.84,.3,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-ring {
   position: absolute; inset: 4%; opacity: 0;
   border: 2px solid rgb(var(--orb-rgb) / .92); border-radius: 50%;
-  box-shadow: 0 0 10px rgb(var(--orb-rgb) / .82), inset 0 0 6px rgba(255,255,255,.35);
-  animation: orb-burst-ring .36s cubic-bezier(.16,.85,.32,1) var(--burst-delay,0ms) forwards;
+  animation: orb-burst-ring .34s cubic-bezier(.16,.85,.32,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-ring-echo {
   position: absolute; inset: 8%; opacity: 0;
-  border: 1.5px solid rgba(255,255,255,.76); border-radius: 50%;
-  box-shadow: 0 0 8px rgb(var(--orb-rgb) / .72);
-  animation: orb-burst-ring-echo .38s cubic-bezier(.16,.85,.32,1) calc(var(--burst-delay,0ms) + 42ms) forwards;
+  border: 1.5px solid rgba(255,255,255,.78); border-radius: 50%;
+  animation: orb-burst-ring-echo .36s cubic-bezier(.16,.85,.32,1) calc(var(--burst-delay,0ms) + 40ms) forwards;
 }
 .orb-burst-star {
-  position: absolute; left: 50%; top: 50%; width: 120%; height: 120%;
-  margin: -60% 0 0 -60%; opacity: 0; pointer-events: none;
-  animation: orb-burst-star .30s cubic-bezier(.16,.86,.32,1) var(--burst-delay,0ms) forwards;
+  position: absolute; left: 50%; top: 50%; width: 118%; height: 118%;
+  margin: -59% 0 0 -59%; opacity: 0; pointer-events: none;
+  animation: orb-burst-star .28s cubic-bezier(.16,.86,.32,1) var(--burst-delay,0ms) forwards;
 }
 .orb-burst-star::before, .orb-burst-star::after {
   content: ''; position: absolute; left: 50%; top: 50%; width: 100%; height: 10%;
   transform: translate(-50%,-50%); border-radius: 99px;
-  background: linear-gradient(90deg, transparent 0%, rgb(var(--orb-rgb) / .7) 30%, #ffffff 50%, rgb(var(--orb-rgb) / .7) 70%, transparent 100%);
-  filter: drop-shadow(0 0 5px rgb(var(--orb-rgb) / .9));
+  background: linear-gradient(90deg, transparent 0%, rgb(var(--orb-rgb) / .72) 30%, #ffffff 50%, rgb(var(--orb-rgb) / .72) 70%, transparent 100%);
 }
 .orb-burst-star::after { transform: translate(-50%,-50%) rotate(90deg); }
 .orb-burst-mist {
   position: absolute; inset: -10%; border-radius: 50%; opacity: 0; pointer-events: none;
-  background: radial-gradient(circle, rgb(var(--orb-rgb) / .52) 0%, rgb(var(--orb-rgb) / .18) 54%, transparent 78%);
-  animation: orb-burst-mist .36s ease-out var(--burst-delay,0ms) forwards;
+  background: radial-gradient(circle, rgb(var(--orb-rgb) / .5) 0%, rgb(var(--orb-rgb) / .16) 54%, transparent 78%);
+  animation: orb-burst-mist .34s ease-out var(--burst-delay,0ms) forwards;
 }
 .orb-shard {
   position: absolute; left: 50%; top: 50%;
@@ -1555,16 +1550,15 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   margin: calc(var(--sz, 9%) / -2) 0 0 calc(var(--sz, 9%) / -2);
   opacity: 0; border-radius: 2px;
   background: linear-gradient(135deg, #ffffff 0%, rgb(var(--orb-rgb)) 56%);
-  box-shadow: 0 0 6px rgb(var(--orb-rgb) / .88);
-  animation: orb-shard var(--sdur, .36s) cubic-bezier(.18,.78,.32,1) var(--burst-delay,0ms) forwards;
+  animation: orb-shard var(--sdur, .34s) cubic-bezier(.18,.78,.32,1) var(--burst-delay,0ms) forwards;
 }
-.orb-shard.spark { width: 15%; height: 4.4%; margin: -2.2% 0 0 -7.5%; border-radius: 99px; }
+.orb-shard.spark { width: 14%; height: 4.4%; margin: -2.2% 0 0 -7%; border-radius: 99px; }
 .orb-shard.droplet {
   border-radius: 50%;
   background: radial-gradient(circle at 34% 30%, #ffffff 0%, rgb(var(--orb-rgb)) 68%);
 }
 .orb-shard.glint {
-  clip-path: polygon(50% 0%, 66% 34%, 100% 50%, 66% 66%, 50% 100%, 34% 66%, 0% 50%, 34% 34%);
+  border-radius: 1px;
   background: radial-gradient(circle, #ffffff 0%, rgb(var(--orb-rgb)) 76%);
 }
 .orb-shard.heavy { border-radius: 30% 70% 45% 55%; }
@@ -1603,10 +1597,10 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
 @keyframes orb-prime {
-  0% { transform: scale(1); filter: brightness(1); }
-  26% { transform: scale(.91); filter: brightness(1.08); }
-  68% { transform: scale(1.15); filter: brightness(1.42) drop-shadow(0 0 6px rgb(var(--orb-rgb) / .78)); }
-  100% { transform: scale(1.06); filter: brightness(1.24); }
+  0% { transform: scale(1); }
+  26% { transform: scale(.91); }
+  68% { transform: scale(1.14); }
+  100% { transform: scale(1.06); }
 }
 @keyframes orb-burst-flash {
   0% { opacity: 0; transform: scale(.32); }

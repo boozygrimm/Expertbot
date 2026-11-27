@@ -3600,19 +3600,6 @@
       { opacity: 0 },
     ], { duration: 405, easing: 'ease-out', fill: 'forwards' }, () => svg.remove());
   }
-  function triggerBoardRecoil(strength, delay = 0) {
-    if (orbReducedMotion() || strength < .8) return;
-    const board = el('board');
-    if (!board || typeof board.animate !== 'function') return;
-    const s = Math.min(3.2, strength);
-    animateOrb(board, [
-      { transform: 'translate3d(0,0,0)' },
-      { transform: `translate3d(${(-s * .55).toFixed(1)}px,${(s * .85).toFixed(1)}px,0)`, offset: .22 },
-      { transform: `translate3d(${(s * .45).toFixed(1)}px,${(-s * .5).toFixed(1)}px,0)`, offset: .52 },
-      { transform: `translate3d(${(-s * .2).toFixed(1)}px,${(s * .22).toFixed(1)}px,0)`, offset: .78 },
-      { transform: 'translate3d(0,0,0)' },
-    ], { duration: 150, delay, easing: 'ease-out' });
-  }
   function burstOrb(view, rect, boardRect, delay = 0, duration = 240, opts = {}) {
     view.motion?.cancel();
     view.node.classList.remove('primed');
@@ -3623,7 +3610,8 @@
     const type = view.node.dataset.type || '';
     const climax = !!opts.climax, boss = !!opts.boss || view.node.classList.contains('boss');
     const explosive = !!opts.explosive || view.node.classList.contains('explosive');
-    const intensity = Math.max(.9, Math.min(1.5, opts.intensity ?? 1));
+    const intensity = Math.max(.9, Math.min(1.4, opts.intensity ?? 1));
+    const dense = !!opts.dense;
     const burst = document.createElement('div');
     burst.className = 'orb-burst' + (climax || boss || explosive ? ' climax' : '');
     burst.dataset.orbId = view.node.dataset.orbId;
@@ -3632,7 +3620,7 @@
     burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
     const flash = document.createElement('i'); flash.className = 'orb-burst-flash'; burst.appendChild(flash);
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
-    if (climax || boss || explosive || type === 'shield' || type === 'skull') {
+    if (climax || boss || explosive || (!dense && (type === 'shield' || type === 'skull'))) {
       const echo = document.createElement('i'); echo.className = 'orb-burst-ring-echo'; burst.appendChild(echo);
     }
     if (type === 'coin' || type === 'trophy' || climax || boss || explosive) {
@@ -3643,14 +3631,14 @@
     }
     // Deterministic cosmetic scatter from orbId (never touches gameplay RNG).
     const seed = Math.imul(Number(view.node.dataset.orbId) || 1, 2654435761) >>> 0;
-    const shardCount = boss || explosive ? 9 : climax ? 8 : 6;
-    const radius = rect.width * (.66 + intensity * .18);
+    const shardCount = dense ? 4 : boss || explosive ? 7 : climax ? 7 : 6;
+    const radius = rect.width * (.64 + intensity * .18);
     for (let i = 0; i < shardCount; i++) {
       const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
       const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
-      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .56;
-      const dist = radius * (.62 + h2 * .52);
-      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .08;
+      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .52;
+      const dist = radius * (.62 + h2 * .48);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .06;
       const shard = document.createElement('i');
       const variant = type === 'potion' ? ' droplet'
         : type === 'coin' || type === 'trophy' ? (i % 2 ? ' glint' : ' spark')
@@ -3659,11 +3647,11 @@
       shard.className = 'orb-shard' + variant;
       shard.style.setProperty('--dx', dx.toFixed(1) + 'px');
       shard.style.setProperty('--dy', dy.toFixed(1) + 'px');
-      shard.style.setProperty('--grav', (7 + h1 * 11).toFixed(1) + 'px');
-      shard.style.setProperty('--sz', (6.5 + h2 * 5.5).toFixed(1) + '%');
-      shard.style.setProperty('--sc', (.85 + h1 * .42).toFixed(2));
-      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 220) + 'deg');
-      shard.style.setProperty('--sdur', (.30 + h2 * .11).toFixed(2) + 's');
+      shard.style.setProperty('--grav', (7 + h1 * 10).toFixed(1) + 'px');
+      shard.style.setProperty('--sz', (6.5 + h2 * 5).toFixed(1) + '%');
+      shard.style.setProperty('--sc', (.85 + h1 * .38).toFixed(2));
+      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 180) + 'deg');
+      shard.style.setProperty('--sdur', (.28 + h2 * .10).toFixed(2) + 's');
       burst.appendChild(shard);
     }
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
@@ -3672,13 +3660,12 @@
       const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
     }
     layer.appendChild(burst);
-    // Backwards fill holds an untriggered ghost in its original socket. Its
-    // ring/shards stay hidden until the same delay (CSS forwards fill only).
+    // Pure compositor-only transform + opacity (no animated filter) for smooth 60fps mobile WebView.
     animateOrb(view.node, [
-      { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' },
-      { transform: `scale(${climax || boss ? 1.2 : 1.15})`, opacity: .98, filter: 'brightness(1.6)', offset: .24 },
-      { transform: 'scale(.08)', opacity: 0, filter: 'brightness(1.85)' },
-    ], { duration, delay, easing: 'cubic-bezier(.32,0,.78,.36)', fill: 'both' }, () => view.node.remove());
+      { transform: 'scale(1)', opacity: 1 },
+      { transform: `scale(${climax || boss ? 1.18 : 1.13})`, opacity: .96, offset: .24 },
+      { transform: 'scale(.08)', opacity: 0 },
+    ], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
     animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
   }
   function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390, pitch = 0) {
@@ -3690,32 +3677,20 @@
     if (falling) {
       const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
       const rows = Math.max(1, Math.abs(dy) / cellPitch);
-      const naturalDur = Math.round(180 + Math.sqrt(rows) * 70);
-      duration = Math.max(150, Math.min(naturalDur, maxDuration));
-      const impact = Math.min(1, .42 + Math.sqrt(rows) * .28);
-      const settleY = +(1.2 + impact * 1.4).toFixed(1);
-      const bounceY = +(2.2 + impact * 4.2).toFixed(1);
-      const sx = +(1 + .03 + impact * .035).toFixed(3);
-      const sy = +(1 - .032 - impact * .034).toFixed(3);
-      frames = incoming ? [
-        { transform: `translate3d(0,${dy}px,0) scaleX(.975) scaleY(1.035)`, opacity: 0, easing: 'cubic-bezier(.38,0,.84,.54)' },
-        { transform: `translate3d(0,${+(dy * .91).toFixed(2)}px,0) scaleX(.978) scaleY(1.03)`, opacity: 1, offset: .16, easing: 'cubic-bezier(.42,.08,.86,.58)' },
-        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .78, easing: 'cubic-bezier(.22,.68,.38,1)' },
-        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
-        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
-      ] : [
-        { transform: `translate3d(0,${dy}px,0) scaleX(.982) scaleY(1.026)`, opacity: 1, easing: 'cubic-bezier(.42,0,.86,.58)' },
-        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .77, easing: 'cubic-bezier(.22,.68,.38,1)' },
-        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
-        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      const naturalDur = Math.round(215 + Math.sqrt(rows) * 68);
+      duration = Math.max(180, Math.min(naturalDur, maxDuration));
+      // Pure 2-keyframe single-easing translate3d on GPU compositor: zero mid-flight
+      // stalls (#board overflow:hidden clips incoming orbs naturally at the top edge).
+      frames = [
+        { transform: `translate3d(0,${dy}px,0)`, opacity: 1 },
+        { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
-      easing = 'linear';
+      easing = 'cubic-bezier(.26,.08,.34,1.04)';
     } else {
       duration = Math.min(300, maxDuration);
       frames = [
-        { transform: `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) scale(1)`, opacity: incoming ? .25 : 1 },
-        { transform: `translate3d(${(dx * .35).toFixed(1)}px,${(dy * .35).toFixed(1)}px,0) scale(1.045)`, opacity: 1, offset: .45 },
-        { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
+        { transform: `translate3d(${dx}px,${dy}px,0)`, opacity: incoming ? .35 : 1 },
+        { transform: 'translate3d(0,0,0)', opacity: 1 },
       ];
       easing = 'cubic-bezier(.22,1,.36,1)';
     }
@@ -3838,37 +3813,24 @@
     // every disappearing core in that column has collapsed, so columns flow in
     // a natural wave without overlapping solid ghosts.
     const colFallDelay = Array(COLS).fill(null);
-    let hasBossBurst = false, hasExplosiveBurst = false, skullBursts = 0;
-    const chainIntensity = ordered.length >= 8 ? 1.4 : ordered.length >= 5 ? 1.2 : 1;
+    const chainIntensity = ordered.length >= 8 ? 1.35 : ordered.length >= 5 ? 1.18 : 1;
+    const dense = removed.length >= 12;
     for (const [key, view] of removed) {
       const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
       const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
       const doneAt = d + coreDur;
       if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
       const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
-      if (isBoss) hasBossBurst = true;
-      if (isExplosive) hasExplosiveBurst = true;
-      if (view.node.dataset.type === 'skull') skullBursts++;
       const idxInChain = orderIdx.get(key);
       const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
       const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
       burstOrb(view, rects.get(key), boardRect, d, coreDur, {
-        intensity: chainIntensity + progress * .22,
-        climax, boss: isBoss, explosive: isExplosive,
+        intensity: chainIntensity + progress * .2,
+        climax, boss: isBoss, explosive: isExplosive, dense,
       });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
     const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
-    if (removed.length && !orbReducedMotion()) {
-      const recoil = hasBossBurst || hasExplosiveBurst ? 3.0
-        : ordered.length >= 8 ? 2.6
-        : ordered.length >= 5 || skullBursts >= 2 ? 1.8
-        : 0;
-      if (recoil > 0) {
-        const climaxDelay = ordered.length ? Math.min(120, Math.round((ordered.length - 1) * step)) : 0;
-        triggerBoardRecoil(recoil, climaxDelay);
-      }
-    }
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
       const key = keys[r * COLS + c];
@@ -3919,9 +3881,9 @@
         if (!rect.width) continue;
         const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
         const rank = rankOf.get(plan) || 0;
-        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 210);
-        const orbDelay = baseColDelay + Math.min(rank * 18, maxExtra);
-        const orbMaxDur = Math.max(185, FALL_BUDGET - orbDelay);
+        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 230);
+        const orbDelay = baseColDelay + Math.min(rank * 12, maxExtra);
+        const orbMaxDur = Math.max(200, FALL_BUDGET - orbDelay);
         if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[col];
