@@ -4615,7 +4615,7 @@ test('magitech potion glass: health, acid, mana and explosive fills get clipped 
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   assert.match(js, /cell\.acid \? 'acid' : cell\.mana \? 'mana' : cell\.explosive \? 'explosive' : 'health'/);
   for (const kind of ['health', 'acid', 'mana', 'explosive']) assert.ok(js.includes(`${kind}: '#`), kind + ' liquid palette');
-  assert.match(js, /raid-potion-fill-\$\{cellIdx\}/);
+  assert.match(js, /raid-potion-fill-\$\{clipTag\}/);
   assert.match(js, /class="potion-vessel" data-potion="\$\{kind\}"/);
   assert.match(js, /class="potion-wave potion-wave-back"/);
   assert.match(js, /class="potion-wave potion-wave-front"/);
@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Объёмное 3D-покачивание монет/);
+  assert.match(current, /Стабильные 60 FPS в долгих забегах/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Объёмное 3D-покачивание монет/);
   assert.match(archive, /Ускорение загрузки и плавность на телефонах/);
   assert.match(archive, /Чистый классический бой без стихий/);
   assert.match(archive, /Гладкие удары мечами без микрорывков/);
