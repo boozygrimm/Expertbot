@@ -2615,23 +2615,33 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 }
 
 .board-wrap {
-  margin-bottom: 6px;
+  margin-bottom: 5px;
+}
+.board-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: min(100%, 430px);
+  padding: 2px 4px;
+  position: static;
+  transform: none;
 }
 
 .hud.hud-console {
   position: relative;
   display: grid;
-  grid-template-columns: 1.24fr 0.62fr 0.88fr 1.16fr;
+  grid-template-columns: 0.62fr 1.24fr 0.84fr 1.18fr;
   align-items: stretch;
   gap: 6px;
   width: min(100%, 430px);
-  margin: 4px auto 8px;
-  padding: 8px 8px 10px;
+  margin: 2px auto 10px;
+  padding: 8px 8px 12px;
   border-radius: 12px;
   border: 1.5px solid #6c8882;
   background:
-    radial-gradient(ellipse at 18% 45%, rgba(44, 118, 122, 0.22), transparent 56%),
-    radial-gradient(ellipse at 56% 50%, rgba(56, 178, 214, 0.12), transparent 44%),
+    radial-gradient(ellipse at 32% 45%, rgba(44, 118, 122, 0.22), transparent 56%),
+    radial-gradient(ellipse at 60% 50%, rgba(56, 178, 214, 0.12), transparent 44%),
     linear-gradient(180deg, #0d2224 0%, #071417 55%, #050f12 100%);
   box-shadow:
     0 0 0 1px rgba(10, 26, 28, 0.95),
@@ -2651,60 +2661,57 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   pointer-events: none;
 }
 
-/* Bottom center cyan magitech crystal ornament */
+/* Bottom center cyan magitech crystal ornament — sits cleanly on outer bottom edge */
 .hud-bottom-gem {
   position: absolute;
   left: 50%;
-  bottom: -7px;
-  width: 14px;
-  height: 14px;
+  bottom: -8px;
+  width: 12px;
+  height: 12px;
   transform: translateX(-50%) rotate(45deg);
   border-radius: 2px;
   border: 1.5px solid #96e8ff;
   background: radial-gradient(circle at 35% 35%, #d6fbff, #38b8e6 58%, #104966 100%);
-  box-shadow: 0 0 10px rgba(82, 212, 255, 0.72), 0 0 0 2.5px #102629, 0 0 0 3.5px #8ca39c;
+  box-shadow: 0 0 9px rgba(82, 212, 255, 0.72), 0 0 0 2px #102629, 0 0 0 3px #8ca39c;
   pointer-events: none;
   z-index: 5;
 }
 
-/* Top-right golden trophy medallion badge */
+/* Trophy medallion in board-foot row — never overlaps panel icons */
 .hud-trophy-badge {
-  position: absolute;
-  top: -11px;
-  right: -6px;
-  z-index: 6;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1.5px solid #f0d07a;
-  background: radial-gradient(circle at 38% 30%, #4d3a18 0%, #1d150a 72%, #0e0a05 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.78), 0 0 10px rgba(242, 194, 82, 0.35), inset 0 1px 0 rgba(255, 240, 184, 0.45);
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 1px 8px 1px 4px;
+  border-radius: 999px;
+  border: 1px solid #e6c36d;
+  background: linear-gradient(180deg, #3c2e14 0%, #1d150a 72%, #110c05 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.65), 0 0 8px rgba(242, 194, 82, 0.24), inset 0 1px 0 rgba(255, 240, 184, 0.4);
+  flex: none;
 }
 .hud-trophy-badge.is-on-board {
   border-color: #fff0a8;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.8), 0 0 14px rgba(255, 214, 92, 0.78);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75), 0 0 12px rgba(255, 214, 92, 0.72);
 }
 .hud-trophy-img {
-  position: absolute;
-  inset: 3px;
-  width: calc(100% - 6px);
-  height: calc(100% - 6px);
+  position: static;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
-  opacity: 0.76;
+  flex: none;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
   pointer-events: none;
 }
 .hud-trophy-badge #trophy-text {
-  position: relative;
-  z-index: 1;
-  color: #fff6d4;
-  font-size: 12px;
+  position: static;
+  color: #fff3c6;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 1px 3px #000, 0 0 4px #000, 0 0 8px rgba(255, 198, 72, 0.7);
+  text-shadow: 0 1px 2px #000;
 }
 
 /* LEFT ZONE: Mech figure in arched alcove + integrated vertical ruby HP crystal + HP/Name plates */
@@ -2800,10 +2807,10 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* CENTER-LEFT ZONE: Equipped weapon vertical slot with overlaid damage badge */
+/* FIRST ZONE (left of mech): Equipped weapon pointing UP inside frame + overlaid stats */
 .hud-weapon-slot {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   min-width: 0;
 }
@@ -2822,10 +2829,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   overflow: hidden;
 }
 .hud-weapon-art {
-  width: 96%;
-  height: 96%;
+  position: absolute;
+  inset: 6px 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 12px);
   object-fit: contain;
-  transform: rotate(135deg) scale(1.24);
+  transform: rotate(-45deg) scale(1.04);
+  transform-origin: center;
   filter: var(--weapon-finish, brightness(1.06)) contrast(1.14) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.9));
   pointer-events: none;
 }
@@ -2836,7 +2846,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   pointer-events: none;
 }
 .hud-weapon-stats b {
@@ -2847,13 +2857,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   place-items: center;
   border-radius: 7px;
   border: 1.5px solid #dec480;
-  background: radial-gradient(circle at 50% 30%, #233338, #0c171b 82%);
+  background: radial-gradient(circle at 50% 30%, rgba(35, 51, 56, 0.92), rgba(10, 20, 24, 0.94) 82%);
   color: #fff6dc;
   font-size: 13px;
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 8px rgba(236, 198, 108, 0.28);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.88), 0 0 8px rgba(236, 198, 108, 0.3);
   text-shadow: 0 1px 2px #000;
 }
 .hud-weapon-stats b.boosted {
@@ -2864,8 +2874,8 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .hud-weapon-stats small {
   padding: 1px 4px;
   border-radius: 999px;
-  background: rgba(6, 16, 19, 0.86);
-  border: 1px solid rgba(182, 168, 120, 0.38);
+  background: rgba(6, 16, 19, 0.9);
+  border: 1px solid rgba(182, 168, 120, 0.42);
   color: #dfd6b6;
   font-size: 7.5px;
   font-weight: 700;
@@ -2874,7 +2884,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   text-shadow: 0 1px 2px #000;
 }
 
-/* CENTER-RIGHT ZONE: Equipped shield with dynamic cyan armor aura + overlaid armor value */
+/* THIRD ZONE (right of mech): Equipped shield with soft dynamic cyan aura + overlaid armor value */
 .hud-shield-slot {
   display: flex;
   align-items: center;
@@ -2891,34 +2901,36 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 }
 .hud-armor-glow {
   position: absolute;
-  inset: 6px 2px;
-  border-radius: 16px 16px 46% 46%;
-  background: rgba(10, 32, 38, 0.45);
-  border: 1px solid rgba(108, 212, 240, 0.22);
+  inset: 10px 6px;
+  border-radius: 14px 14px 48% 48%;
+  background: transparent;
+  border: 0;
   overflow: hidden;
   display: flex;
   align-items: flex-end;
+  filter: blur(4px);
+  opacity: 0.75;
   pointer-events: none;
 }
 .hud-armor-glow .fill-armor {
   display: block;
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg, rgba(128, 244, 255, 0.72) 0%, rgba(46, 178, 224, 0.48) 55%, rgba(20, 108, 152, 0.35) 100%);
-  box-shadow: 0 0 14px rgba(96, 232, 255, 0.72), inset 0 1px 0 rgba(230, 252, 255, 0.85);
+  background: linear-gradient(180deg, rgba(128, 244, 255, 0.85) 0%, rgba(46, 178, 224, 0.58) 60%, rgba(20, 108, 152, 0.35) 100%);
+  box-shadow: 0 0 14px rgba(96, 232, 255, 0.82);
   transition: height 0.22s ease;
 }
 .hud-shield-slot[data-empty="1"] .hud-armor-glow {
-  border-color: rgba(120, 146, 150, 0.2);
+  opacity: 0;
 }
 .hud-shield-art {
   position: relative;
   z-index: 1;
-  width: 96%;
-  height: 94%;
-  max-height: 108px;
+  width: 98%;
+  height: 96%;
+  max-height: 112px;
   object-fit: contain;
-  filter: var(--shield-finish, brightness(1.02)) drop-shadow(0 0 8px rgba(84, 218, 255, 0.42)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
+  filter: var(--shield-finish, brightness(1.03)) drop-shadow(0 0 8px rgba(84, 218, 255, 0.36)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.88));
   pointer-events: none;
 }
 .hud-shield-slot[data-empty="1"] .hud-shield-art {
@@ -3041,9 +3053,49 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: linear-gradient(90deg, #b86014 0%, #f5a638 48%, #ffcf7a 62%, #a85410 100%);
   box-shadow: 0 0 10px rgba(245, 162, 54, 0.72), inset 0 1px 0 rgba(255, 236, 198, 0.72);
 }
+/* Coin bar rendered as a ribbed vertical stack of 100 gold coins */
+.hud-coin-stack-track {
+  width: 16px;
+  border-radius: 5px 5px 6px 6px;
+  border-color: rgba(235, 198, 92, 0.46);
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 224, 120, 0.05) 0 1px, transparent 1px 2.2px),
+    linear-gradient(90deg, #0b1312, #18231d 50%, #091110);
+  padding: 4px 1px 1px;
+}
+.hud-coin-stack-track::after {
+  display: none;
+}
 .hud-console .fill-gold {
-  background: linear-gradient(90deg, #c28e10 0%, #ffd542 48%, #fff099 62%, #b4800c 100%);
-  box-shadow: 0 0 10px rgba(255, 212, 66, 0.74), inset 0 1px 0 rgba(255, 248, 210, 0.78);
+  position: relative;
+  border-radius: 2px 2px 4px 4px;
+  background-image:
+    repeating-linear-gradient(
+      180deg,
+      rgba(255, 246, 186, 0.72) 0px,
+      rgba(255, 212, 68, 0.18) 0.7px,
+      rgba(126, 74, 8, 0.78) 1.35px,
+      rgba(68, 36, 4, 0.88) 1.85px
+    ),
+    linear-gradient(90deg, #8a5408 0%, #e4a81c 22%, #fff098 44%, #f4be2a 68%, #9b600a 88%, #633904 100%);
+  box-shadow: 0 0 9px rgba(255, 206, 58, 0.56), inset 0 -1px 0 rgba(70, 38, 4, 0.9);
+  overflow: visible;
+}
+.hud-console .fill-gold::before {
+  content: '';
+  position: absolute;
+  left: -0.5px;
+  right: -0.5px;
+  top: -2px;
+  height: 4px;
+  border-radius: 50%;
+  border: 0.6px solid #a86c0e;
+  background: radial-gradient(ellipse at 42% 38%, #fffbe0 0%, #ffd84e 52%, #c98612 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.hud-console .fill-gold[style*="height: 0%"]::before,
+.hud-console .fill-gold[style*="height:0%"]::before {
+  display: none;
 }
 
 .hud-tube-val {
@@ -3067,9 +3119,9 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 
 @media (max-width: 400px) {
   .hud.hud-console {
-    grid-template-columns: 1.22fr 0.6fr 0.86fr 1.18fr;
+    grid-template-columns: 0.6fr 1.24fr 0.82fr 1.18fr;
     gap: 4px;
-    padding: 7px 6px 9px;
+    padding: 7px 6px 11px;
   }
   .hud-mech-top { height: 74px; grid-template-columns: minmax(0, 1fr) 11px; gap: 3px; }
   .hud-hp-plate { font-size: 9.5px; padding: 2px 3px; }
@@ -3082,9 +3134,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .hud-tube-icon { width: 20px; height: 20px; }
   .hud-tube-icon svg { width: 12px; height: 12px; }
   .hud-tube-track { width: 11px; min-height: 58px; }
+  .hud-coin-stack-track { width: 14px; }
   .hud-tube-val { font-size: 7px; padding: 1px 2px; }
-  .hud-trophy-badge { width: 30px; height: 30px; top: -10px; right: -4px; }
-  .hud-trophy-badge #trophy-text { font-size: 10.5px; }
+  .hud-trophy-badge { height: 20px; padding: 1px 7px 1px 4px; }
+  .hud-trophy-img { width: 14px; height: 14px; }
+  .hud-trophy-badge #trophy-text { font-size: 10px; }
 }
 @media (max-width: 359px) {
   .hud.hud-console { gap: 3px; padding: 6px 5px 8px; }
