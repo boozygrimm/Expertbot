@@ -1306,9 +1306,8 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
    Opposing zero-blur subpixel/1px edges read as a bevel, never a neon halo. */
 .weapon-texture, .raid-orb .orb-core > .weapon-texture {
   display: block; object-fit: contain;
-  filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1))
-    drop-shadow(-.65px -.65px 0 var(--weapon-edge,#d8e5dd))
-    drop-shadow(1px 1px 0 #020b11) drop-shadow(0 2px 1px #020b1180);
+  filter: var(--weapon-tone,contrast(1.14) brightness(1.16)) var(--weapon-finish,brightness(1))
+    drop-shadow(0 2px 2px #020b1196);
 }
 .raid-orb[data-element="fire"] {
   --weapon-tone: sepia(1) saturate(3) hue-rotate(336deg) contrast(1.12) brightness(1.2);

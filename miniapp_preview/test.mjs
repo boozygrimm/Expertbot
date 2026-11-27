@@ -5925,8 +5925,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Гладкие удары мечами без микрорывков/);
+  assert.match(current, /Чистый классический бой без стихий/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Гладкие удары мечами без микрорывков/);
   assert.match(archive, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
   assert.match(archive, /Последовательный взрыв и свободное падение каждого шарика/);
   assert.match(archive, /Шёлковое 60-fps падение плиток без стоп-кадров/);
@@ -6115,8 +6116,6 @@ test('raid haptics setting persists modes and emits combat feedback without a qu
   assert.equal((html.match(/data-raid-haptics/g) || []).length, 9, 'three positions are available in garage, menu and combat settings');
   assert.match(css, /\.haptics-segments, \.haptics-combat-settings \.haptics-segments \{[^}]*grid-template-columns:repeat\(3,1fr\)/);
   assert.match(html, /<b>Настройки и тексты боя\.<\/b>[\s\S]*?трёхпозиционный тумблер[\s\S]*?пятипозиционный тумблер/);
-  assert.match(js, /const choices = \['fire', 'air', 'earth', 'water', ''\]/);
-  assert.match(css, /\.affinity-segments \{ display:grid; grid-template-columns:repeat\(5,/);
   assert.match(html, /<b>Новый кубок-трофей\.<\/b>/);
   assert.match(js, /HAPTICS_KEY = 'raid\.magitech\.haptics\.v1'/);
   assert.match(js, /damage >= Math\.max\(3, Math\.ceil\(S\.hero\.maxHp \* \.25\)\)/);

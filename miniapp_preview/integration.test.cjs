@@ -2130,11 +2130,8 @@ async function orbFixture(options = {}) {
   return b;
 }
 function showOrbFixture(b, fill) {
-  // Deterministic explicit gameplay assignments for these injected DOM fixtures,
-  // NOT palette-hash inference/production generation. Tests may override them.
   b.raid.state.board = Array.from({ length: 36 }, (_, idx) => {
     const cell = fill(idx);
-    if (['sword', 'arrow'].includes(cell.type) && !Object.hasOwn(cell, 'element')) cell.element = magitechElements[idx % 4];
     return cell;
   });
   b.raid.state.forceCoins = 1;
@@ -3196,7 +3193,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Гладкие удары мечами без микрорывков/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Чистый классический бой без стихий/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Гладкие удары мечами без микрорывков/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
     assert.match(doc.querySelector('#updates-history').textContent, /Последовательный взрыв и свободное падение каждого шарика/);
     assert.match(doc.querySelector('#updates-history').textContent, /Шёлковое 60-fps падение плиток без стоп-кадров/);
@@ -4110,9 +4108,9 @@ test('magitech Lich preview: chain tip and tile highlight indicate phylactery tr
   const b = await orbFixture();
   try {
     const doc = b.dom.window.document, r = b.raid;
-    const lich = Object.assign(r.makeSkull(false, true, 32), { hp: 8, maxHp: 8, def: 1, atk: 0, enteredTurn: -1, element: 'fire' });
-    const mob = Object.assign(r.makeSkull(false, false, 0), { hp: 4, maxHp: 4, def: 0, atk: 0, enteredTurn: -1, element: 'fire' });
-    showOrbFixture(b, i => i === 0 ? { type: 'skull', skull: lich } : i === 4 ? { type: 'skull', skull: mob } : { type: 'sword', element: 'fire' });
+    const lich = Object.assign(r.makeSkull(false, true, 32), { hp: 8, maxHp: 8, def: 1, atk: 0, enteredTurn: -1 });
+    const mob = Object.assign(r.makeSkull(false, false, 0), { hp: 4, maxHp: 4, def: 0, atk: 0, enteredTurn: -1 });
+    showOrbFixture(b, i => i === 0 ? { type: 'skull', skull: lich } : i === 4 ? { type: 'skull', skull: mob } : { type: 'sword' });
     // 2 swords + Lich => damage 3 + 2*2 = 7 < 8 + 1 = 9: not enough for phylactery yet.
     for (const i of [0, 1, 2]) r.tryExtendChain(i);
     assert.equal(r.chainPreview().phylacteries.length, 0);
@@ -4147,6 +4145,27 @@ for(const removed of [0,1])test(`magitech chain wave: ${removed} actual disappea
     for(const a of b.dom.window.__orbTest.created.filter(a=>a.target.dataset.motion))assert.ok(Number.isFinite(a.options.delay)&&Number.isFinite(a.options.duration)&&a.options.duration>=330);
     assert.deepEqual(b.errors,[]);
   }finally{b.dom.window.close();}
+});
+
+test('magitech clean classic combat: new runs use pure damage, unified steel weapons, location enemies, and hide affinity/retune', async () => {
+  const b = await orbFixture({ region: 'fire' });
+  try {
+    const r = b.raid, doc = b.dom.window.document;
+    // No affinity controls in garage/picker and no retune in skill pool
+    assert.equal(doc.querySelectorAll('.picker-affinity-field, .picker-affinity-note, .affinity-segments').length, 0);
+    assert.equal(r.classSkillPool().includes('retune'), false);
+    // Steel weapons have no data-element; enemies inherit location ('fire')
+    const mob = Object.assign(r.makeSkull(false, false, 0), { hp: 7, maxHp: 7, def: 0, atk: 0, enteredTurn: -1 });
+    showOrbFixture(b, i => i === 0 ? { type: 'skull', skull: mob } : { type: 'sword' });
+    assert.equal(orbAt(b, 1).hasAttribute('data-element'), false, 'swords use unified steel look');
+    assert.equal(orbAt(b, 0).dataset.element, 'fire', 'enemies match the chosen location');
+    // Pure classic damage: baseDamage (3) + 2 swords * weaponDamage (2) = 7 exact lethal
+    for (const i of [0, 1, 2]) r.tryExtendChain(i);
+    assert.equal(r.chainPreview().damage, 7);
+    assert.equal(r.chainPreview().lethals.length, 1);
+    assert.equal(doc.querySelector('#region-launch-label').textContent, 'В бой · Кузня');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
 });
 
 // V0 preferences are local presentation metadata, never a checkpoint/migration.
