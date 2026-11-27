@@ -3506,14 +3506,21 @@
       done = true; ORB_ANIMATIONS.delete(animation); cleanup?.();
       animation.onfinish = animation.oncancel = null;
       animation.cancel(); // no retained fill/opacity/transform on a surviving orb
+      syncBoardAnimating();
     };
     ORB_ANIMATIONS.set(animation, finish);
+    syncBoardAnimating();
     animation.onfinish = animation.oncancel = finish;
     return animation;
   }
   const BOARD_FX = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, raf: 0, items: [] };
   let LAST_BOARD_ANIM_END = 0, LAST_BURST_END = 0;
   let DEFER_MODAL_REVEAL = false, MODAL_REVEAL_AT = 0, MODAL_REVEAL_TIMER = 0, FRESH_CELL_TIMER = 0;
+  function syncBoardAnimating() {
+    const board = el('board');
+    if (!board?.classList?.toggle) return;
+    board.classList.toggle('board-animating', ORB_ANIMATIONS.size > 0 || BOARD_FX.items.length > 0);
+  }
 
   const hasCls = (node, cls) => typeof node?.classList?.contains === 'function' && node.classList.contains(cls);
   const nowMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
@@ -3546,6 +3553,7 @@
       BOARD_FX.ctx.setTransform(1, 0, 0, 1, 0, 0);
       BOARD_FX.ctx.clearRect(0, 0, BOARD_FX.canvas.width, BOARD_FX.canvas.height);
     }
+    syncBoardAnimating();
   }
   function ensureBoardFx() {
     const board = el('board');
@@ -3591,6 +3599,7 @@
   }
   function startBoardFxLoop() {
     if (BOARD_FX.raf || !BOARD_FX.ctx || !BOARD_FX.items.length) return;
+    syncBoardAnimating();
     const tick = now => {
       BOARD_FX.raf = 0;
       const ctx = BOARD_FX.ctx;
@@ -3609,7 +3618,7 @@
       }
       BOARD_FX.items = alive;
       if (alive.length) BOARD_FX.raf = requestAnimationFrame(tick);
-      else ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h);
+      else { ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h); syncBoardAnimating(); }
     };
     BOARD_FX.raf = requestAnimationFrame(tick);
   }
@@ -5888,12 +5897,22 @@
   }
 
   // --- haptics --------------------------------------------------------------
-  // Haptics are best-effort and entirely local. Emit at the combat event.
+  // Haptics are best-effort and entirely local. Emit at the combat event, while
+  // coalescing same-or-lower combat repeats within 60ms so multi-kill sword
+  // chains send one crisp native impulse instead of stuttering the bridge.
   const HAPTICS_KEY = 'raid.magitech.haptics.v1';
   let hapticsMode = 'important';
+  let lastCombatHapticAt = -1e9, lastCombatHapticRank = 0;
+  const HAPTIC_COMBAT_RANK = { hit: 1, kill: 2, damage: 3, boss: 4 };
   function hapticsEnabled() { return hapticsMode !== 'off' && document.visibilityState !== 'hidden'; }
   function emitHaptic(kind) {
     if (!hapticsEnabled()) return;
+    const rank = HAPTIC_COMBAT_RANK[kind] || 0;
+    if (rank) {
+      const now = nowMs();
+      if (now - lastCombatHapticAt < 60 && rank <= lastCombatHapticRank) return;
+      lastCombatHapticAt = now; lastCombatHapticRank = rank;
+    }
     let delivered = false;
     try {
       const feedback = window.Telegram?.WebApp?.HapticFeedback;
