@@ -2657,6 +2657,49 @@ test('magitech material SFX: shield chains play trimmed firstshield on first til
   } finally { b.dom.window.close(); }
 });
 
+test('magitech material SFX: resource-collecting skills play chain activation clips for shields, potions and coins', async () => {
+  const stub = raidTelegramStub(), played = []; let unlock;
+  const b = await openMagitech({ url: testerRaidUrl, setup(w) {
+    w.Telegram = { WebApp: stub.tg };
+    const listen = w.document.addEventListener.bind(w.document);
+    w.document.addEventListener = (name, fn, options) => {
+      if (name === 'pointerdown' && fn.name === 'unlockMaterialAudio') unlock = () => fn({ isTrusted: true });
+      return listen(name, fn, options);
+    };
+    w.HTMLMediaElement.prototype.play = function () {
+      if (['raid-shield-collect', 'raid-bottle-clink', 'raid-coin-drop'].includes(this.id)) played.push(this.id);
+      return Promise.resolve();
+    };
+  } });
+  try {
+    const r = b.raid;
+    unlock();
+    for (const [skillId, tileType, expectedClip] of [
+      ['repair', 'shield', 'raid-shield-collect'],
+      ['heal', 'potion', 'raid-bottle-clink'],
+      ['elixir', 'potion', 'raid-bottle-clink'],
+      ['treasure', 'coin', 'raid-coin-drop'],
+    ]) {
+      played.length = 0;
+      r.state.skills = [skillId]; r.state.skillCooldowns = {}; r.state.pendingModal = null; r.state.resolving = false;
+      showOrbFixture(b, i => i === 0 ? { type: tileType } : { type: 'sword' });
+      r.activateSkill(skillId);
+      assert.deepEqual(played, [expectedClip], `${skillId} plays ${expectedClip}`);
+    }
+    played.length = 0;
+    r.state.skills = ['shock']; r.state.skillCooldowns = {}; r.state.pendingModal = null; r.state.resolving = false; r.state.shockCombo = 0; r.state.aweCombo = 0;
+    showOrbFixture(b, i => i === 0 ? { type: 'shield' } : i === 1 ? { type: 'coin' } : { type: 'sword' });
+    r.activateSkill('shock');
+    assert.ok(played.includes('raid-shield-collect') && played.includes('raid-coin-drop'), 'shock plays shield and coin chain clips');
+    played.length = 0;
+    r.state.skills = ['awe']; r.state.skillCooldowns = {}; r.state.pendingModal = null; r.state.resolving = false; r.state.shockCombo = 0; r.state.aweCombo = 0;
+    showOrbFixture(b, i => i === 18 ? { type: 'shield' } : i === 19 ? { type: 'potion' } : { type: 'sword' });
+    r.activateSkill('awe');
+    assert.ok(played.includes('raid-shield-collect') && played.includes('raid-bottle-clink'), 'awe plays shield and potion chain clips');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 // Compact controls and immutable per-run scenery, exercised on the built page.
 test('magitech compact header: settings replace sound without a fourth action; help and confirmed restart still work from the menu', async () => {
   const b = await openMagitech();
@@ -3109,7 +3152,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Два звука брони/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Звуки умений сбора ресурсов/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Компактная боевая шапка/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука зелий/);
