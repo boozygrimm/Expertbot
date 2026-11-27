@@ -3196,7 +3196,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Гладкие удары мечами без микрорывков/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
     assert.match(doc.querySelector('#updates-history').textContent, /Последовательный взрыв и свободное падение каждого шарика/);
     assert.match(doc.querySelector('#updates-history').textContent, /Шёлковое 60-fps падение плиток без стоп-кадров/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
@@ -4444,9 +4445,12 @@ test('magitech haptics: important mode immediately signals kills and bosses but 
     r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(0, 100, { direct:false });
     assert.deepEqual(calls, [['selection']]);
+    r.state.board[2] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
+    r.hitSkullAt(2, 100, { direct:false });
+    assert.deepEqual(calls, [['selection']], 'same-frame multi-kill coalesces into one crisp combat haptic');
     r.state.board[1] = { type:'skull', skull:Object.assign(r.makeSkull(true), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(1, 100, { direct:false });
-    assert.deepEqual(calls, [['selection'], ['selection']]);
+    assert.deepEqual(calls, [['selection'], ['selection']], 'higher-priority boss kill still fires immediately');
     assert.equal(d.querySelectorAll('.haptics-test, [data-haptic-test]').length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }

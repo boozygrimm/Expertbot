@@ -5925,8 +5925,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
+  assert.match(current, /Гладкие удары мечами без микрорывков/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
   assert.match(archive, /Последовательный взрыв и свободное падение каждого шарика/);
   assert.match(archive, /Шёлковое 60-fps падение плиток без стоп-кадров/);
   assert.match(archive, /Живая физика падения плиток и эффектный взрыв цепочек/);
