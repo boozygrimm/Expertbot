@@ -2705,6 +2705,8 @@ test('magitech battle console HUD: shows full mech, synced weapon/shield art wit
   try {
     const doc = b.dom.window.document, r = b.raid;
     assert.equal(doc.querySelector('#log').hidden, true, 'battle log is hidden');
+    assert.deepEqual([...doc.querySelectorAll('.hud-console > div')].map(n => n.id || n.className), ['hud-weapon', 'hud-hp', 'hud-armor', 'hud-tubes-zone'], 'HUD order is Weapon -> Mech -> Shield -> Tubes');
+    assert.ok(doc.querySelector('.board-foot #hud-trophy'), 'trophy badge lives in board-foot without overlapping HUD tubes');
     assert.equal(doc.querySelector('#hud-mech-art').getAttribute('src'), `miniapp_preview/assets/mech_${r.state.classId}.png`);
     assert.match(doc.querySelector('#hud-mech-name').textContent, /Ур\. 1/);
     assert.ok(doc.querySelector('#hud-weapon-art').getAttribute('src').startsWith('data:image/webp;base64,'));
@@ -3180,7 +3182,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Новая нижняя панель боя/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Выровненная нижняя панель боя/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Новая нижняя панель боя/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
