@@ -914,10 +914,10 @@
 
   const RAID_MONSTER_ART = (typeof window !== 'undefined' && window.RAID_MONSTER_ART) || {};
   const RAID_REGIONS = {
-    earth: { title: 'Забытый лес', element: 'Земля', index: '03' },
-    fire: { title: 'Пылающая кузня', element: 'Огонь', index: '01' },
-    air: { title: 'Небесный разлом', element: 'Воздух', index: '02' },
-    water: { title: 'Затопленный храм', element: 'Вода', index: '04' },
+    earth: { title: 'Забытый лес', short: 'Лес', element: 'Земля', index: '03' },
+    fire: { title: 'Пылающая кузня', short: 'Кузня', element: 'Огонь', index: '01' },
+    air: { title: 'Небесный разлом', short: 'Разлом', element: 'Воздух', index: '02' },
+    water: { title: 'Затопленный храм', short: 'Храм', element: 'Вода', index: '04' },
   };
   const RAID_PORTRAITS = {
     fire: ['fire_spark', 'fire_crab', 'fire_demon', 'fire_dragon'],
@@ -2490,6 +2490,7 @@
     if (!SAVED_RUN) return null;
     const { state, savedAt } = SAVED_RUN;
     return { classId: state.classId, mode: state.mode, difficulty: state.difficulty, turn: state.turn, hp: state.hero.hp, level: state.hero.level,
+      region: Object.hasOwn(RAID_REGIONS, SAVED_RUN.region) ? SAVED_RUN.region : RAID_REGION,
       pendingModal: SAVED_RUN.menu?.kind || null, combatRules: SAVED_RUN.combat?.rules || 'classic-v1', savedAt };
   }
   function restoreMenuChoices(menu) {
@@ -7726,10 +7727,15 @@
     const resume = el('picker-resume'), info = savedRunInfo();
     if (resume) {
       resume.hidden = !(S && !S.over || info);
-      resume.textContent = info?.combatRules === 'elements-affinity-v1' ? 'Продолжить · стихии'
-        : info?.combatRules === 'classic-v1' ? 'Продолжить · прежние правила' : 'Продолжить';
-      resume.title = S && !S.over ? 'Вернуться в текущий забег'
-        : info ? `Продолжить рейд меха «${CLASS_BY_ID[info.classId].name}», ход ${info.turn}` : 'Продолжить забег';
+      const resumeRegion = S && !S.over && Object.hasOwn(RAID_REGIONS, RUN_REGION) ? RUN_REGION
+        : info && Object.hasOwn(RAID_REGIONS, info.region) ? info.region : null;
+      const loc = resumeRegion ? RAID_REGIONS[resumeRegion] : null;
+      const isLegacy = !(S && !S.over) && info?.combatRules === 'classic-v1';
+      resume.textContent = isLegacy
+        ? (loc ? `Продолжить · ${loc.short} · прежние правила` : 'Продолжить · прежние правила')
+        : (loc ? `Продолжить · ${loc.short}` : 'Продолжить');
+      resume.title = S && !S.over ? `Вернуться в текущий забег${loc ? ` (${loc.title})` : ''}`
+        : info ? `Продолжить рейд меха «${CLASS_BY_ID[info.classId].name}»${loc ? ` · ${loc.title}` : ''}, ход ${info.turn}` : 'Продолжить забег';
     }
     picker.classList.add('show');
     const card = el('picker-card'); if (card) card.scrollTop = 0;

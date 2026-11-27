@@ -3072,7 +3072,7 @@ for (const sdk of [false,true]) test(`magitech elemental built: ${sdk ? 'SDK Clo
     if (sdk) { doc.querySelector('#menu-btn').click(); doc.querySelector('#menu-close').click(); assert.equal(stub.calls.filter(c => c === 'close').length, 1); }
     b = await reopenMagitech(b, { setup, ...(sdk ? { url: telegramRaidUrl } : {}) }); r = b.raid; doc = b.dom.window.document;
     assert.equal(r.state, null); assert.equal(r.savedRunInfo().combatRules, 'elements-affinity-v1');
-    assert.match(doc.querySelector('#picker-resume').textContent, /стихии/);
+    assert.equal(doc.querySelector('#picker-resume').textContent, 'Продолжить · Лес');
     doc.querySelector('#picker-resume').click();
     assert.deepEqual(JSON.parse(b.dom.window.localStorage.getItem(key)).combat, rng);
     assert.deepEqual(Array.from(r.state.board.slice(0,3), c => c.element), ['water','water','water']);
@@ -3189,8 +3189,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Живая нижняя панель боя и узнаваемые символы/);
-    assert.match(doc.querySelector('#updates-history').textContent, /Крупный меч, плоская стопка и крутящаяся монетка/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Стеклянные кабошоны плиток и локация в кнопке «Продолжить»/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Живая нижняя панель боя и узнаваемые символы/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);

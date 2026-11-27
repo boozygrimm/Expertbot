@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Живая нижняя панель боя и узнаваемые символы/);
+  assert.match(current, /Стеклянные кабошоны плиток и локация в кнопке «Продолжить»/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Живая нижняя панель боя и узнаваемые символы/);
   assert.match(archive, /Крупный меч, плоская стопка и крутящаяся монетка/);
   assert.match(archive, /Выровненная нижняя панель боя/);
   assert.match(archive, /Новая нижняя панель боя/);
