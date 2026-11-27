@@ -2518,19 +2518,19 @@ test('magitech item motion: only coin/content has slow 3D rotation; frozen items
     const images = nodes.map(n => n.querySelector('.weapon-texture,.coin-3d'));
     nodes.forEach((orb, idx) => {
       const core = orb.querySelector('.orb-core'), item = images[idx], motion = idx % 2 ? item.closest('.weapon-art') : item, style = b.dom.window.getComputedStyle(motion);
-      assert.equal(b.dom.window.getComputedStyle(core).perspective, '', 'no 3D perspective needed for lightweight 2D GPU motion');
-      assert.match(style.animation, idx % 2 ? /weapon-idle-sway 7\.2s ease-in-out infinite/ : /coin-axial-turn 12s ease-in-out infinite/);
+      assert.equal(b.dom.window.getComputedStyle(core).perspective, idx % 2 ? '' : '220px');
+      assert.match(style.animation, idx % 2 ? /weapon-idle-sway 7\.2s ease-in-out infinite/ : /coin-axial-turn 4\.8s ease-in-out infinite/);
       assert.equal(b.dom.window.getComputedStyle(orb).transform, '');
       assert.equal(b.dom.window.getComputedStyle(orb).animation, '', 'glass itself does not rotate or pulse');
       if (idx < 2) assert.equal(style.animationPlayState, 'paused');
       if (idx % 2) assert.equal(item.draggable, false);
       else {
         assert.equal(item.getAttribute('aria-hidden'), 'true');
-        assert.ok(item.classList.contains('coin-2d'), 'coin uses lightweight 2D spin');
+        assert.ok(item.classList.contains('coin-sway'), 'coin uses lightweight 2-layer 3D sway');
         assert.equal(item.querySelectorAll('.coin-face').length, 1);
-        assert.equal(item.querySelectorAll('.coin-edge').length, 0);
+        assert.equal(item.querySelectorAll('.coin-edge').length, 1);
         assert.equal(item.querySelectorAll('svg').length, 1);
-        assert.notEqual(b.dom.window.getComputedStyle(item).transformStyle, 'preserve-3d');
+        assert.equal(b.dom.window.getComputedStyle(item).transformStyle, 'preserve-3d');
       }
     });
     b.raid.tryExtendChain(3); b.raid.tryExtendChain(9); b.raid.tryExtendChain(15);
@@ -3195,7 +3195,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Ускорение загрузки и плавность на телефонах/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Объёмное 3D-покачивание монет/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Ускорение загрузки и плавность на телефонах/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чистый классический бой без стихий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Гладкие удары мечами без микрорывков/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
@@ -5266,7 +5267,7 @@ test('magitech mobile performance #48: externalized cache-busted assets, zero ba
   assert.ok(Buffer.byteLength(html, 'utf8') < 1200 * 1024, 'bundle stays under 1.2 MB');
   assert.doesNotMatch(html, /data:audio\/mpeg;base64,/);
   assert.doesNotMatch(css, /backdrop-filter:/);
-  assert.doesNotMatch(css, /transform-style:\s*preserve-3d/);
+  assert.doesNotMatch(css, /\.coin-reverse|\.coin-edge-belt/, '2-layer 3D coin sway replaces the old 4-layer full rotation');
   const lite = await openMagitech({ setup(w) { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 4, configurable: true }); } });
   try {
     const doc = lite.dom.window.document;
