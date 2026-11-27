@@ -2631,7 +2631,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .hud.hud-console {
   position: relative;
   display: grid;
-  grid-template-columns: 0.62fr 1.24fr 0.84fr 1.18fr;
+  grid-template-columns: 0.68fr 1.18fr 0.84fr 1.18fr;
   align-items: stretch;
   gap: 6px;
   width: min(100%, 430px);
@@ -2741,6 +2741,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   place-items: center;
   min-width: 0;
   min-height: 0;
+  padding: 4px 3px;
   border-radius: 18px 18px 4px 4px;
   border: 1px solid rgba(146, 164, 152, 0.42);
   background:
@@ -2749,10 +2750,10 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   overflow: hidden;
 }
 .hud-mech-art {
-  width: 98%;
-  height: 98%;
+  width: 88%;
+  height: 88%;
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center center;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 6px rgba(96, 188, 255, 0.24));
 }
 .hud-hp-tube {
@@ -2830,18 +2831,22 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 }
 .hud-weapon-art {
   position: absolute;
-  inset: 6px 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 12px);
+  left: 50%;
+  top: 50%;
+  width: 96px;
+  height: 96px;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
-  transform: rotate(-45deg) scale(1.04);
+  transform: translate(-50%, -50%) rotate(-45deg);
   transform-origin: center;
-  filter: var(--weapon-finish, brightness(1.06)) contrast(1.14) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.9));
+  filter: var(--weapon-finish, brightness(1.08)) contrast(1.16) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.92));
   pointer-events: none;
 }
 .hud-weapon-stats {
   position: relative;
   z-index: 2;
+  margin-top: 26px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3001,12 +3006,29 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: radial-gradient(circle at 35% 30%, #d98226, #6e360c);
   box-shadow: 0 0 8px rgba(240, 152, 54, 0.52), 0 2px 5px rgba(0, 0, 0, 0.65);
 }
-.hud-tube-gold .hud-tube-icon {
-  color: #fff7cf;
-  border-color: #ffe06b;
-  background: radial-gradient(circle at 35% 30%, #e6b422, #7a5208);
-  box-shadow: 0 0 8px rgba(255, 206, 62, 0.55), 0 2px 5px rgba(0, 0, 0, 0.65);
+.hud-tube-coin-wrap {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  perspective: 180px;
 }
+.hud-coin-3d {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: coin-axial-turn 9s linear infinite;
+}
+.hud-coin-3d .coin-face {
+  border-width: 1.4px;
+  box-shadow: inset 0 0 0 1px #fff2be, inset 0 0 0 2px #92520c, 0 1px 3px #24160699;
+}
+.hud-coin-3d .coin-obverse { transform: translateZ(1.5px); }
+.hud-coin-3d .coin-reverse { transform: rotateY(180deg) translateZ(1.5px); }
+.hud-coin-3d .coin-edge-belt { left: calc(50% - 1.5px); width: 3px; }
 
 /* Shared vertical crystal tube track + glowing liquid fills */
 .hud-tube-track {
@@ -3053,22 +3075,23 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: linear-gradient(90deg, #b86014 0%, #f5a638 48%, #ffcf7a 62%, #a85410 100%);
   box-shadow: 0 0 10px rgba(245, 162, 54, 0.72), inset 0 1px 0 rgba(255, 236, 198, 0.72);
 }
-/* Coin bar rendered as a ribbed vertical stack of 100 gold coins */
+/* Coin bar rendered as a ribbed vertical stack of 100 flat gold coins */
 .hud-coin-stack-track {
   width: 16px;
-  border-radius: 5px 5px 6px 6px;
+  border-radius: 4px 4px 5px 5px;
   border-color: rgba(235, 198, 92, 0.46);
   background:
     repeating-linear-gradient(180deg, rgba(255, 224, 120, 0.05) 0 1px, transparent 1px 2.2px),
     linear-gradient(90deg, #0b1312, #18231d 50%, #091110);
-  padding: 4px 1px 1px;
+  padding: 1px;
 }
 .hud-coin-stack-track::after {
   display: none;
 }
 .hud-console .fill-gold {
   position: relative;
-  border-radius: 2px 2px 4px 4px;
+  border-radius: 1px 1px 3px 3px;
+  border-top: 1px solid #fff2a8;
   background-image:
     repeating-linear-gradient(
       180deg,
@@ -3078,24 +3101,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       rgba(68, 36, 4, 0.88) 1.85px
     ),
     linear-gradient(90deg, #8a5408 0%, #e4a81c 22%, #fff098 44%, #f4be2a 68%, #9b600a 88%, #633904 100%);
-  box-shadow: 0 0 9px rgba(255, 206, 58, 0.56), inset 0 -1px 0 rgba(70, 38, 4, 0.9);
-  overflow: visible;
+  box-shadow: 0 0 9px rgba(255, 206, 58, 0.52), inset 0 -1px 0 rgba(70, 38, 4, 0.9);
 }
-.hud-console .fill-gold::before {
-  content: '';
-  position: absolute;
-  left: -0.5px;
-  right: -0.5px;
-  top: -2px;
-  height: 4px;
-  border-radius: 50%;
-  border: 0.6px solid #a86c0e;
-  background: radial-gradient(ellipse at 42% 38%, #fffbe0 0%, #ffd84e 52%, #c98612 100%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
-}
-.hud-console .fill-gold[style*="height: 0%"]::before,
-.hud-console .fill-gold[style*="height:0%"]::before {
-  display: none;
+.hud-console .fill-gold[style*="height: 0%"],
+.hud-console .fill-gold[style*="height:0%"] {
+  border-top-color: transparent;
+  box-shadow: none;
 }
 
 .hud-tube-val {
@@ -3119,7 +3130,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 
 @media (max-width: 400px) {
   .hud.hud-console {
-    grid-template-columns: 0.6fr 1.24fr 0.82fr 1.18fr;
+    grid-template-columns: 0.66fr 1.18fr 0.82fr 1.18fr;
     gap: 4px;
     padding: 7px 6px 11px;
   }
@@ -3127,11 +3138,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .hud-hp-plate { font-size: 9.5px; padding: 2px 3px; }
   .hud-mech-nameplate { font-size: 8px; }
   .hud-weapon-frame, .hud-shield-wrap { min-height: 102px; }
+  .hud-weapon-art { width: 88px; height: 88px; }
+  .hud-weapon-stats { margin-top: 22px; }
   .hud-weapon-stats b { min-width: 22px; height: 22px; font-size: 12px; }
   .hud-weapon-stats small { font-size: 7px; }
   .hud-shield-val { font-size: 12px; padding: 1px 4px; }
   .hud-tubes-zone { gap: 3px; }
-  .hud-tube-icon { width: 20px; height: 20px; }
+  .hud-tube-icon, .hud-tube-coin-wrap { width: 20px; height: 20px; }
   .hud-tube-icon svg { width: 12px; height: 12px; }
   .hud-tube-track { width: 11px; min-height: 58px; }
   .hud-coin-stack-track { width: 14px; }
