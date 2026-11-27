@@ -2249,3 +2249,160 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .affinity-choice { font-size:9px; }
 }
 
+/* Luxury horizontal-oval ("О положенная на бок", 4:3) skill medallions */
+.module-glyph,
+.module-glyph-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.skills {
+  gap: 5px;
+  min-height: 70px;
+}
+.skill {
+  position: relative;
+  min-height: 70px;
+  padding: 4px 3px 3px;
+  gap: 2px;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid rgba(194, 171, 108, 0.34);
+  background: radial-gradient(ellipse at 50% 26%, rgba(44, 84, 75, 0.38), rgba(10, 26, 26, 0.92) 74%);
+  box-shadow: inset 0 1px 0 rgba(255, 242, 198, 0.12), 0 2px 6px rgba(0, 0, 0, 0.36);
+  color: #efe4be;
+  transition: transform 0.14s ease, border-color 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+.skill:not(:disabled):not(.empty):hover,
+.skill:not(:disabled):not(.empty):focus-visible {
+  border-color: rgba(244, 214, 134, 0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 248, 218, 0.24), 0 0 14px rgba(232, 192, 92, 0.26), 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+.skill:not(:disabled):not(.empty):hover .skill-icon,
+.skill:not(:disabled):not(.empty):focus-visible .skill-icon {
+  transform: translateY(-1px) scale(1.03);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.62)) drop-shadow(0 0 6px rgba(255, 222, 128, 0.34));
+}
+.skill:not(:disabled):not(.empty):active {
+  transform: scale(0.96);
+}
+.skill .skill-icon {
+  display: grid;
+  place-items: center;
+  width: clamp(48px, 14.2vw, 60px);
+  height: auto;
+  aspect-ratio: 4 / 3;
+  margin: 0 auto;
+  font-size: 0;
+  line-height: 0;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.58));
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.skill .skill-name {
+  min-height: 2.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ece3be;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.78);
+}
+.skill .cd {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(229, 198, 120, 0.58);
+  background: linear-gradient(180deg, #1d3532, #091718);
+  color: #ffe8aa;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.76);
+}
+.skill.on-cd {
+  opacity: 0.64;
+  filter: none;
+}
+.skill.on-cd .skill-icon {
+  filter: saturate(0.32) brightness(0.76) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.56));
+}
+.skill.on-cd .cd {
+  border-color: rgba(235, 136, 112, 0.66);
+  color: #ffc8b8;
+}
+.skill.empty {
+  border: 1px dashed rgba(146, 166, 128, 0.24);
+  background: rgba(9, 23, 23, 0.54);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.34);
+  opacity: 0.84;
+}
+.skill.empty .skill-icon {
+  opacity: 0.82;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.44));
+}
+.skill.empty .skill-name {
+  color: #8ea692;
+  font-weight: 600;
+}
+@media (max-height: 560px) {
+  .skills { min-height: 60px; }
+  .skill { min-height: 60px; padding: 3px 2px 2px; }
+  .skill .skill-icon { width: 46px; }
+}
+.lv-skill .lv-icon-box {
+  width: 60px;
+  height: 45px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.lv-skill .lv-icon {
+  width: 60px;
+  height: 45px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.65));
+  transition: filter 0.16s ease, transform 0.16s ease;
+}
+.lv-skill:hover .lv-icon,
+.lv-skill.picked .lv-icon {
+  filter: drop-shadow(0 3px 7px rgba(0, 0, 0, 0.72)) drop-shadow(0 0 8px rgba(248, 214, 122, 0.38));
+}
+.lv-skill .lv-corner {
+  right: -2px;
+  bottom: -2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid #d9be76;
+  background: linear-gradient(180deg, #1e3733, #091818);
+  color: #fff2c4;
+  font-size: 9px;
+  line-height: 1.15;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+.result-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 33px;
+  margin: 0 auto 3px;
+}
+.result-glyph .module-glyph {
+  width: 44px;
+  height: 33px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+.result-glyph .equipment-glyph {
+  width: 28px;
+  height: 28px;
+}
+
+

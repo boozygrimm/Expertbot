@@ -6107,3 +6107,43 @@ test('pilot names and enemy descriptions use current player-facing terminology',
   assert.match(js, /Способности Лича одинаковы при любом пилоте/);
   assert.match(html, /История обновлений[\s\S]*?Кабины мехов и выбор пилота/);
 });
+
+test('magitech skill medallions: all 43 skills have unique horizontal-oval 4:3 glossy SVG art and collision-free IDs', () => {
+  const { raid } = raidBrowser({ variant: 'magitech', start: false });
+  const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
+  const expectedIds = [
+    'steal', 'teleport', 'freeze', 'heal', 'repair', 'counter', 'shatter',
+    'goldtouch', 'explosive', 'elixir', 'enchant', 'slash', 'treasure',
+    'scavenge', 'disarm', 'dazzle', 'boostdmg', 'boostgold', 'boosthealth',
+    'boostarmour', 'banish', 'exorcise', 'trap', 'biggame', 'magicsword',
+    'explosivearmour', 'fireball', 'mana', 'chamber', 'earthquake', 'hack',
+    'berserk', 'rune', 'greed', 'laststand', 'wish', 'masochism', 'charge',
+    'haste', 'volley', 'shock', 'awe', 'retune',
+  ];
+  assert.deepEqual([...raid.skillIconIds()].sort(), [...expectedIds].sort(), 'every one of the 43 skills has dedicated artwork');
+  const normalizedArts = new Set();
+  const seenDomIds = new Set();
+  for (const id of expectedIds) {
+    const svg = raid.raidModuleIcon(id);
+    assert.match(svg, /^<svg class="module-glyph" data-skill-art="[^"]+" xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 112 84"/, `${id} renders horizontal 4:3 oval SVG`);
+    assert.match(svg, /<ellipse cx="56" cy="42" rx="51\.2" ry="37"/, `${id} uses horizontal-oval medallion frame`);
+    const ids = [...svg.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
+    assert.ok(ids.length >= 6, `${id} defines metallic/jewel/gloss gradients and clipPath`);
+    for (const domId of ids) {
+      assert.ok(!seenDomIds.has(domId), `DOM id ${domId} must be unique across rendered icons`);
+      seenDomIds.add(domId);
+    }
+    normalizedArts.add(svg.replace(/rs\d+_/g, 'rsX_'));
+  }
+  assert.equal(normalizedArts.size, expectedIds.length, 'all 43 skill icons have distinct artwork');
+  const repeatA = raid.raidModuleIcon('freeze');
+  const repeatB = raid.raidModuleIcon('freeze');
+  assert.notEqual(repeatA, repeatB, 'repeated renders of the same skill use distinct gradient/clip IDs');
+  const emptySvg = raid.raidEmptyModuleIcon();
+  assert.match(emptySvg, /^<svg class="module-glyph-empty" xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 112 84"/);
+  assert.doesNotMatch(emptySvg, /class="[^"]*\bmodule-glyph\b(?!-)/, 'empty slot does not masquerade as an equipped .module-glyph');
+  assert.match(css, /\.skill \.skill-icon \{[^}]*aspect-ratio:\s*4\s*\/\s*3/);
+  assert.match(js, /raidEmptyModuleIcon\(\)/);
+});
+
