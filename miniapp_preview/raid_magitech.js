@@ -1771,17 +1771,20 @@
   }
   function raidWeaponTexture(className, item) {
     const art = raidWeaponVisual(item);
+    if (className === 'weapon-glint') {
+      return `<span class="weapon-glint" data-weapon-art="${art.id}" data-weapon-key="${art.key}" style="${art.style}" aria-hidden="true"></span>`;
+    }
     return `<img class="${className} weapon-texture" data-weapon-art="${art.id}" data-weapon-key="${art.key}" src="${art.src}" style="${art.style}" alt="" aria-hidden="true" draggable="false">`;
   }
-  function syncRaidWeaponTexture(image) {
-    if (!image) return;
+  function syncRaidWeaponTexture(node) {
+    if (!node) return;
     const art = raidWeaponVisual();
-    if (image.dataset.weaponKey === art.key) return;
+    if (node.dataset.weaponKey === art.key) return;
     // Change only the worn image/finish, never rebuild a surviving orb, its
     // material, ice or image node. A purchase is not a fall/destruction event.
-    if (image.getAttribute('src') !== art.src) image.setAttribute('src', art.src);
-    image.dataset.weaponArt = art.id; image.dataset.weaponKey = art.key;
-    image.setAttribute('style', art.style);
+    if (node.tagName === 'IMG' && node.getAttribute('src') !== art.src) node.setAttribute('src', art.src);
+    node.dataset.weaponArt = art.id; node.dataset.weaponKey = art.key;
+    node.setAttribute('style', art.style);
   }
   const RAID_EQUIPMENT_SHAPES = {
     helmet: '<path d="M5 27V14C5-2 27-2 27 14v13l-8 3v-9h-6v9Z" fill="#758e83"/><path d="m7 12 9 4 9-4-3 8H10Z" fill="#102c2c"/><path d="M16 3v8m-7 16 2-4m12 4-2-4"/>',
@@ -3431,10 +3434,8 @@
     if (cell.type === 'sword') return '<span class="weapon-art">' + raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint') + '<span class="weapon-tip-sparkle" aria-hidden="true"></span></span>';
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
-    if (cell.type === 'coin') return '<span class="ic coin-3d" aria-hidden="true">'
-      + '<i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>'
-      + '<span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.6"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/><path d="M8 20 5 24l3 4m32-8 3 4-3 4" fill="none" stroke="#8e5710" stroke-width="1.5"/></svg></span>'
-      + '<span class="coin-face coin-reverse"><svg viewBox="0 0 48 48"><path d="m24 8 4 10 11 1-8 7 3 11-10-6-10 6 3-11-8-7 11-1Z" fill="#a36813" stroke="#ffe9a3" stroke-width="1.5"/><path d="m24 17 2 6 6 1-5 4 2 5-5-3-5 3 2-5-5-4 6-1Z" fill="#f5cf65"/></svg></span></span>';
+    if (cell.type === 'coin') return '<span class="ic coin-3d coin-2d" aria-hidden="true">'
+      + '<span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.6"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/><path d="M8 20 5 24l3 4m32-8 3 4-3 4" fill="none" stroke="#8e5710" stroke-width="1.5"/></svg></span></span>';
     if (cell.type === 'potion') {
       const kind = cell.acid ? 'acid' : cell.mana ? 'mana' : cell.explosive ? 'explosive' : 'health';
       const liquid = { health: '#d75b78', acid: '#b4d53b', mana: '#4d9fe6', explosive: '#e98b3c' }[kind];
@@ -3568,6 +3569,17 @@
     }
     return layer;
   }
+  // Automatic low-end mobile WebView optimization: silently detected once at boot.
+  const RAID_LOW_END = (() => {
+    if (typeof navigator === 'undefined') return false;
+    const cores = Number(navigator.hardwareConcurrency);
+    const mem = Number(navigator.deviceMemory);
+    return (Number.isFinite(cores) && cores > 0 && cores <= 4)
+      || (Number.isFinite(mem) && mem > 0 && mem <= 3);
+  })();
+  if (RAID_LOW_END && typeof document !== 'undefined' && document.documentElement?.dataset) {
+    document.documentElement.dataset.raidPerf = 'lite';
+  }
   function ensureBoardFxCanvas(boardRect) {
     if (orbReducedMotion() || !boardRect?.width || !boardRect?.height) return null;
     const layer = ensureBoardFx();
@@ -3587,7 +3599,7 @@
       }
     }
     if (!BOARD_FX.ctx) return null;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, RAID_LOW_END ? 1.5 : 2);
     const w = Math.round(boardRect.width), h = Math.round(boardRect.height);
     if (BOARD_FX.w !== w || BOARD_FX.h !== h || BOARD_FX.dpr !== dpr) {
       BOARD_FX.w = w; BOARD_FX.h = h; BOARD_FX.dpr = dpr;
@@ -3859,7 +3871,8 @@
     const climax = !!opts.climax, boss = !!opts.boss, explosive = !!opts.explosive;
     const intensity = Math.max(.9, Math.min(1.4, opts.intensity ?? 1));
     const seed = Math.imul(Number(orbId) || 1, 2654435761) >>> 0;
-    const count = boss || explosive ? 12 : climax ? 10 : opts.dense ? 7 : 9;
+    const baseCount = boss || explosive ? 12 : climax ? 10 : opts.dense ? 7 : 9;
+    const count = RAID_LOW_END ? Math.max(4, Math.round(baseCount * .65)) : baseCount;
     const radius = size * (.68 + intensity * .2);
     const particles = [];
     for (let i = 0; i < count; i++) {
@@ -3993,7 +4006,7 @@
         core.appendChild(img);
       } else core.innerHTML = tileSymbol(cell, idx);
     }
-    if (cell.type === 'sword') orb.querySelectorAll('.weapon-texture').forEach(syncRaidWeaponTexture);
+    if (cell.type === 'sword') orb.querySelectorAll('.weapon-texture,.weapon-glint').forEach(syncRaidWeaponTexture);
     if (cell.type === 'shield') syncRaidShieldTexture(orb.querySelector('.shield-texture'));
     let label;
     if (isSkull) {

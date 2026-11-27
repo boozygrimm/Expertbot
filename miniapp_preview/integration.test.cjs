@@ -1659,12 +1659,13 @@ test('magitech fork: classic artifact stays pinned and the new standalone contai
   const classic = fs.readFileSync(path.join(root, 'lunapark-raid.html'));
   assert.equal(crypto.createHash('sha256').update(classic).digest('hex'), '7508bf14594cd2eb5b6fc1304d327554201a2bbcb964515191b499214a892e1f');
   const html = fs.readFileSync(path.join(root, 'lunapark-raid-magitech.html'), 'utf8');
+  const buildId = html.match(/<meta name="raid-build" content="([a-f0-9]+)">/)?.[1] || '';
+  assert.ok(buildId.length === 12, 'built page declares a 12-char build fingerprint');
+  assert.ok(Buffer.byteLength(html, 'utf8') < 1200 * 1024, 'externalized standalone bundle stays under 1.2 MB');
   let js = fs.readFileSync(path.join(root, 'miniapp_preview/raid_magitech.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'miniapp_preview/raid_magitech.css'), 'utf8');
-  for (const [source, mime] of [['lich_phylactery.png', 'image/png'], ['raid_trophy.png', 'image/png']]) {
-    const encoded = fs.readFileSync(path.join(root, 'miniapp_preview/assets', source)).toString('base64');
-    js = js.replace(`'assets/${source}'`, `'data:${mime};base64,${encoded}'`);
-  }
+  js = js.replace("'assets/lich_phylactery.png'", `'miniapp_preview/assets/lich_phylactery.webp?v=${buildId}'`);
+  js = js.replace("'assets/raid_trophy.png'", `'miniapp_preview/assets/raid_trophy.webp?v=${buildId}'`);
   assert.ok(html.includes(js.replaceAll('</', '<\\/')));
   assert.doesNotMatch(html, /__(?:RAID_BUILD|RAID_SCENE_\w+)__|\/\*__(?:SCRIPT|STYLE)__\*\//);
   assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important/);
@@ -2118,7 +2119,7 @@ function orbAnimationHarness(window, { reduced = false, webAnimations = true } =
   };
 }
 async function orbFixture(options = {}) {
-  const b = await openMagitech({ start: false, setup(w) { orbAnimationHarness(w, options); } });
+  const b = await openMagitech({ start: false, setup(w) { options.setup?.(w); orbAnimationHarness(w, options); } });
   const doc = b.dom.window.document;
   doc.querySelector('.picker-card-btn:not(.locked)').click();
   if (options.region) {
@@ -2510,26 +2511,26 @@ test('magitech weapon fog: selection-only water/air keep their two-thirds geomet
 
 
 test('magitech item motion: only coin/content has slow 3D rotation; frozen items pause, shop images stay static and keyed images survive repaint', async () => {
-  const b = await orbFixture();
+  const b = await orbFixture({ setup(w) { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 8, configurable: true }); } });
   try {
     showOrbFixture(b, idx => ({ type: idx % 2 ? 'sword' : 'coin', ...(idx < 2 ? { frozen: true } : {}) }));
     const doc = b.dom.window.document, before = orbGameplay(b), nodes = [...doc.querySelectorAll('.cell > .raid-orb')];
     const images = nodes.map(n => n.querySelector('.weapon-texture,.coin-3d'));
     nodes.forEach((orb, idx) => {
       const core = orb.querySelector('.orb-core'), item = images[idx], motion = idx % 2 ? item.closest('.weapon-art') : item, style = b.dom.window.getComputedStyle(motion);
-      assert.equal(b.dom.window.getComputedStyle(core).perspective, '260px');
-      assert.match(style.animation, idx % 2 ? /weapon-idle-sway 7\.2s ease-in-out infinite/ : /coin-axial-turn 16s linear infinite/);
+      assert.equal(b.dom.window.getComputedStyle(core).perspective, '', 'no 3D perspective needed for lightweight 2D GPU motion');
+      assert.match(style.animation, idx % 2 ? /weapon-idle-sway 7\.2s ease-in-out infinite/ : /coin-axial-turn 12s ease-in-out infinite/);
       assert.equal(b.dom.window.getComputedStyle(orb).transform, '');
       assert.equal(b.dom.window.getComputedStyle(orb).animation, '', 'glass itself does not rotate or pulse');
       if (idx < 2) assert.equal(style.animationPlayState, 'paused');
       if (idx % 2) assert.equal(item.draggable, false);
       else {
-        assert.equal(item.getAttribute('aria-hidden'), 'true'); assert.equal(item.querySelectorAll('.coin-face').length, 2);
-        assert.equal(item.querySelectorAll('.coin-edge').length, 2); assert.equal(item.querySelectorAll('svg').length, 2);
-        assert.equal(b.dom.window.getComputedStyle(item).transformStyle, 'preserve-3d');
-        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-face')).backfaceVisibility, 'hidden');
-        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-reverse')).transform, 'rotateY(180deg) translateZ(2px)');
-        assert.equal(b.dom.window.getComputedStyle(item.querySelector('.coin-edge-belt')).transform, 'rotateY(90deg)');
+        assert.equal(item.getAttribute('aria-hidden'), 'true');
+        assert.ok(item.classList.contains('coin-2d'), 'coin uses lightweight 2D spin');
+        assert.equal(item.querySelectorAll('.coin-face').length, 1);
+        assert.equal(item.querySelectorAll('.coin-edge').length, 0);
+        assert.equal(item.querySelectorAll('svg').length, 1);
+        assert.notEqual(b.dom.window.getComputedStyle(item).transformStyle, 'preserve-3d');
       }
     });
     b.raid.tryExtendChain(3); b.raid.tryExtendChain(9); b.raid.tryExtendChain(15);
@@ -2612,8 +2613,8 @@ test('magitech material SFX: potion chains play bottle open on first tile and bo
   } });
   try {
     const doc = b.dom.window.document;
-    assert.match(doc.querySelector('#raid-bottle-clink').getAttribute('src'), /^data:audio\/mpeg;base64,/);
-    assert.match(doc.querySelector('#raid-bottle-open').getAttribute('src'), /^data:audio\/mpeg;base64,/);
+    assert.match(doc.querySelector('#raid-bottle-clink').getAttribute('src'), /^miniapp_preview\/assets\/clinkbottle\.mp3\?v=[a-f0-9]{12}$/);
+    assert.match(doc.querySelector('#raid-bottle-open').getAttribute('src'), /^miniapp_preview\/assets\/openbottle\.mp3\?v=[a-f0-9]{12}$/);
     showOrbFixture(b, () => ({ type: 'potion' }));
     unlock();
     [0, 1, 2].forEach(i => b.raid.tryExtendChain(i));
@@ -2646,8 +2647,8 @@ test('magitech material SFX: shield chains play trimmed firstshield on first til
   } });
   try {
     const doc = b.dom.window.document;
-    assert.match(doc.querySelector('#raid-shield-first').getAttribute('src'), /^data:audio\/mpeg;base64,/);
-    assert.match(doc.querySelector('#raid-shield-collect').getAttribute('src'), /^data:audio\/mpeg;base64,/);
+    assert.match(doc.querySelector('#raid-shield-first').getAttribute('src'), /^miniapp_preview\/assets\/firstshield\.mp3\?v=[a-f0-9]{12}$/);
+    assert.match(doc.querySelector('#raid-shield-collect').getAttribute('src'), /^miniapp_preview\/assets\/sborshield\.mp3\?v=[a-f0-9]{12}$/);
     showOrbFixture(b, () => ({ type: 'shield' }));
     unlock();
     [0, 1, 2].forEach(i => b.raid.tryExtendChain(i));
@@ -2716,7 +2717,8 @@ test('magitech battle console HUD: shows full mech, synced weapon/shield art wit
     assert.equal(doc.querySelector('#hud-mech-art').getAttribute('src'), `miniapp_preview/assets/mech_${r.state.classId}.png`);
     assert.match(doc.querySelector('#hud-mech-name').textContent, /Ур\. 1/);
     assert.ok(doc.querySelector('#hud-weapon-art').getAttribute('src').startsWith('data:image/webp;base64,'));
-    assert.equal(doc.querySelector('#hud-weapon-glint').getAttribute('src'), doc.querySelector('#hud-weapon-art').getAttribute('src'), 'weapon glint matches equipped weapon art');
+    assert.equal(doc.querySelector('#hud-weapon-glint').dataset.weaponArt, doc.querySelector('#hud-weapon-art').dataset.weaponArt, 'GPU weapon glint mask matches equipped weapon art');
+    assert.ok(doc.querySelector('#hud-weapon-glint').getAttribute('style').includes('--weapon-mask:url('), 'GPU weapon glint receives silhouette mask');
     assert.match(doc.querySelector('#hud-shield-art').getAttribute('src'), /miniapp_preview\/assets\/raid_shield_\d\.png/);
     assert.equal(doc.querySelector('#hud-weapon-val').textContent, String(r.state.hero.weaponDamage));
     assert.match(doc.querySelector('#hud-weapon-base').textContent, /\+\d+ база/);
@@ -3193,7 +3195,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Чистый классический бой без стихий/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Ускорение загрузки и плавность на телефонах/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Чистый классический бой без стихий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Гладкие удары мечами без микрорывков/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
     assert.match(doc.querySelector('#updates-history').textContent, /Последовательный взрыв и свободное падение каждого шарика/);
@@ -5255,3 +5258,35 @@ test('magitech affinity: late Telegram profile gets its own fresh preparation, n
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
+
+test('magitech mobile performance #48: externalized cache-busted assets, zero backdrop-filter/preserve-3d, GPU weapon glint, and automatic low-end perf mode', async () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const html = fs.readFileSync(path.join(root, 'lunapark-raid-magitech.html'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'miniapp_preview/raid_magitech.css'), 'utf8');
+  assert.ok(Buffer.byteLength(html, 'utf8') < 1200 * 1024, 'bundle stays under 1.2 MB');
+  assert.doesNotMatch(html, /data:audio\/mpeg;base64,/);
+  assert.doesNotMatch(css, /backdrop-filter:/);
+  assert.doesNotMatch(css, /transform-style:\s*preserve-3d/);
+  const lite = await openMagitech({ setup(w) { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 4, configurable: true }); } });
+  try {
+    const doc = lite.dom.window.document;
+    assert.equal(doc.documentElement.dataset.raidPerf, 'lite', '4-core phone automatically enables lite mode without a UI toggle');
+    assert.equal(doc.querySelector('#raid-intro-music').getAttribute('preload'), 'none');
+    assert.equal(doc.querySelector('#raid-sword-taken').getAttribute('preload'), 'metadata');
+    assert.match(doc.querySelector('#raid-intro-music').getAttribute('src'), /^miniapp_preview\/intro_music\.mp3\?v=[a-f0-9]{12}$/);
+    const portraits = lite.dom.window.RAID_MONSTER_ART;
+    const keys = Object.keys(portraits);
+    assert.equal(keys.length, 140, 'all 140 monster portraits mapped');
+    for (const key of keys) {
+      assert.match(portraits[key], new RegExp(`^miniapp_preview/assets/monsters/${key}\\.webp\\?v=[a-f0-9]{12}$`));
+      assert.ok(fs.existsSync(path.join(root, 'miniapp_preview/assets/monsters', `${key}.webp`)), `external monster file exists: ${key}.webp`);
+    }
+    assert.deepEqual(lite.errors, []);
+  } finally { lite.dom.window.close(); }
+  const fast = await openMagitech({ setup(w) { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 8, configurable: true }); Object.defineProperty(w.navigator, 'deviceMemory', { value: 8, configurable: true }); } });
+  try {
+    assert.equal(fast.dom.window.document.documentElement.dataset.raidPerf, undefined, '8-core/8GB device stays in full visual mode');
+    assert.deepEqual(fast.errors, []);
+  } finally { fast.dom.window.close(); }
+});
+

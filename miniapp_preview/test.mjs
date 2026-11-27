@@ -839,23 +839,26 @@ test('Lich instructions explain the 3-coin phylactery win condition and show the
   assert.match(css, /\.cell\.type-skull\.phylactery \.phylactery-art/);
   assert.match(js, /PHYLACTERY_IMAGE = 'assets\/lich_phylactery\.png'/);
   const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
-  assert.match(builder, /PHYLACTERY_ART = 'assets\/lich_phylactery\.png'/);
-  assert.match(builder, /data:image\/png;base64,/);
-  const relic = readFileSync(new URL('./assets/lich_phylactery.png', import.meta.url));
-  assert.equal(relic.subarray(1, 4).toString('ascii'), 'PNG');
+  assert.match(builder, /PHYLACTERY_ART = 'assets\/lich_phylactery\.webp'/);
+  assert.match(builder, /_asset_url\(PHYLACTERY_ART, build_id\)/);
+  const relic = readFileSync(new URL('./assets/lich_phylactery.webp', import.meta.url));
+  assert.equal(relic.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(relic.subarray(8, 12).toString('ascii'), 'WEBP');
+  assert.ok(relic.length < 30 * 1024, 'compressed phylactery WebP stays under 30 KB');
 });
 
 test('the trophy tile uses the generated transparent gold cup art in preview and standalone builds', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const builder = readFileSync(new URL('./build_raid_magitech.py', import.meta.url), 'utf8');
-  const png = readFileSync(new URL('./assets/raid_trophy.png', import.meta.url));
+  const webp = readFileSync(new URL('./assets/raid_trophy.webp', import.meta.url));
   assert.match(js, /cell\.type === 'trophy'\) return `<img class="trophy-art"/);
   assert.match(js, /TROPHY_IMAGE = 'assets\/raid_trophy\.png'/);
   assert.match(css, /\.cell\.type-trophy \.trophy-art/);
-  assert.match(builder, /TROPHY_ART = 'assets\/raid_trophy\.png'/);
-  assert.equal(png.subarray(1, 4).toString('ascii'), 'PNG');
-  assert.equal(png[25], 6, 'trophy artwork retains a transparent alpha channel');
+  assert.match(builder, /TROPHY_ART = 'assets\/raid_trophy\.webp'/);
+  assert.equal(webp.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(webp.subarray(8, 12).toString('ascii'), 'WEBP');
+  assert.ok(webp.length < 40 * 1024, 'compressed trophy WebP stays under 40 KB');
 });
 
 test('raid burning specials and poison-killed Lich use the shared special reward path', () => {
@@ -4929,7 +4932,7 @@ test('magitech preparation flow: mech confirmation opens four-quadrant elemental
   assert.match(css, /grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr/);
   assert.match(css, /\.class-picker:not\(\.region-mode-open\) \.raid-world-footer \{ display:none; \}/);
   assert.doesNotMatch(html.match(/<div class="picker-main"[^]*?<\/div>\s*<section class="raid-region-screen"/)?.[0] || '', /raid-run-settings/);
-  assert.match(css, /\.region-quadrant\.element-fire[^]*background-image: url\('__RAID_SCENE_FIRE__'\)/);
+  assert.match(css, /\.region-quadrant\.element-fire[^]*background-image: var\(--raid-scene-fire\)/);
   for (const element of ['fire', 'air', 'earth', 'water']) assert.match(css, new RegExp(`data-selected-region="${element}"`));
 });
 
@@ -4941,36 +4944,37 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
     const next = css.indexOf('\n@keyframes ', start + 1);
     return css.slice(start, next < 0 ? css.indexOf('\n@media', start) : next);
   };
-  assert.match(frames('coin-axial-turn'), /rotateY\(0deg\)[^]*rotateY\(360deg\)/);
+  assert.match(frames('coin-axial-turn'), /scaleX\(1\)[^]*scaleX\(\.07\)/);
   assert.match(frames('weapon-idle-sway'), /rotate\(-1\.3deg\)[^]*rotate\(1\.3deg\)/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
-  assert.match(frames('weapon-natural-glint'), /opacity:0[^]*opacity:\.72/);
+  assert.match(frames('weapon-natural-glint'), /opacity:0[^]*translate3d\([^]*opacity:\.86/);
+  assert.doesNotMatch(frames('weapon-natural-glint'), /clip-path:/);
+  assert.doesNotMatch(frames('weapon-hammer-glint'), /clip-path:/);
   assert.match(frames('weapon-impact-slash'), /scaleX\(\.06\)[^]*scaleX\(1\.08\)/);
   for (const name of ['heat','mist','flow','grain','sheen','sap'].map(n => 'orb-fx-' + n).concat(['orb-fog-drift','orb-fog-return','orb-water-slosh','orb-water-return'])) {
     assert.doesNotMatch(frames(name), /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, name + ': still no spinning, pulsing or blinking material');
   }
-  assert.match(css, /animation:\s*coin-axial-turn 16s linear infinite/);
+  assert.match(css, /animation:\s*coin-axial-turn 12s ease-in-out infinite/);
   assert.match(css, /animation:\s*weapon-idle-sway 7\.2s ease-in-out infinite/);
   assert.match(css, /animation:\s*weapon-natural-glint 5\.2s ease-in-out infinite/);
   assert.match(css, /\.raid-orb\[data-type="sword"\] \.weapon-art[\s\S]*?animation:weapon-idle-sway 7\.2s ease-in-out infinite/);
   assert.match(css, /\.raid-orb\.frozen\[data-type="sword"\] \.weapon-tip-sparkle/);
-  assert.match(css, /weapon-glint\[data-weapon-art="techno-hammer-v2"\][\s\S]*?animation-name:weapon-hammer-glint/);
+  assert.match(css, /weapon-glint\[data-weapon-art="techno-hammer-v2"\]::before[\s\S]*?animation-name:weapon-hammer-glint/);
   assert.match(css, /@keyframes weapon-hammer-glint/);
   assert.match(css, /@keyframes weapon-tip-twinkle/);
   assert.match(css, /weapon-glint\[data-weapon-art="techno-hammer-v2"\] ~ \.weapon-tip-sparkle/);
-  assert.match(css, /\.weapon-glint[^{]*\{[^}]*object-fit:contain[^}]*clip-path:polygon/);
+  assert.match(css, /\.weapon-glint[^{]*\{[^}]*mask-image:var\(--weapon-mask\)/);
   assert.match(css, /\.raid-orb\.frozen\[data-type="sword"\] \.weapon-art,[\s\S]*?\.weapon-tip-sparkle \{ animation-play-state: paused; \}/);
   assert.match(js, /return '<span class="weapon-art">' \+ raidWeaponTexture\('ic'\) \+ raidWeaponTexture\('weapon-glint'\)/);
   assert.match(css, /animation:weapon-impact-slash \.23s cubic-bezier/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(js, /if \(type === 'sword' && t < \.58\)/);
   assert.match(js, /burst\.dataset\.type = type/);
-  assert.match(css, /transform-style:\s*preserve-3d/); assert.match(css, /backface-visibility:\s*hidden/);
-  assert.match(css, /\.coin-reverse\s*\{\s*transform:\s*rotateY\(180deg\) translateZ\(2px\)/);
-  assert.match(css, /\.coin-edge-belt\s*\{[^}]*width:\s*4px[^}]*repeating-linear-gradient[^}]*rotateY\(90deg\)/);
+  assert.doesNotMatch(css, /transform-style:\s*preserve-3d/);
+  assert.doesNotMatch(css, /backdrop-filter:/);
   assert.match(css, /\.raid-orb\.frozen :is\(\.weapon-texture,\.coin-3d\)\s*\{\s*animation-play-state:\s*paused/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.raid-orb \*[^}]*animation:\s*none !important/);
-  assert.match(js, /class="ic coin-3d" aria-hidden="true"/); assert.match(js, /coin-face coin-obverse/); assert.match(js, /coin-face coin-reverse/);
+  assert.match(js, /class="ic coin-3d coin-2d" aria-hidden="true"/); assert.match(js, /coin-face coin-obverse/);
   assert.match(css, /\.raid-orb\[data-element="air"\] \.orb-fog\s*\{\s*inset:\s*0 0 auto/);
   assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\s*\{[^}]*animation-name:\s*orb-water-slosh; animation-duration:\s*8s/);
   assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\.orb-fog-back[^}]*animation-name:\s*orb-water-return; animation-duration:\s*11s/);
@@ -5925,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Чистый классический бой без стихий/);
+  assert.match(current, /Ускорение загрузки и плавность на телефонах/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Чистый классический бой без стихий/);
   assert.match(archive, /Гладкие удары мечами без микрорывков/);
   assert.match(archive, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
   assert.match(archive, /Последовательный взрыв и свободное падение каждого шарика/);
