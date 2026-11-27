@@ -2623,6 +2623,40 @@ test('magitech material SFX: potion chains play bottle open on first tile and bo
   } finally { b.dom.window.close(); }
 });
 
+test('magitech material SFX: shield chains play trimmed firstshield on first tile and sborshield on chain commit', async () => {
+  const stub = raidTelegramStub(), played = [], paused = []; let unlock;
+  const b = await openMagitech({ url: testerRaidUrl, setup(w) {
+    w.Telegram = { WebApp: stub.tg };
+    const listen = w.document.addEventListener.bind(w.document);
+    w.document.addEventListener = (name, fn, options) => {
+      if (name === 'pointerdown' && fn.name === 'unlockMaterialAudio') unlock = () => fn({ isTrusted: true });
+      return listen(name, fn, options);
+    };
+    w.HTMLMediaElement.prototype.play = function () {
+      if (this.id === 'raid-shield-first' || this.id === 'raid-shield-collect') played.push(this.id);
+      return Promise.resolve();
+    };
+    w.HTMLMediaElement.prototype.pause = function () {
+      if (this.id === 'raid-shield-first' || this.id === 'raid-shield-collect') paused.push(this.id);
+    };
+  } });
+  try {
+    const doc = b.dom.window.document;
+    assert.match(doc.querySelector('#raid-shield-first').getAttribute('src'), /^data:audio\/mpeg;base64,/);
+    assert.match(doc.querySelector('#raid-shield-collect').getAttribute('src'), /^data:audio\/mpeg;base64,/);
+    showOrbFixture(b, () => ({ type: 'shield' }));
+    unlock();
+    [0, 1, 2].forEach(i => b.raid.tryExtendChain(i));
+    assert.deepEqual(played, ['raid-shield-first'], 'first shield tile plays firstshield once per chain');
+    b.raid.resolveChain();
+    assert.deepEqual(played, ['raid-shield-first', 'raid-shield-collect'], 'committed shield chain plays sborshield');
+    paused.length = 0;
+    stub.fire('deactivated');
+    assert.ok(paused.includes('raid-shield-first') && paused.includes('raid-shield-collect'), 'deactivation stops both shield clips');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 // Compact controls and immutable per-run scenery, exercised on the built page.
 test('magitech compact header: settings replace sound without a fourth action; help and confirmed restart still work from the menu', async () => {
   const b = await openMagitech();
@@ -3075,7 +3109,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Подсказка перехода Лича в филактерий/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Два звука брони/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Компактная боевая шапка/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука зелий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Новые иконки умений/);

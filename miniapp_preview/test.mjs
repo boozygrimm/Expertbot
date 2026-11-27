@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Подсказка перехода Лича в филактерий/);
+  assert.match(current, /Два звука брони/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Подсказка перехода Лича в филактерий/);
   assert.match(archive, /Компактная боевая шапка/);
   assert.match(archive, /Два звука зелий/);
   assert.match(archive, /Новые иконки умений/);
@@ -6069,6 +6070,17 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.match(js, /committed && S\.chainType === 'potion'\) audioPotionChain\(\)/);
   assert.match(js, /function audioPotionSelect\(\) \{ playAudioClip\('raid-bottle-open'\); \}/);
   assert.match(js, /function audioPotionChain\(\) \{ playAudioClip\('raid-bottle-clink'\); \}/);
+  assert.match(html, /id="raid-shield-first" src="__RAID_FIRSTSHIELD__"/);
+  assert.match(html, /id="raid-shield-collect" src="__RAID_SBORSHIELD__"/);
+  assert.match(builder, /SHIELD_FIRST = 'assets\/firstshield\.mp3'/);
+  assert.match(builder, /SHIELD_COLLECT = 'assets\/sborshield\.mp3'/);
+  const shieldFirst = readFileSync(new URL('./assets/firstshield.mp3', import.meta.url));
+  assert.ok(shieldFirst.length > 0 && shieldFirst.length < 15000, 'firstshield must be physically trimmed to <= 2s');
+  assert.ok(readFileSync(new URL('./assets/sborshield.mp3', import.meta.url)).length > 0);
+  assert.match(js, /firstSelection && S\.board\[cellIdx\]\.type === 'shield'\) audioShieldSelect\(\)/);
+  assert.match(js, /committed && S\.chainType === 'shield'\) audioShieldChain\(\)/);
+  assert.match(js, /function audioShieldSelect\(\) \{ playAudioClip\('raid-shield-first'\); \}/);
+  assert.match(js, /function audioShieldChain\(\) \{ playAudioClip\('raid-shield-collect'\); \}/);
   assert.match(js, /function isMenuMusicContext\(\) \{ return !!el\('class-picker'\)\?\.classList\.contains\('show'\); \}/);
   assert.match(js, /introMusicAppVisible\(\)[\s\S]*?audioPageActive && audioHostActive/);
   assert.match(js, /el\('music-on'\)\?\.addEventListener\('change',[\s\S]*?setMusicPreference\(event\.target\.checked, false\)/);

@@ -19,6 +19,8 @@ COIN_TAKEN = 'assets/cointaken.mp3'
 COIN_DROP = 'assets/coinsdrop.mp3'
 BOTTLE_CLINK = 'assets/clinkbottle.mp3'
 BOTTLE_OPEN = 'assets/openbottle.mp3'
+SHIELD_FIRST = 'assets/firstshield.mp3'
+SHIELD_COLLECT = 'assets/sborshield.mp3'
 PHYLACTERY_ART = 'assets/lich_phylactery.png'
 TROPHY_ART = 'assets/raid_trophy.png'
 PILOT_ASSETS = tuple(f'assets/pilots/{slug}_{kind}.webp'
@@ -31,7 +33,7 @@ MECH_HEAD_ASSETS = tuple(f'assets/mech_head_{mech}.webp'
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
            ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP,
-           BOTTLE_CLINK, BOTTLE_OPEN, PHYLACTERY_ART, TROPHY_ART,
+           BOTTLE_CLINK, BOTTLE_OPEN, SHIELD_FIRST, SHIELD_COLLECT, PHYLACTERY_ART, TROPHY_ART,
            'assets/back_button_ornament.png', 'assets/pilot_arrow_button.webp',
            'assets/pilot_accept_button.webp', *PILOT_ASSETS, *MECH_HEAD_ASSETS, *SCENES.values())
 
@@ -82,6 +84,10 @@ def main():
     html = html.replace('__RAID_CLINKBOTTLE__', 'data:audio/mpeg;base64,' + bottle_clink)
     bottle_open = base64.b64encode((HERE / BOTTLE_OPEN).read_bytes()).decode('ascii')
     html = html.replace('__RAID_OPENBOTTLE__', 'data:audio/mpeg;base64,' + bottle_open)
+    shield_first = base64.b64encode((HERE / SHIELD_FIRST).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_FIRSTSHIELD__', 'data:audio/mpeg;base64,' + shield_first)
+    shield_collect = base64.b64encode((HERE / SHIELD_COLLECT).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_SBORSHIELD__', 'data:audio/mpeg;base64,' + shield_collect)
     phylactery_art = base64.b64encode((HERE / PHYLACTERY_ART).read_bytes()).decode('ascii')
     js = js.replace("'assets/lich_phylactery.png'", "'data:image/png;base64," + phylactery_art + "'")
     trophy_art = base64.b64encode((HERE / TROPHY_ART).read_bytes()).decode('ascii')

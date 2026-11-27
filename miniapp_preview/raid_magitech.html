@@ -18,6 +18,8 @@
 <audio id="raid-coin-drop" src="__RAID_COINDROP__" preload="auto" aria-hidden="true"></audio>
 <audio id="raid-bottle-clink" src="__RAID_CLINKBOTTLE__" preload="auto" aria-hidden="true"></audio>
 <audio id="raid-bottle-open" src="__RAID_OPENBOTTLE__" preload="auto" aria-hidden="true"></audio>
+<audio id="raid-shield-first" src="__RAID_FIRSTSHIELD__" preload="auto" aria-hidden="true"></audio>
+<audio id="raid-shield-collect" src="__RAID_SBORSHIELD__" preload="auto" aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
   <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку в меню" aria-pressed="true" title="Выключить музыку в меню">
@@ -275,11 +277,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="33"><b>Подсказка перехода Лича в филактерий.</b> Когда в цепочке мечей набирается достаточно урона по Личу, в строке подсказки теперь пишется «Лич → филактерий», а его клетка подсвечивается золотым.</li>
+        <li data-release="34"><b>Два звука брони.</b> Укороченный звук щита звучит при выборе первой плитки брони; отдельный эффект сбора запускается при активации цепочки.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="33"><b>Подсказка перехода Лича в филактерий.</b> Когда в цепочке мечей набирается достаточно урона по Личу, в строке подсказки теперь пишется «Лич → филактерий», а его клетка подсвечивается золотым.</li>
           <li data-release="32"><b>Компактная боевая шапка и кнопки в стиле игры.</b> Верхние надписи убраны, слоты умений подняты на их место рядом с круглыми медальонами настроек, параметров и меню — поле 6×6 и нижняя панель помещаются выше и свободнее.</li>
           <li data-release="31"><b>Два звука зелий.</b> Открытие бутылки звучит при выборе первой плитки зелья; звон стекла запускается при активации цепочки.</li>
           <li data-release="30"><b>Новые иконки умений.</b> Все 43 умения получили глянцевые овальные медальоны в золотой оправе, а пустой слот — стилизованное гнездо. Эффекты и перезарядка навыков не менялись.</li>
