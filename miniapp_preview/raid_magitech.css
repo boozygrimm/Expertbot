@@ -1272,19 +1272,16 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   pointer-events: none; backface-visibility: hidden;
 }
 .raid-orb::before {
-  content: ''; position: absolute; z-index: 4; left: 15%; right: 15%; top: 4%; height: 34%;
-  border-radius: 50% / 60% 60% 40% 40%;
-  background:
-    radial-gradient(ellipse 56% 42% at 38% 24%, rgba(255, 255, 255, 0.48) 0%, rgba(236, 252, 250, 0.14) 55%, transparent 100%),
-    linear-gradient(180deg, rgba(244, 254, 252, 0.32) 0%, rgba(220, 246, 244, 0.08) 48%, transparent 100%);
+  content: ''; position: absolute; z-index: 4; left: 15%; top: 9%; width: 32%; height: 15%;
+  border-radius: 50%; transform: rotate(-32deg);
+  background: radial-gradient(ellipse at 50% 46%, rgba(255, 255, 255, 0.56) 0%, rgba(235, 252, 250, 0.2) 52%, transparent 82%);
   pointer-events: none;
 }
 .raid-orb::after {
-  content: ''; position: absolute; z-index: 4; left: 16%; right: 16%; bottom: 3%; height: 22%;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse 78% 62% at 50% 82%, rgba(242, 255, 252, 0.34) 0%, rgb(var(--orb-rgb, 152 224 218) / 0.28) 46%, transparent 82%);
-  filter: blur(1.2px);
+  content: ''; position: absolute; z-index: 4; right: 12%; bottom: 8%; width: 34%; height: 14%;
+  border-radius: 50%; transform: rotate(-32deg);
+  background: radial-gradient(ellipse at 50% 62%, rgba(242, 255, 252, 0.34) 0%, rgb(var(--orb-rgb, 152 224 218) / 0.28) 52%, transparent 85%);
+  filter: blur(1px);
   mix-blend-mode: screen;
   pointer-events: none;
 }
