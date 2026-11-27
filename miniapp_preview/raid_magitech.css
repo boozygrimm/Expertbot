@@ -1154,7 +1154,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px
 .mech-info { position: absolute; z-index: 3; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid #d7c17d7a; border-radius: 50%; background: #071715d9; color: #f1dfaa; font: 700 12px Georgia,serif; cursor: pointer; }
 .mech-info:hover,.mech-info[aria-expanded="true"] { background: #ba9e57; color: #071715; }
 .picker-affinity-field,.picker-affinity-note,.class-config-btn { display: none; }
-.mech-detail-popover { position: fixed; z-index: 10050; inset: 0; display: grid; place-items: center; padding: 14px; background: #020a0bd1; backdrop-filter: blur(6px); animation: mech-pop-in .18s ease-out; }
+.mech-detail-popover { position: fixed; z-index: 10050; inset: 0; display: grid; place-items: center; padding: 14px; background: radial-gradient(circle at 50% 42%,#071b1ce6,#020a0bf2); animation: mech-pop-in .18s ease-out; }
 .mech-detail-popover[hidden] { display: none; }
 .mech-detail-body { position: relative; width: min(490px,92vw); height: min(490px,92vw,82vh); min-height: 340px; border-radius: 50%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c3aa62 #182724; padding: 42px 52px 36px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: #e5e0c9; background: radial-gradient(circle at 50% 32%,#2b4943f2,#102321f5 65%,#081715fa); border: 1px solid #d3bd7eaa; box-shadow: 0 0 0 6px #dac17c12,0 24px 90px #000e,inset 0 0 50px #c2b16c12; }
 .mech-detail-body::before { content: ''; position: absolute; inset: 12px; border: 1px solid #cfbb7840; border-radius: 50%; pointer-events: none; }
@@ -1354,53 +1354,47 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   animation: orb-fog-return 30s ease-in-out infinite; animation-delay: calc(var(--orb-phase,0ms) - 9000ms);
 }
 .raid-orb.frozen .orb-fog-wisp { animation-play-state: paused; }
-/* The owner's explicit exception: the CONTENT turns, never the glass.
-   Front/back/edge planes give the coin thickness; the weapon turns about
-   its diagonal handle axis. Static shop artwork remains easy to compare. */
-.raid-orb:is([data-type="coin"],[data-type="sword"]) .orb-core { perspective: 260px; }
+/* Smooth GPU-composited 2D coin spin (scaleX + metallic sheen, no preserve-3d).
+   The weapon sways gently with a static silhouette mask + GPU-translated glint. */
 .raid-orb .orb-core > .coin-3d {
   position: relative; display: block; width: 89%; height: 89%; filter: none;
-  transform-style: preserve-3d; animation: coin-axial-turn 16s linear infinite;
+  animation: coin-axial-turn 12s ease-in-out infinite;
   animation-delay: var(--orb-phase,0ms);
 }
-.coin-face, .coin-edge { position: absolute; inset: 0; border-radius: 50%; }
+.coin-face { position: absolute; inset: 0; border-radius: 50%; }
 .coin-face {
   display: grid; place-items: center; border: 2px solid #eebc49;
   background: linear-gradient(135deg,#fff0ad 0%,#ecbb40 22%,#a76610 46%,#ffdb73 69%,#b87b18 100%);
   box-shadow: inset 0 0 0 1px #fff2be,inset 0 0 0 3px #92520c,inset 0 0 0 4px #f3cd6b,0 1px 3px #24160680;
-  backface-visibility: hidden;
 }
 .coin-face::before { content: ''; position: absolute; inset: 12%; border: 1px dashed #fff0a4c9; border-radius: 50%; }
 .coin-face::after { content: ''; position: absolute; inset: 20%; border: 1px solid #8d500c80; border-radius: 50%; box-shadow: inset 0 1px 2px #6a37034d,0 1px 0 #ffe9a999; }
 .coin-face svg { width: 60%; height: 60%; overflow: visible; filter: drop-shadow(0 1px 0 #fff0b3); }
-.coin-obverse { transform: translateZ(2px); }
-.coin-reverse { transform: rotateY(180deg) translateZ(2px); }
-.coin-edge { background: #c78d24; transform: translateZ(0); backface-visibility: visible; }
-.coin-edge-belt {
-  inset: 0 auto; left: calc(50% - 2px); width: 4px; border-radius: 1px;
-  background: repeating-linear-gradient(to bottom,#ffe192 0 1px,#a16910 1px 2px,#d5a438 2px 3px);
-  transform: rotateY(90deg);
-}
 .raid-orb[data-type="sword"] .weapon-art {
-  position:absolute; inset:0; display:block; transform-origin:50% 54%; backface-visibility:hidden;
+  position:absolute; inset:0; display:block; transform-origin:50% 54%;
   animation:weapon-idle-sway 7.2s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
 .raid-orb[data-type="sword"] .weapon-art > .weapon-texture {
   position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
 }
-/* A second copy of the transparent weapon art keeps the glint bound to the
-   exact sprite silhouette; a narrow diagonal clipping window sweeps over it. */
+/* Static silhouette mask bound to the weapon sprite; a GPU-translated sheen sweeps inside it. */
 .raid-orb[data-type="sword"] .weapon-glint {
-  position:absolute; z-index:4; inset:0; width:100%; height:100%; object-fit:contain;
-  pointer-events:none; opacity:0; mix-blend-mode:screen;
-  filter:brightness(2.25) saturate(.72) drop-shadow(0 0 2px #e8f8ffbf);
-  clip-path:polygon(0 0,0 0,0 100%,0 100%);
+  position:absolute; z-index:4; inset:0; overflow:hidden;
+  pointer-events:none; mix-blend-mode:screen;
+  -webkit-mask-image:var(--weapon-mask); mask-image:var(--weapon-mask);
+  -webkit-mask-size:contain; mask-size:contain;
+  -webkit-mask-position:center; mask-position:center;
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+}
+.raid-orb[data-type="sword"] .weapon-glint::before {
+  content:""; position:absolute; inset:-30%; opacity:0;
+  background:linear-gradient(125deg,transparent 38%,rgba(232,248,255,.32) 45%,rgba(255,255,255,.92) 50%,rgba(220,245,255,.28) 55%,transparent 62%);
+  transform:translate3d(-110%,-110%,0);
   animation:weapon-natural-glint 5.2s ease-in-out infinite; animation-delay:var(--orb-phase,0ms);
 }
-/* A hammer head is broad and blunt: give its metal a compact moving sheen,
-   not the sword-like blade slash. */
-.raid-orb[data-type="sword"] .weapon-glint[data-weapon-art="techno-hammer-v2"] {
-  filter:brightness(2) saturate(.8) drop-shadow(0 0 3px #ffe1a0cc);
+/* A hammer head is broad and blunt: give its metal a compact warm sheen over the head. */
+.raid-orb[data-type="sword"] .weapon-glint[data-weapon-art="techno-hammer-v2"]::before {
+  background:linear-gradient(132deg,transparent 36%,rgba(255,228,162,.35) 45%,rgba(255,248,214,.92) 51%,rgba(255,220,144,.28) 57%,transparent 65%);
   animation-name:weapon-hammer-glint;
 }
 .weapon-tip-sparkle {
@@ -1423,7 +1417,7 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .weapon-impact-echo { top:54%; width:140%; height:1px; opacity:0; filter:blur(.4px); animation-delay:calc(var(--burst-delay,0ms) + 36ms); }
 .raid-orb.frozen :is(.weapon-texture,.coin-3d) { animation-play-state: paused; }
 .raid-orb.frozen[data-type="sword"] .weapon-art,
-.raid-orb.frozen[data-type="sword"] .weapon-glint,
+.raid-orb.frozen[data-type="sword"] .weapon-glint::before,
 .raid-orb.frozen[data-type="sword"] .weapon-tip-sparkle { animation-play-state: paused; }
 
 /* Air occupies the TOP two thirds. Water is a small translucent body below,
@@ -1519,13 +1513,17 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
   filter: var(--weapon-tone,contrast(1.18) brightness(1.13)) var(--weapon-finish,brightness(1));
 }
 #board.board-animating .weapon-art,
-#board.board-animating .weapon-glint,
+#board.board-animating .weapon-glint::before,
 #board.board-animating .weapon-tip-sparkle,
 #board.board-animating .coin-3d,
 #board.board-animating .orb-fog-wisp,
 #board.board-animating .orb-water-layer,
 #board.board-animating .orb-material::before,
-#board.board-animating .orb-material::after {
+#board.board-animating .orb-material::after,
+#board.board-animating .potion-lower-motion,
+#board.board-animating .potion-wave,
+#board.board-animating .potion-surface-glint,
+#board.board-animating .potion-bubble {
   animation-play-state: paused !important;
 }
 #board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; contain: layout style paint; }
@@ -1545,22 +1543,27 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 @keyframes orb-fx-sap { 0%,100% { transform: translateY(.5%); } 50% { transform: translateY(-.5%); } }
 @keyframes orb-fog-drift { 0%,100% { transform: translate(-3%,2%); } 50% { transform: translate(3%,-2%); } }
 @keyframes orb-fog-return { 0%,100% { transform: translate(2%,-2%); } 50% { transform: translate(-2%,2%); } }
-/* Content-only 3D rotation, explicitly requested after PR125. */
-@keyframes coin-axial-turn { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+/* Lightweight GPU 2D coin turn + GPU-translated weapon glints (zero clip-path repaints). */
+@keyframes coin-axial-turn {
+  0%, 100% { transform: scaleX(1); }
+  47% { transform: scaleX(.15); }
+  50% { transform: scaleX(.07); }
+  53% { transform: scaleX(.15); }
+}
 @keyframes weapon-idle-sway { 0%,100% { transform: rotate(-1.3deg) translateY(0); } 50% { transform: rotate(1.3deg) translateY(-1.1%); } }
 @keyframes weapon-natural-glint {
-  0%,48%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
-  51% { opacity:.3; clip-path:polygon(16% 0,25% 0,0 33%,0 20%); }
-  57% { opacity:.72; clip-path:polygon(77% 0,88% 0,20% 100%,8% 100%); }
-  62% { opacity:.28; clip-path:polygon(100% 25%,100% 40%,52% 100%,40% 100%); }
-  66% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+  0%,48%,100% { opacity:0; transform:translate3d(-115%,-115%,0); }
+  51% { opacity:.35; transform:translate3d(-55%,-55%,0); }
+  57% { opacity:.86; transform:translate3d(4%,4%,0); }
+  62% { opacity:.32; transform:translate3d(68%,68%,0); }
+  66% { opacity:0; transform:translate3d(118%,118%,0); }
 }
 @keyframes weapon-hammer-glint {
-  0%,48%,100% { opacity:0; clip-path:polygon(0 0,0 0,0 100%,0 100%); }
-  51% { opacity:.3; clip-path:polygon(52% 5%,64% 2%,78% 18%,66% 22%); }
-  57% { opacity:.72; clip-path:polygon(72% 14%,84% 10%,100% 29%,88% 34%); }
-  62% { opacity:.28; clip-path:polygon(78% 25%,89% 20%,100% 38%,91% 43%); }
-  66% { opacity:0; clip-path:polygon(100% 100%,100% 100%,100% 100%,100% 100%); }
+  0%,48%,100% { opacity:0; transform:translate3d(-40%,-65%,0); }
+  51% { opacity:.35; transform:translate3d(0,-35%,0); }
+  57% { opacity:.82; transform:translate3d(28%,-10%,0); }
+  62% { opacity:.3; transform:translate3d(58%,16%,0); }
+  66% { opacity:0; transform:translate3d(90%,40%,0); }
 }
 @keyframes weapon-tip-twinkle {
   0%,50%,100% { opacity:0; transform:scale(.25); }
@@ -1686,10 +1689,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   max-height: calc(var(--raid-view-height) - 24px - var(--raid-inset-top, env(safe-area-inset-top, 0px)) - var(--raid-inset-bottom, env(safe-area-inset-bottom, 0px)));
   overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
   padding: 8px 18px 14px; border: 1px solid #b7bb8d99; border-radius: 28px;
-  background: #102b28f5; color: #e8e7ce; box-shadow: 0 12px 36px #0007, inset 0 1px 0 #efffdb0d;
-}
-@supports ((backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px))) {
-  .game-settings-card { background: #102b28e6; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  background: linear-gradient(165deg,#143632f7,#0b201ef8); color: #e8e7ce; box-shadow: 0 12px 36px #0007, inset 0 1px 0 #efffdb12;
 }
 .game-settings-card header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
 .game-settings-card h3 { margin: 0; font: 400 19px/1.2 Georgia,serif; color: #eddbab; }
@@ -1744,11 +1744,11 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .region-quadrant .quadrant-symbol { color: var(--element-glow); font: 400 clamp(24px,4vw,48px)/1 Georgia,serif; text-shadow: 0 0 22px currentColor; }
 .region-quadrant strong { font: 400 clamp(16px,2.1vw,25px)/1 Georgia,serif; letter-spacing: .035em; text-shadow: 0 2px 12px #000; }
 .region-quadrant small { font: 700 9px/1.4 system-ui,sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #d1d5c5; text-shadow: 0 2px 8px #000; }
-.region-quadrant.element-fire { --element-glow:#ffb45e; align-items:flex-start; justify-content:flex-start; padding-top: max(140px,19vh); background-image: url('__RAID_SCENE_FIRE__'); }
-.region-quadrant.element-air { --element-glow:#c6dfff; align-items:flex-end; text-align:right; justify-content:flex-start; padding-top: max(140px,19vh); background-image: url('__RAID_SCENE_AIR__'); }
-.region-quadrant.element-earth { --element-glow:#9ee2a1; align-items:flex-start; justify-content:flex-end; padding-bottom: max(72px,11vh); background-image: url('__RAID_SCENE_EARTH__'); }
-.region-quadrant.element-water { --element-glow:#8de4f1; align-items:flex-end; text-align:right; justify-content:flex-end; padding-bottom: max(72px,11vh); background-image: url('__RAID_SCENE_WATER__'); }
-.region-screen-head { position: absolute; z-index: 5; top: max(16px,env(safe-area-inset-top)); left: 50%; width: min(520px,74vw); transform: translateX(-50%); padding: 8px 18px 10px; text-align: center; border: 1px solid #d4c08373; border-radius: 12px; background: #071211d9; box-shadow: 0 8px 26px #0008; backdrop-filter: blur(8px); }
+.region-quadrant.element-fire { --element-glow:#ffb45e; align-items:flex-start; justify-content:flex-start; padding-top: max(140px,19vh); background-image: var(--raid-scene-fire); }
+.region-quadrant.element-air { --element-glow:#c6dfff; align-items:flex-end; text-align:right; justify-content:flex-start; padding-top: max(140px,19vh); background-image: var(--raid-scene-air); }
+.region-quadrant.element-earth { --element-glow:#9ee2a1; align-items:flex-start; justify-content:flex-end; padding-bottom: max(72px,11vh); background-image: var(--raid-scene-earth); }
+.region-quadrant.element-water { --element-glow:#8de4f1; align-items:flex-end; text-align:right; justify-content:flex-end; padding-bottom: max(72px,11vh); background-image: var(--raid-scene-water); }
+.region-screen-head { position: absolute; z-index: 5; top: max(16px,env(safe-area-inset-top)); left: 50%; width: min(520px,74vw); transform: translateX(-50%); padding: 8px 18px 10px; text-align: center; border: 1px solid #d4c08373; border-radius: 12px; background: linear-gradient(180deg,#0c1e1cf2,#061110f5); box-shadow: 0 8px 26px #0008; }
 .region-screen-kicker { color: #cdbb82; font: 700 8px/1.2 system-ui,sans-serif; letter-spacing: .18em; }
 .region-screen-head h2 { margin: 4px 0 2px; color: #f0dfad; font: 400 clamp(18px,3vw,26px)/1 Georgia,serif; }
 .region-screen-head > p { margin: 0; color: #bdcbb8; font: 9px/1.3 system-ui,sans-serif; }
@@ -1766,7 +1766,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .raid-region-screen[data-selected-region="earth"] .region-emblem-launch img { filter: hue-rotate(68deg) saturate(.8) brightness(1.04) drop-shadow(0 0 18px #8fdb8a); }
 .raid-region-screen[data-selected-region="water"] .region-emblem-launch img { filter: hue-rotate(190deg) saturate(.9) brightness(1.08) drop-shadow(0 0 18px #55d7f0); }
 .raid-region-screen[data-selected-region="fire"] .region-emblem-launch::before { box-shadow:0 0 44px #ff681d55,inset 0 0 30px #f46b1f24; }
-.region-back-button { position:absolute; z-index:8; left:50%; bottom:max(12px,env(safe-area-inset-bottom)); transform:translateX(-50%); min-width:88px; min-height:34px; padding:5px 16px; border:1px solid #c8b5778a; border-radius:999px; background:#07120fce; color:#ebddb5; font:500 10px/1 system-ui,sans-serif; cursor:pointer; backdrop-filter:blur(5px); }
+.region-back-button { position:absolute; z-index:8; left:50%; bottom:max(12px,env(safe-area-inset-bottom)); transform:translateX(-50%); min-width:88px; min-height:34px; padding:5px 16px; border:1px solid #c8b5778a; border-radius:999px; background:linear-gradient(180deg,#0f231ef0,#071310f5); color:#ebddb5; font:500 10px/1 system-ui,sans-serif; cursor:pointer; }
 .region-back-button:hover { background:#1a3028; border-color:#efda9a; }
 @media (max-width: 720px) {
   .class-picker.region-mode-open { padding:0; }
@@ -1840,8 +1840,8 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .picker-visual-tool > summary > span { display:block; }
 .picker-visual-panel {
   position:absolute; z-index:30; top:calc(100% + 8px); right:0; width:min(270px,calc(100vw - 28px));
-  padding:12px; border:1px solid #c5b47a9c; border-radius:16px; color:#e9eadb; background:#0a1816ed;
-  box-shadow:0 16px 40px #000b; -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+  padding:12px; border:1px solid #c5b47a9c; border-radius:16px; color:#e9eadb; background:linear-gradient(165deg,#0f2623f7,#081715fa);
+  box-shadow:0 16px 40px #000b;
 }
 .picker-visual-panel fieldset { min-width:0; margin:0; padding:0; border:0; }
 .picker-visual-panel legend { margin-bottom:4px; color:#d7c691; font-size:10px; }
@@ -2896,18 +2896,29 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   position: absolute;
   inset: 0;
   z-index: 1;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  opacity: 0;
+  overflow: hidden;
   mix-blend-mode: screen;
-  filter: brightness(2.15) saturate(0.74) drop-shadow(0 0 2px #e8f8ffbf);
-  clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
-  animation: weapon-natural-glint 6.4s ease-in-out infinite;
+  -webkit-mask-image: var(--weapon-mask);
+  mask-image: var(--weapon-mask);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
   pointer-events: none;
 }
-.hud-weapon-glint[data-weapon-art="techno-hammer-v2"] {
-  filter: brightness(1.95) saturate(0.8) drop-shadow(0 0 3px #ffe1a0cc);
+.hud-weapon-glint::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  opacity: 0;
+  background: linear-gradient(125deg, transparent 38%, rgba(232, 248, 255, 0.34) 45%, rgba(255, 255, 255, 0.92) 50%, rgba(220, 245, 255, 0.3) 55%, transparent 62%);
+  transform: translate3d(-110%, -110%, 0);
+  animation: weapon-natural-glint 6.4s ease-in-out infinite;
+}
+.hud-weapon-glint[data-weapon-art="techno-hammer-v2"]::before {
+  background: linear-gradient(132deg, transparent 36%, rgba(255, 228, 162, 0.36) 45%, rgba(255, 248, 214, 0.92) 51%, rgba(255, 220, 144, 0.28) 57%, transparent 65%);
   animation-name: weapon-hammer-glint;
 }
 .hud-weapon-slot[data-boosted="1"] .hud-weapon-frame {
@@ -3082,23 +3093,18 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   flex: none;
   display: grid;
   place-items: center;
-  perspective: 180px;
 }
 .hud-coin-3d {
   position: relative;
   display: block;
   width: 100%;
   height: 100%;
-  transform-style: preserve-3d;
-  animation: coin-axial-turn 9s linear infinite;
+  animation: coin-axial-turn 7.5s ease-in-out infinite;
 }
 .hud-coin-3d .coin-face {
   border-width: 1.4px;
   box-shadow: inset 0 0 0 1px #fff2be, inset 0 0 0 2px #92520c, 0 1px 3px #24160699;
 }
-.hud-coin-3d .coin-obverse { transform: translateZ(1.5px); }
-.hud-coin-3d .coin-reverse { transform: rotateY(180deg) translateZ(1.5px); }
-.hud-coin-3d .coin-edge-belt { left: calc(50% - 1.5px); width: 3px; }
 
 /* Shared vertical crystal tube track + glowing liquid fills */
 .hud-tube-track {
@@ -3415,6 +3421,21 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .hud-mech-top { height: 68px; }
   .hud-tube-val { font-size: 6.5px; }
 }
+
+/* Automatic low-end mobile WebView optimization (hardwareConcurrency <= 4 or deviceMemory <= 3). */
+html[data-raid-perf="lite"] .weapon-tip-sparkle,
+html[data-raid-perf="lite"] .cell.type-potion .potion-bubble,
+html[data-raid-perf="lite"] .cell.type-potion .potion-surface-glint { display: none; }
+html[data-raid-perf="lite"] .raid-orb[data-type="sword"] .weapon-art,
+html[data-raid-perf="lite"] .cell.type-potion .potion-wave-back,
+html[data-raid-perf="lite"] .cell.type-potion .potion-wave-front,
+html[data-raid-perf="lite"] .mech-portrait,
+html[data-raid-perf="lite"] .mech-portrait-ring,
+html[data-raid-perf="lite"] .hud-tube-track .fill-hp::after,
+html[data-raid-perf="lite"] .hud-tube-track .fill-xp::after,
+html[data-raid-perf="lite"] .hud-tube-track .fill-upgrade::after { animation: none; }
+html[data-raid-perf="lite"] .raid-orb .orb-core > .coin-3d { animation-duration: 18s; }
+
 
 
 

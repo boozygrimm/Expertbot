@@ -12,14 +12,14 @@
 </head>
 <body>
 <audio id="raid-intro-music" src="__RAID_INTRO_MUSIC__" preload="none" loop aria-hidden="true"></audio>
-<audio id="raid-sword-taken" src="__RAID_SWORDTAKEN__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-sword-blade" src="__RAID_SWORDBLADE__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-coin-taken" src="__RAID_COINTAKEN__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-coin-drop" src="__RAID_COINDROP__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-bottle-clink" src="__RAID_CLINKBOTTLE__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-bottle-open" src="__RAID_OPENBOTTLE__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-shield-first" src="__RAID_FIRSTSHIELD__" preload="auto" aria-hidden="true"></audio>
-<audio id="raid-shield-collect" src="__RAID_SBORSHIELD__" preload="auto" aria-hidden="true"></audio>
+<audio id="raid-sword-taken" src="__RAID_SWORDTAKEN__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-sword-blade" src="__RAID_SWORDBLADE__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-coin-taken" src="__RAID_COINTAKEN__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-coin-drop" src="__RAID_COINDROP__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-bottle-clink" src="__RAID_CLINKBOTTLE__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-bottle-open" src="__RAID_OPENBOTTLE__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-shield-first" src="__RAID_FIRSTSHIELD__" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-shield-collect" src="__RAID_SBORSHIELD__" preload="metadata" aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
   <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку в меню" aria-pressed="true" title="Выключить музыку в меню">
@@ -176,7 +176,7 @@
       <div class="hud-weapon-frame">
         <div class="hud-weapon-stage" id="hud-weapon-stage">
           <img id="hud-weapon-art" class="weapon-texture hud-weapon-art" src="" alt="" aria-hidden="true" draggable="false">
-          <img id="hud-weapon-glint" class="weapon-texture hud-weapon-glint" src="" alt="" aria-hidden="true" draggable="false">
+          <span id="hud-weapon-glint" class="hud-weapon-glint" aria-hidden="true"></span>
         </div>
         <div class="hud-weapon-stats">
           <b id="hud-weapon-val">2</b>
@@ -226,10 +226,8 @@
       </div>
       <div class="hud-tube-col hud-tube-gold" id="hud-gold" title="Монеты">
         <span class="hud-tube-coin-wrap" aria-hidden="true">
-          <span class="coin-3d hud-coin-3d">
-            <i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>
+          <span class="coin-3d coin-2d hud-coin-3d">
             <span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.8"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/></svg></span>
-            <span class="coin-face coin-reverse"><svg viewBox="0 0 48 48"><path d="m24 8 4 10 11 1-8 7 3 11-10-6-10 6 3-11-8-7 11-1Z" fill="#a36813" stroke="#ffe9a3" stroke-width="1.6"/><path d="m24 17 2 6 6 1-5 4 2 5-5-3-5 3 2-5-5-4 6-1Z" fill="#f5cf65"/></svg></span>
           </span>
         </span>
         <div class="hud-tube-track hud-coin-stack-track"><i id="gold-bar" class="fill-gold"></i></div>
@@ -323,11 +321,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="47"><b>Чистый классический бой без стихий.</b> Убраны боевые стихии (±25%), склонность пилота и модуль «Перенастройка»: все мечи теперь выполнены в едином стальном стиле, враги оформлены в палитре выбранной локации (Лес, Кузня, Разлом или Храм), а урон считается прямо и предсказуемо без скрытых множителей.</li>
+        <li data-release="48"><b>Ускорение загрузки и плавность на телефонах (Telegram WebView).</b> Тяжёлые ассеты (музыка, звуки, фоны локаций, текстуры гаража и 140 портретов врагов) вынесены во внешние кэшируемые файлы, филактерий и трофей сжаты в лёгкий WebP — размер страницы уменьшился более чем в 10 раз (~0,8 МБ вместо 10,3 МБ). Убраны тяжёлые размытия фона, блик оружия переведён с CPU-маски на GPU, монеты используют лёгкое 2D-вращение, а на бюджетных телефонах игра автоматически снижает плотность частиц и лишние фоновые анимации.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="47"><b>Чистый классический бой без стихий.</b> Убраны боевые стихии (±25%), склонность пилота и модуль «Перенастройка»: все мечи теперь выполнены в едином стальном стиле, враги оформлены в палитре выбранной локации (Лес, Кузня, Разлом или Храм), а урон считается прямо и предсказуемо без скрытых множителей.</li>
           <li data-release="46"><b>Гладкие удары мечами без микрорывков.</b> При множественных убийствах в одной цепочке боевое вибро теперь схлопывается в один чёткий импульс вместо серии подряд; со взрывающихся и падающих мечей сняты тяжёлые тени-свёртки, а фоновые блики и вращения на остальных плитках аккуратно встают на паузу на время взрыва и падения цепочки.</li>
           <li data-release="45"><b>Чёткий неспешный взрыв, плавные удары мечами и отложенные окна.</b> Шарики цепочки теперь взрываются заметно последовательнее один за другим (без наложения); убраны подтормаживания при ударах мечами (сняты тяжёлые фильтры в движении и покадровые пересчёты всплывающих цифр); все окна уровня, магазина, улучшения и итога боя теперь дожидаются окончания взрыва цепочки; а при выключенных анимациях доска подсвечивает выбранную цепочку и вновь пришедшие плитки вместо резкой смены поля.</li>
           <li data-release="44"><b>Последовательный взрыв и свободное падение каждого шарика + 60-fps Canvas.</b> Убрано искусственное сжатие длинных цепочек в жёсткий лимит времени: шарики взрываются последовательно по одному (с переносом всех вспышек, колец, звёзд, капель и искр на один 60-fps Canvas и снятием blur/blend-фильтров с кружков), а затем каждый шарик падает плавно в собственном темпе по очереди, не обрываясь ходом врагов.</li>
