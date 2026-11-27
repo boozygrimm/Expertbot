@@ -4963,12 +4963,8 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   assert.match(js, /return '<span class="weapon-art">' \+ raidWeaponTexture\('ic'\) \+ raidWeaponTexture\('weapon-glint'\)/);
   assert.match(css, /animation:weapon-impact-slash \.23s cubic-bezier/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
-  assert.match(js, /if \(view\.node\.dataset\.type === 'sword'\)/);
-  assert.match(js, /className = 'weapon-impact-slash'/);
-  assert.match(js, /className = 'weapon-impact-echo'/);
-  assert.match(js, /burst\.dataset\.type = view\.node\.dataset\.type/);
-  assert.match(js, /view\.node\.dataset\.type === 'sword'/);
-  assert.match(js, /weapon-impact-echo/);
+  assert.match(js, /if \(type === 'sword' && t < \.58\)/);
+  assert.match(js, /burst\.dataset\.type = type/);
   assert.match(css, /transform-style:\s*preserve-3d/); assert.match(css, /backface-visibility:\s*hidden/);
   assert.match(css, /\.coin-reverse\s*\{\s*transform:\s*rotateY\(180deg\) translateZ\(2px\)/);
   assert.match(css, /\.coin-edge-belt\s*\{[^}]*width:\s*4px[^}]*repeating-linear-gradient[^}]*rotateY\(90deg\)/);
@@ -5929,8 +5925,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Последовательный взрыв и свободное падение каждого шарика/);
+  assert.match(current, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Последовательный взрыв и свободное падение каждого шарика/);
   assert.match(archive, /Шёлковое 60-fps падение плиток без стоп-кадров/);
   assert.match(archive, /Живая физика падения плиток и эффектный взрыв цепочек/);
   assert.match(archive, /Аккуратные кабошон-блик и каустика на плитках/);

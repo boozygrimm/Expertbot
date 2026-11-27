@@ -3512,7 +3512,32 @@
     return animation;
   }
   const BOARD_FX = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, raf: 0, items: [] };
-  let LAST_BOARD_ANIM_END = 0;
+  let LAST_BOARD_ANIM_END = 0, LAST_BURST_END = 0;
+  let DEFER_MODAL_REVEAL = false, MODAL_REVEAL_AT = 0, MODAL_REVEAL_TIMER = 0, FRESH_CELL_TIMER = 0;
+
+  const hasCls = (node, cls) => typeof node?.classList?.contains === 'function' && node.classList.contains(cls);
+  const nowMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
+  function revealDeferredModalNow() {
+    if (MODAL_REVEAL_TIMER) { clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0; }
+    MODAL_REVEAL_AT = 0;
+    const wrap = el('modal');
+    if (wrap) wrap.classList.remove('modal-deferred');
+  }
+  function scheduleDeferredModalReveal(delayMs) {
+    if (MODAL_REVEAL_TIMER) { clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0; }
+    const wrap = el('modal');
+    if (!hasCls(wrap, 'modal-deferred')) return;
+    if (!delayMs || delayMs <= 0 || orbReducedMotion()) { revealDeferredModalNow(); return; }
+    const runId = RUN_ID;
+    MODAL_REVEAL_TIMER = setTimeout(() => {
+      MODAL_REVEAL_TIMER = 0;
+      if (runId === RUN_ID) revealDeferredModalNow();
+    }, Math.round(delayMs));
+  }
+  function clearFreshCells() {
+    if (FRESH_CELL_TIMER) { clearTimeout(FRESH_CELL_TIMER); FRESH_CELL_TIMER = 0; }
+    qs('#board')?.querySelectorAll('.cell.cell-fresh').forEach(c => c.classList.remove('cell-fresh'));
+  }
 
   function clearBoardFxCanvas() {
     BOARD_FX.items.length = 0;
@@ -3731,7 +3756,10 @@
   function finishOrbAnimations() {
     for (const finish of [...ORB_ANIMATIONS.values()]) finish();
     clearBoardFxCanvas();
-    LAST_BOARD_ANIM_END = 0;
+    clearFreshCells();
+    LAST_BOARD_ANIM_END = 0; LAST_BURST_END = 0;
+    if (hasCls(el('modal'), 'modal-deferred')) revealDeferredModalNow();
+    else { if (MODAL_REVEAL_TIMER) { clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0; } MODAL_REVEAL_AT = 0; }
     // Also clear anticipation; cancellation never runs a gameplay continuation.
     for (const view of ORB_VIEWS.values()) {
       view.motion = null; delete view.node.dataset.motion;
@@ -3775,7 +3803,24 @@
       node.classList.add('primed');
       if (!surgeRgb) surgeRgb = node.style.getPropertyValue('--orb-rgb').trim();
     }
-    if (orbReducedMotion() || indices.length < 2) return;
+    if (indices.length < 2) return;
+    if (orbReducedMotion()) {
+      const layer = ensureBoardFx();
+      if (!layer) return;
+      layer.querySelectorAll('.reduced-chain-hint').forEach(n => n.remove());
+      const pts = indices.map(cellCenter);
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      if (len < 2) return;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'reduced-chain-hint');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' '));
+      svg.appendChild(path);
+      layer.appendChild(svg);
+      return;
+    }
     const board = el('board');
     const boardRect = board?.getBoundingClientRect();
     if (!ensureBoardFxCanvas(boardRect)) return;
@@ -3993,42 +4038,47 @@
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
     const removed = [...previous].filter(([key]) => !keys.includes(key));
+    el('board-fx')?.querySelectorAll('.reduced-chain-hint').forEach(n => n.remove());
+    clearFreshCells();
     if (removed.length) BOARD_FX.items = BOARD_FX.items.filter(item => item.kind !== 'surge');
     // Gesture order is local presentation data captured before settlement.
     // Only actual disappearances participate: never burst a surviving target
     // or an arrow-skipped resource. Area/Rune victims have no gesture order.
     const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
-    // Sequential per-orb pop cadence (never crushed into a fixed 120ms cap):
-    // 62ms/orb for normal chains, gently tapering down to 36ms/orb on huge snakes.
-    const step = ordered.length > 1 ? Math.max(36, 62 - Math.max(0, ordered.length - 6) * 2) : 0;
-    const corePopDur = 160;
+    // Clear, distinct sequential pop cadence: each orb nearly finishes bursting
+    // before the next pops (118ms/orb for 1-6, tapering smoothly to 85ms on huge snakes).
+    const step = ordered.length > 1 ? Math.max(85, 118 - Math.max(0, ordered.length - 6) * 4) : 0;
+    const corePopDur = 150;
     const delays = new Map(ordered.map((key, index) => [key, index * step]));
     const orderIdx = new Map(ordered.map((key, index) => [key, index]));
-    // Per-column readiness: each column starts dropping as soon as all its own
-    // disappearing orbs have finished popping — no column waits on the far side.
+    // Per-column readiness: each column starts dropping right after all its own
+    // disappearing orbs finish popping (+30ms breather), never waiting on the far side.
     const colFallDelay = Array(COLS).fill(null);
     const chainIntensity = ordered.length >= 8 ? 1.35 : ordered.length >= 5 ? 1.18 : 1;
     const dense = removed.length >= 12;
-    let animEndMs = 0;
+    let animEndMs = 0, burstEndMs = 0;
     const canAnimate = previous.size > 0 && !orbReducedMotion() && typeof board.animate === 'function';
     for (const [key, view] of removed) {
       const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
       const d = delays.get(key) || 0, coreDur = delays.has(key) ? corePopDur : 240;
       const doneAt = d + coreDur;
-      if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
+      if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt + 30);
       const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
       const idxInChain = orderIdx.get(key);
       const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
       const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
       const r = rects.get(key);
-      if (canAnimate && r?.width) animEndMs = Math.max(animEndMs, doneAt);
+      if (canAnimate && r?.width) {
+        burstEndMs = Math.max(burstEndMs, doneAt);
+        animEndMs = Math.max(animEndMs, doneAt);
+      }
       burstOrb(view, r, boardRect, d, coreDur, {
         intensity: chainIntensity + progress * .2,
         climax, boss: isBoss, explosive: isExplosive, dense,
       });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
     }
-    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + corePopDur : 240)) : 65;
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => (delays.has(key) ? delays.get(key) + corePopDur : 240) + 30)) : 65;
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
       const key = keys[r * COLS + c];
@@ -4073,14 +4123,14 @@
       // Never force startTime to document.timeline.currentTime here: during a
       // long input/layout task it is the PREVIOUS frame's timestamp and would
       // skip the beginning (or all) of a fall on a slow device.
-      // Each orb drops individually at its own natural pace (+45ms per orb bottom-up
+      // Each orb drops individually at its own natural pace (+52ms per orb bottom-up
       // in the column), never squeezed into a fixed global time cap.
       for (const plan of plans) {
         const { view, idx, old, moved, rect } = plan;
         if (!rect.width) continue;
         const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
         const rank = rankOf.get(plan) || 0;
-        const orbDelay = baseColDelay + rank * 45;
+        const orbDelay = baseColDelay + rank * 52;
         if (moved && old?.width) animEndMs = Math.max(animEndMs, moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, pitch));
         else if (!old) {
           const row = Math.floor(idx / COLS), count = incoming[col];
@@ -4093,8 +4143,38 @@
           }
         }
       }
+    } else if (previous.size && orbReducedMotion() && removed.length) {
+      // Static non-animated highlight on newly arrived tiles so reduced-motion
+      // players clearly see what changed instead of an abrupt board swap.
+      const freshCells = [];
+      for (const plan of plans) {
+        if (plan.moved || plan.old) continue;
+        const cellEl = qs(`.cell[data-idx="${plan.idx}"]`);
+        if (cellEl) { cellEl.classList.add('cell-fresh'); freshCells.push(cellEl); }
+      }
+      if (freshCells.length) {
+        const runId = RUN_ID;
+        FRESH_CELL_TIMER = setTimeout(() => {
+          FRESH_CELL_TIMER = 0;
+          if (runId === RUN_ID) for (const cellEl of freshCells) cellEl.classList.remove('cell-fresh');
+        }, 280);
+      }
     }
-    if (chainOrder.length || removed.length) LAST_BOARD_ANIM_END = animEndMs;
+    if (chainOrder.length || removed.length) {
+      LAST_BOARD_ANIM_END = animEndMs;
+      LAST_BURST_END = burstEndMs;
+      const modalWrap = el('modal');
+      if (burstEndMs > 0 && !orbReducedMotion()) {
+        const revealDelay = burstEndMs + 140;
+        MODAL_REVEAL_AT = nowMs() + revealDelay;
+        if (hasCls(modalWrap, 'show') && S?.pendingModal && S.pendingModal !== 'stats') {
+          modalWrap.classList.add('modal-deferred');
+          scheduleDeferredModalReveal(revealDelay);
+        }
+      } else if (hasCls(modalWrap, 'modal-deferred')) {
+        revealDeferredModalNow();
+      }
+    }
     ORB_VIEWS = next;
     if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
       for (const overlay of firePulses) {
@@ -4352,13 +4432,23 @@
     if (!node || document.documentElement.dataset.raidMotion === 'off') return;
     if (!node._hudTimers) node._hudTimers = Object.create(null);
     if (node._hudTimers[cls]) clearTimeout(node._hudTimers[cls]);
-    node.classList.remove(cls);
-    void node.offsetWidth;
-    node.classList.add(cls);
-    node._hudTimers[cls] = setTimeout(() => {
+    if (node._hudRafs?.[cls]) window.cancelAnimationFrame?.(node._hudRafs[cls]);
+    const arm = () => {
+      node.classList.add(cls);
+      node._hudTimers[cls] = setTimeout(() => {
+        node.classList.remove(cls);
+        delete node._hudTimers[cls];
+      }, ms);
+    };
+    if (hasCls(node, cls)) {
       node.classList.remove(cls);
-      delete node._hudTimers[cls];
-    }, ms);
+      if (!node._hudRafs) node._hudRafs = Object.create(null);
+      if (typeof window.requestAnimationFrame === 'function') {
+        node._hudRafs[cls] = window.requestAnimationFrame(() => { delete node._hudRafs[cls]; arm(); });
+      } else arm();
+    } else {
+      arm();
+    }
   }
 
   function renderHUD() {
@@ -5742,7 +5832,8 @@
       // board. No auto-scroll can interrupt the player's current touch chain.
       const hidden = !rect.width || !rect.height || rect.bottom <= top || rect.top >= bottom
         || rect.right <= left || rect.left >= right;
-      const half = Math.min((effect.node.offsetWidth || effect.node.textContent.length * 9) / 2 + 4, (right - left) / 2);
+      if (!effect.half) effect.half = (effect.node.offsetWidth || effect.node.textContent.length * 9) / 2 + 4;
+      const half = Math.min(effect.half, (right - left) / 2);
       const x = Math.max(left + half, Math.min(right - half, rect.left + rect.width / 2));
       const y = Math.max(top + 36, Math.min(bottom - 10, rect.top + rect.height / 2 - effect.lane * 18));
       positions.push({ node: effect.node, hidden, x: x + 'px', y: y + 'px' });
@@ -5754,10 +5845,12 @@
       if (node.style.top !== y) node.style.top = y;
     }
     if (FLOAT_EFFECTS.size) {
-      // Motion off still shows readable static numbers at the actual recipient,
-      // but does not run a positioning RAF loop. One expiry timer is UI-only.
-      if (orbReducedMotion()) FLOAT_TIMER = setTimeout(renderFloatEffects, Math.max(1, Math.min(...[...FLOAT_EFFECTS].map(effect => effect.until)) - now));
-      else FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+      const nextExpiry = Math.max(1, Math.min(...[...FLOAT_EFFECTS].map(effect => effect.until)) - now);
+      // Motion off runs only a single expiry timer; normal motion polls at ~8 Hz
+      // instead of 60 Hz so floating numbers never trigger per-frame layout reads
+      // during board burst/fall animations while still tracking scroll/resize.
+      const stepMs = orbReducedMotion() ? nextExpiry : Math.min(120, nextExpiry);
+      FLOAT_TIMER = setTimeout(renderFloatEffects, stepMs);
     }
   }
   function floatOn(amount, kind, target, label) {
@@ -5767,7 +5860,7 @@
     const now = Date.now();
     let effect = [...FLOAT_EFFECTS].find(old => old.target === target && old.kind === kind && old.label === label
       && Math.sign(old.amount) === Math.sign(amount) && now - old.started < 100);
-    if (effect) effect.amount += amount;
+    if (effect) { effect.amount += amount; effect.half = 0; }
     else {
       // Bounded even for synthetic board-wide repeated effects.
       if (FLOAT_EFFECTS.size >= 64) {
@@ -5777,12 +5870,18 @@
       const node = document.createElement('div');
       node.className = 'float-fx ' + kind; node.dataset.target = target;
       const lane = [...FLOAT_EFFECTS].filter(old => old.target === target).length % 3;
-      effect = { node, target, kind, label, amount, lane, started: now, until: now + 900 };
+      effect = { node, target, kind, label, amount, lane, half: 0, started: now, until: now + 900 };
       FLOAT_EFFECTS.add(effect); layer.appendChild(node);
     }
     const value = Number(Math.abs(effect.amount).toFixed(2));
     effect.node.textContent = (effect.amount < 0 ? '−' : '+') + value + (label ? ' ' + label : '');
-    if (!FLOAT_FRAME) renderFloatEffects();
+    if (!FLOAT_FRAME) {
+      if (typeof window.requestAnimationFrame === 'function' && !orbReducedMotion()) {
+        FLOAT_FRAME = window.requestAnimationFrame(renderFloatEffects);
+      } else {
+        renderFloatEffects();
+      }
+    }
   }
   function flashOn(idx, amount, kind, label) {
     floatOn(amount, kind, `.cell[data-idx="${idx}"]`, label);
@@ -6226,7 +6325,10 @@
     // Capture identities before damage/collection/gravity, not refilled slots.
     // This short-lived array is neither a save field nor a gameplay timer.
     const burstOrder = snapshot.effective.map(idx => S.board[idx]).filter(cell => cell && cell.type !== 'empty').map(orbIdentity);
-    const result = withResourceBatch(batch => {
+    let result;
+    DEFER_MODAL_REVEAL = !orbReducedMotion();
+    try {
+      result = withResourceBatch(batch => {
       // Rune deliberately precedes minimum-chain validation and the normal
       // MatchTiles counter reset. Interior ordinary skulls are COLLECTION,
       // ignoring HP/defence and not contributing to direct kills or Guts.
@@ -6270,8 +6372,12 @@
       }
       if (S.berserkActive > 0 && batch.berserkHealing > 0) heal(batch.berserkHealing);
       return batch.result;
-    });
+      });
+    } finally {
+      DEFER_MODAL_REVEAL = false;
+    }
     renderBoard(burstOrder); renderHUD();
+    if (hasCls(el('modal'), 'modal-deferred') && (!LAST_BURST_END || orbReducedMotion())) revealDeferredModalNow();
     continueAfterRewards({ phase: 'chain', committed, result });
   }
 
@@ -6513,6 +6619,13 @@
     if (!wrap || !body) return;
     resetModalScroll();
     wrap.className = 'modal show';
+    const deferNow = kind !== 'stats' && !orbReducedMotion() && (DEFER_MODAL_REVEAL || nowMs() < MODAL_REVEAL_AT);
+    if (deferNow) {
+      wrap.classList.add('modal-deferred');
+      if (!DEFER_MODAL_REVEAL) scheduleDeferredModalReveal(MODAL_REVEAL_AT - nowMs());
+    } else if (MODAL_REVEAL_TIMER) {
+      clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0;
+    }
     title.className = 'modal-title';
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
       const cssKind = kind === 'gold' ? 'shop' : kind;
@@ -6589,8 +6702,9 @@
   }
 
   function closeModal() {
+    if (MODAL_REVEAL_TIMER) { clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0; }
     const wrap = el('modal');
-    if (wrap) wrap.classList.remove('show');
+    if (wrap) wrap.classList.remove('show', 'modal-deferred');
     S.pendingModal = null;
     const runId = RUN_ID;
     setTimeout(() => { if (runId === RUN_ID) resumeRewards(); }, 80);
@@ -6616,7 +6730,8 @@
     // Do not use closeModal/resumeRewards: the terminal receipt, pending
     // history retry, S.over and every combat/RNG value stay exactly as earned.
     S.pendingModal = null;
-    el('modal').classList.remove('show');
+    if (MODAL_REVEAL_TIMER) { clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0; }
+    el('modal').classList.remove('show', 'modal-deferred');
     showClassPicker();
     el('picker-title')?.focus();
     syncTelegramChrome();
