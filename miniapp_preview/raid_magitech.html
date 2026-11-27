@@ -16,6 +16,8 @@
 <audio id="raid-sword-blade" src="__RAID_SWORDBLADE__" preload="auto" aria-hidden="true"></audio>
 <audio id="raid-coin-taken" src="__RAID_COINTAKEN__" preload="auto" aria-hidden="true"></audio>
 <audio id="raid-coin-drop" src="__RAID_COINDROP__" preload="auto" aria-hidden="true"></audio>
+<audio id="raid-bottle-clink" src="__RAID_CLINKBOTTLE__" preload="auto" aria-hidden="true"></audio>
+<audio id="raid-bottle-open" src="__RAID_OPENBOTTLE__" preload="auto" aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
   <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку в меню" aria-pressed="true" title="Выключить музыку в меню">
@@ -273,11 +275,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="30"><b>Новые иконки умений.</b> Все 43 умения получили глянцевые овальные медальоны в золотой оправе, а пустой слот — стилизованное гнездо. Эффекты и перезарядка навыков не менялись.</li>
+        <li data-release="31"><b>Два звука зелий.</b> Звон бутылки звучит при выборе первой плитки зелья; откупоривание запускается при активации цепочки.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="30"><b>Новые иконки умений.</b> Все 43 умения получили глянцевые овальные медальоны в золотой оправе, а пустой слот — стилизованное гнездо. Эффекты и перезарядка навыков не менялись.</li>
           <li data-release="29"><b>Настройки и тексты боя.</b> Вибрация — трёхпозиционный тумблер в гараже, меню и бою; склонность пилота — пятипозиционный тумблер в карточке меха. В описаниях особых врагов указаны актуальные имена пилотов, а устаревшее «череп» заменено на «враг» там, где речь о противниках.</li>
           <li data-release="28"><b>Кабины мехов и выбор пилота.</b> В карточках мехов появились пустые кабины с индивидуальными головами; пилота можно выбрать отдельно, выбор подписывается в карточке и сохраняется.</li>
           <li data-release="27"><b>Новый кубок-трофей.</b> Золотая награда с бирюзовым камнем вместо прежнего простого значка.</li>

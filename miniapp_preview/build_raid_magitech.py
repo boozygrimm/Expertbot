@@ -17,6 +17,8 @@ SWORD_TAKEN = 'assets/swordtaken.mp3'
 SWORD_BLADE = 'assets/swordblade.mp3'
 COIN_TAKEN = 'assets/cointaken.mp3'
 COIN_DROP = 'assets/coinsdrop.mp3'
+BOTTLE_CLINK = 'assets/clinkbottle.mp3'
+BOTTLE_OPEN = 'assets/openbottle.mp3'
 PHYLACTERY_ART = 'assets/lich_phylactery.png'
 TROPHY_ART = 'assets/raid_trophy.png'
 PILOT_ASSETS = tuple(f'assets/pilots/{slug}_{kind}.webp'
@@ -28,7 +30,8 @@ MECH_HEAD_ASSETS = tuple(f'assets/mech_head_{mech}.webp'
                                       'priest', 'paladin', 'raider', 'warrior', 'assassin'))
 SOURCES = ('build_raid_magitech.py', 'raid_magitech.html', 'raid_magitech.css',
            'raid_magitech.js', 'raid_monsters.json', GARAGE_BACKGROUND, LAUNCH_TEXTURE,
-           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP, PHYLACTERY_ART, TROPHY_ART,
+           ROUND_BUTTON_TEXTURE, CONTINUE_TEXTURE, INTRO_MUSIC, COIN_TAKEN, COIN_DROP,
+           BOTTLE_CLINK, BOTTLE_OPEN, PHYLACTERY_ART, TROPHY_ART,
            'assets/back_button_ornament.png', 'assets/pilot_arrow_button.webp',
            'assets/pilot_accept_button.webp', *PILOT_ASSETS, *MECH_HEAD_ASSETS, *SCENES.values())
 
@@ -75,6 +78,10 @@ def main():
     html = html.replace('__RAID_COINTAKEN__', 'data:audio/mpeg;base64,' + coin_taken)
     coin_drop = base64.b64encode((HERE / COIN_DROP).read_bytes()).decode('ascii')
     html = html.replace('__RAID_COINDROP__', 'data:audio/mpeg;base64,' + coin_drop)
+    bottle_clink = base64.b64encode((HERE / BOTTLE_CLINK).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_CLINKBOTTLE__', 'data:audio/mpeg;base64,' + bottle_clink)
+    bottle_open = base64.b64encode((HERE / BOTTLE_OPEN).read_bytes()).decode('ascii')
+    html = html.replace('__RAID_OPENBOTTLE__', 'data:audio/mpeg;base64,' + bottle_open)
     phylactery_art = base64.b64encode((HERE / PHYLACTERY_ART).read_bytes()).decode('ascii')
     js = js.replace("'assets/lich_phylactery.png'", "'data:image/png;base64," + phylactery_art + "'")
     trophy_art = base64.b64encode((HERE / TROPHY_ART).read_bytes()).decode('ascii')

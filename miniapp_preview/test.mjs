@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Новые иконки умений/);
+  assert.match(current, /Два звука зелий/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Новые иконки умений/);
   assert.match(archive, /Настройки и тексты боя/);
   assert.match(archive, /Новый кубок-трофей/);
   assert.match(archive, /Кабины мехов и выбор пилота/);
@@ -6053,6 +6054,16 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.match(js, /committed && S\.chainType === 'coin'\) audioCoinChain\(\)/);
   assert.match(js, /function audioCoinSelect\(\) \{ playAudioClip\('raid-coin-taken'\); \}/);
   assert.match(js, /function audioCoinChain\(\) \{ playAudioClip\('raid-coin-drop'\); \}/);
+  assert.match(html, /id="raid-bottle-clink" src="__RAID_CLINKBOTTLE__"/);
+  assert.match(html, /id="raid-bottle-open" src="__RAID_OPENBOTTLE__"/);
+  assert.match(builder, /BOTTLE_CLINK = 'assets\/clinkbottle\.mp3'/);
+  assert.match(builder, /BOTTLE_OPEN = 'assets\/openbottle\.mp3'/);
+  assert.ok(readFileSync(new URL('./assets/clinkbottle.mp3', import.meta.url)).length > 0);
+  assert.ok(readFileSync(new URL('./assets/openbottle.mp3', import.meta.url)).length > 0);
+  assert.match(js, /firstSelection && S\.board\[cellIdx\]\.type === 'potion'\) audioPotionSelect\(\)/);
+  assert.match(js, /committed && S\.chainType === 'potion'\) audioPotionChain\(\)/);
+  assert.match(js, /function audioPotionSelect\(\) \{ playAudioClip\('raid-bottle-clink'\); \}/);
+  assert.match(js, /function audioPotionChain\(\) \{ playAudioClip\('raid-bottle-open'\); \}/);
   assert.match(js, /function isMenuMusicContext\(\) \{ return !!el\('class-picker'\)\?\.classList\.contains\('show'\); \}/);
   assert.match(js, /introMusicAppVisible\(\)[\s\S]*?audioPageActive && audioHostActive/);
   assert.match(js, /el\('music-on'\)\?\.addEventListener\('change',[\s\S]*?setMusicPreference\(event\.target\.checked, false\)/);
