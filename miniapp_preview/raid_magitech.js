@@ -276,7 +276,7 @@
     { id: 'teleport', name: 'Телепорт', icon: '✦', cooldown: 20, native: 7, desc: 'Все клетки без врагов → новые' },
     { id: 'explosive', name: 'Взрывное зелье', icon: '🧨', cooldown: 18, native: 8, desc: 'Все зелья становятся взрывными' },
     { id: 'elixir', name: 'Эликсир', icon: '⚗', cooldown: 18, native: 9, desc: 'Все зелья дают опыт вместо лечения' },
-    { id: 'enchant', name: 'Затачивание', icon: '🛠', cooldown: 35, native: 10, desc: 'Бесплатно усилить снаряжение (1 из 4)' },
+    { id: 'enchant', name: 'Апгрейд', icon: '🛠', cooldown: 35, native: 10, desc: 'Бесплатно усилить снаряжение (1 из 4)' },
     { id: 'slash', name: 'Рассечение', icon: '🗡', cooldown: 12, native: 11, desc: 'Собрать случайную строку; с «Взломом» — всю доску' },
     { id: 'treasure', name: 'Кладовая', icon: '💎', cooldown: 18, native: 12, desc: 'Собрать все монеты' },
     { id: 'scavenge', name: 'Сбор', icon: '🛡', cooldown: 15, native: 13, desc: 'Все мечи → щиты' },
@@ -4010,25 +4010,59 @@
       ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.' + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '')
       : 'Прежний забег · классический бой без стихийных множителей. Новый старт включает стихии.';
     const h = S.hero;
-    const hpPct = Math.max(0, h.hp / h.maxHp * 100);
-    const armorPct = Math.max(0, h.armor / h.maxArmor * 100);
-    const xpPct = Math.min(100, h.xp / h.xpNext * 100);
-    const goldPct = Math.min(100, h.gold / GOLD_BOX_MAX * 100);
-    const w = el('hp-bar'); if (w) w.style.width = hpPct + '%';
-    const a = el('armor-bar'); if (a) a.style.width = armorPct + '%';
-    const x = el('xp-bar'); if (x) x.style.width = xpPct + '%';
-    const g = el('gold-bar'); if (g) g.style.width = goldPct + '%';
+    const hpPct = Math.max(0, Math.min(100, h.hp / h.maxHp * 100));
+    const armorPct = Math.max(0, Math.min(100, h.maxArmor > 0 ? h.armor / h.maxArmor * 100 : 0));
+    const xpPct = Math.max(0, Math.min(100, h.xp / h.xpNext * 100));
+    const goldPct = Math.max(0, Math.min(100, h.gold / GOLD_BOX_MAX * 100));
+    const upPct = Math.max(0, Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100));
+    const w = el('hp-bar'); if (w) w.style.height = hpPct + '%';
+    const a = el('armor-bar'); if (a) a.style.height = armorPct + '%';
+    const x = el('xp-bar'); if (x) x.style.height = xpPct + '%';
+    const g = el('gold-bar'); if (g) g.style.height = goldPct + '%';
+    const u = el('upgrade-bar'); if (u) u.style.height = upPct + '%';
     if (el('hp-text')) el('hp-text').textContent = `${fmt(h.hp)} / ${fmt(h.maxHp)}`;
     if (el('armor-text')) el('armor-text').textContent = `${fmt(h.armor)} / ${fmt(h.maxArmor)}`;
-    if (el('xp-text')) el('xp-text').textContent = `Ур. ${h.level} · ${fmt(h.xp)} / ${fmt(h.xpNext)}`;
-    if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)} / ${GOLD_BOX_MAX}`;
+    if (el('xp-text')) el('xp-text').textContent = `${fmt(h.xp)}/${fmt(h.xpNext)}`;
+    if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)}/${GOLD_BOX_MAX}`;
+    if (el('upgrade-text')) el('upgrade-text').textContent = `${fmt(S.upgradeBar)}/${UPGRADE_BAR_MAX}`;
+    const cls = CLASSES.find(entry => entry.id === S.classId) || CLASSES[0];
+    const mechArt = el('hud-mech-art');
+    if (mechArt && cls) {
+      const nextSrc = `miniapp_preview/assets/mech_${cls.id}.png`;
+      if (mechArt.getAttribute('src') !== nextSrc) mechArt.setAttribute('src', nextSrc);
+      mechArt.dataset.mechId = cls.id;
+    }
+    if (el('hud-mech-name') && cls) el('hud-mech-name').textContent = `${cls.name} · Ур. ${h.level}`;
+    const weaponImg = el('hud-weapon-art');
+    if (weaponImg) syncRaidWeaponTexture(weaponImg);
+    const shieldImg = el('hud-shield-art');
+    if (shieldImg) syncRaidShieldTexture(shieldImg);
+    const armorSlot = el('hud-armor');
+    if (armorSlot) {
+      armorSlot.dataset.empty = h.armor <= 0 ? '1' : '0';
+      const shieldItem = S.equipment?.find(entry => entry.slot === 'shield');
+      armorSlot.title = `${shieldItem ? shieldItem.name : 'Щит'} · броня ${fmt(h.armor)} / ${fmt(h.maxArmor)}`;
+    }
+    const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
+    const baseDmg = baseDamage();
+    const weaponVal = el('hud-weapon-val');
+    if (weaponVal) {
+      weaponVal.textContent = fmt(weapon);
+      weaponVal.classList.toggle('boosted', S.swordBoost > 0);
+    }
+    if (el('hud-weapon-base')) el('hud-weapon-base').textContent = `+${fmt(baseDmg)} база`;
+    const dmgTitle = `Урон цепочки: база ${fmt(baseDmg)} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`
+      + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.')
+      + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '');
+    const weaponSlot = el('hud-weapon');
+    if (weaponSlot) {
+      const weaponItem = S.equipment?.find(entry => entry.slot === 'weapon');
+      weaponSlot.title = `${weaponItem ? weaponItem.name : 'Оружие'} · ${dmgTitle}`;
+    }
     const damageLabel = el('dmg-text');
     if (damageLabel) {
-      const weapon = h.weaponDamage * (S.swordBoost > 0 ? 2 : 1);
-      damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDamage())}`;
-      damageLabel.title = `Урон цепочки: база ${fmt(baseDamage())} + ${fmt(weapon)} за каждый меч; защита врага поглощает урон до HP.`
-        + (ELEMENTAL_COMBAT ? ' База нейтральна; вклад каждого меча/стрелы ×1,25 / ×1 / ×0,75 по стихии цели. Для босса — среднее двух множителей; округление один раз перед бронёй.' : ' Прежний забег: стихийных множителей нет.')
-        + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '');
+      damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDmg)}`;
+      damageLabel.title = dmgTitle;
     }
     if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
     if (el('status-line')) {
@@ -4042,18 +4076,28 @@
       el('mode-badge').textContent = modeName + ' · ' + diffName;
     }
     if (el('chain-count')) el('chain-count').textContent = 'Цепь ' + (S.selected ? S.selected.length : 0);
+    const trophyImg = el('hud-trophy-img');
+    if (trophyImg && trophyImg.getAttribute('src') !== TROPHY_IMAGE) trophyImg.setAttribute('src', TROPHY_IMAGE);
     if (el('trophy-text')) {
       const onBoard = S.board.filter(cell => cell.type === 'trophy').length;
-      const text = onBoard ? 'на поле: ' + onBoard : S.difficulty === 0 ? 'не на лёгком'
+      const fullText = onBoard ? 'на поле: ' + onBoard : S.difficulty === 0 ? 'не на лёгком'
         : S.trophiesGenerated >= MAX_TROPHIES_PER_RUN ? 'лимит 3/3'
         : !trophyEligible() ? 'рост закрыт'
         : 'через ' + (S.mode === 'sprint' && S.trophyRemaining > 0 ? '≥' : '') + Math.max(1, S.trophyRemaining);
-      el('trophy-text').textContent = 'Трофей ' + text;
-      el('trophy-text').title = 'Тап по трофею на поле — рост меха без хода врагов. Не больше 3 появлений за забег; интервал 20–30 переносится между забегами. На Лёгком трофеи не появляются.';
+      const compactText = onBoard ? '★' : S.difficulty === 0 ? '—'
+        : S.trophiesGenerated >= MAX_TROPHIES_PER_RUN ? '3/3'
+        : !trophyEligible() ? '✕'
+        : (S.mode === 'sprint' && S.trophyRemaining > 0 ? '≥' : '') + Math.max(1, S.trophyRemaining);
+      el('trophy-text').textContent = compactText;
+      const trophyTitle = `Трофей ${fullText}. Тап по трофею на поле — рост меха без хода врагов. Не больше 3 появлений за забег; интервал 20–30 переносится между забегами. На Лёгком трофеи не появляются.`;
+      el('trophy-text').title = trophyTitle;
+      const trophyBadge = el('hud-trophy');
+      if (trophyBadge) {
+        trophyBadge.title = trophyTitle;
+        trophyBadge.setAttribute('aria-label', `Трофей ${fullText}`);
+        trophyBadge.classList.toggle('is-on-board', onBoard > 0);
+      }
     }
-    // upgrade bar
-    const u = el('upgrade-bar'); if (u) u.style.width = Math.min(100, S.upgradeBar / UPGRADE_BAR_MAX * 100) + '%';
-    if (el('upgrade-text')) el('upgrade-text').textContent = `${fmt(S.upgradeBar)} / ${UPGRADE_BAR_MAX}`;
     // skills
     renderSkills();
     syncTelegramChrome();
@@ -4642,7 +4686,7 @@
       flash('⚗ Эликсир: ' + idxs.length + ' обычных зелий → токены XP');
     } else if (id === 'enchant') {
       requestRewardMenu('armor');
-      flash('🛠 Затачивание: выбери улучшение');
+      flash('🛠 Апгрейд: выбери улучшение');
     } else if (id === 'slash') {
       achievementCombo(1);
       S.slashCombo = 1;

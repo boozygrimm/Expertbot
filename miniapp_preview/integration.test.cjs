@@ -2700,6 +2700,34 @@ test('magitech material SFX: resource-collecting skills play chain activation cl
   } finally { b.dom.window.close(); }
 });
 
+test('magitech battle console HUD: shows full mech, synced weapon/shield art with overlaid stats, vertical tubes, hides log, and renames enchant to Апгрейд', async () => {
+  const b = await openMagitech();
+  try {
+    const doc = b.dom.window.document, r = b.raid;
+    assert.equal(doc.querySelector('#log').hidden, true, 'battle log is hidden');
+    assert.equal(doc.querySelector('#hud-mech-art').getAttribute('src'), `miniapp_preview/assets/mech_${r.state.classId}.png`);
+    assert.match(doc.querySelector('#hud-mech-name').textContent, /Ур\. 1/);
+    assert.ok(doc.querySelector('#hud-weapon-art').getAttribute('src').startsWith('data:image/webp;base64,'));
+    assert.match(doc.querySelector('#hud-shield-art').getAttribute('src'), /miniapp_preview\/assets\/raid_shield_\d\.png/);
+    assert.equal(doc.querySelector('#hud-weapon-val').textContent, String(r.state.hero.weaponDamage));
+    assert.match(doc.querySelector('#hud-weapon-base').textContent, /\+\d+ база/);
+    assert.match(doc.querySelector('#armor-text').textContent, /\d+ \/ \d+/);
+    assert.match(doc.querySelector('#hp-bar').style.height, /%$/);
+    assert.match(doc.querySelector('#xp-bar').style.height, /%$/);
+    assert.match(doc.querySelector('#upgrade-bar').style.height, /%$/);
+    assert.match(doc.querySelector('#gold-bar').style.height, /%$/);
+    // Switching shield item updates the HUD shield art immediately when HUD renders.
+    const shieldItem = r.state.equipment.find(e => e.slot === 'shield');
+    r.equipItem({ ...shieldItem, suffixIndex: 2, appearance: 162 });
+    // Skill enchant is renamed to "Апгрейд" and triggers renderHUD/renderSkills on cast.
+    r.state.skills = ['enchant']; r.state.skillCooldowns = {}; r.state.pendingModal = null; r.state.resolving = false;
+    r.activateSkill('enchant');
+    assert.equal(doc.querySelector('#hud-shield-art').getAttribute('src'), 'miniapp_preview/assets/raid_shield_2.png');
+    assert.equal(doc.querySelector('[data-skill-id="enchant"] .skill-name').textContent, 'Апгрейд');
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 // Compact controls and immutable per-run scenery, exercised on the built page.
 test('magitech compact header: settings replace sound without a fourth action; help and confirmed restart still work from the menu', async () => {
   const b = await openMagitech();
@@ -3152,7 +3180,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Звуки умений сбора ресурсов/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Новая нижняя панель боя/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Компактная боевая шапка/);
