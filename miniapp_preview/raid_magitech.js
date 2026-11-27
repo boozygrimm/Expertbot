@@ -3434,7 +3434,8 @@
     if (cell.type === 'sword') return '<span class="weapon-art">' + raidWeaponTexture('ic') + raidWeaponTexture('weapon-glint') + '<span class="weapon-tip-sparkle" aria-hidden="true"></span></span>';
     if (cell.type === 'arrow') return start + '<path d="m35 4 8 1 1 8-9 8-2-6L12 36l-3-3 21-21-5-1Z" fill="var(--weapon-colour,#d5e9e4)"/><path d="m7 29 12 12-10 3-5-5Z" fill="#c9a769"/><path d="m14 34 20-20" stroke="var(--weapon-edge,#7fe5d2)" stroke-width="2"/>' + end;
     if (cell.type === 'shield') return raidShieldTexture('shield-texture');
-    if (cell.type === 'coin') return '<span class="ic coin-3d coin-2d" aria-hidden="true">'
+    if (cell.type === 'coin') return '<span class="ic coin-3d coin-sway" aria-hidden="true">'
+      + '<i class="coin-edge"></i>'
       + '<span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.6"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/><path d="M8 20 5 24l3 4m32-8 3 4-3 4" fill="none" stroke="#8e5710" stroke-width="1.5"/></svg></span></span>';
     if (cell.type === 'potion') {
       const kind = cell.acid ? 'acid' : cell.mana ? 'mana' : cell.explosive ? 'explosive' : 'health';

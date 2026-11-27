@@ -4944,7 +4944,8 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
     const next = css.indexOf('\n@keyframes ', start + 1);
     return css.slice(start, next < 0 ? css.indexOf('\n@media', start) : next);
   };
-  assert.match(frames('coin-axial-turn'), /scaleX\(1\)[^]*scaleX\(\.07\)/);
+  assert.match(frames('coin-axial-turn'), /rotateY\(-26deg\)[^]*rotateY\(26deg\)/);
+  assert.match(frames('coin-sheen-sway'), /translate3d\(-65%[^]*translate3d\(65%/);
   assert.match(frames('weapon-idle-sway'), /rotate\(-1\.3deg\)[^]*rotate\(1\.3deg\)/);
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(frames('weapon-natural-glint'), /opacity:0[^]*translate3d\([^]*opacity:\.86/);
@@ -4954,7 +4955,7 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   for (const name of ['heat','mist','flow','grain','sheen','sap'].map(n => 'orb-fx-' + n).concat(['orb-fog-drift','orb-fog-return','orb-water-slosh','orb-water-return'])) {
     assert.doesNotMatch(frames(name), /\b(?:rotate(?:[XYZ]|3d)?|scale(?:[XYZ]|3d)?)\(|\b(?:opacity|filter)\s*:/, name + ': still no spinning, pulsing or blinking material');
   }
-  assert.match(css, /animation:\s*coin-axial-turn 12s ease-in-out infinite/);
+  assert.match(css, /animation:\s*coin-axial-turn 4\.8s ease-in-out infinite/);
   assert.match(css, /animation:\s*weapon-idle-sway 7\.2s ease-in-out infinite/);
   assert.match(css, /animation:\s*weapon-natural-glint 5\.2s ease-in-out infinite/);
   assert.match(css, /\.raid-orb\[data-type="sword"\] \.weapon-art[\s\S]*?animation:weapon-idle-sway 7\.2s ease-in-out infinite/);
@@ -4970,11 +4971,10 @@ test('magitech approved item motion: coin spins; sword uses restrained idle sway
   assert.doesNotMatch(css, /weapon-axial-turn|rotate3d\(1,-1,0/);
   assert.match(js, /if \(type === 'sword' && t < \.58\)/);
   assert.match(js, /burst\.dataset\.type = type/);
-  assert.doesNotMatch(css, /transform-style:\s*preserve-3d/);
   assert.doesNotMatch(css, /backdrop-filter:/);
   assert.match(css, /\.raid-orb\.frozen :is\(\.weapon-texture,\.coin-3d\)\s*\{\s*animation-play-state:\s*paused/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[^]*\.raid-orb \*[^}]*animation:\s*none !important/);
-  assert.match(js, /class="ic coin-3d coin-2d" aria-hidden="true"/); assert.match(js, /coin-face coin-obverse/);
+  assert.match(js, /class="ic coin-3d coin-sway" aria-hidden="true"/); assert.match(js, /coin-edge/); assert.match(js, /coin-face coin-obverse/);
   assert.match(css, /\.raid-orb\[data-element="air"\] \.orb-fog\s*\{\s*inset:\s*0 0 auto/);
   assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\s*\{[^}]*animation-name:\s*orb-water-slosh; animation-duration:\s*8s/);
   assert.match(css, /\.raid-orb\[data-element="water"\] \.orb-fog-wisp\.orb-fog-back[^}]*animation-name:\s*orb-water-return; animation-duration:\s*11s/);
@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Ускорение загрузки и плавность на телефонах/);
+  assert.match(current, /Объёмное 3D-покачивание монет/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Ускорение загрузки и плавность на телефонах/);
   assert.match(archive, /Чистый классический бой без стихий/);
   assert.match(archive, /Гладкие удары мечами без микрорывков/);
   assert.match(archive, /Чёткий неспешный взрыв, плавные удары мечами и отложенные окна/);
