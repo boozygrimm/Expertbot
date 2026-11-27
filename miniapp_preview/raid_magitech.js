@@ -8026,7 +8026,6 @@
         restoreDetailControls(); detailOwner = row;
         detailBody.classList.remove('mech-info-view');
         detailBody.classList.add('mech-garage-home');
-        detailBody.classList.toggle('is-locked', !mechUnlocked);
         detailBody.replaceChildren();
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
@@ -8047,12 +8046,44 @@
         cockpit.append(headArt, cockpitCaption);
         const actions = document.createElement('div'); actions.className = 'mech-detail-actions mech-garage-side-actions';
         const detailsView = (kind) => {
-          restoreDetailControls(); detailBody.classList.remove('mech-garage-home', 'is-locked'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
+          restoreDetailControls(); detailBody.classList.remove('mech-garage-home'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
           const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = 'Назад'; back.addEventListener('click', openGarage);
           const footer = document.createElement('div'); footer.className = 'mech-detail-footer';
-          const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? RACE_INFO[pilotRace].name : 'О мехе';
+          const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title';
+          tabTitle.textContent = kind === 'pilot' ? RACE_INFO[pilotRace].name : kind === 'unlock' ? `Как открыть «${cls.name}»` : 'О мехе';
           detailBody.append(tabTitle);
-          if (kind === 'pilot') {
+          if (kind === 'unlock') {
+            const unlockedCount = CLASSES.filter(c => isClassUnlocked(c.id)).length;
+            const remaining = Math.max(1, S ? S.trophyRemaining : readTrophyRemaining());
+            const diffEl = qs('#difficulty-select');
+            const diffVal = Number((diffEl && diffEl.value) ?? (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+            const trophyIcon = document.createElement('img');
+            trophyIcon.className = 'mech-unlock-view-trophy';
+            trophyIcon.src = TROPHY_IMAGE; trophyIcon.alt = ''; trophyIcon.draggable = false;
+            const wordForm = remaining === 1 ? 'особ. враг' : (remaining >= 2 && remaining <= 4 ? 'особ. врага' : 'особ. врагов');
+            const meta = document.createElement('div');
+            meta.className = 'mech-unlock-view-meta';
+            meta.innerHTML = `<span>Открыто: ${unlockedCount} / ${CLASSES.length}</span>`
+              + (diffVal === 0
+                ? '<span class="mech-unlock-warn">«Лёгкий» — трофеи не падают</span>'
+                : `<span>До трофея: ${remaining} ${wordForm}</span>`);
+            const guideBtn = document.createElement('button');
+            guideBtn.type = 'button';
+            guideBtn.className = 'mech-unlock-guide-btn';
+            guideBtn.textContent = 'Показать в гайде →';
+            guideBtn.addEventListener('click', () => {
+              closeDetail();
+              openBeginnerGuide({ scene: 2, autoFirstRun: false });
+            });
+            footer.append(back, guideBtn);
+            detailBody.append(
+              trophyIcon,
+              meta,
+              line('Трофей на поле · ', 'побеждай особых врагов и боссов на Нормальном или Сложном уровне — на их месте выпадет золотой трофей.'),
+              line('Открытие · ', 'просто нажми на трофей прямо на поле (враги при этом не ходят). За Авантюриста трофей всегда открывает нового меха!'),
+              line('Важно · ', 'на Лёгком уровне трофеи не выпадают.')
+            );
+          } else if (kind === 'pilot') {
             const selectablePilots = Object.keys(RACE_INFO).filter(isRaceUnlocked);
             const canSelectPilot = classRules(cls.id).canChangeRace && selectablePilots.length > 1;
             let pendingPilotRace = pilotRace;
@@ -8154,37 +8185,18 @@
           applyRaidRegion(RAID_REGION);
           el('region-emblem-launch')?.focus();
         });
-        detailBody.append(hero, cockpit, actions, go);
         let focusTarget = go;
-        if (!mechUnlocked) {
-          const unlockedCount = CLASSES.filter(c => isClassUnlocked(c.id)).length;
-          const remaining = Math.max(1, S ? S.trophyRemaining : readTrophyRemaining());
-          const diffEl = qs('#difficulty-select');
-          const diffVal = Number((diffEl && diffEl.value) ?? (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
-          const callout = document.createElement('div');
-          callout.className = 'mech-unlock-callout';
-          callout.setAttribute('role', 'note');
-          const wordForm = remaining === 1 ? 'особ. враг' : (remaining >= 2 && remaining <= 4 ? 'особ. врага' : 'особ. врагов');
-          const statusRight = diffVal === 0
-            ? '<span class="mech-unlock-warn">Сейчас «Лёгкий» — трофеи не падают</span>'
-            : `<span>До трофея: ${remaining} ${wordForm}</span>`;
-          callout.innerHTML = `<div class="mech-unlock-head">`
-            + `<img class="mech-unlock-trophy" src="${TROPHY_IMAGE}" alt="" draggable="false">`
-            + `<p class="mech-unlock-title">🔒 Как открыть «${cls.name}»</p>`
-            + `</div>`
-            + `<p class="mech-unlock-desc">Побеждай <b>особых врагов и боссов</b> на <b>Нормальном</b> или <b>Сложном</b> уровне — на поле выпадет трофей. <b>Нажми на него</b>, чтобы открыть нового меха (за Авантюриста — 100% новый мех).</p>`
-            + `<div class="mech-unlock-meta"><span>Открыто мехов: ${unlockedCount} / ${CLASSES.length}</span>${statusRight}</div>`;
-          const guideBtn = document.createElement('button');
-          guideBtn.type = 'button';
-          guideBtn.className = 'mech-unlock-guide-btn';
-          guideBtn.textContent = 'Показать в гайде →';
-          guideBtn.addEventListener('click', () => {
-            closeDetail();
-            openBeginnerGuide({ scene: 2, autoFirstRun: false });
-          });
-          callout.appendChild(guideBtn);
-          detailBody.appendChild(callout);
-          focusTarget = guideBtn;
+        if (mechUnlocked) {
+          detailBody.append(hero, cockpit, actions, go);
+        } else {
+          const howToUnlock = document.createElement('button');
+          howToUnlock.type = 'button';
+          howToUnlock.className = 'mech-unlock-button';
+          howToUnlock.textContent = '🔒 Как открыть?';
+          howToUnlock.setAttribute('aria-label', `Как открыть меха «${cls.name}»`);
+          howToUnlock.addEventListener('click', () => detailsView('unlock'));
+          detailBody.append(hero, cockpit, actions, howToUnlock);
+          focusTarget = howToUnlock;
         }
         detail.hidden = false; focusTarget.focus();
       };

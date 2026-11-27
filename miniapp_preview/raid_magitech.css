@@ -3491,76 +3491,65 @@ html[data-raid-idle="1"] .mech-portrait-ring {
   animation-play-state: paused !important;
 }
 
-/* --- #51: Locked mech unlock banner in circular garage --------------------- */
+/* --- #51: Locked mech button & unlock info view in circular garage --------- */
 .picker-card-btn.locked .mech-card-status {
   color: #f4d381;
   letter-spacing: .02em;
 }
-.mech-detail-body.mech-garage-home.is-locked > .mech-go-button {
-  opacity: 0;
-  pointer-events: none;
-}
-.mech-detail-body.mech-garage-home.is-locked .mech-garage-hero {
-  top: 3%;
-  height: 54%;
-}
-.mech-detail-body.mech-garage-home.is-locked .mech-garage-hero .mech-detail-portrait {
-  width: clamp(118px, 34vw, 162px);
-  filter: grayscale(.32) brightness(.9);
-}
-.mech-detail-body.mech-garage-home.is-locked .mech-cockpit-art {
-  opacity: .22;
-}
-.mech-unlock-callout {
+.mech-detail-body.mech-garage-home > .mech-unlock-button {
   position: absolute;
-  z-index: 4;
-  left: 11%;
-  right: 11%;
-  bottom: 10%;
-  padding: 10px 12px 9px;
-  border-radius: 14px;
-  border: 1px solid #e7c46ccc;
-  background: linear-gradient(170deg, rgba(16, 30, 34, 0.96), rgba(11, 18, 26, 0.98));
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 224, 140, 0.16);
-  color: #e9e4d2;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+  z-index: 3;
+  left: 21%;
+  bottom: 16%;
+  width: 58%;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 0;
+  background: var(--raid-launch-texture) center / 100% 100% no-repeat;
+  color: #fff0ca;
+  font: 700 12px/1 system-ui, sans-serif;
+  letter-spacing: .08em;
+  text-shadow: 0 1px 5px #000e;
+  filter: drop-shadow(0 5px 7px #000a) drop-shadow(0 0 6px #e5a83877);
+  cursor: pointer;
 }
-.mech-unlock-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.mech-detail-body.mech-garage-home > .mech-unlock-button:hover,
+.mech-detail-body.mech-garage-home > .mech-unlock-button:focus-visible {
+  filter: drop-shadow(0 5px 7px #000a) drop-shadow(0 0 11px #ffd064cc);
 }
-.mech-unlock-trophy {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+.mech-detail-body.mech-garage-home > .mech-unlock-button:active {
+  transform: translateY(2px);
+  filter: brightness(.92);
+}
+@media (max-width: 720px) {
+  .mech-detail-body.mech-garage-home > .mech-unlock-button {
+    left: 21%;
+    bottom: 16%;
+    width: 58%;
+    min-height: 42px;
+    font-size: 11px;
+    letter-spacing: .05em;
+  }
+}
+.mech-unlock-view-trophy {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
   object-fit: contain;
-  filter: drop-shadow(0 0 6px rgba(246, 200, 92, 0.55));
+  filter: drop-shadow(0 0 10px rgba(246, 200, 92, 0.55));
 }
-.mech-unlock-title {
-  margin: 0;
-  font: 700 12px/1.2 system-ui, sans-serif;
-  color: #ffe39b;
-}
-.mech-unlock-desc {
-  margin: 0;
-  font: 400 11px/1.35 system-ui, sans-serif;
-  color: #d6e4e8;
-}
-.mech-unlock-desc b {
-  color: #fff2c6;
-}
-.mech-unlock-meta {
+.mech-unlock-view-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px 8px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 224, 140, 0.18);
+  justify-content: center;
+  gap: 4px 10px;
+  max-width: 270px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 224, 140, 0.28);
+  background: rgba(8, 22, 24, 0.72);
   font: 600 10px/1.25 system-ui, sans-serif;
   color: #8de6c7;
 }
@@ -3568,43 +3557,23 @@ html[data-raid-idle="1"] .mech-portrait-ring {
   color: #ffb878;
 }
 .mech-unlock-guide-btn {
-  align-self: flex-start;
-  margin-top: 2px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(141, 230, 199, 0.55);
-  background: rgba(24, 58, 56, 0.9);
-  color: #c8fff0;
+  min-height: 30px;
+  padding: 5px 12px;
+  border-radius: 9px;
+  border: 1px solid #d2bc7b9e;
+  background: linear-gradient(180deg, #21463ff2, #122924f2);
+  color: #f4e6be;
   font: 600 10px/1.1 system-ui, sans-serif;
   cursor: pointer;
 }
 .mech-unlock-guide-btn:hover,
 .mech-unlock-guide-btn:focus-visible {
-  background: rgba(34, 84, 78, 0.98);
-  border-color: #9bf5d9;
+  background: #2f5b51;
+  border-color: #f3d78a;
 }
 @media (max-width: 720px) {
-  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero {
-    top: 2%;
-  }
-  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero .mech-detail-portrait {
-    width: clamp(96px, 28vw, 134px);
-  }
-  .mech-detail-body.mech-garage-home.is-locked .mech-garage-hero h3 {
-    font-size: clamp(16px, 4.4vw, 20px);
-  }
-  .mech-unlock-callout {
-    left: 10%;
-    right: 10%;
-    bottom: 9%;
-    padding: 8px 10px 7px;
-    gap: 4px;
-  }
-  .mech-unlock-trophy { width: 22px; height: 22px; flex-basis: 22px; }
-  .mech-unlock-title { font-size: 11px; }
-  .mech-unlock-desc { font-size: 10px; line-height: 1.3; }
-  .mech-unlock-meta { font-size: 9.5px; }
-  .mech-unlock-guide-btn { font-size: 9.5px; padding: 4px 9px; }
+  .mech-unlock-view-trophy { width: 44px; height: 44px; flex-basis: 44px; }
+  .mech-unlock-view-meta { font-size: 9.5px; padding: 4px 8px; }
 }
 
 /* --- #51: Interactive animated beginner guide ------------------------------ */

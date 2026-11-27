@@ -5309,29 +5309,36 @@ test('magitech onboarding #51: locked mech explains trophy unlock, animated guid
   const b = await openMagitech({ start: false });
   try {
     const doc = b.dom.window.document;
-    // 1. Locked mech (Barbarian) clearly shows trophy unlock instructions on tap.
+    // 1. Locked mech (Barbarian) keeps the full circular garage intact and replaces disabled Launch with a clickable "🔒 Как открыть?" button.
     const barbBtn = doc.querySelector('.picker-card-btn[data-class-id="barbarian"]');
     assert.ok(barbBtn && barbBtn.classList.contains('locked'));
     assert.match(barbBtn.textContent, /ТРОФЕЙ/);
     barbBtn.click();
     const detailBody = doc.querySelector('.mech-detail-body.mech-garage-home');
-    assert.ok(detailBody && detailBody.classList.contains('is-locked'));
-    assert.equal(doc.querySelector('.mech-go-button').disabled, true);
-    const callout = detailBody.querySelector('.mech-unlock-callout');
-    assert.ok(callout, 'locked mech shows clear unlock callout inside garage');
-    assert.match(callout.textContent, /Как открыть «Варвар»/);
-    assert.match(callout.textContent, /особых врагов и боссов/i);
-    assert.match(callout.textContent, /Открыто мехов:\s*1\s*\/\s*10/);
-    assert.match(callout.textContent, /До трофея:\s*1\s*особ/);
-    assert.ok(callout.querySelector('img.mech-unlock-trophy')?.getAttribute('src')?.includes('raid_trophy'));
+    assert.ok(detailBody && !detailBody.classList.contains('is-locked'));
+    assert.ok(detailBody.querySelector('.mech-garage-hero img'), 'mech portrait stays untouched');
+    assert.ok(detailBody.querySelector('.mech-cockpit-art'), 'cockpit stays untouched');
+    const unlockBtn = detailBody.querySelector('.mech-unlock-button');
+    assert.ok(unlockBtn, 'locked mech shows clickable "Как открыть?" button in place of disabled Launch');
+    assert.match(unlockBtn.textContent, /Как открыть/);
+
+    // Tapping "🔒 Как открыть?" opens the clean unlock info view inside .mech-info-view.
+    unlockBtn.click();
+    const infoBody = doc.querySelector('.mech-detail-body.mech-info-view');
+    assert.ok(infoBody, 'clicking unlock button opens scrollable info view');
+    assert.match(infoBody.textContent, /Как открыть «Варвар»/);
+    assert.match(infoBody.textContent, /особых врагов и боссов/i);
+    assert.match(infoBody.textContent, /Открыто:\s*1\s*\/\s*10/);
+    assert.match(infoBody.textContent, /До трофея:\s*1\s*особ/);
+    assert.ok(infoBody.querySelector('img.mech-unlock-view-trophy')?.getAttribute('src')?.includes('raid_trophy'));
 
     // Switching difficulty to Easy warns that trophies do not drop on Easy.
     const diffSelect = doc.querySelector('#difficulty-select');
     if (diffSelect) {
       diffSelect.value = '0';
-      doc.querySelector('.mech-detail-popover').click();
-      barbBtn.click();
-      assert.match(doc.querySelector('.mech-unlock-callout').textContent, /Лёгкий/);
+      doc.querySelector('.mech-detail-back').click();
+      doc.querySelector('.mech-unlock-button').click();
+      assert.match(doc.querySelector('.mech-unlock-view-meta').textContent, /Лёгкий/);
       diffSelect.value = '1';
     }
 
