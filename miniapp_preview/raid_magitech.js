@@ -383,7 +383,7 @@
       ['Мех', cls.name + ' · специализация и модули'],
       ['Пилот', RACE_INFO[clsRace()].name + ' · особенность и смертный враг'],
       ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
-      ['Склонность на этот рейд', pilotAffinityDescription()],
+      ...(runPilotAffinity() ? [['Склонность на этот рейд', pilotAffinityDescription()]] : []),
       ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
       ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
       ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
@@ -905,8 +905,11 @@
   function clsRace(state = S) { return runClassConfig(state)?.race || 'Human'; }
   function classSkillPool(state = S) {
     if (state.classId === 'adventurer') return activeSkillDefinitions().filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.id);
-    const config = runClassConfig(state), base = CLASS_BY_ID[state.classId].pool;
-    return [...new Set(base.map((id, i) => config.replacements[i] || id))].sort((a,b) => SKILL_BY_ID[a].native-SKILL_BY_ID[b].native);
+    const config = runClassConfig(state), base = CLASS_BY_ID[state.classId].pool, allowRetune = hasRetuneRules();
+    return [...new Set(base.map((id, i) => {
+      const rep = config.replacements[i];
+      return rep && (rep !== 'retune' || allowRetune) ? rep : id;
+    }))].sort((a,b) => SKILL_BY_ID[a].native-SKILL_BY_ID[b].native);
   }
 
   // concept-art sprites from the catalog (window.SKULL_ART injected by the build)
@@ -1866,10 +1869,10 @@
     const regionScreen = document.getElementById('raid-region-screen');
     if (regionScreen) regionScreen.dataset.selectedRegion = region;
     const launchLabel = document.getElementById('region-launch-label');
-    if (launchLabel) launchLabel.textContent = 'В бой · ' + RAID_REGIONS[region].element;
+    if (launchLabel) launchLabel.textContent = 'В бой · ' + RAID_REGIONS[region].short;
     for (const node of document.querySelectorAll('[data-raid-region-title], [data-raid-region-caption]')) {
       const data = RAID_REGIONS[node.closest('#class-picker') ? region : current];
-      node.textContent = node.hasAttribute('data-raid-region-title') ? data.title : data.index + ' / ' + data.element;
+      node.textContent = node.hasAttribute('data-raid-region-title') ? data.title : data.index + ' / ' + data.short;
     }
     for (const button of document.querySelectorAll('button[data-raid-region]')) button.setAttribute('aria-pressed', String(button.dataset.raidRegion === region));
     return true;
@@ -3784,6 +3787,9 @@
   }
   function orbLook(cell, idx) {
     if (isPhylacteryCell(cell)) return { state: 'sand', rgb: '228 190 94', light: '#ffeab0', mid: '#907331', dark: '#352c20' };
+    if (['sword', 'arrow'].includes(cell.type) && !ELEMENTAL_COMBAT) {
+      return { state: 'gas', rgb: '192 224 236', light: '#e8f5fa', mid: '#3a5060', dark: '#101e2b' };
+    }
     const index = orbElementIndex(cell, idx), elemental = ORB_ELEMENT_LOOKS[index];
     // Unselected glass is clear. Elemental metal tint is CSS-only; the old
     // 2/3-height body appears only on selection (air above, water below).
@@ -3966,7 +3972,7 @@
     cellEl.className = 'cell tile type-' + cell.type + status;
     orb.className = 'raid-orb fx state-' + look.state + status;
     orb.dataset.type = cell.type; orb.dataset.state = look.state;
-    if (['sword', 'arrow', 'skull'].includes(cell.type)) orb.dataset.element = element;
+    if (cell.type === 'skull' || (ELEMENTAL_COMBAT && ['sword', 'arrow'].includes(cell.type))) orb.dataset.element = element;
     else delete orb.dataset.element;
     orb.style.setProperty('--orb-rgb', look.rgb); orb.style.setProperty('--orb-light', look.light);
     orb.style.setProperty('--orb-mid', look.mid); orb.style.setProperty('--orb-dark', look.dark);
@@ -4004,12 +4010,12 @@
       cellEl.classList.toggle('cripple-target', cripple);
       label = `${boss ? 'Босс' : special ? ENEMY_FEATS[s.type]?.name || 'Особый враг' : 'Враг'}: атака ${s.atk}, защита ${s.def}, HP ${s.hp}`
         + (s.countdown > 0 ? `, таймер ${s.countdown}` : '') + (cripple ? '. Калечение: HP ниже защиты; сбор в конце хода' : '')
-        + ' · ' + (ELEMENTAL_COMBAT ? combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : RAID_REGIONS[element].element + ' (внешность локации; бой классический)');
+        + (ELEMENTAL_COMBAT ? ' · ' + combatElementLabel(s) + (boss ? ' (среднее двух стихий)' : '') : ' · ' + RAID_REGIONS[RUN_REGION || RAID_REGION].title);
       if (s.type === 7) label += ' · Опасность для героя — обычная атака Огненного (×2), она входит в общий залп. Каждый ход он также поджигает до 8 занятых соседних клеток: после залпа горящие соседи-враги получают урон, равный его атаке, но сам поджог герою не вредит. Убей Огненного, чтобы прекратить будущие поджоги.';
     } else {
       label = phylactery ? 'Филактерий Лича: включи в цепочку из 3+ монет в следующем ходу, иначе Лич воскреснет'
         : { sword: 'Оружие: ' + S.equipment.find(item => item.slot === 'weapon').name, arrow: 'Стрела', shield: 'Щит', potion: cell.acid ? 'Кислотное зелье' : cell.mana ? 'Зелье маны' : 'Зелье', coin: 'Монета', chain: 'Цепь', trophy: 'Трофей: рост или открытие меха без хода врагов' }[cell.type] || '';
-      if (['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + (ELEMENTAL_COMBAT ? ' (×1,25 / ×1 / ×0,75 по цели)' : ' (оформление; урон классический)');
+      if (ELEMENTAL_COMBAT && ['sword', 'arrow'].includes(cell.type)) label += ' · ' + RAID_REGIONS[element].element + ' (×1,25 / ×1 / ×0,75 по цели)';
       if (cell.magicSword) label += ', сила 5 мечей';
       if (cell.explosive) label += ', взрывное';
       if (cell.broken) label += ', сломано: без награды';
@@ -4461,10 +4467,10 @@
   }
 
   function renderHUD() {
-    for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID / ПРЕЖНИЙ БОЙ';
+    for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID · МАГИЯ СТАЛИ';
     for (const node of qsa('[data-raid-combat-note]')) node.textContent = ELEMENTAL_COMBAT
       ? 'Стихийный бой · ±25% каждого меча/стрелы; вторичные эффекты — как прежде.' + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '')
-      : 'Прежний забег · классический бой без стихийных множителей. Новый старт включает стихии.';
+      : 'Классический бой · локация задаёт атмосферу и облик врагов.';
     const h = S.hero;
     const hpPct = Math.max(0, Math.min(100, h.hp / h.maxHp * 100));
     const armorPct = Math.max(0, Math.min(100, h.maxArmor > 0 ? h.armor / h.maxArmor * 100 : 0));
@@ -4677,7 +4683,8 @@
     const previousLabel = S?.scrollLeechLabel;
     clearTimeout(SCROLL_LABEL_TIMER); SCROLL_LABEL_TIMER = null;
     S = newGameState(); S.historyId = newHistoryId();
-    ELEMENTAL_COMBAT = { rules: AFFINITY_RULES, rng: (runSeed ^ 0x454c454d) >>> 0, affinity };
+    ELEMENTAL_COMBAT = null;
+    if (S.classConfig?.replacements) S.classConfig.replacements = S.classConfig.replacements.map(id => (id === 'retune' ? null : id));
     RUN_REGION = RAID_REGION;
     applyRaidRegion(RAID_REGION);
     // InitNewGame clears active, not the adjacent label's type/vertices. A page
@@ -7974,11 +7981,7 @@
               detailBody.appendChild(detailPortrait);
               footer.appendChild(back);
             }
-            detailBody.append(pilotDescription, line('Склонность · ', 'Выбирается на этот рейд, начиная со 2-го уровня меха; бонус и штраф урона открываются на 3-м.'));
-            const affinity = row.querySelector('.picker-affinity-field');
-            const affinityNote = row.querySelector('.picker-affinity-note');
-            if (affinity) detailBody.appendChild(affinity);
-            if (affinityNote) detailBody.appendChild(affinityNote);
+            detailBody.append(pilotDescription);
           } else {
             detailBody.appendChild(portrait.cloneNode(true));
             detailBody.append(line('Специализация · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
@@ -8036,41 +8039,6 @@
       // Selecting any mech opens its circular garage card; launch is a deliberate second action.
       bindReadOnlyDismiss(btn, openGarage, () => generation);
       row.appendChild(btn);
-      if (unlocked && classLevelOf(cls.id) >= 2) {
-        const label = document.createElement('fieldset'); label.className = 'picker-affinity-field';
-        const caption = document.createElement('legend'); caption.textContent = 'Склонность пилота · на этот рейд';
-        const toggle = document.createElement('div'); toggle.className = 'affinity-segments';
-        toggle.setAttribute('role', 'radiogroup'); toggle.setAttribute('aria-label', 'Склонность пилота на этот рейд');
-        const note = document.createElement('p'); note.className = 'picker-affinity-note'; note.id = `affinity-note-${cls.id}`;
-        note.setAttribute('role', 'status'); note.setAttribute('aria-live', 'polite'); toggle.setAttribute('aria-describedby', note.id);
-        const choices = ['fire', 'air', 'earth', 'water', ''];
-        const labels = { fire: 'Огонь', air: 'Воздух', earth: 'Земля', water: 'Вода', '': 'Без склонности' };
-        for (const element of choices) {
-          const choice = document.createElement('label'); choice.className = 'affinity-choice'; choice.title = labels[element];
-          const input = document.createElement('input'); input.type = 'radio'; input.name = `affinity-${cls.id}`;
-          input.value = element; input.dataset.classId = cls.id; input.checked = (pickerAffinities.get(cls.id) || '') === element;
-          input.setAttribute('aria-label', labels[element]);
-          const text = document.createElement('span'); text.textContent = element === 'air' ? 'Возд.' : element === '' ? 'Нет' : labels[element];
-          const refresh = () => { note.textContent = pilotAffinityDescription(preparedPilotAffinity(cls.id)); };
-          input.addEventListener('change', () => {
-              if (!current() || !isClassUnlocked(cls.id) || classLevelOf(cls.id) < 2 || input.value && !RAID_ELEMENTS.includes(input.value)) {
-              const selected = pickerAffinities.get(cls.id) || '';
-              row.querySelectorAll(`input[name="affinity-${cls.id}"]`).forEach(option => { option.checked = option.value === selected; });
-              return;
-            }
-            pickerAffinities.set(cls.id, input.value); refresh();
-          });
-          choice.append(input, text); toggle.appendChild(choice);
-        }
-        label.append(caption, toggle); row.append(label, note);
-        // renderClassPicker also runs just before pickerOpen is set true.
-        note.textContent = pilotAffinityDescription({ element: null, level: classLevelOf(cls.id) });
-      } else if (unlocked) {
-        // A locked mech already explains its trophy gate; only a usable level-one
-        // mech needs to say when the per-raid choice opens.
-        const note = document.createElement('p'); note.className = 'picker-affinity-note';
-        note.textContent = 'Склонность пилота — с уровня меха 2; бонус и штраф урона — с 3.'; row.appendChild(note);
-      }
       const edit = document.createElement('button');
       edit.type = 'button'; edit.className = 'class-config-btn'; edit.dataset.classId = cls.id;
       edit.textContent = classRules(cls.id).editable ? 'Настроить мех и пилота' : 'О мехе и пилоте';
@@ -8156,16 +8124,16 @@
     const skillSection = block(id === 'adventurer' ? 'Мех · все открытые модули' : 'Мех · пул модулей: 20 позиций'); skillSection.dataset.configSource = 'mech';
     const count = note(skillSection, ''); count.id = 'class-replacement-count'; count.setAttribute('role', 'status');
     note(skillSection, 'Это возможные награды уровня, не стартовые умения. Первый навык меха фиксирован. Повторы не увеличивают шанс выпадения.');
-    if (id === 'adventurer') note(skillSection, activeSkillDefinitions(true).filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
+    if (id === 'adventurer') note(skillSection, activeSkillDefinitions(false).filter(s => isSkillUnlocked(s.id)).sort((a,b) => a.native-b.native).map(s => s.name).join(' · '));
     else for (let i = 0; i < 20; i++) {
       const base = SKILL_BY_ID[info.baseSkills[i]];
       select(skillSection, `${i + 1}. ${base.name}` + (i === 0 ? ' · меховый' : ''), 'replacements', i,
-        [{ value: '', label: base.name + ' · по умолчанию' }, ...activeSkillDefinitions(true).filter(s => !s.nativeOnly && s.id !== base.id).sort((a,b) => a.native-b.native).map(skill => ({
+        [{ value: '', label: base.name + ' · по умолчанию' }, ...activeSkillDefinitions(false).filter(s => !s.nativeOnly && s.id !== base.id).sort((a,b) => a.native-b.native).map(skill => ({
           value: skill.id, label: skill.name + (isSkillUnlocked(skill.id) ? '' : ' · мех-источник: ур. 10'), locked: !isSkillUnlocked(skill.id),
         }))], !info.editable || i === 0 || info.replacementLimit === 0);
     }
     const growth = block('Развитие меха');
-    note(growth, 'Склонность пилота выбирается заново перед каждым рейдом: 2 — выпадение 30/20/25/25; 3 — дополнительно урон +5%/−5%. Это не постоянная настройка меха или пилота. 1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
+    note(growth, '1 — основная пара доступна другим мехам; 2/4/6/8/10 — можно заменить 2/4/6/8/10 навыков; 3/7/9 — новая пара; 5 — независимый выбор пилота и открытие родного пилота другим; 10 — уникальный навык доступен другим мехам. Рост — за трофеи, не за опыт героя.');
     const status = el('class-editor-status'), save = el('class-editor-save');
     const back = el('class-editor-back'), defaults = el('class-editor-reset');
     save.hidden = !info.editable; defaults.hidden = !info.editable;
@@ -8233,16 +8201,6 @@
   function requestNewGame(classId = getSelectedClassId()) {
     if (UPDATES_OPEN) return false;
     if (!isClassUnlocked(classId)) return false;
-    // Repeat/menu starts at level 2+ must offer a FRESH choice, never silently
-    // reuse the last run's affinity or turn a live checkpoint into a surrender.
-    if (classLevelOf(classId) >= 2 && !pickerOpen) {
-      if (finishedRunView()) leaveFinishedRun();
-      else {
-        if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return false; }
-        el('menu-modal')?.classList.remove('show'); showClassPicker();
-      }
-      return false;
-    }
     if ((!S || S.over) && !savedRunInfo() && !hasPendingProgress()) { setSelectedClassId(classId); newGame(); return true; }
     const wrap = el('restart-modal');
     if (!wrap) return false;
