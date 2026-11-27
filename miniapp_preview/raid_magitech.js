@@ -3440,7 +3440,6 @@
     if (cell.type === 'potion') {
       const kind = cell.acid ? 'acid' : cell.mana ? 'mana' : cell.explosive ? 'explosive' : 'health';
       const liquid = { health: '#d75b78', acid: '#b4d53b', mana: '#4d9fe6', explosive: '#e98b3c' }[kind];
-      const clip = `raid-potion-fill-${cellIdx}`;
       const mark = kind === 'mana'
         ? '<path class="potion-mark" d="m24 25 4 6-4 7-4-7Z" fill="#f4fbff" stroke="#bfe8ff" stroke-width=".8"/>'
         : kind === 'acid'
@@ -3449,8 +3448,11 @@
             ? '<path class="potion-mark" d="m24 27 1.7 4.1 4.3.4-3.3 2.8 1 4.2-3.7-2.3-3.8 2.3 1-4.2-3.2-2.8 4.2-.4Z" fill="#fff0bc" stroke="#ffbd70" stroke-width=".7"/>'
             : '<path class="potion-mark" d="M24 28v10m-5-5h10" stroke="#fff1e5" stroke-width="2.2" stroke-linecap="round"/>';
       const surfaceY = { health: 26, acid: 29, mana: 26, explosive: 27 }[kind];
-      const headClip = `raid-potion-head-${cellIdx}`;
-      const bodyWindow = `raid-potion-body-${cellIdx}`;
+      const clipUid = (tileSymbol._potionUid = (tileSymbol._potionUid || 0) + 1);
+      const clipTag = `${cellIdx}-${clipUid}`;
+      const clip = `raid-potion-fill-${clipTag}`;
+      const headClip = `raid-potion-head-${clipTag}`;
+      const bodyWindow = `raid-potion-body-${clipTag}`;
       return start + `<defs><clipPath id="${headClip}"><rect x="0" y="0" width="48" height="23"/></clipPath><clipPath id="${bodyWindow}"><rect x="0" y="21" width="48" height="28"/></clipPath><clipPath id="${clip}"><path d="M24 16c-2.5 3.4-9 4.6-13 8.5-5 5.1-5.8 11.3-.3 18.1 7.1 4.1 25.5 4.1 32.6 0 5.5-6.8 4.7-13-.3-18.1-4-3.9-10.5-5.1-13-8.5Z"/></clipPath></defs><g class="potion-vessel" data-potion="${kind}"><image class="potion-art-head" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet" clip-path="url(#${headClip})"/><g class="potion-lower-window" clip-path="url(#${bodyWindow})"><g class="potion-lower-motion"><image class="potion-art-body" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet"/><g class="potion-slosh-overlay" clip-path="url(#${clip})"><path class="potion-wave potion-wave-back" d="M3 ${surfaceY}c5-2 8 1 13-1s8-2 12 0 8 1 17-1v10H3Z" fill="${liquid}" fill-opacity=".24"/><path class="potion-wave potion-wave-front" d="M3 ${surfaceY + 1}c6 1 8-2 14 0s8 2 13 0 9-1 15 1v10H3Z" fill="${liquid}" fill-opacity=".47"/><path class="potion-wave potion-surface-glint" d="M7 ${surfaceY + .4}q5-1 8-.2m7 .2q6 1 11-.1" fill="none" stroke="#fff8e8" stroke-opacity=".8" stroke-width=".7" stroke-linecap="round"/><circle class="potion-bubble" cx="18" cy="34" r=".9"/><circle class="potion-bubble potion-bubble-delay" cx="31" cy="37" r=".65"/>${mark}</g></g></g></g>` + end;
     }
     if (cell.type === 'trophy') return `<img class="trophy-art" src="${TROPHY_IMAGE}" alt="">`;
@@ -3475,8 +3477,16 @@
 
   let ORB_ELEMENTS = new WeakMap();
   let ORB_VIEWS = new Map(); // resource object / enemy UID -> one movable DOM orb
-  let ORB_VIEW_UID = 0;
+  let ORB_VIEW_UID = 0, POTION_CLIP_UID = 0;
+  let CELL_NODES = [];
   const ORB_ANIMATIONS = new Map();
+  function cellNode(idx) {
+    const cached = CELL_NODES[idx];
+    if (cached && cached.isConnected) return cached;
+    const found = qs(`.cell[data-idx="${idx}"]`);
+    if (found) CELL_NODES[idx] = found;
+    return found;
+  }
 
   function orbElementIndex(cell, idx) {
     if (ELEMENTAL_COMBAT && (cell?.type === 'skull' || ['sword', 'arrow'].includes(cell?.type))) {
@@ -3513,10 +3523,24 @@
       animation.cancel(); // no retained fill/opacity/transform on a surviving orb
       syncBoardAnimating();
     };
+    finish.startedAt = nowMs();
     ORB_ANIMATIONS.set(animation, finish);
     syncBoardAnimating();
     animation.onfinish = animation.oncancel = finish;
     return animation;
+  }
+  function sweepStaleOrbAnimations() {
+    const now = nowMs();
+    for (const finish of [...ORB_ANIMATIONS.values()]) {
+      if (finish.startedAt && now - finish.startedAt > 3500) finish();
+    }
+    const layer = el('board-fx');
+    if (layer) {
+      for (const node of [...layer.querySelectorAll('.orb-burst')]) {
+        const born = Number(node.dataset.bornAt) || 0;
+        if (born && now - born > 2500) node.remove();
+      }
+    }
   }
   const BOARD_FX = { canvas: null, ctx: null, w: 0, h: 0, dpr: 1, raf: 0, items: [] };
   let LAST_BOARD_ANIM_END = 0, LAST_BURST_END = 0;
@@ -3570,16 +3594,47 @@
     }
     return layer;
   }
-  // Automatic low-end mobile WebView optimization: silently detected once at boot.
-  const RAID_LOW_END = (() => {
+  // Automatic low-end & thermal-throttling mobile WebView optimization.
+  let RAID_LOW_END = (() => {
     if (typeof navigator === 'undefined') return false;
     const cores = Number(navigator.hardwareConcurrency);
     const mem = Number(navigator.deviceMemory);
     return (Number.isFinite(cores) && cores > 0 && cores <= 4)
       || (Number.isFinite(mem) && mem > 0 && mem <= 3);
   })();
-  if (RAID_LOW_END && typeof document !== 'undefined' && document.documentElement?.dataset) {
-    document.documentElement.dataset.raidPerf = 'lite';
+  let SLOW_FRAME_COUNT = 0, LAST_FX_TICK = 0;
+  function enableLitePerf() {
+    RAID_LOW_END = true;
+    if (typeof document !== 'undefined' && document.documentElement?.dataset) {
+      document.documentElement.dataset.raidPerf = 'lite';
+    }
+  }
+  if (RAID_LOW_END) enableLitePerf();
+  // Anti-overheating idle pause: cools down mobile GPU after 12s without input.
+  let IDLE_COOL_TIMER = 0;
+  function noteUserActivity() {
+    if (typeof document === 'undefined' || !document.documentElement?.dataset) return;
+    if (document.documentElement.dataset.raidIdle) delete document.documentElement.dataset.raidIdle;
+    clearTimeout(IDLE_COOL_TIMER);
+    IDLE_COOL_TIMER = setTimeout(() => {
+      IDLE_COOL_TIMER = 0;
+      if (typeof document !== 'undefined' && document.documentElement?.dataset && !ORB_ANIMATIONS.size && !BOARD_FX.items.length) {
+        document.documentElement.dataset.raidIdle = '1';
+      }
+    }, 12000);
+  }
+  function initIdleCoolDown() {
+    if (typeof document === 'undefined') return;
+    noteUserActivity();
+    for (const kind of ['pointerdown', 'keydown']) {
+      document.addEventListener(kind, noteUserActivity, { capture: true, passive: true });
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(IDLE_COOL_TIMER); IDLE_COOL_TIMER = 0;
+        if (document.documentElement?.dataset) document.documentElement.dataset.raidIdle = '1';
+      } else noteUserActivity();
+    });
   }
   function ensureBoardFxCanvas(boardRect) {
     if (orbReducedMotion() || !boardRect?.width || !boardRect?.height) return null;
@@ -3616,8 +3671,18 @@
   function startBoardFxLoop() {
     if (BOARD_FX.raf || !BOARD_FX.ctx || !BOARD_FX.items.length) return;
     syncBoardAnimating();
+    LAST_FX_TICK = 0;
     const tick = now => {
       BOARD_FX.raf = 0;
+      if (!RAID_LOW_END && LAST_FX_TICK) {
+        const dt = now - LAST_FX_TICK;
+        if (dt > 34 && dt < 250) {
+          if (++SLOW_FRAME_COUNT >= 14) enableLitePerf();
+        } else if (dt > 0 && dt < 22 && SLOW_FRAME_COUNT > 0) {
+          SLOW_FRAME_COUNT--;
+        }
+      }
+      LAST_FX_TICK = now;
       const ctx = BOARD_FX.ctx;
       if (!ctx || !BOARD_FX.canvas?.isConnected || orbReducedMotion()) { clearBoardFxCanvas(); return; }
       const dpr = BOARD_FX.dpr;
@@ -3634,7 +3699,7 @@
       }
       BOARD_FX.items = alive;
       if (alive.length) BOARD_FX.raf = requestAnimationFrame(tick);
-      else { ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h); syncBoardAnimating(); }
+      else { LAST_FX_TICK = 0; ctx.clearRect(0, 0, BOARD_FX.w, BOARD_FX.h); syncBoardAnimating(); }
     };
     BOARD_FX.raf = requestAnimationFrame(tick);
   }
@@ -3922,6 +3987,7 @@
     const burst = document.createElement('div');
     burst.className = 'orb-burst';
     burst.dataset.orbId = view.node.dataset.orbId;
+    burst.dataset.bornAt = String(Math.round(nowMs()));
     burst.dataset.type = type;
     if (view.node.dataset.element) burst.dataset.element = view.node.dataset.element;
     burst.style.cssText = `left:${left}px;top:${top}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${rgb};--burst-delay:${delay}ms`;
@@ -3969,7 +4035,7 @@
   }
 
   function renderCell(cell, idx, view) {
-    const cellEl = qs(`.cell[data-idx="${idx}"]`);
+    const cellEl = cellNode(idx);
     if (!cellEl) return;
     if (!view) {
       cellEl.className = 'cell empty'; cellEl.replaceChildren();
@@ -4054,13 +4120,16 @@
     if (!board) return;
     if (!board.dataset.cellsReady) {
       board.innerHTML = '';
+      CELL_NODES = [];
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('id', 'chain-line'); svg.setAttribute('aria-hidden', 'true'); board.appendChild(svg);
       for (let i = 0; i < CELL_COUNT; i++) {
         const cellEl = document.createElement('div'); cellEl.className = 'cell'; cellEl.dataset.idx = String(i); board.appendChild(cellEl);
+        CELL_NODES[i] = cellEl;
       }
       board.dataset.cellsReady = '1';
     }
+    sweepStaleOrbAnimations();
     const previous = ORB_VIEWS, next = new Map(), rects = new Map(), boardRect = board.getBoundingClientRect();
     const keys = S.board.map(cell => cell && cell.type !== 'empty' ? orbIdentity(cell) : null);
     // FIRST: capture the actual, possibly interrupted on-screen positions before
@@ -4205,6 +4274,11 @@
       }
     }
     ORB_VIEWS = next;
+    if (SKULL_IMAGES.size > 40) {
+      for (const uid of [...SKULL_IMAGES.keys()]) {
+        if (!next.has('skull:' + uid)) SKULL_IMAGES.delete(uid);
+      }
+    }
     if (firePulses.length && !orbReducedMotion()) requestAnimationFrame(() => {
       for (const overlay of firePulses) {
         if (!overlay?.isConnected) continue;
@@ -4661,7 +4735,7 @@
     S.log.unshift(msg);
     S.log = S.log.slice(0, 5);
     const wrap = el('log');
-    if (wrap) wrap.innerHTML = S.log.map(m => `<div>${m}</div>`).join('');
+    if (wrap && !wrap.hidden) wrap.innerHTML = S.log.map(m => `<div>${m}</div>`).join('');
   }
 
   // --- main flow -----------------------------------------------------------
@@ -8640,6 +8714,7 @@
   function init() {
     initRaidAppearance();
     initVisualPreferences();
+    initIdleCoolDown();
     initMaterialAudio();
     initGameSettings();
     initHaptics();

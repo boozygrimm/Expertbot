@@ -3195,7 +3195,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Объёмное 3D-покачивание монет/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Стабильные 60 FPS в долгих забегах/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Объёмное 3D-покачивание монет/);
     assert.match(doc.querySelector('#updates-history').textContent, /Ускорение загрузки и плавность на телефонах/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чистый классический бой без стихий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Гладкие удары мечами без микрорывков/);
@@ -5286,7 +5287,19 @@ test('magitech mobile performance #48: externalized cache-busted assets, zero ba
   } finally { lite.dom.window.close(); }
   const fast = await openMagitech({ setup(w) { Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 8, configurable: true }); Object.defineProperty(w.navigator, 'deviceMemory', { value: 8, configurable: true }); } });
   try {
-    assert.equal(fast.dom.window.document.documentElement.dataset.raidPerf, undefined, '8-core/8GB device stays in full visual mode');
+    const doc = fast.dom.window.document;
+    assert.equal(doc.documentElement.dataset.raidPerf, undefined, '8-core/8GB device stays in full visual mode');
+    assert.doesNotMatch(css, /\.weapon-glint\s*\{[^}]*mix-blend-mode/, 'weapon glint avoids costly per-tile blend passes');
+    assert.match(css, /html\[data-raid-idle="1"\][^]*animation-play-state:\s*paused/, 'idle anti-overheating pauses looping animations');
+    // Verify unique SVG clipPath IDs when multiple potions fall across turns.
+    showOrbFixture(fast, () => ({ type: 'potion' }));
+    [0, 1, 2].forEach(i => fast.raid.tryExtendChain(i));
+    fast.raid.resolveChain();
+    const seenIds = new Set();
+    for (const el of doc.querySelectorAll('#board [id]')) {
+      assert.equal(seenIds.has(el.id), false, `duplicate SVG/DOM id in board: ${el.id}`);
+      seenIds.add(el.id);
+    }
     assert.deepEqual(fast.errors, []);
   } finally { fast.dom.window.close(); }
 });
