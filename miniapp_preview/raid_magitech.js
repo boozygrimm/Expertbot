@@ -3517,8 +3517,19 @@
     for (const view of ORB_VIEWS.values()) {
       view.motion = null; delete view.node.dataset.motion;
       view.node.classList.remove('primed');
+      view.node.style.removeProperty('--prime-delay');
     }
     el('board-fx')?.replaceChildren();
+  }
+  function ensureBoardFx() {
+    const board = el('board');
+    if (!board) return null;
+    let layer = el('board-fx');
+    if (!layer) {
+      layer = document.createElement('div'); layer.id = 'board-fx';
+      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
+    }
+    return layer;
   }
   function resetOrbPresentation() {
     finishOrbAnimations();
@@ -3542,54 +3553,174 @@
     return { state: 'liquid', rgb: '237 128 153', light: '#ffdade', mid: '#9b4e68', dark: '#3e2438' };
   }
   function primeOrbChain(indices) {
-    for (const idx of indices) {
-      const cell = S.board[idx];
-      if (cell && cell.type !== 'empty') ORB_VIEWS.get(orbIdentity(cell))?.node.classList.add('primed');
+    if (!indices?.length) return;
+    const step = indices.length > 1 ? Math.min(28, 150 / (indices.length - 1)) : 0;
+    let surgeRgb = '';
+    for (let i = 0; i < indices.length; i++) {
+      const cell = S.board[indices[i]];
+      if (!cell || cell.type === 'empty') continue;
+      const node = ORB_VIEWS.get(orbIdentity(cell))?.node;
+      if (!node) continue;
+      node.style.setProperty('--prime-delay', Math.round(i * step) + 'ms');
+      node.classList.add('primed');
+      if (!surgeRgb) surgeRgb = node.style.getPropertyValue('--orb-rgb').trim();
     }
+    if (orbReducedMotion() || indices.length < 2) return;
+    const layer = ensureBoardFx();
+    if (!layer) return;
+    layer.querySelectorAll('.chain-surge').forEach(n => n.remove());
+    const pts = indices.map(cellCenter);
+    let totalLen = 0;
+    for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (totalLen < 2) return;
+    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'chain-surge');
+    svg.setAttribute('aria-hidden', 'true');
+    if (surgeRgb) svg.style.setProperty('--surge-rgb', surgeRgb);
+    const makePath = cls => {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', d); p.setAttribute('class', cls);
+      return p;
+    };
+    const glow = makePath('surge-glow'), core = makePath('surge-core'), bolt = makePath('surge-bolt');
+    const boltLen = Math.max(24, Math.min(84, totalLen * 0.34));
+    bolt.style.strokeDasharray = `${boltLen.toFixed(1)} ${(totalLen + boltLen + 16).toFixed(1)}`;
+    bolt.style.strokeDashoffset = `${boltLen.toFixed(1)}`;
+    svg.append(glow, core, bolt);
+    layer.appendChild(svg);
+    animateOrb(bolt, [
+      { strokeDashoffset: boltLen.toFixed(1), opacity: .85 },
+      { strokeDashoffset: (-totalLen).toFixed(1), opacity: 1 },
+    ], { duration: 340, easing: 'cubic-bezier(.42,0,.28,1)', fill: 'forwards' });
+    animateOrb(svg, [
+      { opacity: .25 },
+      { opacity: 1, offset: .18 },
+      { opacity: .95, offset: .82 },
+      { opacity: 0 },
+    ], { duration: 405, easing: 'ease-out', fill: 'forwards' }, () => svg.remove());
   }
-  function burstOrb(view, rect, boardRect, delay = 0, duration = 240) {
-    view.motion?.cancel(); view.node.classList.remove('primed');
-    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+  function triggerBoardRecoil(strength, delay = 0) {
+    if (orbReducedMotion() || strength < .8) return;
     const board = el('board');
-    let layer = el('board-fx');
-    if (!layer) {
-      layer = document.createElement('div'); layer.id = 'board-fx';
-      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
-    }
-    const burst = document.createElement('div'); burst.className = 'orb-burst';
+    if (!board || typeof board.animate !== 'function') return;
+    const s = Math.min(3.2, strength);
+    animateOrb(board, [
+      { transform: 'translate3d(0,0,0)' },
+      { transform: `translate3d(${(-s * .55).toFixed(1)}px,${(s * .85).toFixed(1)}px,0)`, offset: .22 },
+      { transform: `translate3d(${(s * .45).toFixed(1)}px,${(-s * .5).toFixed(1)}px,0)`, offset: .52 },
+      { transform: `translate3d(${(-s * .2).toFixed(1)}px,${(s * .22).toFixed(1)}px,0)`, offset: .78 },
+      { transform: 'translate3d(0,0,0)' },
+    ], { duration: 150, delay, easing: 'ease-out' });
+  }
+  function burstOrb(view, rect, boardRect, delay = 0, duration = 240, opts = {}) {
+    view.motion?.cancel();
+    view.node.classList.remove('primed');
+    view.node.style.removeProperty('--prime-delay');
+    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+    const board = el('board'), layer = ensureBoardFx();
+    if (!board || !layer) { view.node.remove(); return; }
+    const type = view.node.dataset.type || '';
+    const climax = !!opts.climax, boss = !!opts.boss || view.node.classList.contains('boss');
+    const explosive = !!opts.explosive || view.node.classList.contains('explosive');
+    const intensity = Math.max(.9, Math.min(1.5, opts.intensity ?? 1));
+    const burst = document.createElement('div');
+    burst.className = 'orb-burst' + (climax || boss || explosive ? ' climax' : '');
     burst.dataset.orbId = view.node.dataset.orbId;
-    burst.dataset.type = view.node.dataset.type || '';
+    burst.dataset.type = type;
     if (view.node.dataset.element) burst.dataset.element = view.node.dataset.element;
     burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
+    const flash = document.createElement('i'); flash.className = 'orb-burst-flash'; burst.appendChild(flash);
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
-    for (let i = 0; i < 4; i++) {
-      const shard = document.createElement('i'); shard.className = 'orb-shard';
-      shard.style.setProperty('--dx', (i % 2 ? .68 : -.68) * rect.width + 'px');
-      shard.style.setProperty('--dy', (i < 2 ? -.6 : .6) * rect.height + 'px');
+    if (climax || boss || explosive || type === 'shield' || type === 'skull') {
+      const echo = document.createElement('i'); echo.className = 'orb-burst-ring-echo'; burst.appendChild(echo);
+    }
+    if (type === 'coin' || type === 'trophy' || climax || boss || explosive) {
+      const star = document.createElement('i'); star.className = 'orb-burst-star'; burst.appendChild(star);
+    }
+    if (type === 'potion') {
+      const mist = document.createElement('i'); mist.className = 'orb-burst-mist'; burst.appendChild(mist);
+    }
+    // Deterministic cosmetic scatter from orbId (never touches gameplay RNG).
+    const seed = Math.imul(Number(view.node.dataset.orbId) || 1, 2654435761) >>> 0;
+    const shardCount = boss || explosive ? 9 : climax ? 8 : 6;
+    const radius = rect.width * (.66 + intensity * .18);
+    for (let i = 0; i < shardCount; i++) {
+      const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
+      const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
+      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .56;
+      const dist = radius * (.62 + h2 * .52);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .08;
+      const shard = document.createElement('i');
+      const variant = type === 'potion' ? ' droplet'
+        : type === 'coin' || type === 'trophy' ? (i % 2 ? ' glint' : ' spark')
+        : type === 'sword' || type === 'arrow' || type === 'chain' ? (i % 3 ? ' spark' : '')
+        : (i % 2 ? ' heavy' : ' spark');
+      shard.className = 'orb-shard' + variant;
+      shard.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      shard.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      shard.style.setProperty('--grav', (7 + h1 * 11).toFixed(1) + 'px');
+      shard.style.setProperty('--sz', (6.5 + h2 * 5.5).toFixed(1) + '%');
+      shard.style.setProperty('--sc', (.85 + h1 * .42).toFixed(2));
+      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 220) + 'deg');
+      shard.style.setProperty('--sdur', (.30 + h2 * .11).toFixed(2) + 's');
       burst.appendChild(shard);
     }
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
-    if (view.node.dataset.type === 'sword') {
+    if (type === 'sword') {
       const slash = document.createElement('i'); slash.className = 'weapon-impact-slash'; burst.appendChild(slash);
       const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
     }
     layer.appendChild(burst);
     // Backwards fill holds an untriggered ghost in its original socket. Its
     // ring/shards stay hidden until the same delay (CSS forwards fill only).
-    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
-    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
+    animateOrb(view.node, [
+      { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' },
+      { transform: `scale(${climax || boss ? 1.2 : 1.15})`, opacity: .98, filter: 'brightness(1.6)', offset: .24 },
+      { transform: 'scale(.08)', opacity: 0, filter: 'brightness(1.85)' },
+    ], { duration, delay, easing: 'cubic-bezier(.32,0,.78,.36)', fill: 'both' }, () => view.node.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
   }
-  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390) {
+  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390, pitch = 0) {
     if (Math.abs(dx) + Math.abs(dy) < 1) return;
     view.motion?.cancel();
-    view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
     const falling = Math.abs(dx) < 1 && dy < 0;
-    const duration = Math.min(falling ? 390 : 300, maxDuration);
+    view.node.dataset.motion = incoming ? 'refill' : falling ? 'fall' : 'shift';
+    let frames, duration, easing;
+    if (falling) {
+      const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
+      const rows = Math.max(1, Math.abs(dy) / cellPitch);
+      const naturalDur = Math.round(180 + Math.sqrt(rows) * 70);
+      duration = Math.max(150, Math.min(naturalDur, maxDuration));
+      const impact = Math.min(1, .42 + Math.sqrt(rows) * .28);
+      const settleY = +(1.2 + impact * 1.4).toFixed(1);
+      const bounceY = +(2.2 + impact * 4.2).toFixed(1);
+      const sx = +(1 + .03 + impact * .035).toFixed(3);
+      const sy = +(1 - .032 - impact * .034).toFixed(3);
+      frames = incoming ? [
+        { transform: `translate3d(0,${dy}px,0) scaleX(.975) scaleY(1.035)`, opacity: 0, easing: 'cubic-bezier(.38,0,.84,.54)' },
+        { transform: `translate3d(0,${+(dy * .91).toFixed(2)}px,0) scaleX(.978) scaleY(1.03)`, opacity: 1, offset: .16, easing: 'cubic-bezier(.42,.08,.86,.58)' },
+        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .78, easing: 'cubic-bezier(.22,.68,.38,1)' },
+        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
+        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      ] : [
+        { transform: `translate3d(0,${dy}px,0) scaleX(.982) scaleY(1.026)`, opacity: 1, easing: 'cubic-bezier(.42,0,.86,.58)' },
+        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .77, easing: 'cubic-bezier(.22,.68,.38,1)' },
+        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
+        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      ];
+      easing = 'linear';
+    } else {
+      duration = Math.min(300, maxDuration);
+      frames = [
+        { transform: `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) scale(1)`, opacity: incoming ? .25 : 1 },
+        { transform: `translate3d(${(dx * .35).toFixed(1)}px,${(dy * .35).toFixed(1)}px,0) scale(1.045)`, opacity: 1, offset: .45 },
+        { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
+      ];
+      easing = 'cubic-bezier(.22,1,.36,1)';
+    }
     let animation;
-    animation = animateOrb(view.node, [
-      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .6 : 1 },
-      { transform: 'translate(0,0)', opacity: 1 },
-    ], { duration, delay, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' }, () => {
+    animation = animateOrb(view.node, frames, { duration, delay, easing, fill: 'both' }, () => {
       if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
     });
     view.motion = animation;
@@ -3695,19 +3826,48 @@
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
     const removed = [...previous].filter(([key]) => !keys.includes(key));
+    if (removed.length) el('board-fx')?.querySelectorAll('.chain-surge').forEach(n => n.remove());
     // Gesture order is local presentation data captured before settlement.
     // Only actual disappearances participate: never burst a surviving target
     // or an arrow-skipped resource. Area/Rune victims have no gesture order.
     const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
     const step = ordered.length > 1 ? Math.min(32, 120 / (ordered.length - 1)) : 0;
     const delays = new Map(ordered.map((key, index) => [key, index * step]));
-    // Fit the entire visible wave + one monotone fall inside the EXISTING
-    // 550ms enemy wait. Long chains compress the stagger, never extend a turn.
-    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
-    const maxDuration = ordered.length ? Math.min(390, 510 - fallDelay) : 390;
+    const orderIdx = new Map(ordered.map((key, index) => [key, index]));
+    // Per-column readiness: each column begins its gravity cascade as soon as
+    // every disappearing core in that column has collapsed, so columns flow in
+    // a natural wave without overlapping solid ghosts.
+    const colFallDelay = Array(COLS).fill(null);
+    let hasBossBurst = false, hasExplosiveBurst = false, skullBursts = 0;
+    const chainIntensity = ordered.length >= 8 ? 1.4 : ordered.length >= 5 ? 1.2 : 1;
     for (const [key, view] of removed) {
-      burstOrb(view, rects.get(key), boardRect, delays.get(key) || 0, delays.has(key) ? 120 : 240);
+      const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
+      const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
+      const doneAt = d + coreDur;
+      if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
+      const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
+      if (isBoss) hasBossBurst = true;
+      if (isExplosive) hasExplosiveBurst = true;
+      if (view.node.dataset.type === 'skull') skullBursts++;
+      const idxInChain = orderIdx.get(key);
+      const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
+      const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
+      burstOrb(view, rects.get(key), boardRect, d, coreDur, {
+        intensity: chainIntensity + progress * .22,
+        climax, boss: isBoss, explosive: isExplosive,
+      });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
+    }
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
+    if (removed.length && !orbReducedMotion()) {
+      const recoil = hasBossBurst || hasExplosiveBurst ? 3.0
+        : ordered.length >= 8 ? 2.6
+        : ordered.length >= 5 || skullBursts >= 2 ? 1.8
+        : 0;
+      if (recoil > 0) {
+        const climaxDelay = ordered.length ? Math.min(120, Math.round((ordered.length - 1) * step)) : 0;
+        triggerBoardRecoil(recoil, climaxDelay);
+      }
     }
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -3741,17 +3901,32 @@
       for (const plan of plans) plan.rect = plan.view.node.getBoundingClientRect();
       const first = qs('.cell[data-idx="0"]').getBoundingClientRect();
       const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - first.top;
+      // Rank falling orbs bottom-up inside each column for a natural cascade.
+      const colRanks = Array.from({ length: COLS }, () => []);
+      for (const plan of plans) if (plan.rect.width) colRanks[plan.idx % COLS].push(plan);
+      const rankOf = new Map();
+      for (const colPlans of colRanks) {
+        colPlans.sort((a, b) => b.idx - a.idx);
+        colPlans.forEach((plan, rank) => rankOf.set(plan, rank));
+      }
       // All animate() calls stay pending until the SAME next rendering frame.
       // Never force startTime to document.timeline.currentTime here: during a
       // long input/layout task it is the PREVIOUS frame's timestamp and would
       // skip the beginning (or all) of a fall on a slow device.
-      for (const { view, idx, old, moved, rect } of plans) {
+      const FALL_BUDGET = 530;
+      for (const plan of plans) {
+        const { view, idx, old, moved, rect } = plan;
         if (!rect.width) continue;
-        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, fallDelay, maxDuration);
+        const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
+        const rank = rankOf.get(plan) || 0;
+        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 210);
+        const orbDelay = baseColDelay + Math.min(rank * 18, maxExtra);
+        const orbMaxDur = Math.max(185, FALL_BUDGET - orbDelay);
+        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
         else if (!old) {
-          const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
-          if (row < count) moveOrb(view, 0, -pitch * count, true, fallDelay, maxDuration);
-          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, maxDuration), delay: ordered.length ? fallDelay : 0, fill: 'both' });
+          const row = Math.floor(idx / COLS), count = incoming[col];
+          if (row < count) moveOrb(view, 0, -pitch * count, true, orbDelay, orbMaxDur, pitch);
+          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, orbMaxDur), delay: ordered.length ? baseColDelay : 0, fill: 'both' });
         }
       }
     }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="c3e4c8b688da">
+<meta name="raid-build" content="1dc389852a44">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -1488,8 +1488,12 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 #board .cell.phylactery-ready .raid-orb { border-color: #ffe28a; box-shadow: 0 0 14px rgba(244, 198, 72, 0.85), inset 0 0 10px rgba(255, 224, 128, 0.62); }
 .cell.phylactery-ready { border-color: #f4c648; box-shadow: 0 0 18px rgba(244, 198, 72, 0.72), inset 0 0 12px rgba(255, 224, 128, 0.42); z-index: 6; }
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
-.raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
-.raid-orb.primed .orb-material { opacity: .18; }
+.raid-orb.primed {
+  border-color: rgb(var(--orb-rgb, 244 223 161) / .85);
+  box-shadow: 0 0 12px rgb(var(--orb-rgb, 244 223 161) / .52), inset 0 0 10px rgb(var(--orb-rgb, 244 223 161) / .34);
+}
+.raid-orb.primed .orb-core { animation: orb-prime .40s cubic-bezier(.34,1.2,.64,1) var(--prime-delay,0ms) both; }
+.raid-orb.primed .orb-material { opacity: .28; }
 .orb-ice { position: absolute; inset: 0; z-index: 6; border-radius: 50%; opacity: 0; background: radial-gradient(circle at 35% 20%,#f3fcff88,transparent 48%,#8cdbff50 80%); box-shadow: inset 0 0 0 2px #b0e6ffcc,inset 0 0 10px #b4ebffb3; pointer-events: none; }
 .orb-ice svg, .orb-fire svg { width: 100%; height: 100%; }
 .raid-orb.frozen .orb-ice { opacity: 1; }
@@ -1509,12 +1513,70 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 .raid-orb.explosive:not(.frozen) .orb-material::after { inset: 25%; background: radial-gradient(circle,#fff2ac80 0%,#ff6b3740 30%,transparent 65%); }
 .raid-orb.magic-sword .orb-core { filter: drop-shadow(0 0 3px #e5dcff); }
 .raid-orb.phylactery .orb-core { transform: none; filter: none; }
-.raid-orb[data-motion] { will-change: transform; }
+.raid-orb[data-motion] { will-change: transform, opacity; }
 #board-fx { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: inherit; }
-.orb-burst { position: absolute; pointer-events: none; }
+.chain-surge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.chain-surge path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.chain-surge path.surge-glow { stroke: rgb(var(--surge-rgb, 244 223 161) / .48); stroke-width: 11; filter: blur(3px); }
+.chain-surge path.surge-core { stroke: #fff7dc; stroke-width: 3.2; opacity: .78; filter: drop-shadow(0 0 5px rgb(var(--surge-rgb, 244 223 161) / .9)); }
+.chain-surge path.surge-bolt { stroke: #ffffff; stroke-width: 6.2; filter: drop-shadow(0 0 8px rgb(var(--surge-rgb, 244 223 161))); }
+.orb-burst { position: absolute; pointer-events: none; --burst-scale: 1; }
+.orb-burst.climax { --burst-scale: 1.24; }
 .orb-burst .orb-ghost { inset: 0; width: 100%; height: 100%; }
-.orb-burst-ring { position: absolute; inset: 5%; opacity: 0; border: 2px solid rgb(var(--orb-rgb) / .9); border-radius: 50%; box-shadow: 0 0 8px rgb(var(--orb-rgb) / .8); animation: orb-burst-ring .36s ease-out forwards; animation-delay: var(--burst-delay,0ms); }
-.orb-shard { position: absolute; left: 47%; top: 47%; width: 8%; height: 8%; opacity: 0; background: rgb(var(--orb-rgb)); box-shadow: 0 0 5px rgb(var(--orb-rgb)); animation: orb-shard .34s ease-out forwards; animation-delay: var(--burst-delay,0ms); }
+.orb-burst-flash {
+  position: absolute; inset: -16%; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: radial-gradient(circle, rgba(255,255,255,.95) 0%, rgb(var(--orb-rgb) / .76) 38%, rgb(var(--orb-rgb) / .18) 64%, transparent 78%);
+  mix-blend-mode: screen;
+  animation: orb-burst-flash .28s cubic-bezier(.16,.84,.3,1) var(--burst-delay,0ms) forwards;
+}
+.orb-burst-ring {
+  position: absolute; inset: 4%; opacity: 0;
+  border: 2px solid rgb(var(--orb-rgb) / .92); border-radius: 50%;
+  box-shadow: 0 0 10px rgb(var(--orb-rgb) / .82), inset 0 0 6px rgba(255,255,255,.35);
+  animation: orb-burst-ring .36s cubic-bezier(.16,.85,.32,1) var(--burst-delay,0ms) forwards;
+}
+.orb-burst-ring-echo {
+  position: absolute; inset: 8%; opacity: 0;
+  border: 1.5px solid rgba(255,255,255,.76); border-radius: 50%;
+  box-shadow: 0 0 8px rgb(var(--orb-rgb) / .72);
+  animation: orb-burst-ring-echo .38s cubic-bezier(.16,.85,.32,1) calc(var(--burst-delay,0ms) + 42ms) forwards;
+}
+.orb-burst-star {
+  position: absolute; left: 50%; top: 50%; width: 120%; height: 120%;
+  margin: -60% 0 0 -60%; opacity: 0; pointer-events: none;
+  animation: orb-burst-star .30s cubic-bezier(.16,.86,.32,1) var(--burst-delay,0ms) forwards;
+}
+.orb-burst-star::before, .orb-burst-star::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 100%; height: 10%;
+  transform: translate(-50%,-50%); border-radius: 99px;
+  background: linear-gradient(90deg, transparent 0%, rgb(var(--orb-rgb) / .7) 30%, #ffffff 50%, rgb(var(--orb-rgb) / .7) 70%, transparent 100%);
+  filter: drop-shadow(0 0 5px rgb(var(--orb-rgb) / .9));
+}
+.orb-burst-star::after { transform: translate(-50%,-50%) rotate(90deg); }
+.orb-burst-mist {
+  position: absolute; inset: -10%; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: radial-gradient(circle, rgb(var(--orb-rgb) / .52) 0%, rgb(var(--orb-rgb) / .18) 54%, transparent 78%);
+  animation: orb-burst-mist .36s ease-out var(--burst-delay,0ms) forwards;
+}
+.orb-shard {
+  position: absolute; left: 50%; top: 50%;
+  width: var(--sz, 9%); height: var(--sz, 9%);
+  margin: calc(var(--sz, 9%) / -2) 0 0 calc(var(--sz, 9%) / -2);
+  opacity: 0; border-radius: 2px;
+  background: linear-gradient(135deg, #ffffff 0%, rgb(var(--orb-rgb)) 56%);
+  box-shadow: 0 0 6px rgb(var(--orb-rgb) / .88);
+  animation: orb-shard var(--sdur, .36s) cubic-bezier(.18,.78,.32,1) var(--burst-delay,0ms) forwards;
+}
+.orb-shard.spark { width: 15%; height: 4.4%; margin: -2.2% 0 0 -7.5%; border-radius: 99px; }
+.orb-shard.droplet {
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffffff 0%, rgb(var(--orb-rgb)) 68%);
+}
+.orb-shard.glint {
+  clip-path: polygon(50% 0%, 66% 34%, 100% 50%, 66% 66%, 50% 100%, 34% 66%, 0% 50%, 34% 34%);
+  background: radial-gradient(circle, #ffffff 0%, rgb(var(--orb-rgb)) 76%);
+}
+.orb-shard.heavy { border-radius: 30% 70% 45% 55%; }
 @keyframes orb-fx-heat { 0%,100% { transform: translateY(1%); } 50% { transform: translateY(-1%); } }
 @keyframes orb-fx-mist { 0%,100% { transform: translate(-1%,1%); } 50% { transform: translate(1%,-1%); } }
 @keyframes orb-fx-flow { 0%,100% { transform: translate(-1%,.5%); } 50% { transform: translate(1%,-.5%); } }
@@ -1549,11 +1611,44 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 @keyframes weapon-impact-slash { 0% { opacity:0; transform:rotate(-42deg) scaleX(.06) translateX(-8%); } 18% { opacity:.95; } 68% { opacity:.75; transform:rotate(-42deg) scaleX(1) translateX(1%); } 100% { opacity:0; transform:rotate(-42deg) scaleX(1.08) translateX(5%); } }
 @keyframes orb-water-slosh { 0%,100% { transform: translate(-4%,1.5%); } 50% { transform: translate(4%,-1.5%); } }
 @keyframes orb-water-return { 0%,100% { transform: translate(3%,-1%); } 50% { transform: translate(-3%,1%); } }
-@keyframes orb-prime { 0%,100% { transform: scale(1); } 45% { transform: scale(1.12); filter: brightness(1.35); } }
-@keyframes orb-burst-ring { from { opacity: .9; transform: scale(.5); } to { opacity: 0; transform: scale(1.65); } }
-@keyframes orb-shard { from { opacity: 1; transform: translate(0,0) scale(.5) rotate(0); } to { opacity: 0; transform: translate(var(--dx),var(--dy)) scale(.2) rotate(120deg); } }
+@keyframes orb-prime {
+  0% { transform: scale(1); filter: brightness(1); }
+  26% { transform: scale(.91); filter: brightness(1.08); }
+  68% { transform: scale(1.15); filter: brightness(1.42) drop-shadow(0 0 6px rgb(var(--orb-rgb) / .78)); }
+  100% { transform: scale(1.06); filter: brightness(1.24); }
+}
+@keyframes orb-burst-flash {
+  0% { opacity: 0; transform: scale(.32); }
+  24% { opacity: .94; transform: scale(calc(1.18 * var(--burst-scale, 1))); }
+  100% { opacity: 0; transform: scale(calc(1.56 * var(--burst-scale, 1))); }
+}
+@keyframes orb-burst-ring {
+  0% { opacity: .95; transform: scale(.42); }
+  55% { opacity: .62; }
+  100% { opacity: 0; transform: scale(calc(1.82 * var(--burst-scale, 1))); }
+}
+@keyframes orb-burst-ring-echo {
+  0% { opacity: .82; transform: scale(.36); }
+  100% { opacity: 0; transform: scale(calc(2.08 * var(--burst-scale, 1))); }
+}
+@keyframes orb-burst-star {
+  0% { opacity: 0; transform: scale(.22) rotate(0deg); }
+  28% { opacity: 1; transform: scale(calc(1.08 * var(--burst-scale, 1))) rotate(14deg); }
+  100% { opacity: 0; transform: scale(calc(1.46 * var(--burst-scale, 1))) rotate(28deg); }
+}
+@keyframes orb-burst-mist {
+  0% { opacity: 0; transform: scale(.46); }
+  34% { opacity: .78; transform: scale(1.14); }
+  100% { opacity: 0; transform: scale(1.62); }
+}
+@keyframes orb-shard {
+  0% { opacity: 0; transform: translate3d(0,0,0) scale(.34) rotate(0deg); }
+  15% { opacity: 1; transform: translate3d(calc(var(--dx) * .36), calc(var(--dy) * .36), 0) scale(var(--sc, 1.06)) rotate(calc(var(--rot, 120deg) * .35)); }
+  56% { opacity: .9; transform: translate3d(calc(var(--dx) * .84), calc(var(--dy) * .78 + var(--grav, 10px) * .35), 0) scale(calc(var(--sc, 1) * .72)) rotate(calc(var(--rot, 120deg) * .75)); }
+  100% { opacity: 0; transform: translate3d(var(--dx), calc(var(--dy) + var(--grav, 10px)), 0) scale(.12) rotate(var(--rot, 120deg)); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .raid-orb, .raid-orb *, .raid-orb::before, .raid-orb::after, .orb-material::before, .orb-material::after, .orb-burst * { animation: none !important; transition: none !important; }
+  .raid-orb, .raid-orb *, .raid-orb::before, .raid-orb::after, .orb-material::before, .orb-material::after, .orb-burst *, .chain-surge, .chain-surge * { animation: none !important; transition: none !important; }
 }
 
 /* Read-only release notes: independent of the mandatory reward modal.
@@ -3434,7 +3529,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка c3e4c8b688da</p>
+    <p class="build-label">Сборка 1dc389852a44</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -3666,7 +3761,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка c3e4c8b688da</p>
+    <p class="build-label">Сборка 1dc389852a44</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -3705,16 +3800,17 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка c3e4c8b688da</p>
+      <p class="build-label" id="updates-build">Сборка 1dc389852a44</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="41"><b>Аккуратные кабошон-блик и каустика на плитках.</b> Верхний блик и нижний каустический отсвет уменьшены и разнесены по диагонали (верх-лево и низ-право вдоль кромки сферы), чтобы не перекрывать центр плитки.</li>
+        <li data-release="42"><b>Живая физика падения плиток и эффектный взрыв цепочек.</b> После отпускания пальца по цепочке пробегает световой разряд с волновой зарядкой, каждая плитка взрывается яркой вспышкой, ударным кольцом и тематическими искрами/каплями (с лёгкой отдачей доски на длинных комбо и боссах), а падающие плитки осыпаются живым каскадом по столбцам с гравитационным ускорением и упругим микро-отскоком при посадке.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="41"><b>Аккуратные кабошон-блик и каустика на плитках.</b> Верхний блик и нижний каустический отсвет уменьшены и разнесены по диагонали (верх-лево и низ-право вдоль кромки сферы), чтобы не перекрывать центр плитки.</li>
           <li data-release="40"><b>Стеклянные кабошоны плиток и локация в кнопке «Продолжить».</b> Чёрточки на кружках плиток заменены на верхний стеклянный кабошон-блик и нижний каустический отсвет, а на экране гаража кнопка «Продолжить» теперь сразу показывает локацию забега: Лес, Кузня, Разлом или Храм.</li>
           <li data-release="39"><b>Живая нижняя панель боя и узнаваемые символы.</b> Оружие уменьшено на 5% (с поправкой под топор, молот и булаву) и получило блик по силуэту; над апгрейдом стоит медальон умения «Апгрейд», над опытом — гранёный кристалл; панель мягко дышит и откликается на удары, лечение, броню, сбор ресурсов и смену снаряжения (с учётом настройки «Анимации»).</li>
           <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
@@ -3845,7 +3941,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка c3e4c8b688da.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 1dc389852a44.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>
@@ -7408,8 +7504,19 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     for (const view of ORB_VIEWS.values()) {
       view.motion = null; delete view.node.dataset.motion;
       view.node.classList.remove('primed');
+      view.node.style.removeProperty('--prime-delay');
     }
     el('board-fx')?.replaceChildren();
+  }
+  function ensureBoardFx() {
+    const board = el('board');
+    if (!board) return null;
+    let layer = el('board-fx');
+    if (!layer) {
+      layer = document.createElement('div'); layer.id = 'board-fx';
+      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
+    }
+    return layer;
   }
   function resetOrbPresentation() {
     finishOrbAnimations();
@@ -7433,54 +7540,174 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     return { state: 'liquid', rgb: '237 128 153', light: '#ffdade', mid: '#9b4e68', dark: '#3e2438' };
   }
   function primeOrbChain(indices) {
-    for (const idx of indices) {
-      const cell = S.board[idx];
-      if (cell && cell.type !== 'empty') ORB_VIEWS.get(orbIdentity(cell))?.node.classList.add('primed');
+    if (!indices?.length) return;
+    const step = indices.length > 1 ? Math.min(28, 150 / (indices.length - 1)) : 0;
+    let surgeRgb = '';
+    for (let i = 0; i < indices.length; i++) {
+      const cell = S.board[indices[i]];
+      if (!cell || cell.type === 'empty') continue;
+      const node = ORB_VIEWS.get(orbIdentity(cell))?.node;
+      if (!node) continue;
+      node.style.setProperty('--prime-delay', Math.round(i * step) + 'ms');
+      node.classList.add('primed');
+      if (!surgeRgb) surgeRgb = node.style.getPropertyValue('--orb-rgb').trim();
     }
+    if (orbReducedMotion() || indices.length < 2) return;
+    const layer = ensureBoardFx();
+    if (!layer) return;
+    layer.querySelectorAll('.chain-surge').forEach(n => n.remove());
+    const pts = indices.map(cellCenter);
+    let totalLen = 0;
+    for (let i = 1; i < pts.length; i++) totalLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (totalLen < 2) return;
+    const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'chain-surge');
+    svg.setAttribute('aria-hidden', 'true');
+    if (surgeRgb) svg.style.setProperty('--surge-rgb', surgeRgb);
+    const makePath = cls => {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      p.setAttribute('d', d); p.setAttribute('class', cls);
+      return p;
+    };
+    const glow = makePath('surge-glow'), core = makePath('surge-core'), bolt = makePath('surge-bolt');
+    const boltLen = Math.max(24, Math.min(84, totalLen * 0.34));
+    bolt.style.strokeDasharray = `${boltLen.toFixed(1)} ${(totalLen + boltLen + 16).toFixed(1)}`;
+    bolt.style.strokeDashoffset = `${boltLen.toFixed(1)}`;
+    svg.append(glow, core, bolt);
+    layer.appendChild(svg);
+    animateOrb(bolt, [
+      { strokeDashoffset: boltLen.toFixed(1), opacity: .85 },
+      { strokeDashoffset: (-totalLen).toFixed(1), opacity: 1 },
+    ], { duration: 340, easing: 'cubic-bezier(.42,0,.28,1)', fill: 'forwards' });
+    animateOrb(svg, [
+      { opacity: .25 },
+      { opacity: 1, offset: .18 },
+      { opacity: .95, offset: .82 },
+      { opacity: 0 },
+    ], { duration: 405, easing: 'ease-out', fill: 'forwards' }, () => svg.remove());
   }
-  function burstOrb(view, rect, boardRect, delay = 0, duration = 240) {
-    view.motion?.cancel(); view.node.classList.remove('primed');
-    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+  function triggerBoardRecoil(strength, delay = 0) {
+    if (orbReducedMotion() || strength < .8) return;
     const board = el('board');
-    let layer = el('board-fx');
-    if (!layer) {
-      layer = document.createElement('div'); layer.id = 'board-fx';
-      layer.setAttribute('aria-hidden', 'true'); board.appendChild(layer);
-    }
-    const burst = document.createElement('div'); burst.className = 'orb-burst';
+    if (!board || typeof board.animate !== 'function') return;
+    const s = Math.min(3.2, strength);
+    animateOrb(board, [
+      { transform: 'translate3d(0,0,0)' },
+      { transform: `translate3d(${(-s * .55).toFixed(1)}px,${(s * .85).toFixed(1)}px,0)`, offset: .22 },
+      { transform: `translate3d(${(s * .45).toFixed(1)}px,${(-s * .5).toFixed(1)}px,0)`, offset: .52 },
+      { transform: `translate3d(${(-s * .2).toFixed(1)}px,${(s * .22).toFixed(1)}px,0)`, offset: .78 },
+      { transform: 'translate3d(0,0,0)' },
+    ], { duration: 150, delay, easing: 'ease-out' });
+  }
+  function burstOrb(view, rect, boardRect, delay = 0, duration = 240, opts = {}) {
+    view.motion?.cancel();
+    view.node.classList.remove('primed');
+    view.node.style.removeProperty('--prime-delay');
+    if (!rect?.width || orbReducedMotion() || typeof view.node.animate !== 'function') { view.node.remove(); return; }
+    const board = el('board'), layer = ensureBoardFx();
+    if (!board || !layer) { view.node.remove(); return; }
+    const type = view.node.dataset.type || '';
+    const climax = !!opts.climax, boss = !!opts.boss || view.node.classList.contains('boss');
+    const explosive = !!opts.explosive || view.node.classList.contains('explosive');
+    const intensity = Math.max(.9, Math.min(1.5, opts.intensity ?? 1));
+    const burst = document.createElement('div');
+    burst.className = 'orb-burst' + (climax || boss || explosive ? ' climax' : '');
     burst.dataset.orbId = view.node.dataset.orbId;
-    burst.dataset.type = view.node.dataset.type || '';
+    burst.dataset.type = type;
     if (view.node.dataset.element) burst.dataset.element = view.node.dataset.element;
     burst.style.cssText = `left:${rect.left - boardRect.left - board.clientLeft}px;top:${rect.top - boardRect.top - board.clientTop}px;width:${rect.width}px;height:${rect.height}px;--orb-rgb:${view.node.style.getPropertyValue('--orb-rgb')};--burst-delay:${delay}ms`;
+    const flash = document.createElement('i'); flash.className = 'orb-burst-flash'; burst.appendChild(flash);
     const ring = document.createElement('i'); ring.className = 'orb-burst-ring'; burst.appendChild(ring);
-    for (let i = 0; i < 4; i++) {
-      const shard = document.createElement('i'); shard.className = 'orb-shard';
-      shard.style.setProperty('--dx', (i % 2 ? .68 : -.68) * rect.width + 'px');
-      shard.style.setProperty('--dy', (i < 2 ? -.6 : .6) * rect.height + 'px');
+    if (climax || boss || explosive || type === 'shield' || type === 'skull') {
+      const echo = document.createElement('i'); echo.className = 'orb-burst-ring-echo'; burst.appendChild(echo);
+    }
+    if (type === 'coin' || type === 'trophy' || climax || boss || explosive) {
+      const star = document.createElement('i'); star.className = 'orb-burst-star'; burst.appendChild(star);
+    }
+    if (type === 'potion') {
+      const mist = document.createElement('i'); mist.className = 'orb-burst-mist'; burst.appendChild(mist);
+    }
+    // Deterministic cosmetic scatter from orbId (never touches gameplay RNG).
+    const seed = Math.imul(Number(view.node.dataset.orbId) || 1, 2654435761) >>> 0;
+    const shardCount = boss || explosive ? 9 : climax ? 8 : 6;
+    const radius = rect.width * (.66 + intensity * .18);
+    for (let i = 0; i < shardCount; i++) {
+      const h1 = (Math.imul(seed ^ (i + 1) * 2246822519, 3266489917) >>> 0) / 4294967296;
+      const h2 = (Math.imul(seed ^ (i + 7) * 3266489917, 668265263) >>> 0) / 4294967296;
+      const angle = (i / shardCount) * Math.PI * 2 + (h1 - .5) * .56;
+      const dist = radius * (.62 + h2 * .52);
+      const dx = Math.cos(angle) * dist, dy = Math.sin(angle) * dist - rect.height * .08;
+      const shard = document.createElement('i');
+      const variant = type === 'potion' ? ' droplet'
+        : type === 'coin' || type === 'trophy' ? (i % 2 ? ' glint' : ' spark')
+        : type === 'sword' || type === 'arrow' || type === 'chain' ? (i % 3 ? ' spark' : '')
+        : (i % 2 ? ' heavy' : ' spark');
+      shard.className = 'orb-shard' + variant;
+      shard.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      shard.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      shard.style.setProperty('--grav', (7 + h1 * 11).toFixed(1) + 'px');
+      shard.style.setProperty('--sz', (6.5 + h2 * 5.5).toFixed(1) + '%');
+      shard.style.setProperty('--sc', (.85 + h1 * .42).toFixed(2));
+      shard.style.setProperty('--rot', Math.round((angle * 180 / Math.PI) + (h2 - .5) * 220) + 'deg');
+      shard.style.setProperty('--sdur', (.30 + h2 * .11).toFixed(2) + 's');
       burst.appendChild(shard);
     }
     view.node.classList.add('orb-ghost'); burst.appendChild(view.node);
-    if (view.node.dataset.type === 'sword') {
+    if (type === 'sword') {
       const slash = document.createElement('i'); slash.className = 'weapon-impact-slash'; burst.appendChild(slash);
       const echo = document.createElement('i'); echo.className = 'weapon-impact-echo'; burst.appendChild(echo);
     }
     layer.appendChild(burst);
     // Backwards fill holds an untriggered ghost in its original socket. Its
     // ring/shards stay hidden until the same delay (CSS forwards fill only).
-    animateOrb(view.node, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.13)', opacity: .95, offset: .24 }, { transform: 'scale(.08)', opacity: 0 }], { duration, delay, easing: 'ease-out', fill: 'both' }, () => view.node.remove());
-    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .5 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
+    animateOrb(view.node, [
+      { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' },
+      { transform: `scale(${climax || boss ? 1.2 : 1.15})`, opacity: .98, filter: 'brightness(1.6)', offset: .24 },
+      { transform: 'scale(.08)', opacity: 0, filter: 'brightness(1.85)' },
+    ], { duration, delay, easing: 'cubic-bezier(.32,0,.78,.36)', fill: 'both' }, () => view.node.remove());
+    animateOrb(burst, [{ opacity: 1 }, { opacity: 1, offset: .64 }, { opacity: 0 }], { duration: 360, delay }, () => burst.remove());
   }
-  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390) {
+  function moveOrb(view, dx, dy, incoming, delay, maxDuration = 390, pitch = 0) {
     if (Math.abs(dx) + Math.abs(dy) < 1) return;
     view.motion?.cancel();
-    view.node.dataset.motion = incoming ? 'refill' : Math.abs(dx) < 1 && dy < 0 ? 'fall' : 'shift';
     const falling = Math.abs(dx) < 1 && dy < 0;
-    const duration = Math.min(falling ? 390 : 300, maxDuration);
+    view.node.dataset.motion = incoming ? 'refill' : falling ? 'fall' : 'shift';
+    let frames, duration, easing;
+    if (falling) {
+      const cellPitch = pitch > 1 ? pitch : Math.max(44, Math.abs(dy));
+      const rows = Math.max(1, Math.abs(dy) / cellPitch);
+      const naturalDur = Math.round(180 + Math.sqrt(rows) * 70);
+      duration = Math.max(150, Math.min(naturalDur, maxDuration));
+      const impact = Math.min(1, .42 + Math.sqrt(rows) * .28);
+      const settleY = +(1.2 + impact * 1.4).toFixed(1);
+      const bounceY = +(2.2 + impact * 4.2).toFixed(1);
+      const sx = +(1 + .03 + impact * .035).toFixed(3);
+      const sy = +(1 - .032 - impact * .034).toFixed(3);
+      frames = incoming ? [
+        { transform: `translate3d(0,${dy}px,0) scaleX(.975) scaleY(1.035)`, opacity: 0, easing: 'cubic-bezier(.38,0,.84,.54)' },
+        { transform: `translate3d(0,${+(dy * .91).toFixed(2)}px,0) scaleX(.978) scaleY(1.03)`, opacity: 1, offset: .16, easing: 'cubic-bezier(.42,.08,.86,.58)' },
+        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .78, easing: 'cubic-bezier(.22,.68,.38,1)' },
+        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
+        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      ] : [
+        { transform: `translate3d(0,${dy}px,0) scaleX(.982) scaleY(1.026)`, opacity: 1, easing: 'cubic-bezier(.42,0,.86,.58)' },
+        { transform: `translate3d(0,${settleY}px,0) scaleX(${sx}) scaleY(${sy})`, opacity: 1, offset: .77, easing: 'cubic-bezier(.22,.68,.38,1)' },
+        { transform: `translate3d(0,${-bounceY}px,0) scaleX(.99) scaleY(1.014)`, opacity: 1, offset: .91, easing: 'cubic-bezier(.42,0,.58,1)' },
+        { transform: 'translate3d(0,0,0) scaleX(1) scaleY(1)', opacity: 1 },
+      ];
+      easing = 'linear';
+    } else {
+      duration = Math.min(300, maxDuration);
+      frames = [
+        { transform: `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) scale(1)`, opacity: incoming ? .25 : 1 },
+        { transform: `translate3d(${(dx * .35).toFixed(1)}px,${(dy * .35).toFixed(1)}px,0) scale(1.045)`, opacity: 1, offset: .45 },
+        { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
+      ];
+      easing = 'cubic-bezier(.22,1,.36,1)';
+    }
     let animation;
-    animation = animateOrb(view.node, [
-      { transform: `translate(${dx}px,${dy}px)`, opacity: incoming ? .6 : 1 },
-      { transform: 'translate(0,0)', opacity: 1 },
-    ], { duration, delay, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' }, () => {
+    animation = animateOrb(view.node, frames, { duration, delay, easing, fill: 'both' }, () => {
       if (view.motion === animation) { view.motion = null; delete view.node.dataset.motion; }
     });
     view.motion = animation;
@@ -7586,19 +7813,48 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
     // touching the DOM. A same-type neighbour is NOT the same orb.
     for (const [key, view] of previous) rects.set(key, view.node.getBoundingClientRect());
     const removed = [...previous].filter(([key]) => !keys.includes(key));
+    if (removed.length) el('board-fx')?.querySelectorAll('.chain-surge').forEach(n => n.remove());
     // Gesture order is local presentation data captured before settlement.
     // Only actual disappearances participate: never burst a surviving target
     // or an arrow-skipped resource. Area/Rune victims have no gesture order.
     const ordered = chainOrder.filter(key => previous.has(key) && !keys.includes(key));
     const step = ordered.length > 1 ? Math.min(32, 120 / (ordered.length - 1)) : 0;
     const delays = new Map(ordered.map((key, index) => [key, index * step]));
-    // Fit the entire visible wave + one monotone fall inside the EXISTING
-    // 550ms enemy wait. Long chains compress the stagger, never extend a turn.
-    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
-    const maxDuration = ordered.length ? Math.min(390, 510 - fallDelay) : 390;
+    const orderIdx = new Map(ordered.map((key, index) => [key, index]));
+    // Per-column readiness: each column begins its gravity cascade as soon as
+    // every disappearing core in that column has collapsed, so columns flow in
+    // a natural wave without overlapping solid ghosts.
+    const colFallDelay = Array(COLS).fill(null);
+    let hasBossBurst = false, hasExplosiveBurst = false, skullBursts = 0;
+    const chainIntensity = ordered.length >= 8 ? 1.4 : ordered.length >= 5 ? 1.2 : 1;
     for (const [key, view] of removed) {
-      burstOrb(view, rects.get(key), boardRect, delays.get(key) || 0, delays.has(key) ? 120 : 240);
+      const col = typeof view.slot === 'number' ? view.slot % COLS : -1;
+      const d = delays.get(key) || 0, coreDur = delays.has(key) ? 120 : 240;
+      const doneAt = d + coreDur;
+      if (col >= 0 && col < COLS) colFallDelay[col] = Math.max(colFallDelay[col] ?? 0, doneAt);
+      const isBoss = view.node.classList.contains('boss'), isExplosive = view.node.classList.contains('explosive');
+      if (isBoss) hasBossBurst = true;
+      if (isExplosive) hasExplosiveBurst = true;
+      if (view.node.dataset.type === 'skull') skullBursts++;
+      const idxInChain = orderIdx.get(key);
+      const climax = isBoss || isExplosive || (ordered.length >= 5 && idxInChain === ordered.length - 1);
+      const progress = ordered.length > 1 && idxInChain !== undefined ? idxInChain / (ordered.length - 1) : 0;
+      burstOrb(view, rects.get(key), boardRect, d, coreDur, {
+        intensity: chainIntensity + progress * .22,
+        climax, boss: isBoss, explosive: isExplosive,
+      });
       if (typeof key === 'string' && key.startsWith('skull:')) SKULL_IMAGES.delete(Number(key.slice(6)));
+    }
+    const fallDelay = ordered.length ? Math.max(...removed.map(([key]) => delays.has(key) ? delays.get(key) + 120 : 240)) : 65;
+    if (removed.length && !orbReducedMotion()) {
+      const recoil = hasBossBurst || hasExplosiveBurst ? 3.0
+        : ordered.length >= 8 ? 2.6
+        : ordered.length >= 5 || skullBursts >= 2 ? 1.8
+        : 0;
+      if (recoil > 0) {
+        const climaxDelay = ordered.length ? Math.min(120, Math.round((ordered.length - 1) * step)) : 0;
+        triggerBoardRecoil(recoil, climaxDelay);
+      }
     }
     const incoming = Array(COLS).fill(0);
     for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
@@ -7632,17 +7888,32 @@ window.RAID_MONSTER_ART = {"fire_spark":"data:image/webp;base64,UklGRrIzAABXRUJQ
       for (const plan of plans) plan.rect = plan.view.node.getBoundingClientRect();
       const first = qs('.cell[data-idx="0"]').getBoundingClientRect();
       const pitch = qs('.cell[data-idx="6"]').getBoundingClientRect().top - first.top;
+      // Rank falling orbs bottom-up inside each column for a natural cascade.
+      const colRanks = Array.from({ length: COLS }, () => []);
+      for (const plan of plans) if (plan.rect.width) colRanks[plan.idx % COLS].push(plan);
+      const rankOf = new Map();
+      for (const colPlans of colRanks) {
+        colPlans.sort((a, b) => b.idx - a.idx);
+        colPlans.forEach((plan, rank) => rankOf.set(plan, rank));
+      }
       // All animate() calls stay pending until the SAME next rendering frame.
       // Never force startTime to document.timeline.currentTime here: during a
       // long input/layout task it is the PREVIOUS frame's timestamp and would
       // skip the beginning (or all) of a fall on a slow device.
-      for (const { view, idx, old, moved, rect } of plans) {
+      const FALL_BUDGET = 530;
+      for (const plan of plans) {
+        const { view, idx, old, moved, rect } = plan;
         if (!rect.width) continue;
-        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, fallDelay, maxDuration);
+        const col = idx % COLS, baseColDelay = colFallDelay[col] ?? fallDelay;
+        const rank = rankOf.get(plan) || 0;
+        const maxExtra = Math.max(0, FALL_BUDGET - baseColDelay - 210);
+        const orbDelay = baseColDelay + Math.min(rank * 18, maxExtra);
+        const orbMaxDur = Math.max(185, FALL_BUDGET - orbDelay);
+        if (moved && old?.width) moveOrb(view, old.left - rect.left, old.top - rect.top, false, orbDelay, orbMaxDur, pitch);
         else if (!old) {
-          const row = Math.floor(idx / COLS), count = incoming[idx % COLS];
-          if (row < count) moveOrb(view, 0, -pitch * count, true, fallDelay, maxDuration);
-          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, maxDuration), delay: ordered.length ? fallDelay : 0, fill: 'both' });
+          const row = Math.floor(idx / COLS), count = incoming[col];
+          if (row < count) moveOrb(view, 0, -pitch * count, true, orbDelay, orbMaxDur, pitch);
+          else animateOrb(view.node, [{ transform: 'scale(.72)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: Math.min(260, orbMaxDur), delay: ordered.length ? baseColDelay : 0, fill: 'both' });
         }
       }
     }
