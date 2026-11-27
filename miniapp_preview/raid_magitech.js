@@ -4004,6 +4004,22 @@
     return Math.min(100, Math.round((base + .05 * (per - equipment) + .05 * cha) * 100) + offset + baseIncrease) + 5 * equipment;
   }
 
+  const HUD_WIDE_WEAPONS = new Set(['techno-hammer-v2', 'techno-axe-v2', 'techno-mace-v2']);
+  let hudAnimPrev = null;
+
+  function triggerHudPulse(node, cls, ms = 420) {
+    if (!node || document.documentElement.dataset.raidMotion === 'off') return;
+    if (!node._hudTimers) node._hudTimers = Object.create(null);
+    if (node._hudTimers[cls]) clearTimeout(node._hudTimers[cls]);
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
+    node._hudTimers[cls] = setTimeout(() => {
+      node.classList.remove(cls);
+      delete node._hudTimers[cls];
+    }, ms);
+  }
+
   function renderHUD() {
     for (const node of qsa('[data-raid-combat-title]')) node.textContent = ELEMENTAL_COMBAT ? 'RAID / СТИХИИ' : 'RAID / ПРЕЖНИЙ БОЙ';
     for (const node of qsa('[data-raid-combat-note]')) node.textContent = ELEMENTAL_COMBAT
@@ -4025,6 +4041,10 @@
     if (el('xp-text')) el('xp-text').textContent = `${fmt(h.xp)}/${fmt(h.xpNext)}`;
     if (el('gold-text')) el('gold-text').textContent = `${fmt(h.gold)}/${GOLD_BOX_MAX}`;
     if (el('upgrade-text')) el('upgrade-text').textContent = `${fmt(S.upgradeBar)}/${UPGRADE_BAR_MAX}`;
+    const upIconHost = el('hud-upgrade-icon');
+    if (upIconHost && !upIconHost.firstElementChild) upIconHost.innerHTML = raidModuleIcon('enchant');
+    const hpSlot = el('hud-hp');
+    if (hpSlot) hpSlot.dataset.lowHp = h.hp > 0 && hpPct <= 30 ? '1' : '0';
     const cls = CLASSES.find(entry => entry.id === S.classId) || CLASSES[0];
     const mechArt = el('hud-mech-art');
     if (mechArt && cls) {
@@ -4035,6 +4055,12 @@
     if (el('hud-mech-name') && cls) el('hud-mech-name').textContent = `${cls.name} · Ур. ${h.level}`;
     const weaponImg = el('hud-weapon-art');
     if (weaponImg) syncRaidWeaponTexture(weaponImg);
+    const weaponGlint = el('hud-weapon-glint');
+    if (weaponGlint) syncRaidWeaponTexture(weaponGlint);
+    const weaponStage = el('hud-weapon-stage');
+    if (weaponStage && weaponImg) {
+      weaponStage.dataset.weaponWide = HUD_WIDE_WEAPONS.has(weaponImg.dataset.weaponArt) ? '1' : '0';
+    }
     const shieldImg = el('hud-shield-art');
     if (shieldImg) syncRaidShieldTexture(shieldImg);
     const armorSlot = el('hud-armor');
@@ -4056,9 +4082,42 @@
       + (runPilotAffinity()?.element ? ' ' + pilotAffinityDescription() : '');
     const weaponSlot = el('hud-weapon');
     if (weaponSlot) {
+      weaponSlot.dataset.boosted = S.swordBoost > 0 ? '1' : '0';
       const weaponItem = S.equipment?.find(entry => entry.slot === 'weapon');
       weaponSlot.title = `${weaponItem ? weaponItem.name : 'Оружие'} · ${dmgTitle}`;
     }
+    const weaponKey = weaponImg ? weaponImg.dataset.weaponKey || '' : '';
+    const shieldKey = shieldImg ? shieldImg.dataset.shieldKey || '' : '';
+    if (hudAnimPrev && hudAnimPrev.stateRef === S) {
+      if (h.hp < hudAnimPrev.hp) triggerHudPulse(hpSlot, 'hud-react-hurt', 380);
+      else if (h.hp > hudAnimPrev.hp) triggerHudPulse(hpSlot, 'hud-react-heal', 400);
+      if (h.armor < hudAnimPrev.armor) triggerHudPulse(armorSlot, 'hud-react-hit', 360);
+      else if (h.armor > hudAnimPrev.armor) triggerHudPulse(armorSlot, 'hud-react-gain', 400);
+      if (h.level > hudAnimPrev.level) triggerHudPulse(el('hud-xp'), 'hud-react-full', 500);
+      else if (h.xp > hudAnimPrev.xp || (h.xpLevelCum || 0) > hudAnimPrev.xpCum) triggerHudPulse(el('hud-xp'), 'hud-react-gain', 400);
+      const upGained = (S.upgradeEarned || 0) > hudAnimPrev.upgradeEarned || S.upgradeBar > hudAnimPrev.upgradeBar;
+      if (upGained && S.upgradeBar < hudAnimPrev.upgradeBar) triggerHudPulse(el('hud-upgrade'), 'hud-react-full', 500);
+      else if (upGained) triggerHudPulse(el('hud-upgrade'), 'hud-react-gain', 400);
+      const goldGained = (S.goldEarned || 0) > hudAnimPrev.goldEarned || h.gold > hudAnimPrev.gold;
+      if (goldGained && h.gold < hudAnimPrev.gold) triggerHudPulse(el('hud-gold'), 'hud-react-full', 500);
+      else if (goldGained) triggerHudPulse(el('hud-gold'), 'hud-react-gain', 440);
+      if (weaponKey && hudAnimPrev.weaponKey && weaponKey !== hudAnimPrev.weaponKey) triggerHudPulse(weaponSlot, 'hud-react-swap', 440);
+      if (shieldKey && hudAnimPrev.shieldKey && shieldKey !== hudAnimPrev.shieldKey) triggerHudPulse(armorSlot, 'hud-react-swap', 440);
+    }
+    hudAnimPrev = {
+      stateRef: S,
+      hp: h.hp,
+      armor: h.armor,
+      level: h.level,
+      xp: h.xp,
+      xpCum: h.xpLevelCum || 0,
+      upgradeBar: S.upgradeBar,
+      upgradeEarned: S.upgradeEarned || 0,
+      gold: h.gold,
+      goldEarned: S.goldEarned || 0,
+      weaponKey,
+      shieldKey,
+    };
     const damageLabel = el('dmg-text');
     if (damageLabel) {
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDmg)}`;
