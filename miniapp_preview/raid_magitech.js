@@ -2536,6 +2536,7 @@
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]); Object.freeze(S.classConfig);
     S.equipment = S.equipment.map(item => ({ ...item, slotName: itemSlotById(item.slot).name, icon: itemSlotById(item.slot).icon }));
     closeClassEditor(false); pickerOpen = false; pickerGeneration++;
+    stopGuideLoop();
     for (const id of ['class-picker', 'modal', 'menu-modal', 'help-modal', 'beginner-guide', 'restart-modal']) el(id)?.classList.remove('show');
     const board = el('board'); if (board) { board.innerHTML = ''; delete board.dataset.cellsReady; }
     renderBoard(); renderHUD(); renderChainTip();
@@ -4421,12 +4422,19 @@
       swordCount, skulls, lethals, phylacteries, interior, resources, specialRewards, acid, mana };
   }
 
+  let COMBAT_SWORD_HINT_RUN_ID = -1;
+
   function renderChainTip() {
     const tip = el('chain-tip');
     if (!tip) return;
     const preview = chainPreview();
     if (el('chain-count')) el('chain-count').textContent = 'Цепь ' + (preview ? preview.effectiveLength : 0);
     if (!preview || (preview.effectiveLength < 3 && !preview.interior.length)) {
+      if (preview && preview.effectiveLength === 2 && preview.skulls.length === 2 && preview.swordCount === 0 && S.turn <= 6) {
+        tip.classList.add('show');
+        tip.innerHTML = '<b>2</b> врага · <span class="chain-tip-hint">💡 Веди к мечу! Мечи и враги соединяются в одну цепь (3+)</span>';
+        return;
+      }
       tip.classList.remove('show'); tip.textContent = ''; return;
     }
     const parts = [], res = preview.resources;
@@ -4436,6 +4444,9 @@
       const killableCount = preview.skulls.length - phylacteryCount;
       if (killableCount > 0 || !phylacteryCount) parts.push(`Убито ${preview.lethals.length}/${killableCount}`);
       if (phylacteryCount > 0) parts.push(phylacteryCount === 1 ? 'Лич → филактерий' : `Лич → филактерий ×${phylacteryCount}`);
+      if (preview.skulls.length > 0 && preview.swordCount === 0 && preview.lethals.length === 0 && !phylacteryCount) {
+        parts.push('<span class="chain-tip-hint">💡 Добавь меч в цепь — урон вырастет!</span>');
+      }
     }
     if (res.armorGained) parts.push(`+${res.armorGained} брони`);
     if (res.upGained) parts.push(`+${res.upGained} UP`);
@@ -4758,7 +4769,8 @@
     try { RUN_SAVE_BASE = profileStorage.getItem(RUN_SAVE_KEY); } catch (e) { RUN_SAVE_BASE = undefined; }
     clearTimeout(SAVE_TIMER); SAVE_TIMER = null;
     closeRunHistory();
-    for (const id of ['restart-modal', 'menu-modal', 'help-modal']) el(id)?.classList.remove('show');
+    stopGuideLoop();
+    for (const id of ['restart-modal', 'menu-modal', 'help-modal', 'beginner-guide']) el(id)?.classList.remove('show');
     activeDrag = false; window.removeEventListener?.('pointermove', onPointerMove);
     closeClassEditor(false);
     pickerOpen = false; pickerGeneration++;
@@ -4837,6 +4849,9 @@
     log('✦ Новый забег: ' + cls.name + ' спускается в рейд');
     syncIntroMusic();
     if (saveRun()) saveRaidAppearance();
+    if (seed === undefined && shouldAutoShowBeginnerGuide()) {
+      openBeginnerGuide({ scene: 0, autoFirstRun: true });
+    }
   }
 
   function isSelectable(cellType) { return cellType !== 'empty'; }
@@ -6413,8 +6428,18 @@
     if (!S || UPDATES_OPEN || HISTORY_OPEN || RETUNE_DRAFT || S.resolving || S.over || S.pendingModal || !ownsRunSlot()) return;
     const chain = S.selected.slice();
     if (chain.length === 1 && S.board[chain[0]].type === 'trophy') { claimTrophy(chain[0]); return; }
-    const snapshot = chainSnapshot(chain), { committed, rune, skulls } = snapshot;
-    if (!committed && !rune.length) { clearChain(); return; }
+    const previewBefore = chainPreview();
+    const snapshot = chainSnapshot(chain), { committed, rune, skulls, swords } = snapshot;
+    if (!committed && !rune.length) {
+      if (chain.length === 2 && chain.every(idx => S.board[idx]?.type === 'skull')) {
+        flash('💡 Врагов бьют в одной цепи с мечами! Соедини от 3 клеток (мечи + враги).');
+      }
+      clearChain(); return;
+    }
+    if (committed && skulls.length >= 3 && swords.length === 0 && previewBefore && previewBefore.lethals.length === 0 && !(previewBefore.phylacteries?.length) && COMBAT_SWORD_HINT_RUN_ID !== RUN_ID) {
+      COMBAT_SWORD_HINT_RUN_ID = RUN_ID;
+      flash('💡 Совет: веди цепь через мечи и врагов вместе — каждый меч прибавляет урон!');
+    }
     if (committed && S.chainType === 'sword') audioSwordChain();
     else if (committed && S.chainType === 'coin') audioCoinChain();
     else if (committed && S.chainType === 'potion') audioPotionChain();
@@ -7979,7 +8004,7 @@
       const btn = document.createElement('button');
       btn.type = 'button'; btn.dataset.classId = cls.id;
       btn.className = 'picker-card-btn' + (unlocked ? '' : ' locked') + (getSelectedClassId() === cls.id ? ' selected' : '');
-      btn.setAttribute('aria-label', (unlocked ? 'Новый забег: ' : 'Закрытый мех: ') + cls.name);
+      btn.setAttribute('aria-label', (unlocked ? 'Новый забег: ' : 'Закрытый мех: ') + cls.name + (unlocked ? '' : ' — нажми, чтобы узнать как открыть'));
       const desc = [];
       for (const kind of ['perks', 'flaws']) {
         const names = config[kind].filter(Boolean).map(name => CLASS_TRAITS[kind][name].name), positive = kind === 'perks';
@@ -7987,8 +8012,8 @@
       }
       const status = unlocked ? `<span class="pick-lvl">Уровень меха ${classLevelOf(cls.id)} · начать новый забег</span>`
         : '<span class="pick-locked">Закрыт · нужен трофей на поле</span>';
-      btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"></span></span><span class="pick-name">${cls.name}</span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : 'ЗАКРЫТ'}</span>`;
-      btn.title = `Открыть карточку меха «${cls.name}»`;
+      btn.innerHTML = `<span class="mech-portrait"><img src="miniapp_preview/assets/mech_${cls.id}.png" alt="" draggable="false"><span class="mech-portrait-ring"></span></span><span class="pick-name">${cls.name}</span><span class="mech-card-status">${unlocked ? `УР. ${classLevelOf(cls.id)}` : '🔒 ТРОФЕЙ'}</span>`;
+      btn.title = unlocked ? `Открыть карточку меха «${cls.name}»` : `Закрытый мех «${cls.name}» — нажми, чтобы узнать как открыть`;
       btn.setAttribute('aria-haspopup', 'dialog');
       const line = (label, text) => {
         const p = document.createElement('p'); p.className = 'mech-detail-line';
@@ -7997,7 +8022,12 @@
       };
       const openGarage = () => {
         if (!current()) return;
-        restoreDetailControls(); detailOwner = row; detailBody.classList.remove('mech-info-view'); detailBody.classList.add('mech-garage-home'); detailBody.replaceChildren();
+        const mechUnlocked = isClassUnlocked(cls.id);
+        restoreDetailControls(); detailOwner = row;
+        detailBody.classList.remove('mech-info-view');
+        detailBody.classList.add('mech-garage-home');
+        detailBody.classList.toggle('is-locked', !mechUnlocked);
+        detailBody.replaceChildren();
         const portrait = document.createElement('div'); portrait.className = 'mech-detail-portrait';
         const image = document.createElement('img'); image.src = `miniapp_preview/assets/mech_${cls.id}.png`; image.alt = ''; image.draggable = false; portrait.appendChild(image);
         const heading = document.createElement('h3'); heading.textContent = cls.name;
@@ -8017,7 +8047,7 @@
         cockpit.append(headArt, cockpitCaption);
         const actions = document.createElement('div'); actions.className = 'mech-detail-actions mech-garage-side-actions';
         const detailsView = (kind) => {
-          restoreDetailControls(); detailBody.classList.remove('mech-garage-home'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
+          restoreDetailControls(); detailBody.classList.remove('mech-garage-home', 'is-locked'); detailBody.classList.add('mech-info-view'); detailBody.replaceChildren();
           const back = document.createElement('button'); back.type = 'button'; back.className = 'mech-detail-back'; back.textContent = 'Назад'; back.addEventListener('click', openGarage);
           const footer = document.createElement('div'); footer.className = 'mech-detail-footer';
           const tabTitle = document.createElement('h3'); tabTitle.className = 'mech-tab-title'; tabTitle.textContent = kind === 'pilot' ? RACE_INFO[pilotRace].name : 'О мехе';
@@ -8072,11 +8102,14 @@
             detailBody.append(pilotDescription);
           } else {
             detailBody.appendChild(portrait.cloneNode(true));
+            const unlockedCount = CLASSES.filter(c => isClassUnlocked(c.id)).length;
             detailBody.append(line('Специализация · ', cls.clsDesc || 'Особенности задаются настройками этого меха.'),
               line('Модуль · ', cls.uniqueSkillDesc),
               line('Пассивы · ', config.perks.filter(Boolean).map(name => CLASS_TRAITS.perks[name].name).join(' · ') || 'нет'),
               line('Изъяны · ', config.flaws.filter(Boolean).map(name => CLASS_TRAITS.flaws[name].name).join(' · ') || 'нет'),
-              line('Доступ · ', unlocked ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд` : 'закрыт · откроется за трофей на поле'));
+              line('Доступ · ', isClassUnlocked(cls.id)
+                ? `уровень меха ${classLevelOf(cls.id)} · можно начать новый рейд`
+                : `закрыт · побеждай особых врагов и боссов на Нормальном или Сложном уровне, затем нажми на выпавший трофей на поле (открыто ${unlockedCount}/${CLASSES.length}; за Авантюриста трофей всегда открывает нового меха). На Лёгком трофеи не выпадают.`));
             const configButton = row.querySelector('.class-config-btn');
             if (configButton) detailBody.appendChild(configButton);
             footer.appendChild(back);
@@ -8107,7 +8140,7 @@
           action.addEventListener('click', () => detailsView(kind)); control.append(action, caption); actions.appendChild(control);
         }
         const go = document.createElement('button'); go.type = 'button'; go.className = 'mech-go-button'; go.textContent = 'Поехали!';
-        go.disabled = !isClassUnlocked(cls.id);
+        go.disabled = !mechUnlocked;
         go.addEventListener('click', () => {
           if (!current() || !isClassUnlocked(cls.id)) return;
           closeDetail();
@@ -8122,7 +8155,38 @@
           el('region-emblem-launch')?.focus();
         });
         detailBody.append(hero, cockpit, actions, go);
-        detail.hidden = false; go.focus();
+        let focusTarget = go;
+        if (!mechUnlocked) {
+          const unlockedCount = CLASSES.filter(c => isClassUnlocked(c.id)).length;
+          const remaining = Math.max(1, S ? S.trophyRemaining : readTrophyRemaining());
+          const diffEl = qs('#difficulty-select');
+          const diffVal = Number((diffEl && diffEl.value) ?? (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+          const callout = document.createElement('div');
+          callout.className = 'mech-unlock-callout';
+          callout.setAttribute('role', 'note');
+          const wordForm = remaining === 1 ? 'особ. враг' : (remaining >= 2 && remaining <= 4 ? 'особ. врага' : 'особ. врагов');
+          const statusRight = diffVal === 0
+            ? '<span class="mech-unlock-warn">Сейчас «Лёгкий» — трофеи не падают</span>'
+            : `<span>До трофея: ${remaining} ${wordForm}</span>`;
+          callout.innerHTML = `<div class="mech-unlock-head">`
+            + `<img class="mech-unlock-trophy" src="${TROPHY_IMAGE}" alt="" draggable="false">`
+            + `<p class="mech-unlock-title">🔒 Как открыть «${cls.name}»</p>`
+            + `</div>`
+            + `<p class="mech-unlock-desc">Побеждай <b>особых врагов и боссов</b> на <b>Нормальном</b> или <b>Сложном</b> уровне — на поле выпадет трофей. <b>Нажми на него</b>, чтобы открыть нового меха (за Авантюриста — 100% новый мех).</p>`
+            + `<div class="mech-unlock-meta"><span>Открыто мехов: ${unlockedCount} / ${CLASSES.length}</span>${statusRight}</div>`;
+          const guideBtn = document.createElement('button');
+          guideBtn.type = 'button';
+          guideBtn.className = 'mech-unlock-guide-btn';
+          guideBtn.textContent = 'Показать в гайде →';
+          guideBtn.addEventListener('click', () => {
+            closeDetail();
+            openBeginnerGuide({ scene: 2, autoFirstRun: false });
+          });
+          callout.appendChild(guideBtn);
+          detailBody.appendChild(callout);
+          focusTarget = guideBtn;
+        }
+        detail.hidden = false; focusTarget.focus();
       };
       // Selecting any mech opens its circular garage card; launch is a deliberate second action.
       bindReadOnlyDismiss(btn, openGarage, () => generation);
@@ -8375,7 +8439,7 @@
     cancelPointerGesture();
     if (telegramLayer('exit-modal')) cancelTelegramExit();
     else if (telegramLayer('restart-modal')) cancelNewGame();
-    else if (telegramLayer('beginner-guide')) { el('beginner-guide').classList.remove('show'); el('menu-help')?.focus(); }
+    else if (telegramLayer('beginner-guide')) { closeBeginnerGuide({ focus: true }); }
     else if (telegramLayer('help-modal')) { el('help-modal').classList.remove('show'); el('menu-btn')?.focus(); }
     else if (HISTORY_OPEN) closeRunHistory();
     else if (classEditor) closeClassEditor();
@@ -8802,20 +8866,19 @@
         hide(); showClassPicker();
       });
       const restart = qs('#menu-restart'); if (restart) restart.addEventListener('click', () => requestNewGame());
-      const openBeginnerGuide = () => { qs('#beginner-guide')?.classList.add('show'); qs('#guide-close')?.focus(); };
-      qs('#picker-guide')?.addEventListener('click', openBeginnerGuide);
+      qs('#picker-guide')?.addEventListener('click', () => openBeginnerGuide({ scene: 0, autoFirstRun: false }));
       const mhelp = qs('#menu-help'); if (mhelp) mhelp.addEventListener('click', () => {
         hide();
-        const wrap = qs('#beginner-guide');
-        if (wrap) { wrap.classList.add('show'); qs('#guide-close')?.focus(); }
+        openBeginnerGuide({ scene: 0, autoFirstRun: false });
       });
       const guideClose = qs('#guide-close');
-      guideClose?.addEventListener('click', () => { qs('#beginner-guide')?.classList.remove('show'); qs('#menu-help')?.focus(); });
+      guideClose?.addEventListener('click', () => closeBeginnerGuide({ focus: true }));
       qs('#guide-tech-help')?.addEventListener('click', () => {
-        qs('#beginner-guide')?.classList.remove('show');
+        closeBeginnerGuide({ focus: false });
         qs('#help-modal')?.classList.add('show'); qs('#help-close')?.focus();
       });
     }
+    initBeginnerGuideControls();
     const statsBtn = qs('#stats-btn');
     if (statsBtn) statsBtn.addEventListener('click', () => {
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
@@ -8828,6 +8891,253 @@
     });
     showClassPicker();
     initUpdateNotice();
+  }
+
+  // --- #51: Interactive animated beginner guide & first-run onboarding -------
+  const GUIDE_SEEN_KEY = 'raid:guideSeen';
+  const GUIDE_CENTERS = [38, 108, 178];
+  let GUIDE_SCENE = 0;
+  let GUIDE_STEP = 0;
+  let GUIDE_TIMER = null;
+  let GUIDE_AUTO_FIRST_RUN = false;
+
+  const GUIDE_ICONS = {
+    sword: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M36 6 42 6 42 12 22 32 16 26Z" fill="#d7ece8" stroke="#7fe5d2" stroke-width="1.5"/><path d="M13 23 25 35 22 38 10 26Z" fill="#d4b16a"/><path d="M14 34 8 40 12 42 18 36Z" fill="#9c7a3c"/></svg>',
+    enemy: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="22" r="14" fill="#4f2438" stroke="#e47b8c" stroke-width="2"/><path d="M15 21 20 18 20 24ZM33 21 28 18 28 24Z" fill="#ffd97d"/><path d="M18 30h12v5H18Z" fill="#e5d6df"/><path d="M21 30v5m6-5v5" stroke="#4f2438" stroke-width="1.6"/></svg>',
+    special: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="23" r="14" fill="#4b2a58" stroke="#f6cc6a" stroke-width="2.2"/><path d="M13 12 19 16 24 8 29 16 35 12 32 20H16Z" fill="#f6cc6a"/><circle cx="19" cy="24" r="2.4" fill="#ffef9e"/><circle cx="29" cy="24" r="2.4" fill="#ffef9e"/><path d="M19 31h10" stroke="#ffd98a" stroke-width="2.2" stroke-linecap="round"/></svg>',
+    potion: '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="19" y="7" width="10" height="5" rx="2" fill="#d5b374"/><path d="M20 12h8v5l8 12a9 9 0 0 1-7.5 13h-9A9 9 0 0 1 12 29l8-12Z" fill="#d75b78" stroke="#ffd5df" stroke-width="1.6"/><path d="M24 25v10m-5-5h10" stroke="#fff4f7" stroke-width="2.4" stroke-linecap="round"/></svg>',
+    shield: '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 6 39 12v12c0 9-6.5 15.5-15 18-8.5-2.5-15-9-15-18V12Z" fill="#3b5e73" stroke="#e4c87b" stroke-width="2"/><path d="M24 12v24m-9-12h18" stroke="#9be3e8" stroke-width="2" stroke-linecap="round"/></svg>',
+    coin: '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="15" fill="#d39a2b" stroke="#ffea9c" stroke-width="2"/><path d="m24 13 8 11-8 11-8-11Z" fill="#ffe184"/></svg>',
+  };
+
+  const GUIDE_SCENES = [
+    {
+      title: 'Соединяй врагов ВМЕСТЕ с мечами в одну цепь!',
+      desc: 'Веди пальцем от <b>3 клеток</b> (можно по диагонали). Каждый меч добавляет урон по всем врагам в этой цепи. Начать можно и с врага, и с меча — но без мечей урон слабый.',
+      tiles: [
+        { kind: 'sword' }, { kind: 'shield' }, { kind: 'coin' },
+        { kind: 'potion' }, { kind: 'enemy', tag: '♥4' }, { kind: 'sword' },
+        { kind: 'coin' }, { kind: 'potion' }, { kind: 'enemy', tag: '♥4' },
+      ],
+      staticStep: 3,
+      steps: [
+        { delay: 800, path: [0], finger: 0, bar: '1. Начни с меча (или врага) и тяни палец' },
+        { delay: 800, path: [0, 4], finger: 4, bar: '2. Захватывай врага в ту же цепь (можно по диагонали)' },
+        { delay: 850, path: [0, 4, 5], finger: 5, lethal: [4], bar: '3 клетки · Урон 4 · Убито 1/1 (враг помечен ☠)' },
+        { delay: 1150, path: [0, 4, 5, 8], finger: 8, lethal: [4, 8], bar: '4 клетки · Урон 6 · Убито 2/2!' },
+        { delay: 1300, path: [], popped: [0, 4, 5, 8], toast: '⚔️ −6 урона · 2 врага побеждены!', bar: 'Отпусти палец — удар нанесён всем врагам в цепи!' },
+      ],
+    },
+    {
+      title: 'Зелья лечат, щиты чинят броню, монеты — в магазин',
+      desc: 'Соединяй <b>3+ одинаковых ресурса</b>. При полной броне щиты копят <b>UP</b> для улучшения снаряжения, а <b>100 монет</b> открывают покупку новой вещи.',
+      tiles: [
+        { kind: 'potion', tag: '+HP' }, { kind: 'sword' }, { kind: 'shield' },
+        { kind: 'coin' }, { kind: 'potion', tag: '+HP' }, { kind: 'shield' },
+        { kind: 'enemy', tag: '♥4' }, { kind: 'potion', tag: '+HP' }, { kind: 'shield' },
+      ],
+      staticStep: 2,
+      steps: [
+        { delay: 750, path: [0], finger: 0, bar: 'Зелья: тяни 3+ красных колбы для лечения HP' },
+        { delay: 750, path: [0, 4], finger: 4, bar: '2 зелья — тяни к третьему!' },
+        { delay: 1000, path: [0, 4, 7], finger: 7, bar: '3 зелья · +12 HP' },
+        { delay: 1100, path: [], popped: [0, 4, 7], toast: '🧪 +12 HP восстановлено!', bar: 'Здоровье пополнено!' },
+        { delay: 950, path: [2, 5, 8], finger: 8, bar: '3 щита · +Броня (или +UP при полной броне)' },
+        { delay: 1150, path: [], popped: [2, 5, 8], toast: '🛡️ Броня восстановлена!', bar: 'Так же собираются 3+ монеты для магазина!' },
+      ],
+    },
+    {
+      title: 'Как открыть Варвара и других мехов',
+      desc: 'Играй на <b>Нормальном</b> или <b>Сложном</b> уровне и побеждай <b>особых врагов и боссов</b>. На их месте выпадет золотой трофей — <b>просто нажми на него</b>! За Авантюриста трофей всегда открывает нового меха.',
+      tiles: [
+        { kind: 'sword' }, { kind: 'coin' }, { kind: 'potion' },
+        { kind: 'shield' }, { kind: 'special', tag: '★ ОСОБ.' }, { kind: 'sword' },
+        { kind: 'coin' }, { kind: 'shield' }, { kind: 'potion' },
+      ],
+      staticStep: 2,
+      steps: [
+        { delay: 1050, path: [], finger: null, bar: '1. Победи особого врага (в золотой рамке) или босса' },
+        { delay: 1000, path: [], replace: { 4: { kind: 'trophy', tag: 'ТАП!' } }, finger: null, bar: '2. На его месте появится золотой трофей!' },
+        { delay: 950, path: [], replace: { 4: { kind: 'trophy', tag: 'ТАП!' } }, finger: 4, tapping: true, bar: '3. Просто НАЖМИ на трофей — враги при этом не ходят!' },
+        { delay: 1500, path: [], replace: { 4: { kind: 'trophy' } }, popped: [4], toast: '✨ Новый мех «Варвар» открыт!', bar: 'Трофей открывает нового меха или повышает его уровень!' },
+      ],
+    },
+  ];
+
+  function stopGuideLoop() {
+    if (GUIDE_TIMER !== null) {
+      clearTimeout(GUIDE_TIMER);
+      GUIDE_TIMER = null;
+    }
+  }
+
+  function renderGuideIcon(kind) {
+    if (kind === 'trophy') return `<img class="guide-trophy-img" src="${TROPHY_IMAGE}" alt="" draggable="false">`;
+    return GUIDE_ICONS[kind] || '';
+  }
+
+  function renderGuideFrame(sceneIdx, stepIdx) {
+    const scene = GUIDE_SCENES[sceneIdx] || GUIDE_SCENES[0];
+    const step = scene.steps[stepIdx] || scene.steps[0];
+    const player = el('guide-player');
+    const tilesWrap = el('guide-tiles');
+    const previewBar = el('guide-preview-bar');
+    const caption = el('guide-caption');
+    const linePath = el('guide-line-path');
+    const lineGlow = el('guide-line-glow');
+    const finger = el('guide-finger');
+    const toast = el('guide-toast');
+    if (!player || !tilesWrap) return;
+
+    player.dataset.scene = String(sceneIdx);
+    for (const tab of qsa('#beginner-guide .guide-tab')) {
+      const active = Number(tab.dataset.guideScene) === sceneIdx;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    }
+    const dots = qsa('#guide-dots i');
+    dots.forEach((dot, idx) => dot.classList.toggle('on', idx === sceneIdx));
+
+    if (caption) caption.innerHTML = `<h4>${scene.title}</h4><p>${scene.desc}</p>`;
+    if (previewBar) previewBar.textContent = step.bar || '';
+
+    const selectedSet = new Set(step.path || []);
+    const lethalSet = new Set(step.lethal || []);
+    const poppedSet = new Set(step.popped || []);
+    const replacements = step.replace || {};
+
+    tilesWrap.innerHTML = '';
+    for (let i = 0; i < 9; i++) {
+      const data = replacements[i] || scene.tiles[i];
+      const cell = document.createElement('div');
+      cell.className = 'guide-tile';
+      if (data.kind === 'special') cell.classList.add('is-special');
+      if (data.kind === 'trophy') cell.classList.add('is-trophy');
+      if (selectedSet.has(i)) cell.classList.add('is-selected');
+      if (lethalSet.has(i)) cell.classList.add('is-lethal');
+      if (poppedSet.has(i)) cell.classList.add('is-popped');
+      cell.innerHTML = renderGuideIcon(data.kind) + (data.tag ? `<span class="guide-tile-tag">${data.tag}</span>` : '');
+      tilesWrap.appendChild(cell);
+    }
+
+    const pathPoints = (step.path || []).map(idx => ({
+      x: GUIDE_CENTERS[idx % 3],
+      y: GUIDE_CENTERS[Math.floor(idx / 3)],
+    }));
+    const d = pathPoints.length >= 2
+      ? pathPoints.map((p, i) => (i === 0 ? 'M' : 'L') + p.x + ' ' + p.y).join(' ')
+      : '';
+    if (linePath) linePath.setAttribute('d', d);
+    if (lineGlow) lineGlow.setAttribute('d', d);
+
+    if (finger) {
+      if (Number.isInteger(step.finger)) {
+        finger.style.left = GUIDE_CENTERS[step.finger % 3] + 'px';
+        finger.style.top = GUIDE_CENTERS[Math.floor(step.finger / 3)] + 'px';
+        finger.classList.add('visible');
+        finger.classList.toggle('tapping', !!step.tapping);
+      } else {
+        finger.classList.remove('visible', 'tapping');
+      }
+    }
+
+    if (toast) {
+      if (step.toast) { toast.textContent = step.toast; toast.hidden = false; }
+      else { toast.hidden = true; toast.textContent = ''; }
+    }
+  }
+
+  function scheduleGuideTick() {
+    stopGuideLoop();
+    const wrap = el('beginner-guide');
+    if (!wrap || !wrap.classList.contains('show')) return;
+    const scene = GUIDE_SCENES[GUIDE_SCENE] || GUIDE_SCENES[0];
+    if (orbReducedMotion()) {
+      renderGuideFrame(GUIDE_SCENE, scene.staticStep ?? 0);
+      return;
+    }
+    renderGuideFrame(GUIDE_SCENE, GUIDE_STEP);
+    const step = scene.steps[GUIDE_STEP] || scene.steps[0];
+    GUIDE_TIMER = setTimeout(() => {
+      GUIDE_TIMER = null;
+      const modal = el('beginner-guide');
+      if (!modal || !modal.classList.contains('show')) return;
+      GUIDE_STEP = (GUIDE_STEP + 1) % scene.steps.length;
+      scheduleGuideTick();
+    }, step.delay || 900);
+  }
+
+  function setGuideScene(index) {
+    GUIDE_SCENE = ((index % GUIDE_SCENES.length) + GUIDE_SCENES.length) % GUIDE_SCENES.length;
+    GUIDE_STEP = 0;
+    scheduleGuideTick();
+  }
+
+  function markGuideSeen() {
+    try { profileStorage.setItem(GUIDE_SEEN_KEY, '1'); } catch (e) {}
+  }
+
+  function shouldAutoShowBeginnerGuide() {
+    if (!S || S.over || S.turn > 0 || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal) return false;
+    try {
+      if (profileStorage.getItem(GUIDE_SEEN_KEY) === '1') return false;
+    } catch (e) { return false; }
+    const history = readRunHistory()?.data;
+    if (history) {
+      const hasRecords = Array.isArray(history.records) && history.records.some(bucket => Array.isArray(bucket) && bucket.length > 0);
+      const hasGames = history.classes && Object.values(history.classes).some(entry => (entry?.games || 0) > 0);
+      if (hasRecords || hasGames || (Array.isArray(history.completed) && history.completed.length > 0)) return false;
+    }
+    if (CLASSES.some(c => c.id !== 'adventurer' && isClassUnlocked(c.id))) return false;
+    return true;
+  }
+
+  function openBeginnerGuide({ scene = 0, autoFirstRun = false } = {}) {
+    const wrap = el('beginner-guide');
+    if (!wrap) return false;
+    GUIDE_AUTO_FIRST_RUN = !!autoFirstRun;
+    wrap.classList.add('show');
+    setGuideScene(scene);
+    el('guide-close')?.focus();
+    syncTelegramChrome();
+    return true;
+  }
+
+  function closeBeginnerGuide({ focus = true } = {}) {
+    const wrap = el('beginner-guide');
+    const wasAuto = GUIDE_AUTO_FIRST_RUN;
+    GUIDE_AUTO_FIRST_RUN = false;
+    stopGuideLoop();
+    markGuideSeen();
+    if (wrap) wrap.classList.remove('show');
+    if (focus) {
+      if (wasAuto) el('menu-btn')?.focus();
+      else el('menu-help')?.focus();
+    }
+    syncTelegramChrome();
+  }
+
+  function initBeginnerGuideControls() {
+    const wrap = el('beginner-guide');
+    if (!wrap) return;
+    for (const tab of qsa('#beginner-guide .guide-tab')) {
+      tab.addEventListener('click', () => setGuideScene(Number(tab.dataset.guideScene) || 0));
+    }
+    el('guide-prev')?.addEventListener('click', () => setGuideScene(GUIDE_SCENE - 1));
+    el('guide-next')?.addEventListener('click', () => setGuideScene(GUIDE_SCENE + 1));
+    wrap.addEventListener('click', event => {
+      if (event.target === wrap) closeBeginnerGuide({ focus: true });
+    });
+    wrap.addEventListener('keydown', event => {
+      if (!wrap.classList.contains('show')) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeBeginnerGuide({ focus: true }); }
+      else if (event.key === 'ArrowRight') { event.preventDefault(); setGuideScene(GUIDE_SCENE + 1); }
+      else if (event.key === 'ArrowLeft') { event.preventDefault(); setGuideScene(GUIDE_SCENE - 1); }
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopGuideLoop();
+      else if (el('beginner-guide')?.classList.contains('show')) scheduleGuideTick();
+    });
   }
 
   // expose for testing / debugging

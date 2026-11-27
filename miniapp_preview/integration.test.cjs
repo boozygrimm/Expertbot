@@ -3195,7 +3195,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Стабильные 60 FPS в долгих забегах/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Понятное открытие закрытых мехов/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Стабильные 60 FPS в долгих забегах/);
     assert.match(doc.querySelector('#updates-history').textContent, /Объёмное 3D-покачивание монет/);
     assert.match(doc.querySelector('#updates-history').textContent, /Ускорение загрузки и плавность на телефонах/);
     assert.match(doc.querySelector('#updates-history').textContent, /Чистый классический бой без стихий/);
@@ -5303,4 +5304,91 @@ test('magitech mobile performance #48: externalized cache-busted assets, zero ba
     assert.deepEqual(fast.errors, []);
   } finally { fast.dom.window.close(); }
 });
+
+test('magitech onboarding #51: locked mech explains trophy unlock, animated guide auto-opens once for new players, and combat hints sword+enemy chains', async () => {
+  const b = await openMagitech({ start: false });
+  try {
+    const doc = b.dom.window.document;
+    // 1. Locked mech (Barbarian) clearly shows trophy unlock instructions on tap.
+    const barbBtn = doc.querySelector('.picker-card-btn[data-class-id="barbarian"]');
+    assert.ok(barbBtn && barbBtn.classList.contains('locked'));
+    assert.match(barbBtn.textContent, /ТРОФЕЙ/);
+    barbBtn.click();
+    const detailBody = doc.querySelector('.mech-detail-body.mech-garage-home');
+    assert.ok(detailBody && detailBody.classList.contains('is-locked'));
+    assert.equal(doc.querySelector('.mech-go-button').disabled, true);
+    const callout = detailBody.querySelector('.mech-unlock-callout');
+    assert.ok(callout, 'locked mech shows clear unlock callout inside garage');
+    assert.match(callout.textContent, /Как открыть «Варвар»/);
+    assert.match(callout.textContent, /особых врагов и боссов/i);
+    assert.match(callout.textContent, /Открыто мехов:\s*1\s*\/\s*10/);
+    assert.match(callout.textContent, /До трофея:\s*1\s*особ/);
+    assert.ok(callout.querySelector('img.mech-unlock-trophy')?.getAttribute('src')?.includes('raid_trophy'));
+
+    // Switching difficulty to Easy warns that trophies do not drop on Easy.
+    const diffSelect = doc.querySelector('#difficulty-select');
+    if (diffSelect) {
+      diffSelect.value = '0';
+      doc.querySelector('.mech-detail-popover').click();
+      barbBtn.click();
+      assert.match(doc.querySelector('.mech-unlock-callout').textContent, /Лёгкий/);
+      diffSelect.value = '1';
+    }
+
+    // "Показать в гайде →" opens animated beginner guide directly at scene 2 (trophy/mechs).
+    doc.querySelector('.mech-unlock-guide-btn').click();
+    const guide = doc.querySelector('#beginner-guide');
+    assert.ok(guide.classList.contains('show'));
+    assert.equal(doc.querySelector('#guide-player').dataset.scene, '2');
+    assert.equal(doc.querySelectorAll('#guide-tiles .guide-tile').length, 9);
+    assert.match(doc.querySelector('#guide-caption').textContent, /Варвара/);
+    // Tab switching & navigation arrows work smoothly.
+    doc.querySelector('#guide-prev').click();
+    assert.equal(doc.querySelector('#guide-player').dataset.scene, '1');
+    doc.querySelector('.guide-tab[data-guide-scene="0"]').click();
+    assert.equal(doc.querySelector('#guide-player').dataset.scene, '0');
+    assert.match(doc.querySelector('#guide-caption').textContent, /мечами в одну цепь/i);
+    // Closing sets raid:guideSeen = '1'.
+    doc.querySelector('#guide-close').click();
+    assert.equal(guide.classList.contains('show'), false);
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:guideSeen')), '1');
+
+    // 2. First-run auto-show: clear guideSeen on a fresh profile and launch first run via UI.
+    b.dom.window.localStorage.removeItem(magitechKey('raid:guideSeen'));
+    launchMagitechMech(doc, 'adventurer');
+    assert.ok(guide.classList.contains('show'), 'animated guide auto-opens before first battle for new players');
+    assert.equal(doc.querySelector('#guide-player').dataset.scene, '0');
+    doc.querySelector('#guide-close').click();
+    assert.equal(guide.classList.contains('show'), false);
+    assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:guideSeen')), '1');
+
+    // Second run must NOT auto-open the guide again.
+    doc.querySelector('#menu-btn').click();
+    doc.querySelector('#menu-restart').click();
+    doc.querySelector('#restart-confirm').click();
+    assert.equal(guide.classList.contains('show'), false, 'guide does not auto-open after already seen');
+
+    // 3. In-combat contextual hint when chaining enemies without swords.
+    const mkEnemy = () => ({ type: 'skull', skull: Object.assign(b.raid.makeSkull(false, false, 0), { hp: 20, maxHp: 20, atk: 2, def: 1, enteredTurn: -1 }) });
+    b.raid.state.board[0] = mkEnemy();
+    b.raid.state.board[1] = mkEnemy();
+    b.raid.state.board[2] = mkEnemy();
+    b.raid.tryExtendChain(0);
+    b.raid.tryExtendChain(1);
+    assert.ok(doc.querySelector('#chain-tip').classList.contains('show'));
+    assert.match(doc.querySelector('#chain-tip').textContent, /Веди к мечу/i);
+    // Releasing 2 enemies flashes a friendly sword+enemy hint.
+    b.raid.resolveChain();
+    assert.match(doc.querySelector('#notice')?.textContent || doc.body.textContent, /одной цепи с мечами/i);
+    // Chaining 3 enemies without swords and 0 kills adds an inline hint in #chain-tip.
+    b.raid.tryExtendChain(0);
+    b.raid.tryExtendChain(1);
+    b.raid.tryExtendChain(2);
+    assert.match(doc.querySelector('#chain-tip').textContent, /Добавь меч в цепь/i);
+    b.raid.clearChain();
+
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 
