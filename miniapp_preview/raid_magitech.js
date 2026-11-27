@@ -4582,6 +4582,7 @@
         if (c && c.type === 'potion' && !c.acid && !c.mana) idxs.push(i);
       }
       collectIndices(idxs, { noSkulls: true, skipAcid: true, skipMana: true });
+      if (idxs.length) audioPotionChain();
       flash('❤ Собрано обычных зелий: ' + idxs.length);
     } else if (id === 'repair') {
       const idxs = [];
@@ -4590,6 +4591,7 @@
         if (c && c.type === 'shield') idxs.push(i);
       }
       collectIndices(idxs, { noSkulls: true });
+      if (idxs.length) audioShieldChain();
       flash('⚒ Собрано щитов: ' + idxs.length + ' — ремонт или UP');
     } else if (id === 'counter') {
       S.counterattack = 1;
@@ -4636,6 +4638,7 @@
         return cell && cell.type === 'potion' && !cell.acid && !cell.mana && !cell.explosive;
       });
       collectIndices(idxs, { noSkulls: true, rewardType: 'xp' });
+      if (idxs.length) audioPotionChain();
       flash('⚗ Эликсир: ' + idxs.length + ' обычных зелий → токены XP');
     } else if (id === 'enchant') {
       requestRewardMenu('armor');
@@ -4670,6 +4673,7 @@
         if (c && c.type === 'coin') idxs.push(i);
       }
       collectIndices(idxs, { noSkulls: true });
+      if (idxs.length) audioCoinChain();
       flash('💎 Кладовая: собрано монет ' + idxs.length);
     } else if (id === 'scavenge') {
       let n = 0;
@@ -4843,7 +4847,11 @@
         if (id === 'shock' && (cell.type === 'shield' || cell.type === 'coin')) idxs.push(i);
         if (id === 'awe' && (cell.type === 'shield' || cell.type === 'potion')) idxs.push(i);
       }
+      const collectedTypes = new Set(idxs.map(i => S.board[i]?.type));
       collectIndices(idxs, { noSkulls: true, skipAcid: true });
+      if (collectedTypes.has('shield')) audioShieldChain();
+      if (collectedTypes.has('coin')) audioCoinChain();
+      if (collectedTypes.has('potion')) audioPotionChain();
       flash((id === 'shock' ? '⚡ Шок' : '🌀 Благоговение') + ': собрано клеток ' + idxs.length);
     } else if (id === 'berserk') {
       activateTurnFlag('berserkActive');

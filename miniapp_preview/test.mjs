@@ -5929,8 +5929,9 @@ test('release notice shows one short current item and keeps older notes collapse
   const html = readFileSync(new URL('./raid_magitech.html', import.meta.url), 'utf8');
   const current = html.match(/<ul id="updates-current">([\s\S]*?)<\/ul>/)?.[1] || '';
   assert.equal((current.match(/<li\b/g) || []).length, 1);
-  assert.match(current, /Два звука брони/);
+  assert.match(current, /Звуки умений сбора ресурсов/);
   const archive = html.match(/<details class="updates-history" id="updates-history">([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(archive, /Два звука брони/);
   assert.match(archive, /Подсказка перехода Лича в филактерий/);
   assert.match(archive, /Компактная боевая шапка/);
   assert.match(archive, /Два звука зелий/);
