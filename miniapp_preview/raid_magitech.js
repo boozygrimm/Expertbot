@@ -3391,6 +3391,7 @@
     S.chainType = chainTypeForCell(S.board[chain[0]]);
     if (firstSelection && S.board[cellIdx].type === 'sword') audioSwordSelect();
     else if (firstSelection && S.board[cellIdx].type === 'coin') audioCoinSelect();
+    else if (firstSelection && S.board[cellIdx].type === 'potion') audioPotionSelect();
     onChainChanged();
   }
 
@@ -5414,7 +5415,7 @@
       AUDIO_VOICES.delete(voice);
     }
     AUDIO_LAST.clear();
-    for (const id of ['raid-sword-taken', 'raid-sword-blade', 'raid-coin-taken', 'raid-coin-drop']) {
+    for (const id of ['raid-sword-taken', 'raid-sword-blade', 'raid-coin-taken', 'raid-coin-drop', 'raid-bottle-clink', 'raid-bottle-open']) {
       const clip = el(id); if (clip) { clip.ontimeupdate = null; clip.pause(); try { clip.currentTime = 0; } catch (ignored) {} }
     }
   }
@@ -5582,6 +5583,8 @@
   function audioSwordChain() { playAudioClip('raid-sword-blade'); }
   function audioCoinSelect() { playAudioClip('raid-coin-taken'); }
   function audioCoinChain() { playAudioClip('raid-coin-drop'); }
+  function audioPotionSelect() { playAudioClip('raid-bottle-open'); }
+  function audioPotionChain() { playAudioClip('raid-bottle-clink'); }
   function audioKill() { materialSound('impact'); }
   function audioHeal() { materialSound('water'); }
   function audioArmor() { materialSound('armour'); }
@@ -5729,6 +5732,7 @@
     if (!committed && !rune.length) { clearChain(); return; }
     if (committed && S.chainType === 'sword') audioSwordChain();
     else if (committed && S.chainType === 'coin') audioCoinChain();
+    else if (committed && S.chainType === 'potion') audioPotionChain();
     if (!committed || !skulls.length) fadeScrollLeechLabel();
     S.resolving = true;
     S.actionCommitted = committed;
