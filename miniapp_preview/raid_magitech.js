@@ -7868,17 +7868,86 @@
 
   // --- first-entry release notes (local UI metadata, NOT a run checkpoint) ---
   // The builder fingerprints all game inputs. Compare the CONTENT meta, never
-  // the ?build cache hint. Curated release/history copy lives in the template.
+  // the ?build cache hint. Curated release/history copy lives in the template;
+  // each entry carries a monotonic data-release id so only unread notes appear
+  // above the fold while already-read notes stay collapsed in history.
   const UPDATES_KEY = 'raid:updatesSeenBuild';
+  const UPDATES_RELEASE_KEY = 'raid:updatesSeenRelease';
   const UPDATES_BUILD = document.querySelector('meta[name="raid-build"]')?.getAttribute('content') || '';
   let UPDATES_READY = false, UPDATES_OPEN = false, UPDATES_SESSION = null;
+  let UPDATES_CATALOG = [], UPDATES_LATEST_RELEASE = 0;
   const UPDATES_SHOWN = new Set();
+  function collectUpdatesCatalog() {
+    const wrap = el('updates-modal');
+    if (!wrap) return [];
+    const items = [];
+    for (const node of wrap.querySelectorAll('li[data-release]')) {
+      const release = Number(node.getAttribute('data-release'));
+      if (!Number.isInteger(release) || release <= 0) continue;
+      const bucket = node.closest('ol') ? 'legacy' : 'recent';
+      items.push({ release, bucket, template: node.cloneNode(true) });
+    }
+    items.sort((a, b) => b.release - a.release);
+    return items;
+  }
+  function parseSeenRelease(raw) {
+    return typeof raw === 'string' && /^[1-9]\d{0,5}$/.test(raw) ? Number(raw) : null;
+  }
+  function readUpdateProgress() {
+    let seenBuild = null, seenRelease = null;
+    try {
+      seenBuild = profileStorage.getItem(UPDATES_KEY);
+      seenRelease = parseSeenRelease(profileStorage.getItem(UPDATES_RELEASE_KEY));
+      return { readFailed: false, seenBuild, seenRelease };
+    } catch (ignored) {
+      return { readFailed: true, seenBuild: null, seenRelease: null };
+    }
+  }
+  function partitionUpdates(seenBuild, seenRelease) {
+    if (!UPDATES_CATALOG.length) return { unread: [], read: [] };
+    if (seenRelease !== null) {
+      return {
+        unread: UPDATES_CATALOG.filter(item => item.release > seenRelease),
+        read: UPDATES_CATALOG.filter(item => item.release <= seenRelease),
+      };
+    }
+    if (seenBuild === UPDATES_BUILD) return { unread: [], read: UPDATES_CATALOG.slice() };
+    return { unread: UPDATES_CATALOG.slice(0, 1), read: UPDATES_CATALOG.slice(1) };
+  }
+  function renderUpdateNotice(seenBuild, seenRelease) {
+    const current = el('updates-current');
+    const history = el('updates-history');
+    const desc = el('updates-description');
+    if (!current || !history || !UPDATES_CATALOG.length) return;
+    const recentList = history.querySelector('.updates-archive-previous');
+    const legacyList = history.querySelector('ol');
+    const { unread, read } = partitionUpdates(seenBuild, seenRelease);
+    current.innerHTML = '';
+    for (const item of unread) current.appendChild(item.template.cloneNode(true));
+    current.hidden = unread.length === 0;
+    if (recentList) {
+      recentList.innerHTML = '';
+      for (const item of read) if (item.bucket === 'recent') recentList.appendChild(item.template.cloneNode(true));
+      recentList.hidden = recentList.children.length === 0;
+    }
+    if (legacyList) {
+      legacyList.innerHTML = '';
+      for (const item of read) if (item.bucket === 'legacy') legacyList.appendChild(item.template.cloneNode(true));
+      legacyList.hidden = legacyList.children.length === 0;
+    }
+    if (desc) {
+      if (unread.length === 0) desc.textContent = 'Все обновления прочитаны. Полный список изменений — в истории ниже.';
+      else if (unread.length === 1) desc.textContent = 'Непрочитанное обновление. Предыдущие выпуски — в истории ниже.';
+      else desc.textContent = `Непрочитанные обновления (${unread.length}). Предыдущие выпуски — в истории ниже.`;
+    }
+    history.open = unread.length === 0;
+  }
   function updateNoticeStatus(text) {
     for (const id of ['picker-updates-status', 'menu-updates-status']) {
       const node = el(id); if (node) { node.textContent = text; node.hidden = !text; }
     }
   }
-  function openUpdateNotice(automatic = false, readFailed = false, opener = null) {
+  function openUpdateNotice(automatic = false, readFailed = false, opener = null, progress = null) {
     const wrap = el('updates-modal');
     if (!wrap || !/^[a-f0-9]{12}$/.test(UPDATES_BUILD) || UPDATES_OPEN) return false;
     // Startup never restores/starts a run. A manual reader may cover only an
@@ -7888,10 +7957,13 @@
       flash('Сначала заверши цепочку и выбор наград'); return false;
     }
     closeGameSettings(false);
+    const state = progress || (PROFILE_PREFIX === null ? { readFailed: false, seenBuild: null, seenRelease: null } : readUpdateProgress());
+    const failed = readFailed || state.readFailed;
+    renderUpdateNotice(state.seenBuild, state.seenRelease);
     UPDATES_SESSION = { prefix: PROFILE_PREFIX, focus: opener || document.activeElement, background: [] };
     UPDATES_OPEN = true; UPDATES_SHOWN.add(`${PROFILE_PREFIX}:${UPDATES_BUILD}`);
     el('updates-build').textContent = 'Сборка ' + UPDATES_BUILD;
-    el('updates-storage-note').hidden = !(readFailed || PROFILE_PREFIX === null);
+    el('updates-storage-note').hidden = !(failed || PROFILE_PREFIX === null);
     wrap.hidden = false; wrap.classList.add('show');
     el('updates-body').scrollTop = 0; el('updates-title').focus();
     // Preserve, rather than replace, every underlying view/focus/ARIA state.
@@ -7908,10 +7980,9 @@
     if (!UPDATES_READY || UPDATES_OPEN || S || PROFILE_PREFIX === null
       || TELEGRAM_PROFILE && telegramProfileId() !== PROFILE_ID
       || UPDATES_SHOWN.has(`${PROFILE_PREFIX}:${UPDATES_BUILD}`)) return;
-    let readFailed = false;
-    try { if (profileStorage.getItem(UPDATES_KEY) === UPDATES_BUILD) return; }
-    catch (ignored) { readFailed = true; }
-    openUpdateNotice(true, readFailed);
+    const progress = readUpdateProgress();
+    if (!progress.readFailed && partitionUpdates(progress.seenBuild, progress.seenRelease).unread.length === 0) return;
+    openUpdateNotice(true, progress.readFailed, null, progress);
   }
   function closeUpdateNotice() {
     if (!UPDATES_OPEN) return;
@@ -7919,6 +7990,7 @@
     try {
       if (session.prefix === null || session.prefix !== PROFILE_PREFIX) throw new Error('Release notice profile unavailable');
       profileStorage.setItem(UPDATES_KEY, UPDATES_BUILD);
+      if (UPDATES_LATEST_RELEASE > 0) profileStorage.setItem(UPDATES_RELEASE_KEY, String(UPDATES_LATEST_RELEASE));
       updateNoticeStatus('');
     } catch (ignored) {
       updateNoticeStatus('Не удалось запомнить прочтение. При следующем входе окно может появиться снова. Сохранение рейда это окно не меняет.');
@@ -7951,6 +8023,8 @@
     });
   }
   function initUpdateNotice() {
+    UPDATES_CATALOG = collectUpdatesCatalog();
+    UPDATES_LATEST_RELEASE = UPDATES_CATALOG[0]?.release || 0;
     for (const id of ['picker-updates', 'menu-updates']) el(id)?.addEventListener('click', event => openUpdateNotice(false, false, event.currentTarget));
     const close = el('updates-close'); if (close) bindReadOnlyDismiss(close, closeUpdateNotice, () => UPDATES_SESSION);
     el('updates-modal')?.addEventListener('keydown', event => {
