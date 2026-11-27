@@ -3189,8 +3189,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Стеклянные кабошоны плиток и локация в кнопке «Продолжить»/);
-    assert.match(doc.querySelector('#updates-history').textContent, /Живая нижняя панель боя и узнаваемые символы/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Аккуратные кабошон-блик и каустика на плитках/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Стеклянные кабошоны плиток и локация в кнопке «Продолжить»/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
