@@ -163,38 +163,73 @@
     <div class="board-foot"><span id="chain-count">Цепь 0</span><span id="mode-badge">RAID · Нормальный</span></div>
   </div>
 
-  <!-- HUD -->
-  <section class="hud" aria-label="Статус героя">
-    <div class="hud-row">
-      <div class="hud-cell" id="hud-hp">
-        <div class="hud-label"><span>HP</span><span id="hp-text">50 / 50</span></div>
-        <div class="bar"><i id="hp-bar" class="fill-hp"></i></div>
+  <!-- HUD: ornate magitech battle console -->
+  <section class="hud hud-console" aria-label="Статус героя">
+    <div class="hud-trophy-badge" id="hud-trophy" title="Трофей">
+      <img id="hud-trophy-img" class="hud-trophy-img" src="" alt="" aria-hidden="true" draggable="false">
+      <span id="trophy-text">1</span>
+    </div>
+
+    <div class="hud-mech-zone" id="hud-hp">
+      <div class="hud-mech-top">
+        <div class="hud-mech-alcove">
+          <img id="hud-mech-art" class="hud-mech-art" src="miniapp_preview/assets/mech_adventurer.png" alt="" aria-hidden="true" draggable="false">
+        </div>
+        <div class="hud-hp-tube" aria-hidden="true">
+          <div class="hud-tube-track">
+            <i id="hp-bar" class="fill-hp"></i>
+          </div>
+        </div>
       </div>
-      <div class="hud-cell" id="hud-armor">
-        <div class="hud-label"><span>Броня</span><span id="armor-text">4 / 4</span></div>
-        <div class="bar"><i id="armor-bar" class="fill-armor"></i></div>
+      <div class="hud-hp-plate">
+        <svg class="hud-heart-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 17.5C4.6 13.7 2 10.7 2 7.2 2 4.5 4.1 2.6 6.6 2.6c1.5 0 2.8.8 3.4 2 .6-1.2 1.9-2 3.4-2 2.5 0 4.6 1.9 4.6 4.6 0 3.5-2.6 6.5-8 10.3Z" fill="currentColor"/></svg>
+        <span id="hp-text">50 / 50</span>
+      </div>
+      <div class="hud-mech-nameplate"><span id="hud-mech-name">Авантюрист · Ур. 1</span></div>
+    </div>
+
+    <div class="hud-weapon-slot" id="hud-weapon">
+      <div class="hud-weapon-frame">
+        <img id="hud-weapon-art" class="weapon-texture hud-weapon-art" src="" alt="" aria-hidden="true" draggable="false">
+        <div class="hud-weapon-stats">
+          <b id="hud-weapon-val">2</b>
+          <small id="hud-weapon-base">+3 база</small>
+        </div>
+      </div>
+      <span class="sr-only" id="dmg-text">Меч 2 · база 3</span>
+      <span class="sr-only" id="turn-text">ХОД 0</span>
+    </div>
+
+    <div class="hud-shield-slot" id="hud-armor">
+      <div class="hud-shield-wrap">
+        <div class="hud-armor-glow" aria-hidden="true"><i id="armor-bar" class="fill-armor"></i></div>
+        <img id="hud-shield-art" class="shield-texture hud-shield-art" src="miniapp_preview/assets/raid_shield_0.png" alt="" aria-hidden="true" draggable="false">
+        <span class="hud-shield-val" id="armor-text">4 / 4</span>
       </div>
     </div>
-    <div class="hud-row">
-      <div class="hud-cell" id="hud-xp">
-        <div class="hud-label"><span>Опыт</span><span id="xp-text">Ур. 1 · 0 / 100</span></div>
-        <div class="bar xp"><i id="xp-bar" class="fill-xp"></i></div>
+
+    <div class="hud-tubes-zone">
+      <div class="hud-tube-col hud-tube-xp" id="hud-xp" title="Опыт">
+        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3.2 2.5 5.4 5.9.7-4.4 4.1 1.2 5.8L12 16.3 6.8 19.2 8 13.4 3.6 9.3l5.9-.7Z" fill="currentColor"/></svg></span>
+        <div class="hud-tube-track"><i id="xp-bar" class="fill-xp"></i></div>
+        <span class="hud-tube-val" id="xp-text">0/100</span>
       </div>
-      <div class="hud-cell" id="hud-gold">
-        <div class="hud-label"><span>Золото</span><span id="gold-text">0 / 100</span></div>
-        <div class="bar"><i id="gold-bar" class="fill-gold"></i></div>
+      <div class="hud-tube-col hud-tube-up" id="hud-upgrade" title="Апгрейд">
+        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4.5 5.5 11l2.1 2.1L12 8.7l4.4 4.4 2.1-2.1Zm0 6.8-6.5 6.5 2.1 2.1L12 15.5l4.4 4.4 2.1-2.1Z" fill="currentColor"/></svg></span>
+        <div class="hud-tube-track"><i id="upgrade-bar" class="fill-upgrade"></i></div>
+        <span class="hud-tube-val" id="upgrade-text">0/100</span>
+      </div>
+      <div class="hud-tube-col hud-tube-gold" id="hud-gold" title="Монеты">
+        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m12 7.2 4.4 4.8-4.4 4.8L7.6 12Z" fill="currentColor"/></svg></span>
+        <div class="hud-tube-track"><i id="gold-bar" class="fill-gold"></i></div>
+        <span class="hud-tube-val" id="gold-text">0/100</span>
       </div>
     </div>
-    <div class="hud-meta">
-      <span class="turn" id="turn-text">ХОД 0</span>
-      <span class="dmg" id="dmg-text">Меч 2 · база 3</span>
-      <span class="dmg" id="trophy-text" style="color:#dbc893">Трофей через 1</span>
-      <span class="dmg" id="upgrade-text" style="color:#b7c8ae">0 / 100 UP</span>
-    </div>
-    <div class="bar xp" id="hud-upgrade" style="margin-top:2px"><i id="upgrade-bar" class="fill-upgrade"></i></div>
+
+    <span class="hud-bottom-gem" aria-hidden="true"></span>
   </section>
 
-  <div class="log-wrap" id="log" aria-live="polite"></div>
+  <div class="log-wrap" id="log" aria-live="polite" hidden></div>
 
   <div class="flash" id="flash" role="status"></div>
   <p class="achievement-notice" id="achievement-notice" role="status" aria-live="polite" hidden></p>
@@ -277,11 +312,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="35"><b>Звуки умений сбора ресурсов.</b> Умения сбора щитов, зелий и монет (Ремонт, Лечение, Эликсир, Кладовая, Шок, Благоговение) теперь тоже проигрывают звуки активации соответствующих цепочек.</li>
+        <li data-release="36"><b>Новая нижняя панель боя и переименование «Апгрейд».</b> Внизу теперь единая магитех-панель с полной фигуркой текущего меха и встроенной шкалой жизни, актуальными мечом и щитом из магазина с цифрами поверх них, вертикальными колбами опыта, апгрейда и монет и медальоном трофея. Лишняя строка логов убрана, а умение «Затачивание» переименовано в «Апгрейд».</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="35"><b>Звуки умений сбора ресурсов.</b> Умения сбора щитов, зелий и монет (Ремонт, Лечение, Эликсир, Кладовая, Шок, Благоговение) теперь тоже проигрывают звуки активации соответствующих цепочек.</li>
           <li data-release="34"><b>Два звука брони.</b> Укороченный звук щита звучит при выборе первой плитки брони; отдельный эффект сбора запускается при активации цепочки.</li>
           <li data-release="33"><b>Подсказка перехода Лича в филактерий.</b> Когда в цепочке мечей набирается достаточно урона по Личу, в строке подсказки теперь пишется «Лич → филактерий», а его клетка подсвечивается золотым.</li>
           <li data-release="32"><b>Компактная боевая шапка и кнопки в стиле игры.</b> Верхние надписи убраны, слоты умений подняты на их место рядом с круглыми медальонами настроек, параметров и меню — поле 6×6 и нижняя панель помещаются выше и свободнее.</li>
