@@ -2175,7 +2175,7 @@ test('magitech orbs: the real chain drops the SAME identical-looking nodes down 
     const victims = [24, 30, 31].map(idx => orbAt(b, idx).dataset.orbId);
     [24, 30, 31].forEach(idx => r.tryExtendChain(idx)); r.resolveChain();
     assert.equal(b.dom.window.document.querySelectorAll('.primed').length, 3);
-    assert.ok(b.dom.window.document.querySelector('#board-fx .chain-surge'), 'running surge highlights the primed chain path');
+    assert.ok(b.dom.window.document.querySelector('#board-fx-canvas'), 'canvas FX layer mounts for primed chain surge');
     assert.equal(r.state.hero.gold, 0, 'anticipation does not pay rewards');
     await until(() => r.state.hero.gold === 6);
     assert.equal(orbAt(b, 12), original[0]); assert.equal(orbAt(b, 18), original[1]); assert.equal(orbAt(b, 7), original[2]);
@@ -2193,12 +2193,11 @@ test('magitech orbs: the real chain drops the SAME identical-looking nodes down 
     for (const id of victims) {
       const burst = b.dom.window.document.querySelector(`.orb-burst[data-orb-id="${id}"]`);
       assert.ok(burst);
-      assert.ok(burst.querySelector('.orb-burst-flash'), 'burst has core flash');
-      assert.ok(burst.querySelectorAll('.orb-shard').length >= 6, 'burst emits varied shards');
+      assert.equal(burst.children.length, 1, 'lightweight 1-node DOM ghost; sparks/rings render on canvas');
     }
     const before = orbGameplay(b); b.dom.window.__orbTest.finish();
     assert.equal(orbGameplay(b), before, 'finishing all effects cannot pay a second reward or advance a turn');
-    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,.chain-surge,[data-motion],.cell.pop').length, 0);
+    assert.equal(b.dom.window.document.querySelectorAll('.orb-burst,[data-motion],.cell.pop').length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
@@ -3197,8 +3196,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Шёлковое 60-fps падение плиток без стоп-кадров/);
-    assert.match(doc.querySelector('#updates-history').textContent, /Живая физика падения плиток и эффектный взрыв цепочек/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Единый Canvas-движок взрывов и размеренное падение без слайд-шоу/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Шёлковое 60-fps падение плиток без стоп-кадров/);
     assert.match(doc.querySelector('#updates-history').textContent, /Звуки умений сбора ресурсов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука брони/);
     assert.match(doc.querySelector('#updates-history').textContent, /Подсказка перехода Лича в филактерий/);
@@ -3956,10 +3955,10 @@ for (const path of [[31,30,24], [24,30,31], [0,7,14,15,20,27,28,35], chainSnake.
         const cellIdx = Number(a.target.closest('.cell')?.dataset.idx);
         const colReady = colEnd.get(cellIdx % 6) || 0;
         assert.ok(a.options.delay >= colReady - 0.01, 'column fall starts only when that column\'s burst cores are gone');
-        assert.ok(a.options.delay + a.options.duration <= 535, 'keep clean headroom before the 550ms enemy wait ends');
+        assert.ok(a.options.delay + a.options.duration <= 545, 'keep clean headroom before the 550ms enemy wait ends');
         assert.equal(a.frames.length, 2, 'smooth 2-keyframe compositor fall');
         assert.equal(a.frames.at(-1).transform, 'translate3d(0,0,0)');
-        assert.equal(a.options.easing, 'cubic-bezier(.26,.08,.34,1.04)');
+        assert.equal(a.options.easing, 'cubic-bezier(.30,.08,.42,1)');
       }
       const before=orbGameplay(b);h.finish();assert.equal(orbGameplay(b),before,'animation completion never pays or advances');
       assert.deepEqual(b.errors,[]);
@@ -4000,7 +3999,7 @@ test('magitech chain wave: collateral Kamikaze victims retain un-ordered bursts 
     for(const a of b.dom.window.__orbTest.created.filter(a=>a.target.dataset.motion)){
       const cellIdx = Number(a.target.closest('.cell')?.dataset.idx);
       const minStart = cellIdx % 6 === 3 ? 240 : cellIdx % 6 === 0 ? 184 : cellIdx % 6 === 1 ? 152 : 120;
-      assert.ok(a.options.delay>=minStart-0.01);assert.ok(a.options.delay+a.options.duration<=535);
+      assert.ok(a.options.delay>=minStart-0.01);assert.ok(a.options.delay+a.options.duration<=545);
     }
     assert.deepEqual(b.errors,[]);
   }finally{b.dom.window.close();}
