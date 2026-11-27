@@ -6062,8 +6062,8 @@ test('uploaded intro music is embedded, persisted across screens and available i
   assert.ok(readFileSync(new URL('./assets/openbottle.mp3', import.meta.url)).length > 0);
   assert.match(js, /firstSelection && S\.board\[cellIdx\]\.type === 'potion'\) audioPotionSelect\(\)/);
   assert.match(js, /committed && S\.chainType === 'potion'\) audioPotionChain\(\)/);
-  assert.match(js, /function audioPotionSelect\(\) \{ playAudioClip\('raid-bottle-clink'\); \}/);
-  assert.match(js, /function audioPotionChain\(\) \{ playAudioClip\('raid-bottle-open'\); \}/);
+  assert.match(js, /function audioPotionSelect\(\) \{ playAudioClip\('raid-bottle-open'\); \}/);
+  assert.match(js, /function audioPotionChain\(\) \{ playAudioClip\('raid-bottle-clink'\); \}/);
   assert.match(js, /function isMenuMusicContext\(\) \{ return !!el\('class-picker'\)\?\.classList\.contains\('show'\); \}/);
   assert.match(js, /introMusicAppVisible\(\)[\s\S]*?audioPageActive && audioHostActive/);
   assert.match(js, /el\('music-on'\)\?\.addEventListener\('change',[\s\S]*?setMusicPreference\(event\.target\.checked, false\)/);

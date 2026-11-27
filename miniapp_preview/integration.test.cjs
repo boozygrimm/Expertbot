@@ -2589,7 +2589,7 @@ test('magitech material SFX: SDK deactivation silences current clips and drops n
   } finally { b.dom.window.close(); }
 });
 
-test('magitech material SFX: potion chains play bottle clink on first tile and bottle open on chain commit', async () => {
+test('magitech material SFX: potion chains play bottle open on first tile and bottle clink on chain commit', async () => {
   const stub = raidTelegramStub(), played = [], paused = []; let unlock;
   const b = await openMagitech({ url: testerRaidUrl, setup(w) {
     w.Telegram = { WebApp: stub.tg };
@@ -2613,9 +2613,9 @@ test('magitech material SFX: potion chains play bottle clink on first tile and b
     showOrbFixture(b, () => ({ type: 'potion' }));
     unlock();
     [0, 1, 2].forEach(i => b.raid.tryExtendChain(i));
-    assert.deepEqual(played, ['raid-bottle-clink'], 'first potion tile plays clinkbottle once per chain');
+    assert.deepEqual(played, ['raid-bottle-open'], 'first potion tile plays openbottle once per chain');
     b.raid.resolveChain();
-    assert.deepEqual(played, ['raid-bottle-clink', 'raid-bottle-open'], 'committed potion chain plays openbottle');
+    assert.deepEqual(played, ['raid-bottle-open', 'raid-bottle-clink'], 'committed potion chain plays clinkbottle');
     paused.length = 0;
     stub.fire('deactivated');
     assert.ok(paused.includes('raid-bottle-clink') && paused.includes('raid-bottle-open'), 'deactivation stops both potion clips');

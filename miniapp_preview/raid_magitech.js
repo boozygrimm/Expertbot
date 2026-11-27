@@ -5583,8 +5583,8 @@
   function audioSwordChain() { playAudioClip('raid-sword-blade'); }
   function audioCoinSelect() { playAudioClip('raid-coin-taken'); }
   function audioCoinChain() { playAudioClip('raid-coin-drop'); }
-  function audioPotionSelect() { playAudioClip('raid-bottle-clink'); }
-  function audioPotionChain() { playAudioClip('raid-bottle-open'); }
+  function audioPotionSelect() { playAudioClip('raid-bottle-open'); }
+  function audioPotionChain() { playAudioClip('raid-bottle-clink'); }
   function audioKill() { materialSound('impact'); }
   function audioHeal() { materialSound('water'); }
   function audioArmor() { materialSound('armour'); }
