@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="5c0808988a25">
+<meta name="raid-build" content="76a7a2a1e6eb">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -2640,7 +2640,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 .hud.hud-console {
   position: relative;
   display: grid;
-  grid-template-columns: 0.62fr 1.24fr 0.84fr 1.18fr;
+  grid-template-columns: 0.68fr 1.18fr 0.84fr 1.18fr;
   align-items: stretch;
   gap: 6px;
   width: min(100%, 430px);
@@ -2750,6 +2750,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   place-items: center;
   min-width: 0;
   min-height: 0;
+  padding: 4px 3px;
   border-radius: 18px 18px 4px 4px;
   border: 1px solid rgba(146, 164, 152, 0.42);
   background:
@@ -2758,10 +2759,10 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   overflow: hidden;
 }
 .hud-mech-art {
-  width: 98%;
-  height: 98%;
+  width: 88%;
+  height: 88%;
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center center;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 6px rgba(96, 188, 255, 0.24));
 }
 .hud-hp-tube {
@@ -2839,18 +2840,22 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 }
 .hud-weapon-art {
   position: absolute;
-  inset: 6px 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 12px);
+  left: 50%;
+  top: 50%;
+  width: 96px;
+  height: 96px;
+  max-width: none;
+  max-height: none;
   object-fit: contain;
-  transform: rotate(-45deg) scale(1.04);
+  transform: translate(-50%, -50%) rotate(-45deg);
   transform-origin: center;
-  filter: var(--weapon-finish, brightness(1.06)) contrast(1.14) drop-shadow(0 2px 5px rgba(0, 0, 0, 0.9));
+  filter: var(--weapon-finish, brightness(1.08)) contrast(1.16) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.92));
   pointer-events: none;
 }
 .hud-weapon-stats {
   position: relative;
   z-index: 2;
+  margin-top: 26px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3010,12 +3015,29 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: radial-gradient(circle at 35% 30%, #d98226, #6e360c);
   box-shadow: 0 0 8px rgba(240, 152, 54, 0.52), 0 2px 5px rgba(0, 0, 0, 0.65);
 }
-.hud-tube-gold .hud-tube-icon {
-  color: #fff7cf;
-  border-color: #ffe06b;
-  background: radial-gradient(circle at 35% 30%, #e6b422, #7a5208);
-  box-shadow: 0 0 8px rgba(255, 206, 62, 0.55), 0 2px 5px rgba(0, 0, 0, 0.65);
+.hud-tube-coin-wrap {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  perspective: 180px;
 }
+.hud-coin-3d {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: coin-axial-turn 9s linear infinite;
+}
+.hud-coin-3d .coin-face {
+  border-width: 1.4px;
+  box-shadow: inset 0 0 0 1px #fff2be, inset 0 0 0 2px #92520c, 0 1px 3px #24160699;
+}
+.hud-coin-3d .coin-obverse { transform: translateZ(1.5px); }
+.hud-coin-3d .coin-reverse { transform: rotateY(180deg) translateZ(1.5px); }
+.hud-coin-3d .coin-edge-belt { left: calc(50% - 1.5px); width: 3px; }
 
 /* Shared vertical crystal tube track + glowing liquid fills */
 .hud-tube-track {
@@ -3062,22 +3084,23 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: linear-gradient(90deg, #b86014 0%, #f5a638 48%, #ffcf7a 62%, #a85410 100%);
   box-shadow: 0 0 10px rgba(245, 162, 54, 0.72), inset 0 1px 0 rgba(255, 236, 198, 0.72);
 }
-/* Coin bar rendered as a ribbed vertical stack of 100 gold coins */
+/* Coin bar rendered as a ribbed vertical stack of 100 flat gold coins */
 .hud-coin-stack-track {
   width: 16px;
-  border-radius: 5px 5px 6px 6px;
+  border-radius: 4px 4px 5px 5px;
   border-color: rgba(235, 198, 92, 0.46);
   background:
     repeating-linear-gradient(180deg, rgba(255, 224, 120, 0.05) 0 1px, transparent 1px 2.2px),
     linear-gradient(90deg, #0b1312, #18231d 50%, #091110);
-  padding: 4px 1px 1px;
+  padding: 1px;
 }
 .hud-coin-stack-track::after {
   display: none;
 }
 .hud-console .fill-gold {
   position: relative;
-  border-radius: 2px 2px 4px 4px;
+  border-radius: 1px 1px 3px 3px;
+  border-top: 1px solid #fff2a8;
   background-image:
     repeating-linear-gradient(
       180deg,
@@ -3087,24 +3110,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
       rgba(68, 36, 4, 0.88) 1.85px
     ),
     linear-gradient(90deg, #8a5408 0%, #e4a81c 22%, #fff098 44%, #f4be2a 68%, #9b600a 88%, #633904 100%);
-  box-shadow: 0 0 9px rgba(255, 206, 58, 0.56), inset 0 -1px 0 rgba(70, 38, 4, 0.9);
-  overflow: visible;
+  box-shadow: 0 0 9px rgba(255, 206, 58, 0.52), inset 0 -1px 0 rgba(70, 38, 4, 0.9);
 }
-.hud-console .fill-gold::before {
-  content: '';
-  position: absolute;
-  left: -0.5px;
-  right: -0.5px;
-  top: -2px;
-  height: 4px;
-  border-radius: 50%;
-  border: 0.6px solid #a86c0e;
-  background: radial-gradient(ellipse at 42% 38%, #fffbe0 0%, #ffd84e 52%, #c98612 100%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
-}
-.hud-console .fill-gold[style*="height: 0%"]::before,
-.hud-console .fill-gold[style*="height:0%"]::before {
-  display: none;
+.hud-console .fill-gold[style*="height: 0%"],
+.hud-console .fill-gold[style*="height:0%"] {
+  border-top-color: transparent;
+  box-shadow: none;
 }
 
 .hud-tube-val {
@@ -3128,7 +3139,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
 
 @media (max-width: 400px) {
   .hud.hud-console {
-    grid-template-columns: 0.6fr 1.24fr 0.82fr 1.18fr;
+    grid-template-columns: 0.66fr 1.18fr 0.82fr 1.18fr;
     gap: 4px;
     padding: 7px 6px 11px;
   }
@@ -3136,11 +3147,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   .hud-hp-plate { font-size: 9.5px; padding: 2px 3px; }
   .hud-mech-nameplate { font-size: 8px; }
   .hud-weapon-frame, .hud-shield-wrap { min-height: 102px; }
+  .hud-weapon-art { width: 88px; height: 88px; }
+  .hud-weapon-stats { margin-top: 22px; }
   .hud-weapon-stats b { min-width: 22px; height: 22px; font-size: 12px; }
   .hud-weapon-stats small { font-size: 7px; }
   .hud-shield-val { font-size: 12px; padding: 1px 4px; }
   .hud-tubes-zone { gap: 3px; }
-  .hud-tube-icon { width: 20px; height: 20px; }
+  .hud-tube-icon, .hud-tube-coin-wrap { width: 20px; height: 20px; }
   .hud-tube-icon svg { width: 12px; height: 12px; }
   .hud-tube-track { width: 11px; min-height: 58px; }
   .hud-coin-stack-track { width: 14px; }
@@ -3198,7 +3211,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 5c0808988a25</p>
+    <p class="build-label">Сборка 76a7a2a1e6eb</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет прежнюю особенность и смертного врага. Со 2-го уровня меха выбери склонность на этот рейд, с 3-го добавляется бонус и штраф урона. Выбор не постоянный: перед следующим рейдом заново. Продолжить старый можно без изменений.</p>
@@ -3373,7 +3386,13 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
         <span class="hud-tube-val" id="upgrade-text">0/100</span>
       </div>
       <div class="hud-tube-col hud-tube-gold" id="hud-gold" title="Монеты">
-        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m12 7.2 4.4 4.8-4.4 4.8L7.6 12Z" fill="currentColor"/></svg></span>
+        <span class="hud-tube-coin-wrap" aria-hidden="true">
+          <span class="coin-3d hud-coin-3d">
+            <i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>
+            <span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.8"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/></svg></span>
+            <span class="coin-face coin-reverse"><svg viewBox="0 0 48 48"><path d="m24 8 4 10 11 1-8 7 3 11-10-6-10 6 3-11-8-7 11-1Z" fill="#a36813" stroke="#ffe9a3" stroke-width="1.6"/><path d="m24 17 2 6 6 1-5 4 2 5-5-3-5 3 2-5-5-4 6-1Z" fill="#f5cf65"/></svg></span>
+          </span>
+        </span>
         <div class="hud-tube-track hud-coin-stack-track"><i id="gold-bar" class="fill-gold"></i></div>
         <span class="hud-tube-val" id="gold-text">0/100</span>
       </div>
@@ -3421,7 +3440,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
     <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
     <p class="raid-combat-note" data-raid-combat-note>Стихийный бой · в новых забегах; старые — по прежним правилам.</p>
-    <p class="build-label">Сборка 5c0808988a25</p>
+    <p class="build-label">Сборка 76a7a2a1e6eb</p>
     <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -3460,16 +3479,17 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 5c0808988a25</p>
+      <p class="build-label" id="updates-build">Сборка 76a7a2a1e6eb</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
+        <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
           <li data-release="36"><b>Новая нижняя панель боя и переименование «Апгрейд».</b> Внизу теперь единая магитех-панель с полной фигуркой текущего меха и встроенной шкалой жизни, актуальными мечом и щитом из магазина с цифрами поверх них, вертикальными колбами опыта, апгрейда и монет и медальоном трофея. Лишняя строка логов убрана, а умение «Затачивание» переименовано в «Апгрейд».</li>
           <li data-release="35"><b>Звуки умений сбора ресурсов.</b> Умения сбора щитов, зелий и монет (Ремонт, Лечение, Эликсир, Кладовая, Шок, Благоговение) теперь тоже проигрывают звуки активации соответствующих цепочек.</li>
           <li data-release="34"><b>Два звука брони.</b> Укороченный звук щита звучит при выборе первой плитки брони; отдельный эффект сбора запускается при активации цепочки.</li>
@@ -3596,7 +3616,7 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 5c0808988a25.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 76a7a2a1e6eb.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою; склонность пилота — пятипозиционным тумблером в карточке меха. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Выбор целей «Перенастройки» сохраняется; второй Escape/«Назад» уже отменит сам выбор. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, цели «Перенастройки», стихии, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне. Обещаний FPS или экономии батареи без измерений нет.</p>

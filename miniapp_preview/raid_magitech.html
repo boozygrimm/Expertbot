@@ -222,7 +222,13 @@
         <span class="hud-tube-val" id="upgrade-text">0/100</span>
       </div>
       <div class="hud-tube-col hud-tube-gold" id="hud-gold" title="Монеты">
-        <span class="hud-tube-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m12 7.2 4.4 4.8-4.4 4.8L7.6 12Z" fill="currentColor"/></svg></span>
+        <span class="hud-tube-coin-wrap" aria-hidden="true">
+          <span class="coin-3d hud-coin-3d">
+            <i class="coin-edge"></i><i class="coin-edge coin-edge-belt"></i>
+            <span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.8"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/></svg></span>
+            <span class="coin-face coin-reverse"><svg viewBox="0 0 48 48"><path d="m24 8 4 10 11 1-8 7 3 11-10-6-10 6 3-11-8-7 11-1Z" fill="#a36813" stroke="#ffe9a3" stroke-width="1.6"/><path d="m24 17 2 6 6 1-5 4 2 5-5-3-5 3 2-5-5-4 6-1Z" fill="#f5cf65"/></svg></span>
+          </span>
+        </span>
         <div class="hud-tube-track hud-coin-stack-track"><i id="gold-bar" class="fill-gold"></i></div>
         <span class="hud-tube-val" id="gold-text">0/100</span>
       </div>
@@ -314,11 +320,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
+        <li data-release="38"><b>Крупный меч, плоская стопка и крутящаяся монетка в нижней панели.</b> Меч увеличен почти вдвое во всю высоту слота, мех аккуратно вписан внутрь экранчика, верхняя монета в стопке выровнена в плоский диск, а над столбиком золота крутится 3D-монетка с поля.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="37"><b>Выровненная нижняя панель боя.</b> Меч перевёрнут остриём вверх и перенесён слева от меха с цифрами урона поверх клинка, порядок: Меч → Мех → Щит → шкалы; медальон трофея вынесен в строку под полем без наложений, а шкала золота оформлена как стопка из 100 монет.</li>
           <li data-release="36"><b>Новая нижняя панель боя и переименование «Апгрейд».</b> Внизу теперь единая магитех-панель с полной фигуркой текущего меха и встроенной шкалой жизни, актуальными мечом и щитом из магазина с цифрами поверх них, вертикальными колбами опыта, апгрейда и монет и медальоном трофея. Лишняя строка логов убрана, а умение «Затачивание» переименовано в «Апгрейд».</li>
           <li data-release="35"><b>Звуки умений сбора ресурсов.</b> Умения сбора щитов, зелий и монет (Ремонт, Лечение, Эликсир, Кладовая, Шок, Благоговение) теперь тоже проигрывают звуки активации соответствующих цепочек.</li>
           <li data-release="34"><b>Два звука брони.</b> Укороченный звук щита звучит при выборе первой плитки брони; отдельный эффект сбора запускается при активации цепочки.</li>
