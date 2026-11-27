@@ -1255,7 +1255,7 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
    The socket remains fixed for hit testing; only its identity-keyed orb moves.
    Six material textures are cosmetic, not six new combat statuses. */
 #board { overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 50% 0%,#173938 0%,#0a2024 50%,#081b21 100%); }
-#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.frozen,
+#board .cell, #board .cell.selected, #board .cell.lethal, #board .cell.phylactery-ready, #board .cell.frozen,
 #board .cell.burned, #board .cell.cripple-target {
   border: 0 !important; border-radius: 50%; background: transparent;
   box-shadow: none !important; overflow: visible; opacity: 1;
@@ -1471,6 +1471,8 @@ html[data-raid-motion="off"] .mech-portrait,html[data-raid-motion="off"] .mech-p
 #board .cell.rune-inside .raid-orb { outline: 2px solid #d7b2ff; outline-offset: -2px; }
 #board .cell.rune-protected .raid-orb { outline-style: dashed; outline-color: #ffd3a1; }
 #board .cell.lethal .raid-orb { border-color: #ffa090; box-shadow: 0 0 12px #ff5a4ab3,inset 0 0 8px #ff5a4a80; }
+#board .cell.phylactery-ready .raid-orb { border-color: #ffe28a; box-shadow: 0 0 14px rgba(244, 198, 72, 0.85), inset 0 0 10px rgba(255, 224, 128, 0.62); }
+.cell.phylactery-ready { border-color: #f4c648; box-shadow: 0 0 18px rgba(244, 198, 72, 0.72), inset 0 0 12px rgba(255, 224, 128, 0.42); z-index: 6; }
 #board .cell.cripple-target .raid-orb { outline: 2px solid #f69b7f; outline-offset: -2px; }
 .raid-orb.primed .orb-core { animation: orb-prime .42s ease-out; }
 .raid-orb.primed .orb-material { opacity: .18; }

@@ -3075,7 +3075,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Компактная боевая шапка/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Подсказка перехода Лича в филактерий/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Компактная боевая шапка/);
     assert.match(doc.querySelector('#updates-history').textContent, /Два звука зелий/);
     assert.match(doc.querySelector('#updates-history').textContent, /Новые иконки умений/);
     assert.match(doc.querySelector('#updates-history').textContent, /Склонность пилота.*перед каждым рейдом/s);
@@ -3927,6 +3928,33 @@ test('magitech chain wave: a lethal Lich transforms on the same UID rather than 
     assert.equal(chainWaveAnimations(b).find(a=>a.target===weapons[0]).options.delay,32);
     assert.deepEqual(b.errors,[]);
   }finally{b.dom.window.close();}
+});
+
+test('magitech Lich preview: chain tip and tile highlight indicate phylactery transition once lethal damage is reached', async () => {
+  const b = await orbFixture();
+  try {
+    const doc = b.dom.window.document, r = b.raid;
+    const lich = Object.assign(r.makeSkull(false, true, 32), { hp: 8, maxHp: 8, def: 1, atk: 0, enteredTurn: -1, element: 'fire' });
+    const mob = Object.assign(r.makeSkull(false, false, 0), { hp: 4, maxHp: 4, def: 0, atk: 0, enteredTurn: -1, element: 'fire' });
+    showOrbFixture(b, i => i === 0 ? { type: 'skull', skull: lich } : i === 4 ? { type: 'skull', skull: mob } : { type: 'sword', element: 'fire' });
+    // 2 swords + Lich => damage 3 + 2*2 = 7 < 8 + 1 = 9: not enough for phylactery yet.
+    for (const i of [0, 1, 2]) r.tryExtendChain(i);
+    assert.equal(r.chainPreview().phylacteries.length, 0);
+    assert.doesNotMatch(doc.querySelector('#chain-tip').textContent, /филактерий/);
+    assert.equal(doc.querySelector('.cell[data-idx="0"]').classList.contains('phylactery-ready'), false);
+    // Add 3rd sword => damage 3 + 3*2 = 9 >= 9: Lich transitions to phylactery.
+    r.tryExtendChain(3);
+    assert.equal(r.chainPreview().phylacteries.length, 1);
+    assert.equal(r.chainPreview().lethals.length, 0, 'Lich phylactery transition still does not count as a rewarded kill');
+    assert.match(doc.querySelector('#chain-tip').textContent, /Лич → филактерий/);
+    assert.doesNotMatch(doc.querySelector('#chain-tip').textContent, /Убито 0\/1/);
+    assert.equal(doc.querySelector('.cell[data-idx="0"]').classList.contains('phylactery-ready'), true);
+    // Extending to an ordinary enemy shows both kill count and Lich phylactery transition.
+    r.tryExtendChain(4);
+    assert.match(doc.querySelector('#chain-tip').textContent, /Убито 1\/1 · Лич → филактерий/);
+    assert.equal(doc.querySelector('.cell[data-idx="4"]').classList.contains('lethal'), true);
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
 });
 
 for(const removed of [0,1])test(`magitech chain wave: ${removed} actual disappearances among three selected nodes handles survivors without an empty timing range`,async()=>{
