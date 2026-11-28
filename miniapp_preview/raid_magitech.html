@@ -108,17 +108,19 @@
           </select>
         </div>
       </div>
-      <div class="region-quadrants" role="group" aria-label="Локации">
-        <button type="button" class="region-quadrant element-fire" data-raid-region="fire" aria-pressed="false"><span class="quadrant-symbol">△</span><strong>Кузня</strong><small>Пылающая кузня</small></button>
-        <button type="button" class="region-quadrant element-air" data-raid-region="air" aria-pressed="false"><span class="quadrant-symbol">≋</span><strong>Разлом</strong><small>Небесный разлом</small></button>
-        <button type="button" class="region-quadrant element-earth" data-raid-region="earth" aria-pressed="true"><span class="quadrant-symbol">◇</span><strong>Лес</strong><small>Забытый лес</small></button>
-        <button type="button" class="region-quadrant element-water" data-raid-region="water" aria-pressed="false"><span class="quadrant-symbol">◡</span><strong>Храм</strong><small>Затопленный храм</small></button>
+      <div class="region-stage-area">
+        <div class="region-quadrants" role="group" aria-label="Локации">
+          <button type="button" class="region-quadrant element-fire" data-raid-region="fire" aria-pressed="false"><span class="quadrant-symbol">△</span><strong>Кузня</strong><small>Пылающая кузня</small></button>
+          <button type="button" class="region-quadrant element-air" data-raid-region="air" aria-pressed="false"><span class="quadrant-symbol">≋</span><strong>Разлом</strong><small>Небесный разлом</small></button>
+          <button type="button" class="region-quadrant element-earth" data-raid-region="earth" aria-pressed="true"><span class="quadrant-symbol">◇</span><strong>Лес</strong><small>Забытый лес</small></button>
+          <button type="button" class="region-quadrant element-water" data-raid-region="water" aria-pressed="false"><span class="quadrant-symbol">◡</span><strong>Храм</strong><small>Затопленный храм</small></button>
+        </div>
+        <button type="button" class="region-emblem-launch" id="region-emblem-launch" aria-label="Начать рейд в выбранной локации">
+          <img src="miniapp_preview/assets/raid_emblem.png" alt="" draggable="false">
+          <span id="region-launch-label">В бой · Лес</span>
+        </button>
+        <button type="button" class="region-back-button" id="region-back-button">Назад</button>
       </div>
-      <button type="button" class="region-emblem-launch" id="region-emblem-launch" aria-label="Начать рейд в выбранной локации">
-        <img src="miniapp_preview/assets/raid_emblem.png" alt="" draggable="false">
-        <span id="region-launch-label">В бой · Лес</span>
-      </button>
-      <button type="button" class="region-back-button" id="region-back-button">Назад</button>
     </section>
     <section class="class-editor" id="class-editor" hidden aria-labelledby="class-editor-title">
       <h3 class="picker-title" id="class-editor-title" tabindex="-1"></h3>

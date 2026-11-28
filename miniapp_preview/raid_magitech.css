@@ -4589,6 +4589,102 @@ html[data-raid-motion="off"] .guide-tile {
   content: '▴';
 }
 
+/* --- Non-overlapping split layout for #raid-region-screen --- */
+.raid-region-screen {
+  display: flex;
+  flex-direction: column;
+}
+.raid-region-screen > .region-screen-head {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(212, 192, 131, 0.45);
+  border-radius: 0;
+  background: linear-gradient(180deg, #0d211f 0%, #071514 100%);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  z-index: 5;
+}
+.raid-region-screen > .region-screen-head .region-screen-kicker,
+.raid-region-screen > .region-screen-head h2 {
+  display: block;
+  padding: 0 52px;
+}
+.raid-region-screen > .region-screen-head h2 {
+  margin: 2px 0 6px;
+}
+.raid-region-screen > .region-screen-head .region-mode-bar {
+  margin-top: 4px;
+}
+.raid-region-screen > .region-screen-head .region-mode-desc {
+  max-width: 440px;
+}
+.raid-region-screen > .region-screen-head .region-screen-settings {
+  margin-top: 7px;
+}
+.region-stage-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.region-stage-area .region-quadrants {
+  position: absolute;
+  inset: 0;
+}
+.region-stage-area .region-quadrant {
+  padding: clamp(14px, 3vw, 32px);
+}
+.region-stage-area .region-quadrant.element-fire,
+.region-stage-area .region-quadrant.element-air {
+  padding-top: clamp(14px, 2.4vh, 28px);
+}
+.region-stage-area .region-quadrant.element-earth,
+.region-stage-area .region-quadrant.element-water {
+  padding-bottom: max(54px, 8vh);
+}
+.region-stage-area .region-emblem-launch {
+  top: 50%;
+  left: 50%;
+  width: clamp(144px, 34vw, 224px);
+}
+.region-stage-area .region-back-button {
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+@media (max-width: 720px) {
+  .raid-region-screen > .region-screen-head {
+    width: 100%;
+    padding: max(9px, env(safe-area-inset-top)) 10px 8px;
+    border-radius: 0;
+  }
+  .raid-region-screen > .region-screen-head h2 {
+    font-size: 18px;
+    margin: 2px 0 5px;
+  }
+  .region-stage-area .region-quadrant {
+    padding: 12px 12px 14px;
+  }
+  .region-stage-area .region-quadrant.element-fire,
+  .region-stage-area .region-quadrant.element-air {
+    padding-top: 14px;
+  }
+  .region-stage-area .region-quadrant.element-earth,
+  .region-stage-area .region-quadrant.element-water {
+    padding-bottom: max(52px, 7.5vh);
+  }
+  .region-stage-area .region-emblem-launch {
+    width: min(40vw, 174px);
+  }
+}
+
+
 
 
 
