@@ -376,40 +376,97 @@
       apply: () => S.hero.stats.defense++
     },
   ];
+  const ITEM_STAT_SHORT = Object.freeze({
+    weaponDamage: 'Урон', baseDamage: 'База', leech: 'Сок', weaponPoison: 'Яд',
+    pierce: 'Пробит.', quicken: 'КД', xpPerSkull: 'Опыт', goldPerCoin: 'Золото',
+    strength: 'Сила', luck: 'Удача', maxHp: 'HP', maxArmor: 'Броня',
+    spikes: 'Шипы', upgradePerShield: 'UP', durability: 'Стойк.', blunt: '−Атк.',
+    armorPerShield: 'Рем.', regen: 'Реген', dexterity: 'Точн.', vitality: 'Живуч.',
+  });
   function renderCharacterSummary(panel) {
     const h = S.hero, st = h.stats;
-    const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
-    const rows = [
-      ['Мех', cls.name + ' · специализация и модули'],
-      ['Пилот', RACE_INFO[clsRace()].name + ' · особенность и смертный враг'],
-      ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
-      ...(runPilotAffinity() ? [['Склонность на этот рейд', pilotAffinityDescription()]] : []),
-      ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
-      ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
-      ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
-      ['Броня', `${fmt(h.armor)} / ${fmt(h.maxArmor)}`],
-      ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
-      ['Сила / Урон', `${fmt(st.strength)} / ${fmt(st.damage)}`],
-      ['Точность / Защита', `${fmt(st.dexterity)} / ${fmt(st.defense)}`],
-      ['Живучесть / Удача / Все бонусы', `${fmt(st.vitality)} / ${fmt(st.luck)} / ${fmt(st.charisma)}`],
-      ['Щит: ремонт ИЛИ улучшение', `${fmt(perShield())} брони; при полной броне/Коррозии — ${resourceYield(S.upgradePerShield).toFixed(2)} UP`],
-      ['Лечение за зелье', `${fmt(HEAL_PER_POTION + st.luck)} HP`],
-      ['Золото за монету / опыт за врага', `${resourceYield(S.goldPerCoin).toFixed(2)} / ${resourceYield(S.xpPerSkull).toFixed(2)}`],
-      ['Пробитие / стойкость брони', `${Math.round(S.pierce*100)}% / ${Math.round(S.durability*100)}%`],
-      ['Регенерация / ответный урон', `${fmt(S.regen)} HP/ход / ${fmt(S.spikes)}`],
-      ['Навыки', S.skills.length ? S.skills.map(id => (SKILL_BY_ID[id] || {}).name || id).join(', ') : 'пока нет'],
-      ...((S.equipment || []).map(it => [it.slotName, it.name + ' — ' + itemModsText(it)])),
-    ];
-    panel.innerHTML = '<p class="summary-hint">Конфигурация рейда закреплена при старте: пары и пул модулей задаёт мех, особенность и смертного врага — выбранный пилот. Это прежние пакеты, а не дополнительный бонус. Ниже итог с улучшениями и снаряжением.</p>';
-    const list = document.createElement('div');
-    list.className = 'character-summary-list';
-    rows.forEach(([label, value]) => {
-      const row = document.createElement('div');
-      row.className = 'character-summary-row';
-      row.innerHTML = `<span>${label}</span><b>${value}</b>`;
-      list.appendChild(row);
-    });
-    panel.appendChild(list);
+    const race = clsRace();
+    const pilot = RACE_INFO[race] || RACE_INFO.Human;
+    const esc = str => String(str || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const perksText = runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет';
+    const flawsText = runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет';
+    const gear = S.equipment || [];
+
+    const activeEffects = [];
+    if (S.leech > 0) activeEffects.push(`🩸 Сок ${Math.round(S.leech * 100)}%`);
+    if (S.weaponPoison > 0) activeEffects.push(`☠ Яд +${fmt(S.weaponPoison)}`);
+    if (S.blunt > 0) activeEffects.push(`🚫 −${fmt(S.blunt)} атк.`);
+    if (S.quicken > 0) activeEffects.push(`⏱ −${fmt(S.quicken)} КД`);
+    if (S.spikes > 0) activeEffects.push(`🗡 Шипы ${fmt(S.spikes)}`);
+
+    const effectsHtml = activeEffects.length
+      ? activeEffects.map(text => `<span class="stats-fx-chip">${esc(text)}</span>`).join('')
+      : '<span class="stats-fx-empty">Пока нет</span>';
+
+    const gearHtml = gear.map(it => {
+      const keys = ITEM_KEYS.filter(key => itemValue(it, key) > 0);
+      const chips = keys.length
+        ? keys.map(key => {
+            const def = ITEM_STAT[key];
+            const label = ITEM_STAT_SHORT[key] || def.name;
+            return `<span class="gear-chip" title="${esc(def.desc)}">${def.icon} ${esc(label)} +${esc(itemNumber(key, itemValue(it, key)))}</span>`;
+          }).join('')
+        : '<span class="gear-chip is-empty">без бонусов</span>';
+      return `<article class="gear-card">`
+        + `<div class="gear-icon">${raidItemIcon(it.slot, it)}</div>`
+        + `<div class="gear-main">`
+        + `<div class="gear-head"><span class="gear-slot">${esc(it.slotName)}</span><b class="gear-name">${esc(it.name)}</b></div>`
+        + `<div class="gear-chips">${chips}</div>`
+        + `</div></article>`;
+    }).join('');
+
+    panel.innerHTML =
+      `<div class="stats-tabs" role="tablist" aria-label="Разделы свойств">`
+      + `<button type="button" class="stats-tab" role="tab" data-stats-tab="params" aria-selected="true">📊 Параметры</button>`
+      + `<button type="button" class="stats-tab" role="tab" data-stats-tab="gear" aria-selected="false">🛡 Снаряжение (${gear.length})</button>`
+      + `</div>`
+      + `<div class="stats-pane" data-stats-pane="params">`
+      + `<div class="stats-pilot-card">`
+      + `<img class="stats-pilot-img" src="${pilotArtPath(race)}" alt="" draggable="false">`
+      + `<div class="stats-pilot-info">`
+      + `<div class="stats-pilot-row"><span class="stats-pilot-label">Пилот</span><b>${esc(pilot.name)}</b></div>`
+      + `<p class="stats-pilot-desc">${esc(pilot.desc)}</p>`
+      + `<div class="stats-traits">`
+      + `<span class="stats-trait-chip is-perk"><b>Пассивы меха:</b> ${esc(perksText)}</span>`
+      + `<span class="stats-trait-chip is-flaw"><b>Изъяны меха:</b> ${esc(flawsText)}</span>`
+      + (runPilotAffinity() ? `<span class="stats-trait-chip"><b>Склонность:</b> ${esc(pilotAffinityDescription())}</span>` : '')
+      + `</div></div></div>`
+      + `<div class="stats-section-label">Отдача 1 плитки</div>`
+      + `<div class="stats-grid-2">`
+      + `<div class="stats-tile"><span>🛡 Щит</span><b>+${fmt(perShield())} бр.</b><small>полн. → ${resourceYield(S.upgradePerShield).toFixed(2)} UP</small></div>`
+      + `<div class="stats-tile"><span>🧪 Зелье</span><b>+${fmt(HEAL_PER_POTION + st.luck)} HP</b><small>реген +${fmt(S.regen)}/ход</small></div>`
+      + `<div class="stats-tile"><span>🪙 Монета</span><b>+${resourceYield(S.goldPerCoin).toFixed(2)}</b><small>золота в казну</small></div>`
+      + `<div class="stats-tile"><span>⭐ Враг</span><b>+${resourceYield(S.xpPerSkull).toFixed(2)}</b><small>опыта за убийство</small></div>`
+      + `</div>`
+      + `<div class="stats-section-label">Защита и эффекты</div>`
+      + `<div class="stats-defense-row">`
+      + `<div class="stats-mini"><span>🎯 Пробитие</span><b>${Math.round(S.pierce * 100)}%</b></div>`
+      + `<div class="stats-mini"><span>🧱 Стойкость</span><b>${Math.round(S.durability * 100)}%</b></div>`
+      + `<div class="stats-mini stats-mini-fx"><span>✨ Эффекты</span><div class="stats-fx-list">${effectsHtml}</div></div>`
+      + `</div>`
+      + `<div class="stats-core-bar" aria-label="Базовые характеристики">`
+      + `<div class="stats-core-cell"><span>Сила</span><b>${fmt(st.strength)}</b><small>ур. ${fmt(st.damage)}</small></div>`
+      + `<div class="stats-core-cell"><span>Точность</span><b>${fmt(st.dexterity)}</b><small>защ. ${fmt(st.defense)}</small></div>`
+      + `<div class="stats-core-cell"><span>Живучесть</span><b>${fmt(st.vitality)}</b><small>HP/зел.</small></div>`
+      + `<div class="stats-core-cell"><span>Удача</span><b>${fmt(st.luck)}</b><small>бон. ${fmt(st.charisma)}</small></div>`
+      + `</div>`
+      + `</div>`
+      + `<div class="stats-pane" data-stats-pane="gear" hidden>`
+      + `<div class="gear-list">${gearHtml}</div>`
+      + `</div>`;
+
+    const tabs = [...panel.querySelectorAll('.stats-tab')];
+    const panes = [...panel.querySelectorAll('.stats-pane')];
+    const selectTab = name => {
+      tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.statsTab === name)));
+      panes.forEach(p => { p.hidden = p.dataset.statsPane !== name; });
+    };
+    tabs.forEach(t => t.addEventListener('click', () => selectTab(t.dataset.statsTab)));
   }
 
   // Item modifiers use display units; native IDs below define ordering, not
@@ -6837,6 +6894,9 @@
       clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0;
     }
     title.className = 'modal-title';
+    const modalX = el('modal-x-close');
+    if (modalX) modalX.hidden = !(kind === 'stats' || kind === 'skull');
+    if (kind === 'stats') wrap.classList.add('stats-mode');
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
       const cssKind = kind === 'gold' ? 'shop' : kind;
       wrap.classList.add(cssKind);
@@ -9127,9 +9187,20 @@
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
     const combatModal = el('modal');
+    const modalXClose = el('modal-x-close');
+    if (modalXClose) {
+      modalXClose.addEventListener('click', () => {
+        if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+      });
+    }
     if (combatModal) {
       combatModal.addEventListener('click', event => {
         if (event.target === combatModal && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) closeModal();
+      });
+      combatModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) {
+          event.preventDefault(); closeModal();
+        }
       });
     }
     const helpModal = qs('#help-modal');

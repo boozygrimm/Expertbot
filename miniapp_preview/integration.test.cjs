@@ -5643,4 +5643,54 @@ test('magitech combat cheatsheet: ? button opens translucent live cheatsheet for
   } finally { b.dom.window.close(); }
 });
 
+test('magitech stats modal: compact 2-tab layout without combat-HUD duplicates, gear chips and X close', async () => {
+  const b = await openMagitech({ seed: 5052 });
+  try {
+    const win = b.dom.window, doc = win.document;
+    doc.querySelector('#stats-btn').click();
+    const modal = doc.querySelector('#modal');
+    assert.ok(modal.classList.contains('show'));
+    assert.ok(modal.classList.contains('stats-mode'));
+    assert.equal(doc.querySelector('#modal-x-close').hidden, false);
+
+    // 2 tabs: Параметры (default) and Снаряжение (5).
+    const paramsTab = modal.querySelector('.stats-tab[data-stats-tab="params"]');
+    const gearTab = modal.querySelector('.stats-tab[data-stats-tab="gear"]');
+    const paramsPane = modal.querySelector('.stats-pane[data-stats-pane="params"]');
+    const gearPane = modal.querySelector('.stats-pane[data-stats-pane="gear"]');
+    assert.equal(paramsTab.getAttribute('aria-selected'), 'true');
+    assert.equal(paramsPane.hidden, false);
+    assert.equal(gearPane.hidden, true);
+
+    // No combat-HUD duplicates; has pilot, traits, tile yields, defense & 4 core stats.
+    assert.match(paramsPane.textContent, /Пилот/);
+    assert.match(paramsPane.textContent, /Пассивы меха/);
+    assert.match(paramsPane.textContent, /Изъяны меха/);
+    assert.equal(paramsPane.querySelectorAll('.stats-tile').length, 4);
+    assert.equal(paramsPane.querySelectorAll('.stats-core-cell').length, 4);
+
+    // Switch to Gear tab: 5 cards with icons and bonus chips.
+    gearTab.click();
+    assert.equal(gearTab.getAttribute('aria-selected'), 'true');
+    assert.equal(gearPane.hidden, false);
+    assert.equal(paramsPane.hidden, true);
+    assert.equal(gearPane.querySelectorAll('.gear-card').length, 5);
+    assert.equal(gearPane.querySelectorAll('.gear-card .gear-icon').length, 5);
+    assert.ok(gearPane.querySelectorAll('.gear-chip').length >= 5);
+
+    // Close via X button.
+    doc.querySelector('#modal-x-close').click();
+    assert.equal(modal.classList.contains('show'), false);
+    assert.equal(b.raid.state.pendingModal, null);
+
+    // Mandatory level modal hides #modal-x-close.
+    b.raid.state.hero.xp = 100;
+    b.raid.checkLevelUp();
+    assert.equal(b.raid.state.pendingModal, 'level');
+    assert.equal(doc.querySelector('#modal-x-close').hidden, true);
+
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 
