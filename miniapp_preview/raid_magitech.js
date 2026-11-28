@@ -3440,21 +3440,23 @@
       + '<span class="coin-face coin-obverse"><svg viewBox="0 0 48 48"><path d="m24 7 12 17-12 17L12 24Z" fill="#9b6213" stroke="#ffedaa" stroke-width="1.6"/><path d="m24 13 7 11-7 11-7-11Z" fill="#edbb4c"/><path d="m24 17 4 7-4 7-4-7Z" fill="#ffdf83"/><path d="M8 20 5 24l3 4m32-8 3 4-3 4" fill="none" stroke="#8e5710" stroke-width="1.5"/></svg></span></span>';
     if (cell.type === 'potion') {
       const kind = cell.acid ? 'acid' : cell.mana ? 'mana' : cell.explosive ? 'explosive' : 'health';
-      const liquid = { health: '#d75b78', acid: '#b4d53b', mana: '#4d9fe6', explosive: '#e98b3c' }[kind];
+      const sparkleColor = { health: '#fff2f6', acid: '#f4ffb8', mana: '#e8f8ff', explosive: '#fff0c8' }[kind];
       const mark = kind === 'mana'
         ? '<path class="potion-mark" d="m24 25 4 6-4 7-4-7Z" fill="#f4fbff" stroke="#bfe8ff" stroke-width=".8"/>'
         : kind === 'acid'
-          ? '<circle class="potion-mark potion-bubble" cx="20" cy="32" r="1.5"/><circle class="potion-mark potion-bubble potion-bubble-delay" cx="28" cy="35" r="1"/>'
+          ? '<circle class="potion-mark potion-bubble" cx="20.5" cy="31.5" r="1.5"/><circle class="potion-mark potion-bubble potion-bubble-delay" cx="27.5" cy="34.5" r="1.1"/>'
           : kind === 'explosive'
             ? '<path class="potion-mark" d="m24 27 1.7 4.1 4.3.4-3.3 2.8 1 4.2-3.7-2.3-3.8 2.3 1-4.2-3.2-2.8 4.2-.4Z" fill="#fff0bc" stroke="#ffbd70" stroke-width=".7"/>'
             : '<path class="potion-mark" d="M24 28v10m-5-5h10" stroke="#fff1e5" stroke-width="2.2" stroke-linecap="round"/>';
-      const surfaceY = { health: 26, acid: 29, mana: 26, explosive: 27 }[kind];
-      const clipUid = (tileSymbol._potionUid = (tileSymbol._potionUid || 0) + 1);
-      const clipTag = `${cellIdx}-${clipUid}`;
-      const clip = `raid-potion-fill-${clipTag}`;
-      const headClip = `raid-potion-head-${clipTag}`;
-      const bodyWindow = `raid-potion-body-${clipTag}`;
-      return start + `<defs><clipPath id="${headClip}"><rect x="0" y="0" width="48" height="23"/></clipPath><clipPath id="${bodyWindow}"><rect x="0" y="21" width="48" height="28"/></clipPath><clipPath id="${clip}"><path d="M24 16c-2.5 3.4-9 4.6-13 8.5-5 5.1-5.8 11.3-.3 18.1 7.1 4.1 25.5 4.1 32.6 0 5.5-6.8 4.7-13-.3-18.1-4-3.9-10.5-5.1-13-8.5Z"/></clipPath></defs><g class="potion-vessel" data-potion="${kind}"><image class="potion-art-head" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet" clip-path="url(#${headClip})"/><g class="potion-lower-window" clip-path="url(#${bodyWindow})"><g class="potion-lower-motion"><image class="potion-art-body" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet"/><g class="potion-slosh-overlay" clip-path="url(#${clip})"><path class="potion-wave potion-wave-back" d="M3 ${surfaceY}c5-2 8 1 13-1s8-2 12 0 8 1 17-1v10H3Z" fill="${liquid}" fill-opacity=".24"/><path class="potion-wave potion-wave-front" d="M3 ${surfaceY + 1}c6 1 8-2 14 0s8 2 13 0 9-1 15 1v10H3Z" fill="${liquid}" fill-opacity=".47"/><path class="potion-wave potion-surface-glint" d="M7 ${surfaceY + .4}q5-1 8-.2m7 .2q6 1 11-.1" fill="none" stroke="#fff8e8" stroke-opacity=".8" stroke-width=".7" stroke-linecap="round"/><circle class="potion-bubble" cx="18" cy="34" r=".9"/><circle class="potion-bubble potion-bubble-delay" cx="31" cy="37" r=".65"/>${mark}</g></g></g></g>` + end;
+      const delay = (((Number(cellIdx) || 0) * 7) % 19) / 10;
+      return start
+        + `<g class="potion-vessel" data-potion="${kind}" style="--potion-delay:-${delay.toFixed(1)}s">`
+        + `<image class="potion-art" href="miniapp_preview/assets/raid_potion_${kind}.png" x="0" y="0" width="48" height="48" preserveAspectRatio="xMidYMid meet"/>`
+        + `<path class="potion-glass-sheen" d="M17.5 23.5q-2.8 6.2 0 12.6" fill="none" stroke="${sparkleColor}" stroke-width="1.35" stroke-linecap="round"/>`
+        + `<path class="potion-sparkle" d="M18 19.6 18.7 22.1 21.2 22.8 18.7 23.5 18 26 17.3 23.5 14.8 22.8 17.3 22.1Z" fill="${sparkleColor}"/>`
+        + `<path class="potion-sparkle potion-sparkle-delay" d="M30.2 31.8 30.7 33.7 32.6 34.2 30.7 34.7 30.2 36.6 29.7 34.7 27.8 34.2 29.7 33.7Z" fill="${sparkleColor}"/>`
+        + `${mark}</g>`
+        + end;
     }
     if (cell.type === 'trophy') return `<img class="trophy-art" src="${TROPHY_IMAGE}" alt="">`;
     if (cell.type === 'chain') return start + '<path d="m21 9-9 9a9 9 0 0 0 13 13l4-4m-10-6-4 4a9 9 0 0 0 13 13l9-9a9 9 0 0 0-13-13Z" stroke="#a6dce0" stroke-width="5" fill="none"/><path d="m17 30 14-14" stroke="#e9d597" stroke-width="3"/>' + end;
@@ -6142,6 +6144,7 @@
       toggle.title = `${enabled ? 'Выключить' : 'Включить'} музыку в ${context}`;
     }
     const setting = el('music-on'); if (setting) setting.checked = battleMusicEnabled;
+    const menuSetting = el('menu-music-on'); if (menuSetting) menuSetting.checked = battleMusicEnabled;
   }
   function syncIntroMusic(allowAutoplayAttempt = false) {
     const track = el('raid-intro-music'); if (!track) return;
@@ -6181,6 +6184,7 @@
     updateIntroMusicToggle();
     toggle.addEventListener('click', () => setMusicPreference(!activeMusicEnabled()));
     el('music-on')?.addEventListener('change', event => setMusicPreference(event.target.checked, false));
+    el('menu-music-on')?.addEventListener('change', event => setMusicPreference(event.target.checked, false));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') stopIntroMusic(); else syncIntroMusic();
     });
@@ -8765,6 +8769,21 @@
     UPDATES_LATEST_RELEASE = UPDATES_CATALOG[0]?.release || 0;
     for (const id of ['picker-updates', 'menu-updates']) el(id)?.addEventListener('click', event => openUpdateNotice(false, false, event.currentTarget));
     const close = el('updates-close'); if (close) bindReadOnlyDismiss(close, closeUpdateNotice, () => UPDATES_SESSION);
+    const updatesBackdrop = el('updates-modal');
+    if (updatesBackdrop) {
+      let backdropArmed = null;
+      updatesBackdrop.addEventListener('pointerdown', event => {
+        if (event.target === updatesBackdrop && event.isPrimary !== false && !(event.button > 0)) backdropArmed = UPDATES_SESSION;
+        else backdropArmed = null;
+      });
+      updatesBackdrop.addEventListener('pointercancel', () => { backdropArmed = null; });
+      updatesBackdrop.addEventListener('click', event => {
+        const own = backdropArmed !== null && backdropArmed === UPDATES_SESSION; backdropArmed = null;
+        if (event.target !== updatesBackdrop) return;
+        if (event.detail > 0 && !own) return;
+        closeUpdateNotice();
+      });
+    }
     el('updates-modal')?.addEventListener('keydown', event => {
       if (!UPDATES_OPEN) return;
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeUpdateNotice(); }
@@ -8813,6 +8832,9 @@
     el('menu-history')?.addEventListener('click', openRunRecords);
     for (const id of ['picker-achievements', 'menu-achievements']) el(id)?.addEventListener('click', openAchievements);
     el('history-close')?.addEventListener('click', closeRunHistory);
+    el('history-modal')?.addEventListener('click', event => {
+      if (event.target === el('history-modal') && HISTORY_OPEN) closeRunHistory();
+    });
     for (const id of ['history-section', 'history-type', 'achievement-filter']) el(id)?.addEventListener('change', renderRunHistory);
     el('history-retry')?.addEventListener('click', () => { retryRunHistory(); renderRunHistory(); });
     el('history-modal')?.addEventListener('keydown', event => {
@@ -8827,6 +8849,9 @@
       }
     });
     el('restart-cancel')?.addEventListener('click', cancelNewGame);
+    el('restart-modal')?.addEventListener('click', event => {
+      if (event.target === el('restart-modal') && NEW_RUN_REQUEST) cancelNewGame();
+    });
     el('restart-confirm')?.addEventListener('click', () => {
       const request = NEW_RUN_REQUEST;
       if (!request || request.runId !== RUN_ID) return;
@@ -8843,6 +8868,9 @@
       }
     });
     el('exit-cancel')?.addEventListener('click', () => cancelTelegramExit());
+    el('exit-modal')?.addEventListener('click', event => {
+      if (event.target === el('exit-modal') && TELEGRAM_EXIT) cancelTelegramExit();
+    });
     el('exit-confirm')?.addEventListener('click', () => {
       if (TELEGRAM_EXIT?.runId === RUN_ID) requestTelegramClose(true);
     });
@@ -8856,6 +8884,12 @@
         }
       }
     });
+    const pickerVisual = el('picker-visual');
+    if (pickerVisual && typeof document.addEventListener === 'function') {
+      document.addEventListener('pointerdown', event => {
+        if (pickerVisual.open && !pickerVisual.contains(event.target)) pickerVisual.open = false;
+      }, true);
+    }
     const pickerResume = el('picker-resume'); if (pickerResume) pickerResume.addEventListener('click', resumeFromClassPicker);
     const picker = el('class-picker');
     if (picker) picker.addEventListener('keydown', event => {
@@ -8866,12 +8900,34 @@
       const target = event.shiftKey ? controls[controls.length - 1] : controls[0];
       if (controls.length && (event.shiftKey ? document.activeElement === controls[0] : document.activeElement === controls[controls.length - 1])) { event.preventDefault(); target.focus(); }
     });
+    const soundOn = el('sound-on'), menuSoundOn = el('menu-sound-on');
+    if (soundOn && menuSoundOn) {
+      menuSoundOn.checked = soundOn.checked;
+      menuSoundOn.addEventListener('change', () => {
+        soundOn.checked = menuSoundOn.checked;
+        soundOn.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      soundOn.addEventListener('change', () => { menuSoundOn.checked = soundOn.checked; });
+    }
     const menuBtn = qs('#menu-btn');
     const menuModal = qs('#menu-modal');
     if (menuBtn && menuModal) {
-      menuBtn.addEventListener('click', () => { if (S) saveRun(); menuModal.classList.add('show'); });
-      const hide = () => menuModal.classList.remove('show');
+      const hide = () => { menuModal.classList.remove('show'); syncTelegramChrome(); };
+      menuBtn.addEventListener('click', () => {
+        if (S) saveRun();
+        if (soundOn && menuSoundOn) menuSoundOn.checked = soundOn.checked;
+        updateIntroMusicToggle();
+        menuModal.classList.add('show');
+        syncTelegramChrome();
+      });
       const resume = qs('#menu-resume'); if (resume) resume.addEventListener('click', hide);
+      const menuX = qs('#menu-x-close'); if (menuX) menuX.addEventListener('click', () => { hide(); el('menu-btn')?.focus(); });
+      menuModal.addEventListener('click', event => {
+        if (event.target === menuModal) { hide(); el('menu-btn')?.focus(); }
+      });
+      menuModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && menuModal.classList.contains('show')) { event.preventDefault(); hide(); el('menu-btn')?.focus(); }
+      });
       const close = qs('#menu-close'); if (close) close.addEventListener('click', () => { if (TELEGRAM_APP) requestTelegramClose(); else hide(); });
       const classes = el('menu-classes'); if (classes) classes.addEventListener('click', () => {
         if (S?.resolving || S?.pendingModal) { flash('Сначала заверши ход и выбор наград'); return; }
@@ -8895,12 +8951,26 @@
     if (statsBtn) statsBtn.addEventListener('click', () => {
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
+    const combatModal = el('modal');
+    if (combatModal) {
+      combatModal.addEventListener('click', event => {
+        if (event.target === combatModal && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) closeModal();
+      });
+    }
+    const helpModal = qs('#help-modal');
     const helpClose = qs('#help-close');
-    if (helpClose) helpClose.addEventListener('click', () => {
-      const wrap = qs('#help-modal');
-      if (wrap) wrap.classList.remove('show');
+    const closeHelp = () => {
+      if (helpModal) helpModal.classList.remove('show');
       el('menu-btn')?.focus();
-    });
+      syncTelegramChrome();
+    };
+    if (helpClose) helpClose.addEventListener('click', closeHelp);
+    if (helpModal) {
+      helpModal.addEventListener('click', event => { if (event.target === helpModal) closeHelp(); });
+      helpModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && helpModal.classList.contains('show')) { event.preventDefault(); closeHelp(); }
+      });
+    }
     showClassPicker();
     initUpdateNotice();
   }

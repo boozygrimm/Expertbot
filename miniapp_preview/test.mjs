@@ -4610,25 +4610,25 @@ test('magitech player copy explains old runs and the weakening shield modifier i
   assert.doesNotMatch(html + js, /старые v1\/v2\/v3|без миграции|текущий залп|токен опыта|токен монеты|к кулдаунам/);
 });
 
-test('magitech potion glass: health, acid, mana and explosive fills get clipped slosh and premium rocking', () => {
+test('magitech potion glass: health, acid, mana and explosive sprites use lightweight glass shimmer and sparkles without clipped wrapper bands', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   assert.match(js, /cell\.acid \? 'acid' : cell\.mana \? 'mana' : cell\.explosive \? 'explosive' : 'health'/);
-  for (const kind of ['health', 'acid', 'mana', 'explosive']) assert.ok(js.includes(`${kind}: '#`), kind + ' liquid palette');
-  assert.match(js, /raid-potion-fill-\$\{clipTag\}/);
+  for (const kind of ['health', 'acid', 'mana', 'explosive']) assert.ok(js.includes(`${kind}: '#`), kind + ' glint palette');
   assert.match(js, /class="potion-vessel" data-potion="\$\{kind\}"/);
-  assert.match(js, /class="potion-wave potion-wave-back"/);
-  assert.match(js, /class="potion-wave potion-wave-front"/);
+  assert.match(js, /class="potion-art"/);
+  assert.match(js, /class="potion-glass-sheen"/);
+  assert.match(js, /class="potion-sparkle"/);
+  assert.doesNotMatch(js, /potion-wave-back|potion-slosh-overlay/);
   assert.match(js, /!!cell\.explosive.*cell\.magicSword/);
-  assert.match(css, /@keyframes potion-rock[^]*rotate\(-6\.5deg\)[^]*rotate\(6\.5deg\)/);
-  assert.match(css, /@keyframes potion-slosh-back[^]*translate\(-3px,1px\)[^]*translate\(3px,-1\.4px\)/);
-  assert.match(css, /@keyframes potion-slosh-front[^]*translate\(2\.5px,-\.8px\)[^]*translate\(-2\.5px,1\.2px\)/);
+  assert.match(css, /@keyframes potion-sheen-breathe/);
+  assert.match(css, /@keyframes potion-sparkle-twinkle/);
   assert.match(css, /\.cell\.type-potion\.frozen[^]*animation-play-state: paused/);
   assert.match(css, /html\[data-raid-motion="off"\][^]*animation: none !important/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test('magitech potion renderer: each fill state creates a unique clipped bottle and its own liquid/accent', () => {
+test('magitech potion renderer: each fill state renders full crystal sprite and tinted facet glint without protruding clip paths', () => {
   const js = readFileSync(new URL('./raid_magitech.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('./raid_magitech.css', import.meta.url), 'utf8');
   const from = js.indexOf('  function tileSymbol('), to = js.indexOf('\n  // Alchemy reference:', from);
@@ -4637,17 +4637,19 @@ test('magitech potion renderer: each fill state creates a unique clipped bottle 
     start: '<svg viewBox="0 0 48 48" class="ic" aria-hidden="true">', end: '</svg>',
   });
   const variants = [
-    [{ type: 'potion' }, 'health', '#d75b78'],
-    [{ type: 'potion', acid: true }, 'acid', '#b4d53b'],
-    [{ type: 'potion', mana: true }, 'mana', '#4d9fe6'],
-    [{ type: 'potion', explosive: true }, 'explosive', '#e98b3c'],
+    [{ type: 'potion' }, 'health', '#fff2f6'],
+    [{ type: 'potion', acid: true }, 'acid', '#f4ffb8'],
+    [{ type: 'potion', mana: true }, 'mana', '#e8f8ff'],
+    [{ type: 'potion', explosive: true }, 'explosive', '#fff0c8'],
   ];
   for (const [cell, kind, colour] of variants) {
     const index = variants.findIndex(item => item[1] === kind), svg = render(cell, index);
     assert.match(svg, new RegExp(`data-potion="${kind}"`));
-    assert.match(svg, new RegExp(`raid-potion-fill-${index}`));
-    assert.ok(svg.includes(`fill="${colour}"`), kind + ' liquid color');
-    assert.ok(svg.includes('class="potion-wave potion-wave-front"'));
+    assert.ok(svg.includes('class="potion-art"'), kind + ' single sprite layer');
+    assert.ok(svg.includes(`fill="${colour}"`), kind + ' sparkle color');
+    assert.ok(svg.includes('class="potion-glass-sheen"'), kind + ' glass sheen');
+    assert.ok(svg.includes('class="potion-sparkle"'), kind + ' crystal sparkle');
+    assert.ok(!svg.includes('<clipPath'), kind + ' no clipped wrapper bands');
   }
   assert.notEqual(render(variants[0][0], 0), render(variants[3][0], 3));
   for (const [cell, kind] of variants) {
@@ -4658,9 +4660,8 @@ test('magitech potion renderer: each fill state creates a unique clipped bottle 
     assert.equal(png[25], 6, kind + ' real RGBA alpha channel');
     assert.ok(png.readUInt32BE(16) > 400 && png.readUInt32BE(20) > 700, kind + ' detailed sprite dimensions');
   }
-  assert.match(render(variants[1][0], 1), /data-potion="acid"[^]*potion-slosh-overlay/);
-  assert.match(css, /potion-lower-motion[^]*transform-origin: 24px 21px/);
-  assert.match(css, /@keyframes potion-rock[^]*rotate\(-6\.5deg\)/);
+  assert.match(css, /\.cell\.type-potion \.potion-glass-sheen/);
+  assert.match(css, /\.cell\.type-potion \.potion-sparkle/);
 });
 
 test('magitech source: legacy Continue keeps 42 skill fixtures and all six RNG streams classical', () => {
