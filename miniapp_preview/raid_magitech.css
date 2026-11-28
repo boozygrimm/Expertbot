@@ -4479,6 +4479,117 @@ html[data-raid-motion="off"] .guide-tile {
   font-weight: 700;
 }
 
+/* --- Translucent live combat cheatsheet (? button in HUD) --- */
+.combat-cheatsheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cs-block {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 188, 124, 0.24);
+  background: rgba(6, 20, 20, 0.66);
+}
+.cs-block.cs-mode {
+  border-color: rgba(212, 188, 124, 0.42);
+  background: rgba(16, 39, 36, 0.7);
+}
+.cs-block.cs-enemies {
+  border-color: rgba(242, 178, 92, 0.42);
+  background: rgba(34, 24, 15, 0.62);
+}
+.cs-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+  font: 700 12px/1.2 system-ui, sans-serif;
+  color: #f4e1aa;
+}
+.cs-title b {
+  font: 600 10.5px/1.2 system-ui, sans-serif;
+  color: #a9c4b5;
+}
+.cs-line {
+  margin: 0 0 3px;
+  font: 400 11px/1.38 system-ui, sans-serif;
+  color: #dce5da;
+}
+.cs-line:last-child {
+  margin-bottom: 0;
+}
+.cs-line.cs-muted {
+  color: #b4c8bb;
+  font-size: 10.5px;
+}
+.cs-line b,
+.cs-list b {
+  color: #f4df9e;
+}
+.cs-list {
+  margin: 0;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 400 11px/1.35 system-ui, sans-serif;
+  color: #dce5da;
+}
+.cs-list li.cs-alert {
+  color: #ffe3a8;
+}
+.cs-pretzel-svg {
+  display: block;
+  width: 100%;
+  max-width: 224px;
+  height: auto;
+  margin: 4px auto 5px;
+}
+.cheatsheet-guide-btn {
+  width: 100%;
+  margin-top: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.48);
+  background: linear-gradient(125deg, rgba(35, 70, 62, 0.88), rgba(16, 38, 36, 0.92));
+  color: #f5e2ae;
+  font: 600 11.5px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.cheatsheet-guide-btn:hover,
+.cheatsheet-guide-btn:focus-visible {
+  border-color: #ffe399;
+  background: rgba(45, 86, 76, 0.95);
+}
+.cheatsheet-settings-details {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(182, 193, 163, 0.18);
+}
+.cheatsheet-settings-details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px;
+  color: #adc2b3;
+  font: 600 11px/1.2 system-ui, sans-serif;
+}
+.cheatsheet-settings-details > summary::after {
+  content: '▾';
+  font-size: 11px;
+  opacity: .78;
+}
+.cheatsheet-settings-details[open] > summary::after {
+  content: '▴';
+}
+
+
 
 
 

@@ -147,7 +147,7 @@
       <div class="skills" id="skills" aria-label="Умения"></div>
     </div>
     <div class="brand-actions">
-      <button class="icon-btn settings-toggle" id="settings-btn" type="button" title="Настройки игры" aria-label="Настройки игры" aria-haspopup="dialog" aria-controls="game-settings" aria-expanded="false"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><path d="m9.5 3-.6 2-1.8 1-2-.5-2.5 4.3L4.1 11v2L2.6 14.2l2.5 4.3 2-.5 1.8 1 .6 2h5l.6-2 1.8-1 2 .5 2.5-4.3-1.5-1.2v-2l1.5-1.2-2.5-4.3-2 .5-1.8-1-.6-2Z"/><circle cx="12" cy="12" r="3"/></g></svg></button>
+      <button class="icon-btn settings-toggle" id="settings-btn" type="button" title="Шпаргалка боя" aria-label="Шпаргалка боя" aria-haspopup="dialog" aria-controls="game-settings" aria-expanded="false"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="M9.2 9.1a3 3 0 1 1 4.6 2.5c-.9.6-1.8 1.2-1.8 2.4v.6" fill="none" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="17.8" r="1.15" fill="currentColor"/></svg></button>
       <button class="icon-btn" id="stats-btn" type="button" title="Мех, пилот и итоговые параметры" aria-label="Мех, пилот и итоговые параметры"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.2" r="3.1"/><path d="M5.2 20.5v-2.6a6.8 6.8 0 0 1 13.6 0v2.6"/><path d="M9.4 15.8h5.2M12 13.2v5.2"/></g></svg></button>
       <button class="icon-btn menu-toggle" id="menu-btn" type="button" title="Меню рейда" aria-label="Меню рейда"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></g><path d="M12 10.6 13.4 12 12 13.4 10.6 12Z" fill="currentColor"/></svg><span class="sr-only">Меню</span></button>
     </div>
@@ -261,24 +261,29 @@
      Viewport coordinates follow the actual recipient; never receives input. -->
 <div class="effect-layer" id="raid-effects" aria-hidden="true"></div>
 
-<!-- Transient board UI, not a pause or a mandatory reward modal. -->
+<!-- Transient board UI: live translucent combat cheatsheet (not a pause or reward modal). -->
 <div class="game-settings" id="game-settings" role="dialog" aria-modal="true" aria-labelledby="game-settings-title" hidden>
   <section class="game-settings-card">
-    <header><h3 id="game-settings-title">Настройки</h3><button class="settings-close" id="settings-close" type="button" aria-label="Закрыть настройки"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></header>
-    <fieldset id="game-visual"><legend>Вид и движение</legend>
-      <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
-      <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
-    </fieldset>
-    <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-    <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
-      <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-      <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
-      <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
-    </div></div></fieldset>
-    <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
-    <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
-    <p class="settings-note" data-raid-motion-note hidden></p>
-    <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
+    <header><h3 id="game-settings-title">Шпаргалка</h3><button class="settings-close" id="settings-close" type="button" aria-label="Закрыть шпаргалку"><svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></header>
+    <div class="combat-cheatsheet" id="combat-cheatsheet"></div>
+    <button class="cheatsheet-guide-btn" id="cheatsheet-guide-btn" type="button">📘 Анимированный гайд</button>
+    <details class="cheatsheet-settings-details">
+      <summary>⚙ Быстрые настройки</summary>
+      <fieldset id="game-visual"><legend>Вид и движение</legend>
+        <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
+        <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
+      </fieldset>
+      <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
+      <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+        <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
+        <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
+        <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
+      </div></div></fieldset>
+      <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
+      <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
+      <p class="settings-note" data-raid-motion-note hidden></p>
+      <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
+    </details>
   </section>
 </div>
 
