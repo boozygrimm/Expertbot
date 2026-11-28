@@ -66,12 +66,12 @@
             <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
             <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
           </fieldset>
-          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+          <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
             <label title="Отключить тактильные отклики"><input type="radio" name="haptics-garage" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-            <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-garage" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
-            <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-garage" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
+            <label title="Режим помощника: мягко сигналит об откате навыка, появлении особого врага, босса, трофея, награде и опасном уроне — без шума при ведении цепи"><input type="radio" name="haptics-garage" value="important" data-raid-haptics aria-label="Важные события"><span>Помощник</span></label>
+            <label title="Помощник + мягкие отклики на выделение врагов, удары и убийства"><input type="radio" name="haptics-garage" value="all" data-raid-haptics aria-label="Все боевые события"><span>Бой</span></label>
           </div></div></fieldset>
-          <p>Вибрация работает на поддерживаемых устройствах; выбор сохраняется отдельно от рейда.</p>
+          <p><b>Помощник</b> не шумит при ведении цепи — мягко подсказывает об откате навыка, выходе особого врага или босса, появлении трофея и опасном уроне.</p>
           <p>Без кружков остаются картинки, числа и игровые метки. Без анимаций длительность хода прежняя.</p>
           <p data-raid-motion-note hidden></p>
           <p data-raid-visual-status role="status" aria-live="polite" hidden></p>
@@ -276,11 +276,12 @@
         <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
       </fieldset>
       <label class="settings-row"><span>Звуковые эффекты</span><input type="checkbox" id="sound-on" checked aria-label="Звуковые эффекты" role="switch"></label>
-      <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+      <fieldset class="haptics-combat-settings"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
         <label title="Отключить тактильные отклики"><input type="radio" name="haptics-combat" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-        <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
-        <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
+        <label title="Режим помощника: мягко сигналит об откате навыка, появлении особого врага, босса, трофея, награде и опасном уроне — без шума при ведении цепи"><input type="radio" name="haptics-combat" value="important" data-raid-haptics aria-label="Важные события"><span>Помощник</span></label>
+        <label title="Помощник + мягкие отклики на выделение врагов, удары и убийства"><input type="radio" name="haptics-combat" value="all" data-raid-haptics aria-label="Все боевые события"><span>Бой</span></label>
       </div></div></fieldset>
+      <p class="settings-hint">«Помощник» сигналит только об откате навыка, особом враге, боссе, трофее и опасном уроне.</p>
       <label class="settings-row"><span>Музыка в бою</span><input type="checkbox" id="music-on" checked aria-label="Музыка в бою" role="switch"></label>
       <p class="settings-hint">Музыка в меню и в бою включается независимо.</p>
       <p class="settings-note" data-raid-motion-note hidden></p>
@@ -316,8 +317,8 @@
       </div>
       <fieldset class="haptics-preference menu-haptics"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
         <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
-        <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-menu" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
-        <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-menu" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
+        <label title="Режим помощника: мягко сигналит об откате навыка, появлении особого врага, босса, трофея, награде и опасном уроне — без шума при ведении цепи"><input type="radio" name="haptics-menu" value="important" data-raid-haptics aria-label="Важные события"><span>Помощник</span></label>
+        <label title="Помощник + мягкие отклики на выделение врагов, удары и убийства"><input type="radio" name="haptics-menu" value="all" data-raid-haptics aria-label="Все боевые события"><span>Бой</span></label>
       </div></div></fieldset>
       <p class="settings-note" data-raid-motion-note hidden></p>
       <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
