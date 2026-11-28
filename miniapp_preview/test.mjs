@@ -4920,7 +4920,7 @@ test('magitech preparation flow: mech confirmation opens four-quadrant elemental
   assert.ok(screen);
   for (const element of ['fire', 'air', 'earth', 'water']) assert.match(screen, new RegExp(`data-raid-region="${element}"`));
   assert.match(screen, /id="difficulty-select"/);
-  assert.match(screen, /До гибели/);
+  assert.match(screen, /Не оглядываясь/);
   assert.match(screen, /id="region-emblem-launch"/);
   assert.match(screen, /id="region-back-button"/);
   const logo = readFileSync(new URL('./assets/raid_emblem.png', import.meta.url));

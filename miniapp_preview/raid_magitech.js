@@ -661,7 +661,7 @@
     { id: 'mage', native: 5, name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Тактик',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
-      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · пилот: Тактик (зарядка навыка)',
+      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · пилот: Тактик («Хоть шерсти клок...»)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка из 4+ узлов собирает интерьер, кроме особых и боссов' },
     { id: 'ranger', native: 1, name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
       perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Биохимик',
@@ -799,7 +799,7 @@
     Halfling: { name: 'Бронник', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг пилота — Невидимый: удваивает защиту других новых врагов.' },
     Werewolf: { name: 'Перехватчик', desc: 'В конце хода собирает обычных врагов с HP ниже их защиты. Смертный враг пилота — Вампир: может лечиться выше прежнего максимума HP.' },
     Dragonkin: { name: 'Термит', desc: 'Ручное применение навыка поджигает случайного обычного врага. Смертный враг пилота — Застывший: вдвое уменьшает базовую часть урона цепочки.' },
-    Changeling: { name: 'Тактик', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг пилота — Нестабильный: его телепорт обновляет поле без мечей.' },
+    Changeling: { name: 'Тактик', desc: '«Хоть шерсти клок...»: с каждого особого врага утаскивает заряд в случайный надетый навык — может ткнуть и в уже готовый, но главное не с пустыми руками. Смертный враг пилота — Нестабильный: его телепорт обновляет поле без мечей.' },
   };
   // Display-only pilot professions; legacy race IDs and all linked bonuses/nemeses remain stable.
   const PILOT_ART_BY_RACE = Object.freeze({
@@ -1797,7 +1797,49 @@
     if (slot === 'shield') return raidShieldTexture('equipment-glyph', item);
     return `<svg class="equipment-glyph" viewBox="0 0 32 34" fill="none" stroke="#c7b57e" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true">${RAID_EQUIPMENT_SHAPES[slot] || RAID_EQUIPMENT_SHAPES.shield}</svg>`;
   }
-  function raidAchievementAvailable(id) { return ![45, 70, 71, 76, 77].includes(id); }
+  function raidAchievementAvailable(id) { return ![45, 70, 71].includes(id); }
+
+  const RAID_MODE_INFO = Object.freeze({
+    classic: {
+      short: 'Не оглядываясь',
+      desc: '<b>Не оглядываясь:</b> классический бесконечный рейд — качайся, собирай снаряжение и заходи так далеко, как сможешь!',
+    },
+    sprint: {
+      short: 'Спринт · 100 ходов',
+      desc: '<b>Спринт (100 ходов):</b> ресурсы ×2, навыки сразу 5 ур. — продержись 100 ходов до победы и ×2 к очкам!',
+    },
+    pretzel: {
+      short: 'Крендель',
+      desc: '<b>Крендель:</b> закручивай цепочку крест-накрест ✕ по диагонали — очки дают только за перекрёстки (100 HP).',
+    },
+  });
+  function normaliseRaidMode(value) {
+    return value === 'sprint' || value === 'pretzel' ? value : 'classic';
+  }
+  function readSavedRaidMode() {
+    const sel = qs('#mode-select');
+    if (sel && (sel.value === 'sprint' || sel.value === 'pretzel' || sel.value === 'classic')) return sel.value;
+    try { return normaliseRaidMode(profileStorage.getItem('raid:mode')); } catch (e) { return 'classic'; }
+  }
+  function syncRaidModeUi(mode, persist = false) {
+    const next = normaliseRaidMode(mode);
+    const sel = qs('#mode-select');
+    if (sel && sel.value !== next) sel.value = next;
+    for (const btn of qsa('.mode-pill[data-raid-mode]')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.raidMode === next));
+    }
+    const desc = el('region-mode-desc');
+    if (desc) desc.innerHTML = RAID_MODE_INFO[next].desc;
+    const diffWrap = el('difficulty-wrap'), diffLock = el('difficulty-lock-note'), diffSel = qs('#difficulty-select');
+    const locked = next === 'pretzel';
+    if (diffWrap) diffWrap.hidden = locked;
+    if (diffLock) diffLock.hidden = !locked;
+    if (diffSel) diffSel.disabled = locked;
+    for (const card of qsa('#modes-help-modal .mode-guide-item')) {
+      card.classList.toggle('is-active', card.dataset.guideMode === next);
+    }
+    if (persist) { try { profileStorage.setItem('raid:mode', next); } catch (e) {} }
+  }
 
   let RAID_REGION = 'earth'; // Preference / preview for the NEXT run.
   let RUN_REGION = null; // Pinned location; v1 uses it only for appearance.
@@ -2608,7 +2650,7 @@
     ['Чем они больше', 'Пилотом «Бронник» 10 раз убить одной цепочкой не менее 15 врагов и улучшить доспех. За цепь — 10%.'],
     ['Ещё один пал', 'Пилотом «Перехватчик» собрать Калечением 50 обычных врагов с HP ниже их защиты. За каждого — 2%.'],
     ['Пламя дракона', 'Пилотом «Термит» 50 раз добить врага огнём в конце хода. Источник огня может быть любым. За каждого — 2%.'],
-    ['Слёзы под дождём', 'Пилотом «Тактик» 50 раз получить награду за особого врага и зарядить навык. За каждый — 2%.'],
+    ['Слёзы под дождём', 'Пилотом «Тактик» 50 раз урвать «Хоть шерсти клок...» с особого врага и зарядить навык. За каждый — 2%.'],
     ['Снайпер', 'Убить особого на конце цепочки после пропуска стрелой: стрела за два узла до цели, разница по строке или столбцу больше 1.'],
     ['Что не убивает', 'Пилотом «Бронник» совершить атаку с 15+ прямыми убийствами в том же ходу после Мазохизма.'],
     ['Мастер Руны', 'Руной собрать внутри больше клеток, чем эффективных узлов в её контуре. Особые внутри не считаются.'],
@@ -2740,12 +2782,12 @@
     const data = readRunHistory()?.data; if (!data) return null;
     const catalog = ACHIEVEMENTS.slice(1).map((entry, index) => ({ id: index + 1, ...entry, available: raidAchievementAvailable(index + 1),
       progress: data.achievements.progress[index + 1] || 0, unlocked: data.achievements.progress[index + 1] === 100 }));
-    return { catalog, unlocked: catalog.filter(entry => entry.unlocked).length, available: 72, total: 77 };
+    return { catalog, unlocked: catalog.filter(entry => entry.unlocked).length, available: 74, total: 77 };
   }
   function renderAchievements(body, progress) {
-    appendHistoryHint(body, 'Правила и совместимость', 'Унаследованы 77 записей. В этой версии 72 доступных: условия Sprint/Pretzel/Harder (70,71,76,77) не заменялись новыми и недоступны, триггер45 не подтверждён. На Лёгком — только «Миссия завершена». Прогресс событий начинается с этой сборки; прошлые боевые события не восстанавливаются. Уже открытые мехи и их родные бойцы распознаются при следующем старте или продолжении не на Лёгком. Проценты копятся между забегами до 100, не дают очков и не зависят от окончательной смерти: спасение Последним рубежом не отменяет уже сработавшее событие.');
+    appendHistoryHint(body, 'Правила и совместимость', 'Унаследованы 77 записей. В этой версии 74 доступных (включая Спринт и Крендель): недоступны только условия 4-й сложности «Очень сложный» (70, 71) и неподтверждённый триггер 45. На Лёгком — только «Миссия завершена». Прогресс событий начинается с этой сборки; прошлые боевые события не восстанавливаются. Уже открытые мехи и их родные бойцы распознаются при следующем старте или продолжении не на Лёгком. Проценты копятся между забегами до 100, не дают очков и не зависят от окончательной смерти: спасение Последним рубежом не отменяет уже сработавшее событие.');
     const summary = document.createElement('p'); summary.className = 'achievement-summary';
-    summary.textContent = `Открыто ${Object.values(progress).filter(amount => amount === 100).length} из 72 доступных · 77 в исходном каталоге`;
+    summary.textContent = `Открыто ${Object.values(progress).filter(amount => amount === 100).length} из 74 доступных · 77 в исходном каталоге`;
     body.appendChild(summary);
     const filter = el('achievement-filter')?.value || 'all';
     let shown = 0;
@@ -4459,6 +4501,16 @@
     if (preview.mana) parts.push(`${preview.mana} маны`);
     if (preview.specialRewards) parts.push('награда особых — случайная');
     if (preview.interior.length) parts.push(`Руна внутри: ${preview.interior.length} (особые остаются)`);
+    if (S.mode === 'pretzel' && preview.effectiveLength >= 3) {
+      const crosses = pretzelCrossings(S.selected);
+      const p = pretzelPoints(crosses);
+      if (crosses > 0) {
+        const mult = p.rating >= 3 ? ' · ЛЕГЕНДА!' : p.rating === 2 ? ' · ×3' : p.rating === 1 ? ' · ×2' : '';
+        parts.unshift(`<span class="chain-tip-pretzel">🥨 ${crosses} перекр. (+${p.points} оч.${mult})</span>`);
+      } else {
+        parts.push('<span class="chain-tip-hint">🥨 сделай перекрёсток ✕ по диагонали для очков</span>');
+      }
+    }
     if (preview.effectiveLength < 3) parts.push('без хода врагов');
     tip.classList.add('show');
     tip.innerHTML = `<b>${preview.effectiveLength}</b> клеток · ${parts.join(' · ') || 'сбор без награды'}`;
@@ -4670,16 +4722,23 @@
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDmg)}`;
       damageLabel.title = dmgTitle;
     }
-    if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
+    if (el('turn-text')) el('turn-text').textContent = S.mode === 'sprint' ? `ХОД ${S.turn}/100` : `ХОД ${S.turn}`;
     if (el('status-line')) {
       const score = runScore();
       S.score = score;
-      el('status-line').textContent = `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
+      el('status-line').textContent = S.mode === 'sprint'
+        ? `Спринт · Ход ${S.turn}/100 · Ур. ${h.level} · Очки ${score}`
+        : S.mode === 'pretzel'
+          ? `Крендель · Ход ${S.turn} · Ур. ${h.level} · 🥨 ${score} оч.`
+          : `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
     }
     if (el('mode-badge')) {
-      const modeName = 'RAID';
       const diffName = ['Лёгкий', 'Обычный', 'Сложный', 'Очень сложный'][S.difficulty || 0];
-      el('mode-badge').textContent = modeName + ' · ' + diffName;
+      el('mode-badge').textContent = S.mode === 'sprint'
+        ? `⚡ Спринт · ${Math.min(100, S.turn)}/100`
+        : S.mode === 'pretzel'
+          ? `🥨 Крендель · ${runScore()} оч.`
+          : `RAID · ${diffName}`;
     }
     if (el('chain-count')) el('chain-count').textContent = 'Цепь ' + (S.selected ? S.selected.length : 0);
     const trophyImg = el('hud-trophy-img');
@@ -4806,10 +4865,14 @@
     // RAID's endless structure uses the original Classic rules; the trial
     // retains Sprint/Pretzel/Harder unchanged. No new difficulty curve/gate.
     const diffEl = qs('#difficulty-select');
-    S.mode = 'classic';
-    S.difficulty = Number((diffEl && diffEl.value) || (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+    const modeEl = qs('#mode-select');
+    const rawMode = (modeEl && modeEl.value) || (() => { try { return profileStorage.getItem('raid:mode') || 'classic'; } catch (e) { return 'classic'; } })();
+    S.mode = normaliseRaidMode(rawMode);
+    S.difficulty = S.mode === 'pretzel'
+      ? 1
+      : Number((diffEl && diffEl.value) || (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
     S.difficulty = Math.max(0, Math.min(2, Number.isFinite(S.difficulty) ? S.difficulty : 1));
-    try { profileStorage.setItem('raid:mode', S.mode); profileStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
+    try { profileStorage.setItem('raid:mode', S.mode); if (S.mode !== 'pretzel') profileStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
     S.classId = getSelectedClassId();
     S.classConfig = getClassConfig(S.classId);
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]);
@@ -4853,6 +4916,10 @@
     if (saveRun()) saveRaidAppearance();
     if (seed === undefined && shouldAutoShowBeginnerGuide()) {
       openBeginnerGuide({ scene: 0, autoFirstRun: true });
+    } else if (S.mode === 'sprint') {
+      flash('⚡ Спринт: продержись 100 ходов до победы! Ресурсы ×2, навыки сразу 5 ур.');
+    } else if (S.mode === 'pretzel') {
+      flash('🥨 Крендель: закручивай цепь крест-накрест ✕ по диагонали — очки дают за перекрёстки!');
     }
   }
 
@@ -5628,7 +5695,7 @@
     if (clsRace() === 'Changeling' && S.skills.length > 0) {
       const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
       S.skillCooldowns[pick] = 0;
-      flash('🔮 Смена облика: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» готов');
+      flash('🔮 Хоть шерсти клок...: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» заряжен!');
     }
   }
 
@@ -8187,6 +8254,7 @@
           screen.hidden = false; card.classList.add('region-screen-open');
           el('class-picker').classList.add('region-mode-open');
           applyRaidRegion(RAID_REGION);
+          syncRaidModeUi(readSavedRaidMode());
           el('region-emblem-launch')?.focus();
         });
         let focusTarget = go;
@@ -8969,6 +9037,46 @@
       helpModal.addEventListener('click', event => { if (event.target === helpModal) closeHelp(); });
       helpModal.addEventListener('keydown', event => {
         if (event.key === 'Escape' && helpModal.classList.contains('show')) { event.preventDefault(); closeHelp(); }
+      });
+    }
+    const modeSelect = qs('#mode-select');
+    if (modeSelect) {
+      let storedMode = 'classic';
+      try { storedMode = normaliseRaidMode(profileStorage.getItem('raid:mode')); } catch (e) {}
+      syncRaidModeUi(storedMode);
+      modeSelect.addEventListener('change', () => syncRaidModeUi(modeSelect.value, true));
+    }
+    for (const pill of qsa('.mode-pill[data-raid-mode]')) {
+      pill.addEventListener('click', () => syncRaidModeUi(pill.dataset.raidMode, true));
+    }
+    const modesHelpModal = qs('#modes-help-modal');
+    const closeModesHelp = () => {
+      if (!modesHelpModal) return;
+      modesHelpModal.classList.remove('show');
+      el('mode-help-btn')?.focus();
+      syncTelegramChrome();
+    };
+    const openModesHelp = () => {
+      if (!modesHelpModal) return;
+      syncRaidModeUi(readSavedRaidMode());
+      modesHelpModal.classList.add('show');
+      el('modes-help-close')?.focus();
+      syncTelegramChrome();
+    };
+    el('mode-help-btn')?.addEventListener('click', openModesHelp);
+    const modeDesc = el('region-mode-desc');
+    if (modeDesc) {
+      modeDesc.addEventListener('click', openModesHelp);
+      modeDesc.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModesHelp(); }
+      });
+    }
+    el('modes-help-close')?.addEventListener('click', closeModesHelp);
+    el('modes-help-x')?.addEventListener('click', closeModesHelp);
+    if (modesHelpModal) {
+      modesHelpModal.addEventListener('click', event => { if (event.target === modesHelpModal) closeModesHelp(); });
+      modesHelpModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && modesHelpModal.classList.contains('show')) { event.preventDefault(); closeModesHelp(); }
       });
     }
     showClassPicker();

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#091c1c">
-<meta name="raid-build" content="02952cd05b34">
+<meta name="raid-build" content="6bb3bf79e49b">
 <title>RAID · Магия стали</title>
 <style>
 /* RAID standalone visual fork. Classical flow first; independent skin below. */
@@ -834,14 +834,14 @@ html[data-raid-motion="off"] .potion-bubble { animation: none !important; }
   --gold: #dfc38d; --gold-2: #a78e5c; --amber: #c9a665;
   --teal: #83ddc2; --ink: #edf0dc; --muted: #9baea5; --line: #344e47;
   --raid-accent: #8cdbc1;
-  --raid-scene-earth: url('miniapp_preview/assets/raid_magitech_earth.jpg?v=02952cd05b34');
-  --raid-scene-fire: url('miniapp_preview/assets/raid_magitech_fire.jpg?v=02952cd05b34');
-  --raid-scene-air: url('miniapp_preview/assets/raid_magitech_air.jpg?v=02952cd05b34');
-  --raid-scene-water: url('miniapp_preview/assets/raid_magitech_water.jpg?v=02952cd05b34');
-  --raid-garage-background: url('miniapp_preview/assets/mech_garage_bg.webp?v=02952cd05b34');
-  --raid-launch-texture: url('miniapp_preview/assets/raid_launch_texture.webp?v=02952cd05b34');
-  --raid-round-button-texture: url('miniapp_preview/assets/raid_round_button_texture.webp?v=02952cd05b34');
-  --raid-continue-texture: url('miniapp_preview/assets/raid_continue_texture.webp?v=02952cd05b34');
+  --raid-scene-earth: url('miniapp_preview/assets/raid_magitech_earth.jpg?v=6bb3bf79e49b');
+  --raid-scene-fire: url('miniapp_preview/assets/raid_magitech_fire.jpg?v=6bb3bf79e49b');
+  --raid-scene-air: url('miniapp_preview/assets/raid_magitech_air.jpg?v=6bb3bf79e49b');
+  --raid-scene-water: url('miniapp_preview/assets/raid_magitech_water.jpg?v=6bb3bf79e49b');
+  --raid-garage-background: url('miniapp_preview/assets/mech_garage_bg.webp?v=6bb3bf79e49b');
+  --raid-launch-texture: url('miniapp_preview/assets/raid_launch_texture.webp?v=6bb3bf79e49b');
+  --raid-round-button-texture: url('miniapp_preview/assets/raid_round_button_texture.webp?v=6bb3bf79e49b');
+  --raid-continue-texture: url('miniapp_preview/assets/raid_continue_texture.webp?v=6bb3bf79e49b');
   --raid-scene: var(--raid-scene-earth);
   --raid-view-height: var(--raid-tg-visible-height, 100dvh);
 }
@@ -4014,9 +4014,12 @@ html[data-raid-motion="off"] .guide-tile {
   color: #ffe5a3;
 }
 .menu-x-close {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -4024,6 +4027,12 @@ html[data-raid-motion="off"] .guide-tile {
   background: rgba(8, 22, 21, 0.8);
   color: #f2dfb0;
   cursor: pointer;
+}
+.menu-x-close svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  margin: 0;
 }
 .menu-x-close:hover,
 .menu-x-close:focus-visible {
@@ -4073,13 +4082,13 @@ html[data-raid-motion="off"] .guide-tile {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  flex: 0 0 34px;
-  width: 34px;
-  height: 19px;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 22px;
   margin: 0;
   border-radius: 999px;
-  border: 1px solid rgba(212, 188, 124, 0.45);
-  background: rgba(11, 20, 22, 0.9);
+  border: 1px solid #91aa8f80;
+  background: #071f20;
   cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease;
 }
@@ -4088,24 +4097,25 @@ html[data-raid-motion="off"] .guide-tile {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #a5b5aa;
+  background: #9cb09f;
   transition: transform 150ms ease, background 150ms ease;
 }
 .menu-switch-tile input[type="checkbox"]:checked {
-  background: linear-gradient(90deg, #2d7c6d, #48a791);
-  border-color: #9bf5db;
+  background: #c5ba86;
+  border-color: #e0d19e;
 }
 .menu-switch-tile input[type="checkbox"]:checked::after {
-  transform: translateX(15px);
-  background: #fff4d1;
+  transform: translateX(16px);
+  background: #1b3730;
 }
 .menu-haptics {
-  margin: 0;
-  padding: 0;
+  margin: 2px 0 0;
+  padding: 6px 2px 0;
   border: 0;
+  border-top: 1px solid rgba(182, 193, 163, 0.14);
 }
 .menu-haptics legend {
   position: absolute;
@@ -4121,12 +4131,84 @@ html[data-raid-motion="off"] .guide-tile {
   gap: 8px;
 }
 .menu-haptics .haptics-title {
-  color: #c8d6cb;
-  font: 600 11px/1.1 system-ui, sans-serif;
+  color: #e6dfc8;
+  font: 600 11.5px/1.1 system-ui, sans-serif;
 }
 .menu-haptics .haptics-segments {
-  flex: 1;
-  max-width: 196px;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  position: relative;
+  width: 150px;
+  max-width: none;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.menu-haptics .haptics-segments::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 3px;
+  right: 3px;
+  height: 22px;
+  border: 1px solid #91aa8f80;
+  border-radius: 999px;
+  background: #071f20;
+  pointer-events: none;
+}
+.menu-haptics .haptics-segments:has(input[value="important"]:checked)::before,
+.menu-haptics .haptics-segments:has(input[value="all"]:checked)::before {
+  background: #c5ba86;
+  border-color: #e0d19e;
+}
+.menu-haptics .haptics-segments label {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-left: 0;
+  background: transparent;
+  color: #d9e4d1;
+  font-size: 9.5px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.menu-haptics .haptics-segments label + label {
+  border-left: 0;
+}
+.menu-haptics .haptics-segments label::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: transparent;
+}
+.menu-haptics .haptics-segments label:has(input:checked)::before {
+  background: #1b3730;
+}
+.menu-haptics .haptics-segments label:has(input[value="off"]:checked)::before {
+  background: #9cb09f;
+}
+.menu-haptics .haptics-segments label:has(input:checked) {
+  background: transparent;
+  color: #d9e4d1;
+  font-weight: 400;
+}
+.menu-haptics .haptics-segments label:has(input:checked) span {
+  color: #f0dba1;
+  font-weight: 700;
 }
 .menu-grid {
   display: grid;
@@ -4225,6 +4307,188 @@ html[data-raid-motion="off"] .guide-tile {
   color: #9cb0a5;
 }
 
+/* --- Game Modes selector (Classic / Sprint / Pretzel) & friendly guide --- */
+.region-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mode-pills {
+  display: inline-grid;
+  grid-template-columns: 1.48fr 0.84fr 0.96fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.36);
+  background: rgba(6, 18, 18, 0.86);
+  flex: 1;
+  max-width: 344px;
+}
+.mode-pill {
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #cdd8c8;
+  font: 600 10.5px/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.mode-pill:hover {
+  background: rgba(197, 186, 134, 0.14);
+  color: #f4e6be;
+}
+.mode-pill[aria-pressed="true"] {
+  background: linear-gradient(125deg, #e0ca85, #b89a51);
+  border-color: #f5df9c;
+  color: #161c14;
+  font-weight: 700;
+}
+.mode-help-btn {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 188, 124, 0.56);
+  background: rgba(10, 28, 26, 0.9);
+  color: #f2dfb0;
+  font: 700 12.5px/1 Georgia, serif;
+  cursor: pointer;
+}
+.mode-help-btn:hover,
+.mode-help-btn:focus-visible {
+  background: #23423b;
+  border-color: #ffe49b;
+}
+.region-screen-head > .region-mode-desc {
+  margin: 6px auto 0;
+  padding: 5px 9px;
+  max-width: 360px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 188, 124, 0.22);
+  background: rgba(7, 22, 21, 0.72);
+  color: #d6e1d3;
+  font: 400 10.5px/1.35 system-ui, sans-serif;
+  cursor: pointer;
+}
+.region-screen-head > .region-mode-desc b {
+  color: #f5df9c;
+}
+.region-difficulty-lock {
+  color: #c8d3be;
+  font: 400 10px/1.2 system-ui, sans-serif;
+}
+.region-difficulty-lock b {
+  color: #f0dfad;
+  font-weight: 600;
+}
+@media (max-width: 720px) {
+  .region-screen-head { width: min(430px, 93vw); padding: 7px 9px 8px; }
+  .region-screen-head h2 { margin: 2px 0 1px; font-size: 17px; }
+  .mode-pill { min-height: 26px; padding: 3px 4px; font-size: 10px; }
+  .region-screen-head > .region-mode-desc { margin-top: 5px; padding: 4px 7px; font-size: 9.8px; line-height: 1.3; }
+  .region-quadrant.element-fire, .region-quadrant.element-air { padding-top: max(168px, 23vh); }
+}
+
+.modes-help-modal {
+  z-index: 115;
+}
+.modes-help-card {
+  width: min(100%, 360px);
+  max-height: 86dvh;
+  overflow-y: auto;
+  padding: 15px 15px 14px;
+  border-radius: 18px;
+  border: 1px solid #d4bc7c99;
+  background: radial-gradient(ellipse at 50% 0%, #1d3c37 0%, #0d2120 62%, #081617 100%);
+  text-align: left;
+}
+.modes-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.modes-help-header h3 {
+  margin: 0;
+  color: #f3e0ab;
+  font: 600 19px/1.15 Georgia, serif;
+}
+.modes-help-intro {
+  margin: 0 0 10px;
+  color: #c8d6cb;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.mode-guide-item {
+  margin-bottom: 9px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 188, 124, 0.25);
+  background: rgba(8, 22, 22, 0.72);
+}
+.mode-guide-item.is-active {
+  border-color: #f0d68a;
+  background: rgba(24, 52, 46, 0.8);
+  box-shadow: 0 0 0 1px rgba(240, 214, 138, 0.22);
+}
+.mode-guide-item h4 {
+  margin: 0 0 5px;
+  color: #f7e4ad;
+  font: 700 13.5px/1.2 system-ui, sans-serif;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.mode-guide-item h4 small {
+  color: #9eb9aa;
+  font: 600 10px/1 system-ui, sans-serif;
+}
+.mode-guide-item p {
+  margin: 0 0 5px;
+  color: #dbe4d9;
+  font-size: 11.5px;
+  line-height: 1.42;
+}
+.mode-guide-item p:last-child {
+  margin-bottom: 0;
+}
+.mode-guide-item b {
+  color: #f7e4ad;
+}
+.pretzel-diagram {
+  margin: 7px 0;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.28);
+  background: rgba(5, 16, 16, 0.85);
+}
+.pretzel-diagram svg {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  margin: 0 auto 5px;
+}
+.pretzel-diagram figcaption {
+  color: #d0ded3;
+  font-size: 10.5px;
+  line-height: 1.38;
+  text-align: center;
+}
+.chain-tip-pretzel {
+  color: #ffe395;
+  font-weight: 700;
+}
+
+
 
 
 
@@ -4235,15 +4499,15 @@ html[data-raid-motion="off"] .guide-tile {
 </style>
 </head>
 <body>
-<audio id="raid-intro-music" src="miniapp_preview/intro_music.mp3?v=02952cd05b34" preload="none" loop aria-hidden="true"></audio>
-<audio id="raid-sword-taken" src="miniapp_preview/assets/swordtaken.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-sword-blade" src="miniapp_preview/assets/swordblade.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-coin-taken" src="miniapp_preview/assets/cointaken.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-coin-drop" src="miniapp_preview/assets/coinsdrop.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-bottle-clink" src="miniapp_preview/assets/clinkbottle.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-bottle-open" src="miniapp_preview/assets/openbottle.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-shield-first" src="miniapp_preview/assets/firstshield.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
-<audio id="raid-shield-collect" src="miniapp_preview/assets/sborshield.mp3?v=02952cd05b34" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-intro-music" src="miniapp_preview/intro_music.mp3?v=6bb3bf79e49b" preload="none" loop aria-hidden="true"></audio>
+<audio id="raid-sword-taken" src="miniapp_preview/assets/swordtaken.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-sword-blade" src="miniapp_preview/assets/swordblade.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-coin-taken" src="miniapp_preview/assets/cointaken.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-coin-drop" src="miniapp_preview/assets/coinsdrop.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-bottle-clink" src="miniapp_preview/assets/clinkbottle.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-bottle-open" src="miniapp_preview/assets/openbottle.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-shield-first" src="miniapp_preview/assets/firstshield.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
+<audio id="raid-shield-collect" src="miniapp_preview/assets/sborshield.mp3?v=6bb3bf79e49b" preload="metadata" aria-hidden="true"></audio>
 <!-- class picker (стартовый экран) -->
 <div class="class-picker show" id="class-picker" role="dialog" aria-modal="true" aria-label="Подготовка к рейду">
   <button class="raid-music-toggle" id="raid-music-toggle" type="button" aria-label="Выключить музыку в меню" aria-pressed="true" title="Выключить музыку в меню">
@@ -4271,7 +4535,7 @@ html[data-raid-motion="off"] .guide-tile {
     <div class="picker-main" id="class-picker-main">
     <div class="raid-section-kicker"><span>01 / ПОДГОТОВКА</span><span>ЛОКАЛЬНЫЙ ПРОТОТИП</span></div>
     <h3 class="picker-title" id="picker-title" tabindex="-1"><em>Гараж</em></h3>
-    <p class="build-label">Сборка 02952cd05b34</p>
+    <p class="build-label">Сборка 6bb3bf79e49b</p>
     <p class="telegram-status" id="picker-telegram-status" role="status" aria-live="polite" hidden></p>
     <p class="save-note" id="picker-profile-status" role="status" aria-live="polite" hidden></p>
     <p class="picker-hint">Мех задаёт специализацию, пары пассив/изъян и пул модулей. Пилот сохраняет особенность и смертного врага.</p>
@@ -4307,17 +4571,29 @@ html[data-raid-motion="off"] .guide-tile {
     <div class="picker-grid" id="picker-grid"></div>
     <p class="picker-foot">Мех «Авантюрист» доступен сразу. Другие открываются за трофеи. Настройки действуют на следующий рейд. Прогресс тестовой классики сюда не переносится.</p>
     </div>
-    <section class="raid-region-screen" id="raid-region-screen" hidden aria-label="Выбор локации и сложности">
+    <section class="raid-region-screen" id="raid-region-screen" hidden aria-label="Выбор локации, режима и сложности">
       <div class="region-screen-head">
-        <span class="region-screen-kicker">02 / ВЫБОР ЛОКАЦИИ</span>
+        <span class="region-screen-kicker">02 / ЛОКАЦИЯ И РЕЖИМ</span>
         <h2 data-raid-region-title>Забытый лес</h2>
-        <p>Выбери локацию рейда, затем нажми эмблему.</p>
+        <div class="region-mode-bar">
+          <div class="mode-pills" role="group" aria-label="Режим игры">
+            <button type="button" class="mode-pill" data-raid-mode="classic" aria-pressed="true">⚔ Не оглядываясь</button>
+            <button type="button" class="mode-pill" data-raid-mode="sprint" aria-pressed="false">⚡ Спринт</button>
+            <button type="button" class="mode-pill" data-raid-mode="pretzel" aria-pressed="false">🥨 Крендель</button>
+          </div>
+          <button type="button" class="mode-help-btn" id="mode-help-btn" title="Подробно о режимах" aria-label="Подробно о режимах">?</button>
+        </div>
+        <p class="region-mode-desc" id="region-mode-desc" role="button" tabindex="0" title="Нажми для подробного объяснения режимов"><b>Не оглядываясь:</b> классический бесконечный рейд — качайся, собирай снаряжение и заходи так далеко, как сможешь!</p>
         <div class="region-screen-settings">
-          <span>Режим · <b>До гибели</b></span>
-          <label class="raid-difficulty">СЛОЖНОСТЬ
+          <label class="raid-difficulty" id="difficulty-wrap">СЛОЖНОСТЬ
             <select id="difficulty-select"><option value="0">Лёгкий</option><option value="1" selected>Нормальный</option><option value="2">Сложный</option></select>
           </label>
-          <select id="mode-select" aria-label="Бесконечный рейд" hidden><option value="classic">Бесконечный рейд</option></select>
+          <span class="region-difficulty-lock" id="difficulty-lock-note" hidden>Сложность · <b>Нормальный</b> (правила Кренделя)</span>
+          <select id="mode-select" aria-label="Режим игры" hidden>
+            <option value="classic" selected>Не оглядываясь</option>
+            <option value="sprint">Спринт (100 ходов)</option>
+            <option value="pretzel">Крендель</option>
+          </select>
         </div>
       </div>
       <div class="region-quadrants" role="group" aria-label="Локации">
@@ -4564,7 +4840,7 @@ html[data-raid-motion="off"] .guide-tile {
         <div class="menu-info-body">
           <p class="raid-theme-hint">Локация закреплена при старте — не меняется до конца этого рейда. Другое место выбирается в «Гараже» перед новым забегом.</p>
           <p class="raid-combat-note" data-raid-combat-note>Классический бой · локация задаёт атмосферу и облик врагов.</p>
-          <p class="build-label">Сборка 02952cd05b34</p>
+          <p class="build-label">Сборка 6bb3bf79e49b</p>
           <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
           <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
           <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
@@ -4582,7 +4858,7 @@ html[data-raid-motion="off"] .guide-tile {
     <header class="updates-heading">
       <p class="raid-eyebrow">ДЛЯ ТЕСТЕРОВ</p>
       <h3 id="updates-title" tabindex="-1">Что нового в RAID</h3>
-      <p class="build-label" id="updates-build">Сборка 02952cd05b34</p>
+      <p class="build-label" id="updates-build">Сборка 6bb3bf79e49b</p>
     </header>
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
@@ -4765,7 +5041,7 @@ html[data-raid-motion="off"] .guide-tile {
     <h3>RAID / Как играть</h3>
     <p><b>После поражения.</b> Вверху итогов нажми «К выбору меха», чтобы вернуться к подготовке без нового забега. Escape и Telegram «Назад» ведут туда же; из рекордов сначала возвращают к итогам. В подключённом Telegram есть «Закрыть Mini App», в браузере — обычное закрытие вкладки. «Ещё раз» остаётся отдельным действием. Результат и достижения записываются по прежним правилам, без дублей; при ошибке остаётся резервная запись и «Повторить запись» в рекордах. Если не удаётся сохранить и резервную запись, не закрывай страницу до исправления либо явно подтверди риск потери. Это не сдача живого героя.</p>
     <p><b>История обновлений.</b> При первом входе в новую сборку открывается окно «Что нового»; после закрытия прочтение запоминается в своём локальном профиле. История всегда доступна на подготовке и в меню. Окно ничего не начинает и не меняет активный рейд; при недоступном хранилище может появиться снова. Интеграция в Луна-парк ещё не начиналась.</p>
-    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 02952cd05b34.</p>
+    <p><b>Самостоятельная копия для редизайна.</b> Классический тестовый Рейд, его ссылка и сохранения не менялись. Сборка 6bb3bf79e49b.</p>
     <p><b>Взрыв подтверждённой цепочки — проба восприятия.</b> Реально исчезнувшие плитки взрываются от первой выбранной к последней. Эффекты перекрываются, а на длинной цепи идут плотнее: ожидание хода врагов не растёт. Выживший враг или пропущенная стрелой клетка не взрываются; вторичный взрыв и сбор Руной не получают выдуманный порядок выбора. После исчезновения плиток всё поле падает одним плавным движением. Это только оформление: урон и награды рассчитываются в прежнем порядке. «Продолжить» не переигрывает законченные эффекты, а уменьшение движения отключает их.</p>
     <p><b>Настройки прямо на поле.</b> Шестерёнка в игровой шапке открывает небольшую округлую полупрозрачную панель: кружки / стеклянная оболочка, анимации, звук и режим вибрации. Вибрация настраивается трёхпозиционным тумблером, одинаковым в гараже, меню и бою. Выбор вибрации синхронизируется и сохраняется отдельно от рейда. Крестик, тап снаружи, Escape или Telegram «Назад» закрывают только её, без нажатия на поле под ней. Во время незавершённого жеста панель не открывается, обязательная награда её закрывает. Это не пауза боя. Звук действует в этом окне, как раньше: выключение сразу гасит хвосты, включение ничего не воспроизводит повторно. Вибрация опциональна и зависит от поддержки устройства или клиента Telegram.</p>
     <p><b>Вид и движение.</b> В панели на поле и в одноимённом резервном разделе на подготовке и в меню — ровно два независимых переключателя вида: кружки / стеклянная оболочка и анимации. Их четыре сочетания используют то же поле и те же картинки. Без оболочки скрыты декоративные ободок, блики и материал; выбор цепи, Руна, числа, босс/особый, лёд, трещины и огонь остаются. Без анимаций CSS-движение, падение, взрывы и частицы выключены; цифры результата показываются статично у получателя. Отключение посреди эффекта показывает итог, но не продолжает бой раньше: паузы 420/550 мс прежние. Системное уменьшение движения важнее ручного включения. По умолчанию прежний вид. Выбор хранится локально для своего профиля, отдельно от рейда и отметки обновления; при ошибке записи действует только в этом окне.</p>
@@ -4774,7 +5050,7 @@ html[data-raid-motion="off"] .guide-tile {
       <li>Соедини 3+ клетки одной категории, можно по диагонали. Мечи, стрелы и враги идут в общей боевой цепи; начать можно с врага. Возврат к выбранному узлу убирает хвост. После стрелы можно пропустить один узел, который не собирается и не входит в минимум.</li>
       <li>Классический бой без стихийных множителей: базовый урон + урон каждого меча/стрелы; сломанный меч даёт 0, магический — силу 5. Boost удваивает только вклад оружия. Общий показанный урон прямо соответствует урону по цели, подсветка убийств учитывает защиту и HP врага.</li>
       <li>Щит либо чинит броню, либо даёт 2 UP при полной броне или Коррозии. Излишек ремонта этого щита теряется. Монеты дают золото, обычные зелья лечат; кислотные ранят, мана заряжает навык.</li>
-      <li>Старые незамороженные враги атакуют общим залпом. HP=0 заканчивает забег. В этой копии один бесконечный режим и исходные формулы Easy/Normal/Hard, без новых порогов открытия.</li>
+      <li>Старые незамороженные враги атакуют общим залпом. HP=0 заканчивает забег. Доступны три режима: «Не оглядываясь» (классика), «Спринт» (100 ходов до победы) и «Крендель» (очки за диагональные перекрёстки ✕).</li>
       <li>100 XP → уровень, 100 золота → замена вещи, 100 UP → улучшение надетой вещи. На уровне выбери 2 из 4, снимай и меняй отметки до отдельного «Подтвердить». До подтверждения награды и ход врагов ждут. Магазин может предложить обмен −1/+2; обычное улучшение не снижает другие параметры вещи.</li>
       <li>Мех задаёт класс: специализацию, пары пассив/изъян, пул модулей и уникальное умение. Пилот задаёт особенность и смертного врага. Трофеи открывают мех или повышают его уровень до 10. Первая пара фиксирована, следующие — на уровнях меха 3/7/9; замены модулей — 2 × floor(уровень меха / 2), первый уникальный фиксирован. Независимый выбор пилота — с уровня меха 5: Наёмник всегда доступен, другие родные пилоты — при уровне меха-донора 5. Чужой уникальный модуль — от донора уровня 10. Авантюрист всегда с Наёмником, без пар и с общим открытым пулом.</li>
       <li>42 навыка и 31 особый тип врагов сохраняют исходные эффекты. Под портретом только числа: атака · броня · HP; число сверху — отсчёт способности. Лёд останавливает анимацию материала и показывает заморозку. Тап по особому или боссу показывает текущие параметры и способности. Руна собирает обычных врагов внутри контура без проверки HP/защиты и не считает это прямыми убийствами.</li>
@@ -4786,9 +5062,60 @@ html[data-raid-motion="off"] .guide-tile {
   </div>
 </div>
 
+<!-- friendly modes guide modal -->
+<div class="help-modal modes-help-modal" id="modes-help-modal" role="dialog" aria-modal="true" aria-labelledby="modes-help-title">
+  <div class="help-card modes-help-card">
+    <header class="modes-help-header">
+      <h3 id="modes-help-title">Режимы игры</h3>
+      <button class="menu-x-close" id="modes-help-x" type="button" aria-label="Закрыть справку по режимам">
+        <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <p class="modes-help-intro">Все три режима используют твой выбранный мех и пилота, но ставят перед тобой разную задачу:</p>
+
+    <article class="mode-guide-item" data-guide-mode="classic">
+      <h4>⚔ Не оглядываясь <small>классика</small></h4>
+      <p><b>Цель:</b> зайти так далеко, как сможешь, и набрать максимум очков.</p>
+      <p>Никакого лимита ходов: качай героя, собирай снаряжение, открывай новых мехов за трофеи и ставь личные рекорды.</p>
+    </article>
+
+    <article class="mode-guide-item" data-guide-mode="sprint">
+      <h4>⚡ Спринт <small>100 ходов до победы</small></h4>
+      <p><b>Цель:</b> продержаться ровно <b>100 ходов</b>. Пережил 100-й ход — <b>победа</b> и <b>×2</b> к итоговым очкам!</p>
+      <p><b>Чем отличается:</b> ускоренный ритм для быстрой партии на 5 минут. Ресурсы копятся в <b>2 раза быстрее</b>, навыки сразу выпадают <b>5-го уровня</b> (быстрее откатываются), но и враги быстро крепнут.</p>
+    </article>
+
+    <article class="mode-guide-item" data-guide-mode="pretzel">
+      <h4>🥨 Крендель <small>головоломка петель ✕</small></h4>
+      <p><b>Почему «Крендель»?</b> Нужно закручивать цепочку <b>крест-накрест по диагонали</b>, как булочку-крендель! Очки дают <b>только</b> за такие перекрёстки <b>✕</b>.</p>
+      <figure class="pretzel-diagram" aria-label="Схема перекрёстка Кренделя: 1 к 2 по диагонали, 2 к 3 вверх, 3 к 4 по второй диагонали крест-накрест">
+        <svg viewBox="0 0 180 86" role="img" aria-hidden="true">
+          <rect x="6" y="4" width="168" height="78" rx="10" fill="#071919" stroke="#d4bc7c55"/>
+          <line x1="34" y1="22" x2="96" y2="64" stroke="#7fe3c8" stroke-width="3" stroke-linecap="round"/>
+          <line x1="96" y1="64" x2="96" y2="22" stroke="#7fe3c8" stroke-width="2.6" stroke-dasharray="4 3" stroke-linecap="round"/>
+          <line x1="96" y1="22" x2="34" y2="64" stroke="#f5d57e" stroke-width="3" stroke-linecap="round"/>
+          <circle cx="65" cy="43" r="10" fill="#f5d57e33" stroke="#ffe18c" stroke-width="1.4"/>
+          <path d="m61 39 8 8m0-8-8 8" stroke="#fff3c4" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="34" cy="22" r="9.5" fill="#173b35" stroke="#d4bc7c"/><text x="34" y="25.5" text-anchor="middle" fill="#fff2c9" font-size="10" font-weight="700">1</text>
+          <circle cx="96" cy="64" r="9.5" fill="#173b35" stroke="#d4bc7c"/><text x="96" y="67.5" text-anchor="middle" fill="#fff2c9" font-size="10" font-weight="700">2</text>
+          <circle cx="96" cy="22" r="9.5" fill="#173b35" stroke="#d4bc7c"/><text x="96" y="25.5" text-anchor="middle" fill="#fff2c9" font-size="10" font-weight="700">3</text>
+          <circle cx="34" cy="64" r="9.5" fill="#173b35" stroke="#f5d57e"/><text x="34" y="67.5" text-anchor="middle" fill="#fff2c9" font-size="10" font-weight="700">4</text>
+          <text x="115" y="34" fill="#ffe18c" font-size="9.5" font-weight="700">1 → 2 → 3 → 4</text>
+          <text x="115" y="48" fill="#d7e4d8" font-size="8.5">Диагонали</text>
+          <text x="115" y="60" fill="#d7e4d8" font-size="8.5">пересеклись ✕</text>
+        </svg>
+        <figcaption>Чем больше перекрёстков ✕ в <b>одной</b> цепи, тем выше множитель: <b>1–4</b> → ×1 оч., <b>5–9</b> → ×2, <b>10–14</b> → ×3, а <b>15+</b> → сразу <b>+100 очков</b>!</figcaption>
+      </figure>
+      <p><b>Особые правила:</b> здоровье всегда <b>100 HP</b> и не растёт, сложность — Нормальная, а «Телепорт» и «Сокровищница» убраны. Во время хода подсказка сверху покажет число твоих перекрёстков прямо на лету!</p>
+    </article>
+
+    <button class="btn" id="modes-help-close" type="button">Понятно, погнали!</button>
+  </div>
+</div>
+
 <script>
 window.RAID_MONSTER_CATALOG = {"expected_types":[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32],"ready_types":[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32],"complete":true,"note":"All 31 unique special silhouettes (types 2-32) prepared in four elemental-v1 palettes; Lich32 now has its own portrait. Original crops, previous special artwork and mechanics preserved. Art catalogue coverage complete; not a claim of final visual acceptance or full original-game parity."};
-window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_spark.webp?v=02952cd05b34","fire_crab":"miniapp_preview/assets/monsters/fire_crab.webp?v=02952cd05b34","fire_demon":"miniapp_preview/assets/monsters/fire_demon.webp?v=02952cd05b34","fire_dragon":"miniapp_preview/assets/monsters/fire_dragon.webp?v=02952cd05b34","air_spirit":"miniapp_preview/assets/monsters/air_spirit.webp?v=02952cd05b34","air_storm":"miniapp_preview/assets/monsters/air_storm.webp?v=02952cd05b34","air_griffin":"miniapp_preview/assets/monsters/air_griffin.webp?v=02952cd05b34","air_dragon":"miniapp_preview/assets/monsters/air_dragon.webp?v=02952cd05b34","earth_golem":"miniapp_preview/assets/monsters/earth_golem.webp?v=02952cd05b34","earth_ent":"miniapp_preview/assets/monsters/earth_ent.webp?v=02952cd05b34","earth_worm":"miniapp_preview/assets/monsters/earth_worm.webp?v=02952cd05b34","earth_crystal":"miniapp_preview/assets/monsters/earth_crystal.webp?v=02952cd05b34","water_elemental":"miniapp_preview/assets/monsters/water_elemental.webp?v=02952cd05b34","water_octopus":"miniapp_preview/assets/monsters/water_octopus.webp?v=02952cd05b34","water_angler":"miniapp_preview/assets/monsters/water_angler.webp?v=02952cd05b34","water_dragon":"miniapp_preview/assets/monsters/water_dragon.webp?v=02952cd05b34","fire_special_02":"miniapp_preview/assets/monsters/fire_special_02.webp?v=02952cd05b34","air_special_02":"miniapp_preview/assets/monsters/air_special_02.webp?v=02952cd05b34","earth_special_02":"miniapp_preview/assets/monsters/earth_special_02.webp?v=02952cd05b34","water_special_02":"miniapp_preview/assets/monsters/water_special_02.webp?v=02952cd05b34","fire_special_03":"miniapp_preview/assets/monsters/fire_special_03.webp?v=02952cd05b34","air_special_03":"miniapp_preview/assets/monsters/air_special_03.webp?v=02952cd05b34","earth_special_03":"miniapp_preview/assets/monsters/earth_special_03.webp?v=02952cd05b34","water_special_03":"miniapp_preview/assets/monsters/water_special_03.webp?v=02952cd05b34","fire_special_04":"miniapp_preview/assets/monsters/fire_special_04.webp?v=02952cd05b34","air_special_04":"miniapp_preview/assets/monsters/air_special_04.webp?v=02952cd05b34","earth_special_04":"miniapp_preview/assets/monsters/earth_special_04.webp?v=02952cd05b34","water_special_04":"miniapp_preview/assets/monsters/water_special_04.webp?v=02952cd05b34","fire_special_05":"miniapp_preview/assets/monsters/fire_special_05.webp?v=02952cd05b34","air_special_05":"miniapp_preview/assets/monsters/air_special_05.webp?v=02952cd05b34","earth_special_05":"miniapp_preview/assets/monsters/earth_special_05.webp?v=02952cd05b34","water_special_05":"miniapp_preview/assets/monsters/water_special_05.webp?v=02952cd05b34","fire_special_06":"miniapp_preview/assets/monsters/fire_special_06.webp?v=02952cd05b34","air_special_06":"miniapp_preview/assets/monsters/air_special_06.webp?v=02952cd05b34","earth_special_06":"miniapp_preview/assets/monsters/earth_special_06.webp?v=02952cd05b34","water_special_06":"miniapp_preview/assets/monsters/water_special_06.webp?v=02952cd05b34","fire_special_07":"miniapp_preview/assets/monsters/fire_special_07.webp?v=02952cd05b34","air_special_07":"miniapp_preview/assets/monsters/air_special_07.webp?v=02952cd05b34","earth_special_07":"miniapp_preview/assets/monsters/earth_special_07.webp?v=02952cd05b34","water_special_07":"miniapp_preview/assets/monsters/water_special_07.webp?v=02952cd05b34","fire_special_08":"miniapp_preview/assets/monsters/fire_special_08.webp?v=02952cd05b34","air_special_08":"miniapp_preview/assets/monsters/air_special_08.webp?v=02952cd05b34","earth_special_08":"miniapp_preview/assets/monsters/earth_special_08.webp?v=02952cd05b34","water_special_08":"miniapp_preview/assets/monsters/water_special_08.webp?v=02952cd05b34","fire_special_09":"miniapp_preview/assets/monsters/fire_special_09.webp?v=02952cd05b34","air_special_09":"miniapp_preview/assets/monsters/air_special_09.webp?v=02952cd05b34","earth_special_09":"miniapp_preview/assets/monsters/earth_special_09.webp?v=02952cd05b34","water_special_09":"miniapp_preview/assets/monsters/water_special_09.webp?v=02952cd05b34","fire_special_10":"miniapp_preview/assets/monsters/fire_special_10.webp?v=02952cd05b34","air_special_10":"miniapp_preview/assets/monsters/air_special_10.webp?v=02952cd05b34","earth_special_10":"miniapp_preview/assets/monsters/earth_special_10.webp?v=02952cd05b34","water_special_10":"miniapp_preview/assets/monsters/water_special_10.webp?v=02952cd05b34","fire_special_11":"miniapp_preview/assets/monsters/fire_special_11.webp?v=02952cd05b34","air_special_11":"miniapp_preview/assets/monsters/air_special_11.webp?v=02952cd05b34","earth_special_11":"miniapp_preview/assets/monsters/earth_special_11.webp?v=02952cd05b34","water_special_11":"miniapp_preview/assets/monsters/water_special_11.webp?v=02952cd05b34","fire_special_12":"miniapp_preview/assets/monsters/fire_special_12.webp?v=02952cd05b34","air_special_12":"miniapp_preview/assets/monsters/air_special_12.webp?v=02952cd05b34","earth_special_12":"miniapp_preview/assets/monsters/earth_special_12.webp?v=02952cd05b34","water_special_12":"miniapp_preview/assets/monsters/water_special_12.webp?v=02952cd05b34","fire_special_13":"miniapp_preview/assets/monsters/fire_special_13.webp?v=02952cd05b34","air_special_13":"miniapp_preview/assets/monsters/air_special_13.webp?v=02952cd05b34","earth_special_13":"miniapp_preview/assets/monsters/earth_special_13.webp?v=02952cd05b34","water_special_13":"miniapp_preview/assets/monsters/water_special_13.webp?v=02952cd05b34","fire_special_14":"miniapp_preview/assets/monsters/fire_special_14.webp?v=02952cd05b34","air_special_14":"miniapp_preview/assets/monsters/air_special_14.webp?v=02952cd05b34","earth_special_14":"miniapp_preview/assets/monsters/earth_special_14.webp?v=02952cd05b34","water_special_14":"miniapp_preview/assets/monsters/water_special_14.webp?v=02952cd05b34","fire_special_15":"miniapp_preview/assets/monsters/fire_special_15.webp?v=02952cd05b34","air_special_15":"miniapp_preview/assets/monsters/air_special_15.webp?v=02952cd05b34","earth_special_15":"miniapp_preview/assets/monsters/earth_special_15.webp?v=02952cd05b34","water_special_15":"miniapp_preview/assets/monsters/water_special_15.webp?v=02952cd05b34","fire_special_16":"miniapp_preview/assets/monsters/fire_special_16.webp?v=02952cd05b34","air_special_16":"miniapp_preview/assets/monsters/air_special_16.webp?v=02952cd05b34","earth_special_16":"miniapp_preview/assets/monsters/earth_special_16.webp?v=02952cd05b34","water_special_16":"miniapp_preview/assets/monsters/water_special_16.webp?v=02952cd05b34","fire_special_17":"miniapp_preview/assets/monsters/fire_special_17.webp?v=02952cd05b34","air_special_17":"miniapp_preview/assets/monsters/air_special_17.webp?v=02952cd05b34","earth_special_17":"miniapp_preview/assets/monsters/earth_special_17.webp?v=02952cd05b34","water_special_17":"miniapp_preview/assets/monsters/water_special_17.webp?v=02952cd05b34","fire_special_18":"miniapp_preview/assets/monsters/fire_special_18.webp?v=02952cd05b34","air_special_18":"miniapp_preview/assets/monsters/air_special_18.webp?v=02952cd05b34","earth_special_18":"miniapp_preview/assets/monsters/earth_special_18.webp?v=02952cd05b34","water_special_18":"miniapp_preview/assets/monsters/water_special_18.webp?v=02952cd05b34","fire_special_19":"miniapp_preview/assets/monsters/fire_special_19.webp?v=02952cd05b34","air_special_19":"miniapp_preview/assets/monsters/air_special_19.webp?v=02952cd05b34","earth_special_19":"miniapp_preview/assets/monsters/earth_special_19.webp?v=02952cd05b34","water_special_19":"miniapp_preview/assets/monsters/water_special_19.webp?v=02952cd05b34","fire_special_20":"miniapp_preview/assets/monsters/fire_special_20.webp?v=02952cd05b34","air_special_20":"miniapp_preview/assets/monsters/air_special_20.webp?v=02952cd05b34","earth_special_20":"miniapp_preview/assets/monsters/earth_special_20.webp?v=02952cd05b34","water_special_20":"miniapp_preview/assets/monsters/water_special_20.webp?v=02952cd05b34","fire_special_21":"miniapp_preview/assets/monsters/fire_special_21.webp?v=02952cd05b34","air_special_21":"miniapp_preview/assets/monsters/air_special_21.webp?v=02952cd05b34","earth_special_21":"miniapp_preview/assets/monsters/earth_special_21.webp?v=02952cd05b34","water_special_21":"miniapp_preview/assets/monsters/water_special_21.webp?v=02952cd05b34","fire_special_22":"miniapp_preview/assets/monsters/fire_special_22.webp?v=02952cd05b34","air_special_22":"miniapp_preview/assets/monsters/air_special_22.webp?v=02952cd05b34","earth_special_22":"miniapp_preview/assets/monsters/earth_special_22.webp?v=02952cd05b34","water_special_22":"miniapp_preview/assets/monsters/water_special_22.webp?v=02952cd05b34","fire_special_23":"miniapp_preview/assets/monsters/fire_special_23.webp?v=02952cd05b34","air_special_23":"miniapp_preview/assets/monsters/air_special_23.webp?v=02952cd05b34","earth_special_23":"miniapp_preview/assets/monsters/earth_special_23.webp?v=02952cd05b34","water_special_23":"miniapp_preview/assets/monsters/water_special_23.webp?v=02952cd05b34","fire_special_24":"miniapp_preview/assets/monsters/fire_special_24.webp?v=02952cd05b34","air_special_24":"miniapp_preview/assets/monsters/air_special_24.webp?v=02952cd05b34","earth_special_24":"miniapp_preview/assets/monsters/earth_special_24.webp?v=02952cd05b34","water_special_24":"miniapp_preview/assets/monsters/water_special_24.webp?v=02952cd05b34","fire_special_25":"miniapp_preview/assets/monsters/fire_special_25.webp?v=02952cd05b34","air_special_25":"miniapp_preview/assets/monsters/air_special_25.webp?v=02952cd05b34","earth_special_25":"miniapp_preview/assets/monsters/earth_special_25.webp?v=02952cd05b34","water_special_25":"miniapp_preview/assets/monsters/water_special_25.webp?v=02952cd05b34","fire_special_26":"miniapp_preview/assets/monsters/fire_special_26.webp?v=02952cd05b34","air_special_26":"miniapp_preview/assets/monsters/air_special_26.webp?v=02952cd05b34","earth_special_26":"miniapp_preview/assets/monsters/earth_special_26.webp?v=02952cd05b34","water_special_26":"miniapp_preview/assets/monsters/water_special_26.webp?v=02952cd05b34","fire_special_27":"miniapp_preview/assets/monsters/fire_special_27.webp?v=02952cd05b34","air_special_27":"miniapp_preview/assets/monsters/air_special_27.webp?v=02952cd05b34","earth_special_27":"miniapp_preview/assets/monsters/earth_special_27.webp?v=02952cd05b34","water_special_27":"miniapp_preview/assets/monsters/water_special_27.webp?v=02952cd05b34","fire_special_28":"miniapp_preview/assets/monsters/fire_special_28.webp?v=02952cd05b34","air_special_28":"miniapp_preview/assets/monsters/air_special_28.webp?v=02952cd05b34","earth_special_28":"miniapp_preview/assets/monsters/earth_special_28.webp?v=02952cd05b34","water_special_28":"miniapp_preview/assets/monsters/water_special_28.webp?v=02952cd05b34","fire_special_29":"miniapp_preview/assets/monsters/fire_special_29.webp?v=02952cd05b34","air_special_29":"miniapp_preview/assets/monsters/air_special_29.webp?v=02952cd05b34","earth_special_29":"miniapp_preview/assets/monsters/earth_special_29.webp?v=02952cd05b34","water_special_29":"miniapp_preview/assets/monsters/water_special_29.webp?v=02952cd05b34","fire_special_30":"miniapp_preview/assets/monsters/fire_special_30.webp?v=02952cd05b34","air_special_30":"miniapp_preview/assets/monsters/air_special_30.webp?v=02952cd05b34","earth_special_30":"miniapp_preview/assets/monsters/earth_special_30.webp?v=02952cd05b34","water_special_30":"miniapp_preview/assets/monsters/water_special_30.webp?v=02952cd05b34","fire_special_31":"miniapp_preview/assets/monsters/fire_special_31.webp?v=02952cd05b34","air_special_31":"miniapp_preview/assets/monsters/air_special_31.webp?v=02952cd05b34","earth_special_31":"miniapp_preview/assets/monsters/earth_special_31.webp?v=02952cd05b34","water_special_31":"miniapp_preview/assets/monsters/water_special_31.webp?v=02952cd05b34","fire_special_32":"miniapp_preview/assets/monsters/fire_special_32.webp?v=02952cd05b34","air_special_32":"miniapp_preview/assets/monsters/air_special_32.webp?v=02952cd05b34","earth_special_32":"miniapp_preview/assets/monsters/earth_special_32.webp?v=02952cd05b34","water_special_32":"miniapp_preview/assets/monsters/water_special_32.webp?v=02952cd05b34"};
+window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_spark.webp?v=6bb3bf79e49b","fire_crab":"miniapp_preview/assets/monsters/fire_crab.webp?v=6bb3bf79e49b","fire_demon":"miniapp_preview/assets/monsters/fire_demon.webp?v=6bb3bf79e49b","fire_dragon":"miniapp_preview/assets/monsters/fire_dragon.webp?v=6bb3bf79e49b","air_spirit":"miniapp_preview/assets/monsters/air_spirit.webp?v=6bb3bf79e49b","air_storm":"miniapp_preview/assets/monsters/air_storm.webp?v=6bb3bf79e49b","air_griffin":"miniapp_preview/assets/monsters/air_griffin.webp?v=6bb3bf79e49b","air_dragon":"miniapp_preview/assets/monsters/air_dragon.webp?v=6bb3bf79e49b","earth_golem":"miniapp_preview/assets/monsters/earth_golem.webp?v=6bb3bf79e49b","earth_ent":"miniapp_preview/assets/monsters/earth_ent.webp?v=6bb3bf79e49b","earth_worm":"miniapp_preview/assets/monsters/earth_worm.webp?v=6bb3bf79e49b","earth_crystal":"miniapp_preview/assets/monsters/earth_crystal.webp?v=6bb3bf79e49b","water_elemental":"miniapp_preview/assets/monsters/water_elemental.webp?v=6bb3bf79e49b","water_octopus":"miniapp_preview/assets/monsters/water_octopus.webp?v=6bb3bf79e49b","water_angler":"miniapp_preview/assets/monsters/water_angler.webp?v=6bb3bf79e49b","water_dragon":"miniapp_preview/assets/monsters/water_dragon.webp?v=6bb3bf79e49b","fire_special_02":"miniapp_preview/assets/monsters/fire_special_02.webp?v=6bb3bf79e49b","air_special_02":"miniapp_preview/assets/monsters/air_special_02.webp?v=6bb3bf79e49b","earth_special_02":"miniapp_preview/assets/monsters/earth_special_02.webp?v=6bb3bf79e49b","water_special_02":"miniapp_preview/assets/monsters/water_special_02.webp?v=6bb3bf79e49b","fire_special_03":"miniapp_preview/assets/monsters/fire_special_03.webp?v=6bb3bf79e49b","air_special_03":"miniapp_preview/assets/monsters/air_special_03.webp?v=6bb3bf79e49b","earth_special_03":"miniapp_preview/assets/monsters/earth_special_03.webp?v=6bb3bf79e49b","water_special_03":"miniapp_preview/assets/monsters/water_special_03.webp?v=6bb3bf79e49b","fire_special_04":"miniapp_preview/assets/monsters/fire_special_04.webp?v=6bb3bf79e49b","air_special_04":"miniapp_preview/assets/monsters/air_special_04.webp?v=6bb3bf79e49b","earth_special_04":"miniapp_preview/assets/monsters/earth_special_04.webp?v=6bb3bf79e49b","water_special_04":"miniapp_preview/assets/monsters/water_special_04.webp?v=6bb3bf79e49b","fire_special_05":"miniapp_preview/assets/monsters/fire_special_05.webp?v=6bb3bf79e49b","air_special_05":"miniapp_preview/assets/monsters/air_special_05.webp?v=6bb3bf79e49b","earth_special_05":"miniapp_preview/assets/monsters/earth_special_05.webp?v=6bb3bf79e49b","water_special_05":"miniapp_preview/assets/monsters/water_special_05.webp?v=6bb3bf79e49b","fire_special_06":"miniapp_preview/assets/monsters/fire_special_06.webp?v=6bb3bf79e49b","air_special_06":"miniapp_preview/assets/monsters/air_special_06.webp?v=6bb3bf79e49b","earth_special_06":"miniapp_preview/assets/monsters/earth_special_06.webp?v=6bb3bf79e49b","water_special_06":"miniapp_preview/assets/monsters/water_special_06.webp?v=6bb3bf79e49b","fire_special_07":"miniapp_preview/assets/monsters/fire_special_07.webp?v=6bb3bf79e49b","air_special_07":"miniapp_preview/assets/monsters/air_special_07.webp?v=6bb3bf79e49b","earth_special_07":"miniapp_preview/assets/monsters/earth_special_07.webp?v=6bb3bf79e49b","water_special_07":"miniapp_preview/assets/monsters/water_special_07.webp?v=6bb3bf79e49b","fire_special_08":"miniapp_preview/assets/monsters/fire_special_08.webp?v=6bb3bf79e49b","air_special_08":"miniapp_preview/assets/monsters/air_special_08.webp?v=6bb3bf79e49b","earth_special_08":"miniapp_preview/assets/monsters/earth_special_08.webp?v=6bb3bf79e49b","water_special_08":"miniapp_preview/assets/monsters/water_special_08.webp?v=6bb3bf79e49b","fire_special_09":"miniapp_preview/assets/monsters/fire_special_09.webp?v=6bb3bf79e49b","air_special_09":"miniapp_preview/assets/monsters/air_special_09.webp?v=6bb3bf79e49b","earth_special_09":"miniapp_preview/assets/monsters/earth_special_09.webp?v=6bb3bf79e49b","water_special_09":"miniapp_preview/assets/monsters/water_special_09.webp?v=6bb3bf79e49b","fire_special_10":"miniapp_preview/assets/monsters/fire_special_10.webp?v=6bb3bf79e49b","air_special_10":"miniapp_preview/assets/monsters/air_special_10.webp?v=6bb3bf79e49b","earth_special_10":"miniapp_preview/assets/monsters/earth_special_10.webp?v=6bb3bf79e49b","water_special_10":"miniapp_preview/assets/monsters/water_special_10.webp?v=6bb3bf79e49b","fire_special_11":"miniapp_preview/assets/monsters/fire_special_11.webp?v=6bb3bf79e49b","air_special_11":"miniapp_preview/assets/monsters/air_special_11.webp?v=6bb3bf79e49b","earth_special_11":"miniapp_preview/assets/monsters/earth_special_11.webp?v=6bb3bf79e49b","water_special_11":"miniapp_preview/assets/monsters/water_special_11.webp?v=6bb3bf79e49b","fire_special_12":"miniapp_preview/assets/monsters/fire_special_12.webp?v=6bb3bf79e49b","air_special_12":"miniapp_preview/assets/monsters/air_special_12.webp?v=6bb3bf79e49b","earth_special_12":"miniapp_preview/assets/monsters/earth_special_12.webp?v=6bb3bf79e49b","water_special_12":"miniapp_preview/assets/monsters/water_special_12.webp?v=6bb3bf79e49b","fire_special_13":"miniapp_preview/assets/monsters/fire_special_13.webp?v=6bb3bf79e49b","air_special_13":"miniapp_preview/assets/monsters/air_special_13.webp?v=6bb3bf79e49b","earth_special_13":"miniapp_preview/assets/monsters/earth_special_13.webp?v=6bb3bf79e49b","water_special_13":"miniapp_preview/assets/monsters/water_special_13.webp?v=6bb3bf79e49b","fire_special_14":"miniapp_preview/assets/monsters/fire_special_14.webp?v=6bb3bf79e49b","air_special_14":"miniapp_preview/assets/monsters/air_special_14.webp?v=6bb3bf79e49b","earth_special_14":"miniapp_preview/assets/monsters/earth_special_14.webp?v=6bb3bf79e49b","water_special_14":"miniapp_preview/assets/monsters/water_special_14.webp?v=6bb3bf79e49b","fire_special_15":"miniapp_preview/assets/monsters/fire_special_15.webp?v=6bb3bf79e49b","air_special_15":"miniapp_preview/assets/monsters/air_special_15.webp?v=6bb3bf79e49b","earth_special_15":"miniapp_preview/assets/monsters/earth_special_15.webp?v=6bb3bf79e49b","water_special_15":"miniapp_preview/assets/monsters/water_special_15.webp?v=6bb3bf79e49b","fire_special_16":"miniapp_preview/assets/monsters/fire_special_16.webp?v=6bb3bf79e49b","air_special_16":"miniapp_preview/assets/monsters/air_special_16.webp?v=6bb3bf79e49b","earth_special_16":"miniapp_preview/assets/monsters/earth_special_16.webp?v=6bb3bf79e49b","water_special_16":"miniapp_preview/assets/monsters/water_special_16.webp?v=6bb3bf79e49b","fire_special_17":"miniapp_preview/assets/monsters/fire_special_17.webp?v=6bb3bf79e49b","air_special_17":"miniapp_preview/assets/monsters/air_special_17.webp?v=6bb3bf79e49b","earth_special_17":"miniapp_preview/assets/monsters/earth_special_17.webp?v=6bb3bf79e49b","water_special_17":"miniapp_preview/assets/monsters/water_special_17.webp?v=6bb3bf79e49b","fire_special_18":"miniapp_preview/assets/monsters/fire_special_18.webp?v=6bb3bf79e49b","air_special_18":"miniapp_preview/assets/monsters/air_special_18.webp?v=6bb3bf79e49b","earth_special_18":"miniapp_preview/assets/monsters/earth_special_18.webp?v=6bb3bf79e49b","water_special_18":"miniapp_preview/assets/monsters/water_special_18.webp?v=6bb3bf79e49b","fire_special_19":"miniapp_preview/assets/monsters/fire_special_19.webp?v=6bb3bf79e49b","air_special_19":"miniapp_preview/assets/monsters/air_special_19.webp?v=6bb3bf79e49b","earth_special_19":"miniapp_preview/assets/monsters/earth_special_19.webp?v=6bb3bf79e49b","water_special_19":"miniapp_preview/assets/monsters/water_special_19.webp?v=6bb3bf79e49b","fire_special_20":"miniapp_preview/assets/monsters/fire_special_20.webp?v=6bb3bf79e49b","air_special_20":"miniapp_preview/assets/monsters/air_special_20.webp?v=6bb3bf79e49b","earth_special_20":"miniapp_preview/assets/monsters/earth_special_20.webp?v=6bb3bf79e49b","water_special_20":"miniapp_preview/assets/monsters/water_special_20.webp?v=6bb3bf79e49b","fire_special_21":"miniapp_preview/assets/monsters/fire_special_21.webp?v=6bb3bf79e49b","air_special_21":"miniapp_preview/assets/monsters/air_special_21.webp?v=6bb3bf79e49b","earth_special_21":"miniapp_preview/assets/monsters/earth_special_21.webp?v=6bb3bf79e49b","water_special_21":"miniapp_preview/assets/monsters/water_special_21.webp?v=6bb3bf79e49b","fire_special_22":"miniapp_preview/assets/monsters/fire_special_22.webp?v=6bb3bf79e49b","air_special_22":"miniapp_preview/assets/monsters/air_special_22.webp?v=6bb3bf79e49b","earth_special_22":"miniapp_preview/assets/monsters/earth_special_22.webp?v=6bb3bf79e49b","water_special_22":"miniapp_preview/assets/monsters/water_special_22.webp?v=6bb3bf79e49b","fire_special_23":"miniapp_preview/assets/monsters/fire_special_23.webp?v=6bb3bf79e49b","air_special_23":"miniapp_preview/assets/monsters/air_special_23.webp?v=6bb3bf79e49b","earth_special_23":"miniapp_preview/assets/monsters/earth_special_23.webp?v=6bb3bf79e49b","water_special_23":"miniapp_preview/assets/monsters/water_special_23.webp?v=6bb3bf79e49b","fire_special_24":"miniapp_preview/assets/monsters/fire_special_24.webp?v=6bb3bf79e49b","air_special_24":"miniapp_preview/assets/monsters/air_special_24.webp?v=6bb3bf79e49b","earth_special_24":"miniapp_preview/assets/monsters/earth_special_24.webp?v=6bb3bf79e49b","water_special_24":"miniapp_preview/assets/monsters/water_special_24.webp?v=6bb3bf79e49b","fire_special_25":"miniapp_preview/assets/monsters/fire_special_25.webp?v=6bb3bf79e49b","air_special_25":"miniapp_preview/assets/monsters/air_special_25.webp?v=6bb3bf79e49b","earth_special_25":"miniapp_preview/assets/monsters/earth_special_25.webp?v=6bb3bf79e49b","water_special_25":"miniapp_preview/assets/monsters/water_special_25.webp?v=6bb3bf79e49b","fire_special_26":"miniapp_preview/assets/monsters/fire_special_26.webp?v=6bb3bf79e49b","air_special_26":"miniapp_preview/assets/monsters/air_special_26.webp?v=6bb3bf79e49b","earth_special_26":"miniapp_preview/assets/monsters/earth_special_26.webp?v=6bb3bf79e49b","water_special_26":"miniapp_preview/assets/monsters/water_special_26.webp?v=6bb3bf79e49b","fire_special_27":"miniapp_preview/assets/monsters/fire_special_27.webp?v=6bb3bf79e49b","air_special_27":"miniapp_preview/assets/monsters/air_special_27.webp?v=6bb3bf79e49b","earth_special_27":"miniapp_preview/assets/monsters/earth_special_27.webp?v=6bb3bf79e49b","water_special_27":"miniapp_preview/assets/monsters/water_special_27.webp?v=6bb3bf79e49b","fire_special_28":"miniapp_preview/assets/monsters/fire_special_28.webp?v=6bb3bf79e49b","air_special_28":"miniapp_preview/assets/monsters/air_special_28.webp?v=6bb3bf79e49b","earth_special_28":"miniapp_preview/assets/monsters/earth_special_28.webp?v=6bb3bf79e49b","water_special_28":"miniapp_preview/assets/monsters/water_special_28.webp?v=6bb3bf79e49b","fire_special_29":"miniapp_preview/assets/monsters/fire_special_29.webp?v=6bb3bf79e49b","air_special_29":"miniapp_preview/assets/monsters/air_special_29.webp?v=6bb3bf79e49b","earth_special_29":"miniapp_preview/assets/monsters/earth_special_29.webp?v=6bb3bf79e49b","water_special_29":"miniapp_preview/assets/monsters/water_special_29.webp?v=6bb3bf79e49b","fire_special_30":"miniapp_preview/assets/monsters/fire_special_30.webp?v=6bb3bf79e49b","air_special_30":"miniapp_preview/assets/monsters/air_special_30.webp?v=6bb3bf79e49b","earth_special_30":"miniapp_preview/assets/monsters/earth_special_30.webp?v=6bb3bf79e49b","water_special_30":"miniapp_preview/assets/monsters/water_special_30.webp?v=6bb3bf79e49b","fire_special_31":"miniapp_preview/assets/monsters/fire_special_31.webp?v=6bb3bf79e49b","air_special_31":"miniapp_preview/assets/monsters/air_special_31.webp?v=6bb3bf79e49b","earth_special_31":"miniapp_preview/assets/monsters/earth_special_31.webp?v=6bb3bf79e49b","water_special_31":"miniapp_preview/assets/monsters/water_special_31.webp?v=6bb3bf79e49b","fire_special_32":"miniapp_preview/assets/monsters/fire_special_32.webp?v=6bb3bf79e49b","air_special_32":"miniapp_preview/assets/monsters/air_special_32.webp?v=6bb3bf79e49b","earth_special_32":"miniapp_preview/assets/monsters/earth_special_32.webp?v=6bb3bf79e49b","water_special_32":"miniapp_preview/assets/monsters/water_special_32.webp?v=6bb3bf79e49b"};
 (function(){
       if (new URLSearchParams(location.search).get('pilot-demo') !== '1') return;
       try {
@@ -5465,7 +5792,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     { id: 'mage', native: 5, name: 'Маг', icon: '🔮', race: 'Changeling', uniqueSkill: 'rune', pool: ['rune', 'freeze', 'heal', 'repair', 'goldtouch', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'dazzle', 'boostgold', 'boosthealth', 'banish', 'exorcise', 'chamber', 'magicsword', 'earthquake', 'fireball', 'mana'],
       perk: 'Gifted', flaw: 'Frail', perkName: 'Одарённость', flawName: 'Хрупкость', raceName: 'Тактик',
       perkDesc: '5% зелий выпадают как mana-зелья (−1 к кулдауну навыка)', flawDesc: '-10 макс. HP',
-      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · пилот: Тактик (зарядка навыка)',
+      clsDesc: 'пассив: Одарённость · изъян: Хрупкость · пилот: Тактик («Хоть шерсти клок...»)',
       uniqueSkillDesc: 'Руна (12): замкнутая цепочка из 4+ узлов собирает интерьер, кроме особых и боссов' },
     { id: 'ranger', native: 1, name: 'Разведчик', icon: '🏹', race: 'Elf', uniqueSkill: 'volley', pool: ['volley', 'heal', 'repair', 'counter', 'shatter', 'teleport', 'explosive', 'elixir', 'enchant', 'treasure', 'scavenge', 'disarm', 'boostdmg', 'boosthealth', 'banish', 'trap', 'biggame', 'chamber', 'magicsword', 'mana'],
       perk: 'Agile', flaw: 'Slim', perkName: 'Ловкость', flawName: 'Тощий', raceName: 'Биохимик',
@@ -5603,7 +5930,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     Halfling: { name: 'Бронник', desc: '15 прямых убийств одной цепочкой улучшают надетый доспех. Смертный враг пилота — Невидимый: удваивает защиту других новых врагов.' },
     Werewolf: { name: 'Перехватчик', desc: 'В конце хода собирает обычных врагов с HP ниже их защиты. Смертный враг пилота — Вампир: может лечиться выше прежнего максимума HP.' },
     Dragonkin: { name: 'Термит', desc: 'Ручное применение навыка поджигает случайного обычного врага. Смертный враг пилота — Застывший: вдвое уменьшает базовую часть урона цепочки.' },
-    Changeling: { name: 'Тактик', desc: 'Сбор особого врага заряжает случайный надетый навык. Смертный враг пилота — Нестабильный: его телепорт обновляет поле без мечей.' },
+    Changeling: { name: 'Тактик', desc: '«Хоть шерсти клок...»: с каждого особого врага утаскивает заряд в случайный надетый навык — может ткнуть и в уже готовый, но главное не с пустыми руками. Смертный враг пилота — Нестабильный: его телепорт обновляет поле без мечей.' },
   };
   // Display-only pilot professions; legacy race IDs and all linked bonuses/nemeses remain stable.
   const PILOT_ART_BY_RACE = Object.freeze({
@@ -6601,7 +6928,49 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     if (slot === 'shield') return raidShieldTexture('equipment-glyph', item);
     return `<svg class="equipment-glyph" viewBox="0 0 32 34" fill="none" stroke="#c7b57e" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true">${RAID_EQUIPMENT_SHAPES[slot] || RAID_EQUIPMENT_SHAPES.shield}<\/svg>`;
   }
-  function raidAchievementAvailable(id) { return ![45, 70, 71, 76, 77].includes(id); }
+  function raidAchievementAvailable(id) { return ![45, 70, 71].includes(id); }
+
+  const RAID_MODE_INFO = Object.freeze({
+    classic: {
+      short: 'Не оглядываясь',
+      desc: '<b>Не оглядываясь:<\/b> классический бесконечный рейд — качайся, собирай снаряжение и заходи так далеко, как сможешь!',
+    },
+    sprint: {
+      short: 'Спринт · 100 ходов',
+      desc: '<b>Спринт (100 ходов):<\/b> ресурсы ×2, навыки сразу 5 ур. — продержись 100 ходов до победы и ×2 к очкам!',
+    },
+    pretzel: {
+      short: 'Крендель',
+      desc: '<b>Крендель:<\/b> закручивай цепочку крест-накрест ✕ по диагонали — очки дают только за перекрёстки (100 HP).',
+    },
+  });
+  function normaliseRaidMode(value) {
+    return value === 'sprint' || value === 'pretzel' ? value : 'classic';
+  }
+  function readSavedRaidMode() {
+    const sel = qs('#mode-select');
+    if (sel && (sel.value === 'sprint' || sel.value === 'pretzel' || sel.value === 'classic')) return sel.value;
+    try { return normaliseRaidMode(profileStorage.getItem('raid:mode')); } catch (e) { return 'classic'; }
+  }
+  function syncRaidModeUi(mode, persist = false) {
+    const next = normaliseRaidMode(mode);
+    const sel = qs('#mode-select');
+    if (sel && sel.value !== next) sel.value = next;
+    for (const btn of qsa('.mode-pill[data-raid-mode]')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.raidMode === next));
+    }
+    const desc = el('region-mode-desc');
+    if (desc) desc.innerHTML = RAID_MODE_INFO[next].desc;
+    const diffWrap = el('difficulty-wrap'), diffLock = el('difficulty-lock-note'), diffSel = qs('#difficulty-select');
+    const locked = next === 'pretzel';
+    if (diffWrap) diffWrap.hidden = locked;
+    if (diffLock) diffLock.hidden = !locked;
+    if (diffSel) diffSel.disabled = locked;
+    for (const card of qsa('#modes-help-modal .mode-guide-item')) {
+      card.classList.toggle('is-active', card.dataset.guideMode === next);
+    }
+    if (persist) { try { profileStorage.setItem('raid:mode', next); } catch (e) {} }
+  }
 
   let RAID_REGION = 'earth'; // Preference / preview for the NEXT run.
   let RUN_REGION = null; // Pinned location; v1 uses it only for appearance.
@@ -7412,7 +7781,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     ['Чем они больше', 'Пилотом «Бронник» 10 раз убить одной цепочкой не менее 15 врагов и улучшить доспех. За цепь — 10%.'],
     ['Ещё один пал', 'Пилотом «Перехватчик» собрать Калечением 50 обычных врагов с HP ниже их защиты. За каждого — 2%.'],
     ['Пламя дракона', 'Пилотом «Термит» 50 раз добить врага огнём в конце хода. Источник огня может быть любым. За каждого — 2%.'],
-    ['Слёзы под дождём', 'Пилотом «Тактик» 50 раз получить награду за особого врага и зарядить навык. За каждый — 2%.'],
+    ['Слёзы под дождём', 'Пилотом «Тактик» 50 раз урвать «Хоть шерсти клок...» с особого врага и зарядить навык. За каждый — 2%.'],
     ['Снайпер', 'Убить особого на конце цепочки после пропуска стрелой: стрела за два узла до цели, разница по строке или столбцу больше 1.'],
     ['Что не убивает', 'Пилотом «Бронник» совершить атаку с 15+ прямыми убийствами в том же ходу после Мазохизма.'],
     ['Мастер Руны', 'Руной собрать внутри больше клеток, чем эффективных узлов в её контуре. Особые внутри не считаются.'],
@@ -7544,12 +7913,12 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     const data = readRunHistory()?.data; if (!data) return null;
     const catalog = ACHIEVEMENTS.slice(1).map((entry, index) => ({ id: index + 1, ...entry, available: raidAchievementAvailable(index + 1),
       progress: data.achievements.progress[index + 1] || 0, unlocked: data.achievements.progress[index + 1] === 100 }));
-    return { catalog, unlocked: catalog.filter(entry => entry.unlocked).length, available: 72, total: 77 };
+    return { catalog, unlocked: catalog.filter(entry => entry.unlocked).length, available: 74, total: 77 };
   }
   function renderAchievements(body, progress) {
-    appendHistoryHint(body, 'Правила и совместимость', 'Унаследованы 77 записей. В этой версии 72 доступных: условия Sprint/Pretzel/Harder (70,71,76,77) не заменялись новыми и недоступны, триггер45 не подтверждён. На Лёгком — только «Миссия завершена». Прогресс событий начинается с этой сборки; прошлые боевые события не восстанавливаются. Уже открытые мехи и их родные бойцы распознаются при следующем старте или продолжении не на Лёгком. Проценты копятся между забегами до 100, не дают очков и не зависят от окончательной смерти: спасение Последним рубежом не отменяет уже сработавшее событие.');
+    appendHistoryHint(body, 'Правила и совместимость', 'Унаследованы 77 записей. В этой версии 74 доступных (включая Спринт и Крендель): недоступны только условия 4-й сложности «Очень сложный» (70, 71) и неподтверждённый триггер 45. На Лёгком — только «Миссия завершена». Прогресс событий начинается с этой сборки; прошлые боевые события не восстанавливаются. Уже открытые мехи и их родные бойцы распознаются при следующем старте или продолжении не на Лёгком. Проценты копятся между забегами до 100, не дают очков и не зависят от окончательной смерти: спасение Последним рубежом не отменяет уже сработавшее событие.');
     const summary = document.createElement('p'); summary.className = 'achievement-summary';
-    summary.textContent = `Открыто ${Object.values(progress).filter(amount => amount === 100).length} из 72 доступных · 77 в исходном каталоге`;
+    summary.textContent = `Открыто ${Object.values(progress).filter(amount => amount === 100).length} из 74 доступных · 77 в исходном каталоге`;
     body.appendChild(summary);
     const filter = el('achievement-filter')?.value || 'all';
     let shown = 0;
@@ -8271,8 +8640,8 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
   // (37a857da), consolidated in PR87. Six resource/enemy materials plus the
   // weapon selection haze display assignments; legacy v1 palettes stay cosmetic.
   const ORB_ELEMENT_ORDER = RAID_ELEMENTS;
-  const PHYLACTERY_IMAGE = 'miniapp_preview/assets/lich_phylactery.webp?v=02952cd05b34';
-  const TROPHY_IMAGE = 'miniapp_preview/assets/raid_trophy.webp?v=02952cd05b34';
+  const PHYLACTERY_IMAGE = 'miniapp_preview/assets/lich_phylactery.webp?v=6bb3bf79e49b';
+  const TROPHY_IMAGE = 'miniapp_preview/assets/raid_trophy.webp?v=6bb3bf79e49b';
   const ORB_ELEMENT_LOOKS = [
     { state: 'fire', rgb: '249 111 65', light: '#ffd9a4', mid: '#a4492c', dark: '#361b22' },
     { state: 'gas', rgb: '177 222 241', light: '#e8faff', mid: '#537c91', dark: '#172b42' },
@@ -9263,6 +9632,16 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     if (preview.mana) parts.push(`${preview.mana} маны`);
     if (preview.specialRewards) parts.push('награда особых — случайная');
     if (preview.interior.length) parts.push(`Руна внутри: ${preview.interior.length} (особые остаются)`);
+    if (S.mode === 'pretzel' && preview.effectiveLength >= 3) {
+      const crosses = pretzelCrossings(S.selected);
+      const p = pretzelPoints(crosses);
+      if (crosses > 0) {
+        const mult = p.rating >= 3 ? ' · ЛЕГЕНДА!' : p.rating === 2 ? ' · ×3' : p.rating === 1 ? ' · ×2' : '';
+        parts.unshift(`<span class="chain-tip-pretzel">🥨 ${crosses} перекр. (+${p.points} оч.${mult})<\/span>`);
+      } else {
+        parts.push('<span class="chain-tip-hint">🥨 сделай перекрёсток ✕ по диагонали для очков<\/span>');
+      }
+    }
     if (preview.effectiveLength < 3) parts.push('без хода врагов');
     tip.classList.add('show');
     tip.innerHTML = `<b>${preview.effectiveLength}<\/b> клеток · ${parts.join(' · ') || 'сбор без награды'}`;
@@ -9474,16 +9853,23 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
       damageLabel.textContent = `Меч ${fmt(weapon)} · база ${fmt(baseDmg)}`;
       damageLabel.title = dmgTitle;
     }
-    if (el('turn-text')) el('turn-text').textContent = `ХОД ${S.turn}`;
+    if (el('turn-text')) el('turn-text').textContent = S.mode === 'sprint' ? `ХОД ${S.turn}/100` : `ХОД ${S.turn}`;
     if (el('status-line')) {
       const score = runScore();
       S.score = score;
-      el('status-line').textContent = `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
+      el('status-line').textContent = S.mode === 'sprint'
+        ? `Спринт · Ход ${S.turn}/100 · Ур. ${h.level} · Очки ${score}`
+        : S.mode === 'pretzel'
+          ? `Крендель · Ход ${S.turn} · Ур. ${h.level} · 🥨 ${score} оч.`
+          : `Ход ${S.turn} · Уровень ${h.level} · Очки ${score}`;
     }
     if (el('mode-badge')) {
-      const modeName = 'RAID';
       const diffName = ['Лёгкий', 'Обычный', 'Сложный', 'Очень сложный'][S.difficulty || 0];
-      el('mode-badge').textContent = modeName + ' · ' + diffName;
+      el('mode-badge').textContent = S.mode === 'sprint'
+        ? `⚡ Спринт · ${Math.min(100, S.turn)}/100`
+        : S.mode === 'pretzel'
+          ? `🥨 Крендель · ${runScore()} оч.`
+          : `RAID · ${diffName}`;
     }
     if (el('chain-count')) el('chain-count').textContent = 'Цепь ' + (S.selected ? S.selected.length : 0);
     const trophyImg = el('hud-trophy-img');
@@ -9610,10 +9996,14 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     // RAID's endless structure uses the original Classic rules; the trial
     // retains Sprint/Pretzel/Harder unchanged. No new difficulty curve/gate.
     const diffEl = qs('#difficulty-select');
-    S.mode = 'classic';
-    S.difficulty = Number((diffEl && diffEl.value) || (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
+    const modeEl = qs('#mode-select');
+    const rawMode = (modeEl && modeEl.value) || (() => { try { return profileStorage.getItem('raid:mode') || 'classic'; } catch (e) { return 'classic'; } })();
+    S.mode = normaliseRaidMode(rawMode);
+    S.difficulty = S.mode === 'pretzel'
+      ? 1
+      : Number((diffEl && diffEl.value) || (() => { try { return profileStorage.getItem('raid:difficulty') || '1'; } catch (e) { return '1'; } })());
     S.difficulty = Math.max(0, Math.min(2, Number.isFinite(S.difficulty) ? S.difficulty : 1));
-    try { profileStorage.setItem('raid:mode', S.mode); profileStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
+    try { profileStorage.setItem('raid:mode', S.mode); if (S.mode !== 'pretzel') profileStorage.setItem('raid:difficulty', String(S.difficulty)); } catch (e) {}
     S.classId = getSelectedClassId();
     S.classConfig = getClassConfig(S.classId);
     for (const key of ['perks', 'flaws', 'replacements']) Object.freeze(S.classConfig[key]);
@@ -9657,6 +10047,10 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     if (saveRun()) saveRaidAppearance();
     if (seed === undefined && shouldAutoShowBeginnerGuide()) {
       openBeginnerGuide({ scene: 0, autoFirstRun: true });
+    } else if (S.mode === 'sprint') {
+      flash('⚡ Спринт: продержись 100 ходов до победы! Ресурсы ×2, навыки сразу 5 ур.');
+    } else if (S.mode === 'pretzel') {
+      flash('🥨 Крендель: закручивай цепь крест-накрест ✕ по диагонали — очки дают за перекрёстки!');
     }
   }
 
@@ -10432,7 +10826,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
     if (clsRace() === 'Changeling' && S.skills.length > 0) {
       const pick = S.skills[randInt(0, S.skills.length - 1, 5)];
       S.skillCooldowns[pick] = 0;
-      flash('🔮 Смена облика: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» готов');
+      flash('🔮 Хоть шерсти клок...: навык «' + (SKILL_BY_ID[pick] ? SKILL_BY_ID[pick].name : pick) + '» заряжен!');
     }
   }
 
@@ -12991,6 +13385,7 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
           screen.hidden = false; card.classList.add('region-screen-open');
           el('class-picker').classList.add('region-mode-open');
           applyRaidRegion(RAID_REGION);
+          syncRaidModeUi(readSavedRaidMode());
           el('region-emblem-launch')?.focus();
         });
         let focusTarget = go;
@@ -13773,6 +14168,46 @@ window.RAID_MONSTER_ART = {"fire_spark":"miniapp_preview/assets/monsters/fire_sp
       helpModal.addEventListener('click', event => { if (event.target === helpModal) closeHelp(); });
       helpModal.addEventListener('keydown', event => {
         if (event.key === 'Escape' && helpModal.classList.contains('show')) { event.preventDefault(); closeHelp(); }
+      });
+    }
+    const modeSelect = qs('#mode-select');
+    if (modeSelect) {
+      let storedMode = 'classic';
+      try { storedMode = normaliseRaidMode(profileStorage.getItem('raid:mode')); } catch (e) {}
+      syncRaidModeUi(storedMode);
+      modeSelect.addEventListener('change', () => syncRaidModeUi(modeSelect.value, true));
+    }
+    for (const pill of qsa('.mode-pill[data-raid-mode]')) {
+      pill.addEventListener('click', () => syncRaidModeUi(pill.dataset.raidMode, true));
+    }
+    const modesHelpModal = qs('#modes-help-modal');
+    const closeModesHelp = () => {
+      if (!modesHelpModal) return;
+      modesHelpModal.classList.remove('show');
+      el('mode-help-btn')?.focus();
+      syncTelegramChrome();
+    };
+    const openModesHelp = () => {
+      if (!modesHelpModal) return;
+      syncRaidModeUi(readSavedRaidMode());
+      modesHelpModal.classList.add('show');
+      el('modes-help-close')?.focus();
+      syncTelegramChrome();
+    };
+    el('mode-help-btn')?.addEventListener('click', openModesHelp);
+    const modeDesc = el('region-mode-desc');
+    if (modeDesc) {
+      modeDesc.addEventListener('click', openModesHelp);
+      modeDesc.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModesHelp(); }
+      });
+    }
+    el('modes-help-close')?.addEventListener('click', closeModesHelp);
+    el('modes-help-x')?.addEventListener('click', closeModesHelp);
+    if (modesHelpModal) {
+      modesHelpModal.addEventListener('click', event => { if (event.target === modesHelpModal) closeModesHelp(); });
+      modesHelpModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && modesHelpModal.classList.contains('show')) { event.preventDefault(); closeModesHelp(); }
       });
     }
     showClassPicker();

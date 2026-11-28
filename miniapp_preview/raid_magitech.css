@@ -4005,9 +4005,12 @@ html[data-raid-motion="off"] .guide-tile {
   color: #ffe5a3;
 }
 .menu-x-close {
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -4015,6 +4018,12 @@ html[data-raid-motion="off"] .guide-tile {
   background: rgba(8, 22, 21, 0.8);
   color: #f2dfb0;
   cursor: pointer;
+}
+.menu-x-close svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  margin: 0;
 }
 .menu-x-close:hover,
 .menu-x-close:focus-visible {
@@ -4064,13 +4073,13 @@ html[data-raid-motion="off"] .guide-tile {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  flex: 0 0 34px;
-  width: 34px;
-  height: 19px;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 22px;
   margin: 0;
   border-radius: 999px;
-  border: 1px solid rgba(212, 188, 124, 0.45);
-  background: rgba(11, 20, 22, 0.9);
+  border: 1px solid #91aa8f80;
+  background: #071f20;
   cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease;
 }
@@ -4079,24 +4088,25 @@ html[data-raid-motion="off"] .guide-tile {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: #a5b5aa;
+  background: #9cb09f;
   transition: transform 150ms ease, background 150ms ease;
 }
 .menu-switch-tile input[type="checkbox"]:checked {
-  background: linear-gradient(90deg, #2d7c6d, #48a791);
-  border-color: #9bf5db;
+  background: #c5ba86;
+  border-color: #e0d19e;
 }
 .menu-switch-tile input[type="checkbox"]:checked::after {
-  transform: translateX(15px);
-  background: #fff4d1;
+  transform: translateX(16px);
+  background: #1b3730;
 }
 .menu-haptics {
-  margin: 0;
-  padding: 0;
+  margin: 2px 0 0;
+  padding: 6px 2px 0;
   border: 0;
+  border-top: 1px solid rgba(182, 193, 163, 0.14);
 }
 .menu-haptics legend {
   position: absolute;
@@ -4112,12 +4122,84 @@ html[data-raid-motion="off"] .guide-tile {
   gap: 8px;
 }
 .menu-haptics .haptics-title {
-  color: #c8d6cb;
-  font: 600 11px/1.1 system-ui, sans-serif;
+  color: #e6dfc8;
+  font: 600 11.5px/1.1 system-ui, sans-serif;
 }
 .menu-haptics .haptics-segments {
-  flex: 1;
-  max-width: 196px;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  position: relative;
+  width: 150px;
+  max-width: none;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.menu-haptics .haptics-segments::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 3px;
+  right: 3px;
+  height: 22px;
+  border: 1px solid #91aa8f80;
+  border-radius: 999px;
+  background: #071f20;
+  pointer-events: none;
+}
+.menu-haptics .haptics-segments:has(input[value="important"]:checked)::before,
+.menu-haptics .haptics-segments:has(input[value="all"]:checked)::before {
+  background: #c5ba86;
+  border-color: #e0d19e;
+}
+.menu-haptics .haptics-segments label {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-left: 0;
+  background: transparent;
+  color: #d9e4d1;
+  font-size: 9.5px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.menu-haptics .haptics-segments label + label {
+  border-left: 0;
+}
+.menu-haptics .haptics-segments label::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: transparent;
+}
+.menu-haptics .haptics-segments label:has(input:checked)::before {
+  background: #1b3730;
+}
+.menu-haptics .haptics-segments label:has(input[value="off"]:checked)::before {
+  background: #9cb09f;
+}
+.menu-haptics .haptics-segments label:has(input:checked) {
+  background: transparent;
+  color: #d9e4d1;
+  font-weight: 400;
+}
+.menu-haptics .haptics-segments label:has(input:checked) span {
+  color: #f0dba1;
+  font-weight: 700;
 }
 .menu-grid {
   display: grid;
@@ -4215,6 +4297,188 @@ html[data-raid-motion="off"] .guide-tile {
   line-height: 1.35;
   color: #9cb0a5;
 }
+
+/* --- Game Modes selector (Classic / Sprint / Pretzel) & friendly guide --- */
+.region-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mode-pills {
+  display: inline-grid;
+  grid-template-columns: 1.48fr 0.84fr 0.96fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.36);
+  background: rgba(6, 18, 18, 0.86);
+  flex: 1;
+  max-width: 344px;
+}
+.mode-pill {
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #cdd8c8;
+  font: 600 10.5px/1.1 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.mode-pill:hover {
+  background: rgba(197, 186, 134, 0.14);
+  color: #f4e6be;
+}
+.mode-pill[aria-pressed="true"] {
+  background: linear-gradient(125deg, #e0ca85, #b89a51);
+  border-color: #f5df9c;
+  color: #161c14;
+  font-weight: 700;
+}
+.mode-help-btn {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 188, 124, 0.56);
+  background: rgba(10, 28, 26, 0.9);
+  color: #f2dfb0;
+  font: 700 12.5px/1 Georgia, serif;
+  cursor: pointer;
+}
+.mode-help-btn:hover,
+.mode-help-btn:focus-visible {
+  background: #23423b;
+  border-color: #ffe49b;
+}
+.region-screen-head > .region-mode-desc {
+  margin: 6px auto 0;
+  padding: 5px 9px;
+  max-width: 360px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 188, 124, 0.22);
+  background: rgba(7, 22, 21, 0.72);
+  color: #d6e1d3;
+  font: 400 10.5px/1.35 system-ui, sans-serif;
+  cursor: pointer;
+}
+.region-screen-head > .region-mode-desc b {
+  color: #f5df9c;
+}
+.region-difficulty-lock {
+  color: #c8d3be;
+  font: 400 10px/1.2 system-ui, sans-serif;
+}
+.region-difficulty-lock b {
+  color: #f0dfad;
+  font-weight: 600;
+}
+@media (max-width: 720px) {
+  .region-screen-head { width: min(430px, 93vw); padding: 7px 9px 8px; }
+  .region-screen-head h2 { margin: 2px 0 1px; font-size: 17px; }
+  .mode-pill { min-height: 26px; padding: 3px 4px; font-size: 10px; }
+  .region-screen-head > .region-mode-desc { margin-top: 5px; padding: 4px 7px; font-size: 9.8px; line-height: 1.3; }
+  .region-quadrant.element-fire, .region-quadrant.element-air { padding-top: max(168px, 23vh); }
+}
+
+.modes-help-modal {
+  z-index: 115;
+}
+.modes-help-card {
+  width: min(100%, 360px);
+  max-height: 86dvh;
+  overflow-y: auto;
+  padding: 15px 15px 14px;
+  border-radius: 18px;
+  border: 1px solid #d4bc7c99;
+  background: radial-gradient(ellipse at 50% 0%, #1d3c37 0%, #0d2120 62%, #081617 100%);
+  text-align: left;
+}
+.modes-help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.modes-help-header h3 {
+  margin: 0;
+  color: #f3e0ab;
+  font: 600 19px/1.15 Georgia, serif;
+}
+.modes-help-intro {
+  margin: 0 0 10px;
+  color: #c8d6cb;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.mode-guide-item {
+  margin-bottom: 9px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 188, 124, 0.25);
+  background: rgba(8, 22, 22, 0.72);
+}
+.mode-guide-item.is-active {
+  border-color: #f0d68a;
+  background: rgba(24, 52, 46, 0.8);
+  box-shadow: 0 0 0 1px rgba(240, 214, 138, 0.22);
+}
+.mode-guide-item h4 {
+  margin: 0 0 5px;
+  color: #f7e4ad;
+  font: 700 13.5px/1.2 system-ui, sans-serif;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.mode-guide-item h4 small {
+  color: #9eb9aa;
+  font: 600 10px/1 system-ui, sans-serif;
+}
+.mode-guide-item p {
+  margin: 0 0 5px;
+  color: #dbe4d9;
+  font-size: 11.5px;
+  line-height: 1.42;
+}
+.mode-guide-item p:last-child {
+  margin-bottom: 0;
+}
+.mode-guide-item b {
+  color: #f7e4ad;
+}
+.pretzel-diagram {
+  margin: 7px 0;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.28);
+  background: rgba(5, 16, 16, 0.85);
+}
+.pretzel-diagram svg {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  margin: 0 auto 5px;
+}
+.pretzel-diagram figcaption {
+  color: #d0ded3;
+  font-size: 10.5px;
+  line-height: 1.38;
+  text-align: center;
+}
+.chain-tip-pretzel {
+  color: #ffe395;
+  font-weight: 700;
+}
+
 
 
 
