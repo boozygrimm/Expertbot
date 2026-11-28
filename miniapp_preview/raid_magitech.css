@@ -2761,7 +2761,12 @@ html[data-raid-motion="off"] *::before, html[data-raid-motion="off"] *::after {
   background: linear-gradient(180deg, #3c2e14 0%, #1d150a 72%, #110c05 100%);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.65), 0 0 8px rgba(242, 194, 82, 0.24), inset 0 1px 0 rgba(255, 240, 184, 0.4);
   flex: none;
+  font: inherit;
+  cursor: pointer;
+  transition: transform .12s ease, filter .14s ease;
 }
+.hud-trophy-badge:hover { filter: brightness(1.12); }
+.hud-trophy-badge:active { transform: scale(.95); }
 .hud-trophy-badge.is-on-board {
   border-color: #fff0a8;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75), 0 0 12px rgba(255, 214, 92, 0.72);
@@ -5022,6 +5027,66 @@ html[data-raid-motion="off"] .guide-tile {
   background: rgba(12, 26, 26, 0.6);
   color: #829c8e;
 }
+.trophy-info-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(230, 195, 109, 0.36);
+  background: radial-gradient(circle at 0% 50%, rgba(72, 54, 22, 0.45), rgba(8, 22, 22, 0.82) 55%);
+  text-align: left;
+}
+.trophy-info-img {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.7));
+}
+.trophy-info-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.trophy-info-copy b {
+  font: 600 13px/1.2 Georgia, serif;
+  color: #f6e2a9;
+}
+.trophy-info-copy p {
+  margin: 0;
+  font: 400 10.8px/1.35 system-ui, sans-serif;
+  color: #d0ddd3;
+}
+.trophy-legend-grid .stats-tile span {
+  font-size: 11px;
+  color: #d4e0d7;
+}
+.trophy-legend-grid .stats-tile span b {
+  font-size: 12px;
+  color: #f6e2a9;
+}
+.trophy-info-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 188, 124, 0.2);
+  background: rgba(8, 22, 22, 0.72);
+  text-align: left;
+}
+.trophy-info-note p {
+  margin: 0;
+  font: 400 10.5px/1.35 system-ui, sans-serif;
+  color: #c8d6cc;
+}
+.trophy-info-note b {
+  color: #f2deaa;
+}
+
 
 
 

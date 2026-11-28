@@ -5683,6 +5683,19 @@ test('magitech stats modal: compact 2-tab layout without combat-HUD duplicates, 
     assert.equal(modal.classList.contains('show'), false);
     assert.equal(b.raid.state.pendingModal, null);
 
+    // Tapping #hud-trophy opens read-only trophy legend & live status modal.
+    doc.querySelector('#hud-trophy').click();
+    assert.ok(modal.classList.contains('show'));
+    assert.ok(modal.classList.contains('stats-mode'));
+    assert.equal(b.raid.state.pendingModal, 'trophy-info');
+    assert.equal(doc.querySelector('#modal-x-close').hidden, false);
+    assert.match(doc.querySelector('#modal-title').textContent, /ТРОФЕИ/);
+    assert.equal(modal.querySelectorAll('.trophy-legend-grid .stats-tile').length, 4);
+    assert.match(modal.textContent, /Что значат символы/);
+    doc.querySelector('#modal-x-close').click();
+    assert.equal(modal.classList.contains('show'), false);
+    assert.equal(b.raid.state.pendingModal, null);
+
     // Mandatory level modal hides #modal-x-close.
     b.raid.state.hero.xp = 100;
     b.raid.checkLevelUp();

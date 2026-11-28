@@ -4367,7 +4367,7 @@
       if (burstEndMs > 0 && !orbReducedMotion()) {
         const revealDelay = burstEndMs + 140;
         MODAL_REVEAL_AT = nowMs() + revealDelay;
-        if (hasCls(modalWrap, 'show') && S?.pendingModal && S.pendingModal !== 'stats') {
+        if (hasCls(modalWrap, 'show') && S?.pendingModal && !isReadOnlyModal(S.pendingModal)) {
           modalWrap.classList.add('modal-deferred');
           scheduleDeferredModalReveal(revealDelay);
         }
@@ -6873,6 +6873,9 @@
     if (card) card.scrollTop = 0;
     if (body) body.scrollTop = 0;
   }
+  function isReadOnlyModal(kind) {
+    return kind === 'stats' || kind === 'skull' || kind === 'trophy-info';
+  }
   function openModal(kind, restoredChoices = null) {
     const hadSettings = !!GAME_SETTINGS;
     closeGameSettings(false);
@@ -6886,7 +6889,7 @@
     if (!wrap || !body) return;
     resetModalScroll();
     wrap.className = 'modal show';
-    const deferNow = kind !== 'stats' && !orbReducedMotion() && (DEFER_MODAL_REVEAL || nowMs() < MODAL_REVEAL_AT);
+    const deferNow = !isReadOnlyModal(kind) && !orbReducedMotion() && (DEFER_MODAL_REVEAL || nowMs() < MODAL_REVEAL_AT);
     if (deferNow) {
       wrap.classList.add('modal-deferred');
       if (!DEFER_MODAL_REVEAL) scheduleDeferredModalReveal(MODAL_REVEAL_AT - nowMs());
@@ -6895,8 +6898,8 @@
     }
     title.className = 'modal-title';
     const modalX = el('modal-x-close');
-    if (modalX) modalX.hidden = !(kind === 'stats' || kind === 'skull');
-    if (kind === 'stats') wrap.classList.add('stats-mode');
+    if (modalX) modalX.hidden = !isReadOnlyModal(kind);
+    if (kind === 'stats' || kind === 'trophy-info') wrap.classList.add('stats-mode');
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
       const cssKind = kind === 'gold' ? 'shop' : kind;
       wrap.classList.add(cssKind);
@@ -6928,6 +6931,50 @@
       btn.className = 'btn';
       btn.textContent = 'Закрыть';
       btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'stats') closeModal(); });
+      body.appendChild(btn);
+    } else if (kind === 'trophy-info') {
+      title.textContent = 'ТРОФЕИ';
+      const onBoard = S.board.filter(cell => cell.type === 'trophy').length;
+      const rem = Math.max(1, S.trophyRemaining);
+      let statusTitle = '', statusDesc = '';
+      if (onBoard > 0) {
+        statusTitle = `Трофей уже на поле (${onBoard})`;
+        statusDesc = 'Тапни прямо по трофею на поле — мех вырастет или откроется новый, а враги при этом не походят.';
+      } else if (S.difficulty === 0) {
+        statusTitle = 'На Лёгкой сложности не появляются';
+        statusDesc = 'Выбери «Нормальный» или выше перед рейдом, чтобы получать трофеи и качать мехов.';
+      } else if (S.trophiesGenerated >= MAX_TROPHIES_PER_RUN) {
+        statusTitle = `Лимит забега исчерпан (${MAX_TROPHIES_PER_RUN}/${MAX_TROPHIES_PER_RUN})`;
+        statusDesc = 'За один рейд появляется максимум 3 трофея. Следующие ждут в новом забеге.';
+      } else if (!trophyEligible()) {
+        statusTitle = 'Все доступные мехи максимальны';
+        statusDesc = 'Открывать и повышать больше некого — все мехи достигли предела уровня.';
+      } else {
+        const prefix = S.mode === 'sprint' && S.trophyRemaining > 0 ? '≥' : '';
+        statusTitle = `До следующего трофея: ${prefix}${rem}`;
+        statusDesc = `Столько особых врагов нужно одолеть. Забрано в этом рейде: ${S.trophiesThisRun || 0} (появлений: ${S.trophiesGenerated}/${MAX_TROPHIES_PER_RUN}). Интервал 20–30 переносится между забегами.`;
+      }
+      body.innerHTML =
+        `<div class="trophy-info-hero">`
+        + `<img class="trophy-info-img" src="${TROPHY_IMAGE}" alt="" draggable="false">`
+        + `<div class="trophy-info-copy"><b>${statusTitle}</b><p>${statusDesc}</p></div>`
+        + `</div>`
+        + `<div class="stats-section-label">Что значат символы на значке</div>`
+        + `<div class="stats-grid-2 trophy-legend-grid">`
+        + `<div class="stats-tile"><span><b>15</b> / <b>≥15</b></span><small>Особых врагов до трофея</small></div>`
+        + `<div class="stats-tile"><span><b>★</b></span><small>Трофей на поле — тапни его!</small></div>`
+        + `<div class="stats-tile"><span><b>3/3</b></span><small>Лимит появлений за забег</small></div>`
+        + `<div class="stats-tile"><span><b>—</b> / <b>✕</b></span><small>Лёгкий режим / макс. рост</small></div>`
+        + `</div>`
+        + `<div class="trophy-info-note">`
+        + `<p><b>Зачем нужны:</b> открывают новых мехов и повышают их уровень до 10 (новые пассивы, слоты модулей и пересадка пилотов с 5 ур.).</p>`
+        + `<p><b>Как забрать:</b> одиночный тап по трофею на поле — враги при этом <b>не ходят</b>.</p>`
+        + `</div>`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = 'Понятно';
+      btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'trophy-info') closeModal(); });
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? 'ПОБЕДА!' : 'РЕЙД ОКОНЧЕН';
@@ -8535,7 +8582,7 @@
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'beginner-guide', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
-      || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
+      || isReadOnlyModal(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
@@ -8589,7 +8636,7 @@
     else if (classEditor) closeClassEditor();
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
-    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+    else if (isReadOnlyModal(S?.pendingModal)) closeModal();
     else if (finishedRunView()) leaveFinishedRun();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
     syncTelegramChrome();
@@ -9186,19 +9233,23 @@
     if (statsBtn) statsBtn.addEventListener('click', () => {
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
+    const hudTrophyBtn = qs('#hud-trophy');
+    if (hudTrophyBtn) hudTrophyBtn.addEventListener('click', () => {
+      if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('trophy-info');
+    });
     const combatModal = el('modal');
     const modalXClose = el('modal-x-close');
     if (modalXClose) {
       modalXClose.addEventListener('click', () => {
-        if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+        if (isReadOnlyModal(S?.pendingModal)) closeModal();
       });
     }
     if (combatModal) {
       combatModal.addEventListener('click', event => {
-        if (event.target === combatModal && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) closeModal();
+        if (event.target === combatModal && isReadOnlyModal(S?.pendingModal)) closeModal();
       });
       combatModal.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) {
+        if (event.key === 'Escape' && isReadOnlyModal(S?.pendingModal)) {
           event.preventDefault(); closeModal();
         }
       });
