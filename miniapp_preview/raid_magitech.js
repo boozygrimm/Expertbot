@@ -8608,10 +8608,113 @@
     const top = Math.max(pad('Top'), Math.min(anchor.bottom - bounds.top + 8, bounds.height - pad('Bottom') - size.height));
     card.style.left = left + 'px'; card.style.top = top + 'px';
   }
+  function renderCombatCheatsheet() {
+    const box = el('combat-cheatsheet');
+    if (!box || !S) return;
+    const esc = str => String(str || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const sections = [];
+
+    // 1. Current mode card
+    if (S.mode === 'pretzel') {
+      const best = S.pretzelStats?.maxCross || 0;
+      sections.push(
+        `<div class="cs-block cs-mode">`
+        + `<div class="cs-title"><span>🥨 Крендель</span><b>${runScore()} оч.${best ? ` · макс. ${best}✕` : ''}</b></div>`
+        + `<svg class="cs-pretzel-svg" viewBox="0 0 180 74" aria-hidden="true">`
+        + `<rect x="4" y="3" width="172" height="68" rx="9" fill="#061717" stroke="#d4bc7c44"/>`
+        + `<line x1="30" y1="18" x2="86" y2="56" stroke="#7fe3c8" stroke-width="2.6" stroke-linecap="round"/>`
+        + `<line x1="86" y1="56" x2="86" y2="18" stroke="#7fe3c8" stroke-width="2.2" stroke-dasharray="3.5 2.5" stroke-linecap="round"/>`
+        + `<line x1="86" y1="18" x2="30" y2="56" stroke="#f5d57e" stroke-width="2.6" stroke-linecap="round"/>`
+        + `<circle cx="58" cy="37" r="9" fill="#f5d57e33" stroke="#ffe18c" stroke-width="1.2"/>`
+        + `<path d="m54.5 33.5 7 7m0-7-7 7" stroke="#fff3c4" stroke-width="1.8" stroke-linecap="round"/>`
+        + `<circle cx="30" cy="18" r="8" fill="#173b35" stroke="#d4bc7c"/><text x="30" y="21" text-anchor="middle" fill="#fff2c9" font-size="9" font-weight="700">1</text>`
+        + `<circle cx="86" cy="56" r="8" fill="#173b35" stroke="#d4bc7c"/><text x="86" y="59" text-anchor="middle" fill="#fff2c9" font-size="9" font-weight="700">2</text>`
+        + `<circle cx="86" cy="18" r="8" fill="#173b35" stroke="#d4bc7c"/><text x="86" y="21" text-anchor="middle" fill="#fff2c9" font-size="9" font-weight="700">3</text>`
+        + `<circle cx="30" cy="56" r="8" fill="#173b35" stroke="#f5d57e"/><text x="30" y="59" text-anchor="middle" fill="#fff2c9" font-size="9" font-weight="700">4</text>`
+        + `<text x="104" y="28" fill="#ffe18c" font-size="9" font-weight="700">1 → 2 → 3 → 4</text>`
+        + `<text x="104" y="42" fill="#d7e4d8" font-size="8.2">Перекрести ✕</text>`
+        + `<text x="104" y="53" fill="#d7e4d8" font-size="8.2">по диагонали</text>`
+        + `</svg>`
+        + `<p class="cs-line"><b>Очки за ✕ в 1 цепи:</b> 1–4 (×1) · 5–9 (×2) · 10–14 (×3) · 15+ (<b>+100!</b>). HP всегда 100.</p>`
+        + `</div>`
+      );
+    } else if (S.mode === 'sprint') {
+      const left = Math.max(0, 100 - (S.turn || 0));
+      sections.push(
+        `<div class="cs-block cs-mode">`
+        + `<div class="cs-title"><span>⚡ Спринт</span><b>Ход ${S.turn}/100 (ост. ${left})</b></div>`
+        + `<p class="cs-line">Переживи 100-й ход — <b>победа и ×2 к очкам</b>! Ресурсы ×2, навыки сразу 5 ур., враги крепнут быстрее.</p>`
+        + `</div>`
+      );
+    } else {
+      const diffName = ['Лёгкий', 'Нормальный', 'Сложный', 'Очень сложный'][S.difficulty || 0];
+      sections.push(
+        `<div class="cs-block cs-mode">`
+        + `<div class="cs-title"><span>⚔ Не оглядываясь</span><b>${esc(diffName)} · ход ${S.turn}</b></div>`
+        + `<ul class="cs-list">`
+        + `<li><b>Бой:</b> соединяй мечи и врагов (3+) в одной цепи.</li>`
+        + `<li><b>Ресурсы:</b> 🛡 чинит броню (при полной — +UP), 🪙 100 = магазин.</li>`
+        + `<li><b>Трофей:</b> тап по золотому трофею без хода врагов.</li>`
+        + `</ul></div>`
+      );
+    }
+
+    // 2. Current mech & pilot
+    const cls = CLASS_BY_ID[S.classId] || CLASSES[0];
+    const race = clsRace();
+    const pilot = RACE_INFO[race] || RACE_INFO.Human;
+    const perks = (S.classConfig?.perks || []).filter(Boolean).map(p => CLASS_TRAITS.perks[p]?.name).filter(Boolean);
+    const flaws = (S.classConfig?.flaws || []).filter(Boolean).map(f => CLASS_TRAITS.flaws[f]?.name).filter(Boolean);
+    const traitLine = (perks.length || flaws.length)
+      ? `<p class="cs-line cs-muted">${perks.length ? `<b>+</b> ${esc(perks.join(', '))}` : ''}${perks.length && flaws.length ? ' · ' : ''}${flaws.length ? `<b>−</b> ${esc(flaws.join(', '))}` : ''}</p>`
+      : '';
+    sections.push(
+      `<div class="cs-block">`
+      + `<div class="cs-title"><span>🤖 ${esc(cls.name)}</span><b>Пилот: ${esc(pilot.name)}</b></div>`
+      + traitLine
+      + `<p class="cs-line">${esc(pilot.desc)}</p>`
+      + `</div>`
+    );
+
+    // 3. Live special enemies / phylactery on the board right now
+    const hasPhylactery = S.board.some(c => c && isPhylacteryCell(c));
+    const specialsMap = new Map();
+    for (const c of S.board) {
+      if (c && c.type === 'skull' && !isPhylacteryCell(c) && c.skull && (c.skull.special || c.skull.boss) && c.skull.hp > 0) {
+        const t = c.skull.type;
+        if (ENEMY_FEATS[t] && !specialsMap.has(t)) specialsMap.set(t, c.skull.boss);
+      }
+    }
+    if (hasPhylactery || specialsMap.size > 0) {
+      const items = [];
+      if (hasPhylactery) {
+        items.push(`<li class="cs-alert"><b>⚱ Филактерий Лича:</b> собери цепью из 3+ монет в этот ход, иначе Лич воскреснет!</li>`);
+      }
+      for (const [type, isBoss] of [...specialsMap.entries()].slice(0, 4)) {
+        const info = ENEMY_FEATS[type];
+        items.push(`<li><b>${isBoss ? '👑 ' : '★ '}${esc(info.name)}:</b> ${esc(info.feats[0])}</li>`);
+      }
+      sections.push(
+        `<div class="cs-block cs-enemies">`
+        + `<div class="cs-title"><span>👁 Сейчас на поле</span><b>${specialsMap.size + (hasPhylactery ? 1 : 0)}</b></div>`
+        + `<ul class="cs-list">${items.join('')}</ul>`
+        + `</div>`
+      );
+    } else if (S.mode !== 'classic') {
+      sections.push(
+        `<div class="cs-block">`
+        + `<p class="cs-line"><b>Памятка:</b> ⚔ мечи + враги (3+) · 🛡 броня/UP · 🪙 100 = магазин · 🏆 тап по трофею без хода врагов.</p>`
+        + `</div>`
+      );
+    }
+
+    box.innerHTML = sections.join('');
+  }
   function openGameSettings() {
     if (GAME_SETTINGS || !S || S.over || activeDrag || pickerOpen || UPDATES_OPEN || HISTORY_OPEN || S.pendingModal
       || ['menu-modal', 'help-modal', 'beginner-guide', 'restart-modal', 'exit-modal'].some(telegramLayer)) return false;
     const wrap = el('game-settings'); if (!wrap) return false;
+    renderCombatCheatsheet();
     GAME_SETTINGS = { background: [] }; SETTINGS_OUTSIDE = null;
     wrap.hidden = false; wrap.classList.add('show'); el('settings-btn').setAttribute('aria-expanded', 'true');
     // Retain the underlying chain/A1 draft. Inert plus capture guards block
@@ -8620,7 +8723,7 @@
       GAME_SETTINGS.background.push({ node, inert: node.hasAttribute('inert'), aria: node.getAttribute('aria-hidden') });
       node.setAttribute('inert', ''); node.setAttribute('aria-hidden', 'true');
     }
-    positionGameSettings(); qs('#game-visual input')?.focus({ preventScroll: true });
+    positionGameSettings(); (el('cheatsheet-guide-btn') || qs('#game-visual input'))?.focus({ preventScroll: true });
     syncTelegramChrome(); return true;
   }
   function closeGameSettings(focus = true) {
@@ -8640,6 +8743,10 @@
     if (!button || !close || !wrap || !card) return;
     bindReadOnlyDismiss(button, openGameSettings, () => RUN_ID);
     bindReadOnlyDismiss(close, closeGameSettings, () => GAME_SETTINGS);
+    el('cheatsheet-guide-btn')?.addEventListener('click', () => {
+      closeGameSettings(false);
+      openBeginnerGuide({ scene: 0, autoFirstRun: false });
+    });
     // Dismiss on CLICK, not pointerdown: keep the shield through pointerup
     // and the synthesized click. That same tap must never touch the board,
     // cast/confirm A1 or press another header control after closing the panel.
@@ -8663,7 +8770,7 @@
       event.stopImmediatePropagation(); // A1 has its OWN underlying Tab ring.
     }, true);
     document.addEventListener('focusin', event => {
-      if (GAME_SETTINGS && !wrap.contains(event.target)) { event.stopImmediatePropagation(); qs('#game-visual input')?.focus({ preventScroll: true }); }
+      if (GAME_SETTINGS && !wrap.contains(event.target)) { event.stopImmediatePropagation(); (el('cheatsheet-guide-btn') || el('settings-close'))?.focus({ preventScroll: true }); }
     }, true);
     // Prevent background scroll without changing shell sizing/scrollbar width.
     for (const kind of ['wheel', 'touchmove']) wrap.addEventListener(kind, event => {

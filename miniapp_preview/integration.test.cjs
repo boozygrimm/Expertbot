@@ -5592,4 +5592,55 @@ test('magitech modes: Classic, Sprint (100 turns) and Pretzel (diagonal X crossi
   } finally { b.dom.window.close(); }
 });
 
+test('magitech combat cheatsheet: ? button opens translucent live cheatsheet for mode, pilot and on-board special enemies', async () => {
+  const b = await openMagitech({ seed: 4052 });
+  try {
+    const win = b.dom.window, doc = win.document;
+    const btn = doc.querySelector('#settings-btn');
+    assert.equal(btn.getAttribute('aria-label'), 'Шпаргалка боя');
+    assert.equal(doc.querySelector('#game-settings-title').textContent, 'Шпаргалка');
+
+    // Place a Fire special enemy (type 7) and a Lich phylactery on the board.
+    b.raid.state.board[0] = { type: 'skull', skull: Object.assign(b.raid.makeSkull(false, true, 7), { hp: 30, maxHp: 30 }) };
+    b.raid.state.board[1] = { type: 'skull', skull: Object.assign(b.raid.makeSkull(true, false, 32), { hp: 10, maxHp: 10, phylactery: true }) };
+
+    btn.click();
+    const sheet = doc.querySelector('#combat-cheatsheet');
+    assert.equal(doc.querySelector('#game-settings').hidden, false);
+    assert.match(sheet.textContent, /Не оглядываясь/);
+    assert.match(sheet.textContent, /Авантюрист/);
+    assert.match(sheet.textContent, /Огненный/);
+    assert.match(sheet.textContent, /Филактерий Лича/);
+
+    // Collapsed quick-settings drawer keeps sound/music toggles accessible.
+    const details = doc.querySelector('.cheatsheet-settings-details');
+    assert.ok(details && !details.open);
+    assert.ok(details.querySelector('#sound-on') && details.querySelector('#music-on'));
+
+    // "Анимированный гайд" button transitions smoothly to #beginner-guide.
+    doc.querySelector('#cheatsheet-guide-btn').click();
+    assert.equal(doc.querySelector('#game-settings').hidden, true);
+    assert.ok(doc.querySelector('#beginner-guide').classList.contains('show'));
+    doc.querySelector('#guide-close').click();
+
+    // Pretzel mode shows the compact X-crossing SVG diagram inside the cheatsheet.
+    doc.querySelector('#mode-select').value = 'pretzel';
+    b.raid.newGame(4053);
+    btn.click();
+    assert.ok(sheet.querySelector('.cs-pretzel-svg'));
+    assert.match(sheet.textContent, /Крендель/);
+    doc.querySelector('#settings-close').click();
+
+    // Sprint mode shows remaining turns to 100.
+    doc.querySelector('#mode-select').value = 'sprint';
+    b.raid.newGame(4054);
+    b.raid.state.turn = 37;
+    btn.click();
+    assert.match(sheet.textContent, /Ход 37\/100 \(ост\. 63\)/);
+    doc.querySelector('#settings-close').click();
+
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
 
