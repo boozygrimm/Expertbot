@@ -376,40 +376,97 @@
       apply: () => S.hero.stats.defense++
     },
   ];
+  const ITEM_STAT_SHORT = Object.freeze({
+    weaponDamage: 'Урон', baseDamage: 'База', leech: 'Сок', weaponPoison: 'Яд',
+    pierce: 'Пробит.', quicken: 'КД', xpPerSkull: 'Опыт', goldPerCoin: 'Золото',
+    strength: 'Сила', luck: 'Удача', maxHp: 'HP', maxArmor: 'Броня',
+    spikes: 'Шипы', upgradePerShield: 'UP', durability: 'Стойк.', blunt: '−Атк.',
+    armorPerShield: 'Рем.', regen: 'Реген', dexterity: 'Точн.', vitality: 'Живуч.',
+  });
   function renderCharacterSummary(panel) {
     const h = S.hero, st = h.stats;
-    const cls = CLASS_BY_ID[S.classId] || CLASS_BY_ID.adventurer;
-    const rows = [
-      ['Мех', cls.name + ' · специализация и модули'],
-      ['Пилот', RACE_INFO[clsRace()].name + ' · особенность и смертный враг'],
-      ['Особенность и смертный враг пилота', RACE_INFO[clsRace()].desc],
-      ...(runPilotAffinity() ? [['Склонность на этот рейд', pilotAffinityDescription()]] : []),
-      ['Пассивы меха', runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет'],
-      ['Изъяны меха', runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет'],
-      ['Здоровье', `${fmt(h.hp)} / ${fmt(h.maxHp)} HP`],
-      ['Броня', `${fmt(h.armor)} / ${fmt(h.maxArmor)}`],
-      ['Базовый урон', `${fmt(baseDamage())} + ${fmt(h.weaponDamage)} за каждый меч`],
-      ['Сила / Урон', `${fmt(st.strength)} / ${fmt(st.damage)}`],
-      ['Точность / Защита', `${fmt(st.dexterity)} / ${fmt(st.defense)}`],
-      ['Живучесть / Удача / Все бонусы', `${fmt(st.vitality)} / ${fmt(st.luck)} / ${fmt(st.charisma)}`],
-      ['Щит: ремонт ИЛИ улучшение', `${fmt(perShield())} брони; при полной броне/Коррозии — ${resourceYield(S.upgradePerShield).toFixed(2)} UP`],
-      ['Лечение за зелье', `${fmt(HEAL_PER_POTION + st.luck)} HP`],
-      ['Золото за монету / опыт за врага', `${resourceYield(S.goldPerCoin).toFixed(2)} / ${resourceYield(S.xpPerSkull).toFixed(2)}`],
-      ['Пробитие / стойкость брони', `${Math.round(S.pierce*100)}% / ${Math.round(S.durability*100)}%`],
-      ['Регенерация / ответный урон', `${fmt(S.regen)} HP/ход / ${fmt(S.spikes)}`],
-      ['Навыки', S.skills.length ? S.skills.map(id => (SKILL_BY_ID[id] || {}).name || id).join(', ') : 'пока нет'],
-      ...((S.equipment || []).map(it => [it.slotName, it.name + ' — ' + itemModsText(it)])),
-    ];
-    panel.innerHTML = '<p class="summary-hint">Конфигурация рейда закреплена при старте: пары и пул модулей задаёт мех, особенность и смертного врага — выбранный пилот. Это прежние пакеты, а не дополнительный бонус. Ниже итог с улучшениями и снаряжением.</p>';
-    const list = document.createElement('div');
-    list.className = 'character-summary-list';
-    rows.forEach(([label, value]) => {
-      const row = document.createElement('div');
-      row.className = 'character-summary-row';
-      row.innerHTML = `<span>${label}</span><b>${value}</b>`;
-      list.appendChild(row);
-    });
-    panel.appendChild(list);
+    const race = clsRace();
+    const pilot = RACE_INFO[race] || RACE_INFO.Human;
+    const esc = str => String(str || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const perksText = runClassConfig().perks.filter(Boolean).map(id => CLASS_TRAITS.perks[id].name).join(', ') || 'нет';
+    const flawsText = runClassConfig().flaws.filter(Boolean).map(id => CLASS_TRAITS.flaws[id].name).join(', ') || 'нет';
+    const gear = S.equipment || [];
+
+    const activeEffects = [];
+    if (S.leech > 0) activeEffects.push(`🩸 Сок ${Math.round(S.leech * 100)}%`);
+    if (S.weaponPoison > 0) activeEffects.push(`☠ Яд +${fmt(S.weaponPoison)}`);
+    if (S.blunt > 0) activeEffects.push(`🚫 −${fmt(S.blunt)} атк.`);
+    if (S.quicken > 0) activeEffects.push(`⏱ −${fmt(S.quicken)} КД`);
+    if (S.spikes > 0) activeEffects.push(`🗡 Шипы ${fmt(S.spikes)}`);
+
+    const effectsHtml = activeEffects.length
+      ? activeEffects.map(text => `<span class="stats-fx-chip">${esc(text)}</span>`).join('')
+      : '<span class="stats-fx-empty">Пока нет</span>';
+
+    const gearHtml = gear.map(it => {
+      const keys = ITEM_KEYS.filter(key => itemValue(it, key) > 0);
+      const chips = keys.length
+        ? keys.map(key => {
+            const def = ITEM_STAT[key];
+            const label = ITEM_STAT_SHORT[key] || def.name;
+            return `<span class="gear-chip" title="${esc(def.desc)}">${def.icon} ${esc(label)} +${esc(itemNumber(key, itemValue(it, key)))}</span>`;
+          }).join('')
+        : '<span class="gear-chip is-empty">без бонусов</span>';
+      return `<article class="gear-card">`
+        + `<div class="gear-icon">${raidItemIcon(it.slot, it)}</div>`
+        + `<div class="gear-main">`
+        + `<div class="gear-head"><span class="gear-slot">${esc(it.slotName)}</span><b class="gear-name">${esc(it.name)}</b></div>`
+        + `<div class="gear-chips">${chips}</div>`
+        + `</div></article>`;
+    }).join('');
+
+    panel.innerHTML =
+      `<div class="stats-tabs" role="tablist" aria-label="Разделы свойств">`
+      + `<button type="button" class="stats-tab" role="tab" data-stats-tab="params" aria-selected="true">📊 Параметры</button>`
+      + `<button type="button" class="stats-tab" role="tab" data-stats-tab="gear" aria-selected="false">🛡 Снаряжение (${gear.length})</button>`
+      + `</div>`
+      + `<div class="stats-pane" data-stats-pane="params">`
+      + `<div class="stats-pilot-card">`
+      + `<img class="stats-pilot-img" src="${pilotArtPath(race)}" alt="" draggable="false">`
+      + `<div class="stats-pilot-info">`
+      + `<div class="stats-pilot-row"><span class="stats-pilot-label">Пилот</span><b>${esc(pilot.name)}</b></div>`
+      + `<p class="stats-pilot-desc">${esc(pilot.desc)}</p>`
+      + `<div class="stats-traits">`
+      + `<span class="stats-trait-chip is-perk"><b>Пассивы меха:</b> ${esc(perksText)}</span>`
+      + `<span class="stats-trait-chip is-flaw"><b>Изъяны меха:</b> ${esc(flawsText)}</span>`
+      + (runPilotAffinity() ? `<span class="stats-trait-chip"><b>Склонность:</b> ${esc(pilotAffinityDescription())}</span>` : '')
+      + `</div></div></div>`
+      + `<div class="stats-section-label">Отдача 1 плитки</div>`
+      + `<div class="stats-grid-2">`
+      + `<div class="stats-tile"><span>🛡 Щит</span><b>+${fmt(perShield())} бр.</b><small>полн. → ${resourceYield(S.upgradePerShield).toFixed(2)} UP</small></div>`
+      + `<div class="stats-tile"><span>🧪 Зелье</span><b>+${fmt(HEAL_PER_POTION + st.luck)} HP</b><small>реген +${fmt(S.regen)}/ход</small></div>`
+      + `<div class="stats-tile"><span>🪙 Монета</span><b>+${resourceYield(S.goldPerCoin).toFixed(2)}</b><small>золота в казну</small></div>`
+      + `<div class="stats-tile"><span>⭐ Враг</span><b>+${resourceYield(S.xpPerSkull).toFixed(2)}</b><small>опыта за убийство</small></div>`
+      + `</div>`
+      + `<div class="stats-section-label">Защита и эффекты</div>`
+      + `<div class="stats-defense-row">`
+      + `<div class="stats-mini"><span>🎯 Пробитие</span><b>${Math.round(S.pierce * 100)}%</b></div>`
+      + `<div class="stats-mini"><span>🧱 Стойкость</span><b>${Math.round(S.durability * 100)}%</b></div>`
+      + `<div class="stats-mini stats-mini-fx"><span>✨ Эффекты</span><div class="stats-fx-list">${effectsHtml}</div></div>`
+      + `</div>`
+      + `<div class="stats-core-bar" aria-label="Базовые характеристики">`
+      + `<div class="stats-core-cell"><span>Сила</span><b>${fmt(st.strength)}</b><small>ур. ${fmt(st.damage)}</small></div>`
+      + `<div class="stats-core-cell"><span>Точность</span><b>${fmt(st.dexterity)}</b><small>защ. ${fmt(st.defense)}</small></div>`
+      + `<div class="stats-core-cell"><span>Живучесть</span><b>${fmt(st.vitality)}</b><small>HP/зел.</small></div>`
+      + `<div class="stats-core-cell"><span>Удача</span><b>${fmt(st.luck)}</b><small>бон. ${fmt(st.charisma)}</small></div>`
+      + `</div>`
+      + `</div>`
+      + `<div class="stats-pane" data-stats-pane="gear" hidden>`
+      + `<div class="gear-list">${gearHtml}</div>`
+      + `</div>`;
+
+    const tabs = [...panel.querySelectorAll('.stats-tab')];
+    const panes = [...panel.querySelectorAll('.stats-pane')];
+    const selectTab = name => {
+      tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.statsTab === name)));
+      panes.forEach(p => { p.hidden = p.dataset.statsPane !== name; });
+    };
+    tabs.forEach(t => t.addEventListener('click', () => selectTab(t.dataset.statsTab)));
   }
 
   // Item modifiers use display units; native IDs below define ordering, not
@@ -4310,7 +4367,7 @@
       if (burstEndMs > 0 && !orbReducedMotion()) {
         const revealDelay = burstEndMs + 140;
         MODAL_REVEAL_AT = nowMs() + revealDelay;
-        if (hasCls(modalWrap, 'show') && S?.pendingModal && S.pendingModal !== 'stats') {
+        if (hasCls(modalWrap, 'show') && S?.pendingModal && !isReadOnlyModal(S.pendingModal)) {
           modalWrap.classList.add('modal-deferred');
           scheduleDeferredModalReveal(revealDelay);
         }
@@ -6816,6 +6873,9 @@
     if (card) card.scrollTop = 0;
     if (body) body.scrollTop = 0;
   }
+  function isReadOnlyModal(kind) {
+    return kind === 'stats' || kind === 'skull' || kind === 'trophy-info';
+  }
   function openModal(kind, restoredChoices = null) {
     const hadSettings = !!GAME_SETTINGS;
     closeGameSettings(false);
@@ -6829,7 +6889,7 @@
     if (!wrap || !body) return;
     resetModalScroll();
     wrap.className = 'modal show';
-    const deferNow = kind !== 'stats' && !orbReducedMotion() && (DEFER_MODAL_REVEAL || nowMs() < MODAL_REVEAL_AT);
+    const deferNow = !isReadOnlyModal(kind) && !orbReducedMotion() && (DEFER_MODAL_REVEAL || nowMs() < MODAL_REVEAL_AT);
     if (deferNow) {
       wrap.classList.add('modal-deferred');
       if (!DEFER_MODAL_REVEAL) scheduleDeferredModalReveal(MODAL_REVEAL_AT - nowMs());
@@ -6837,6 +6897,9 @@
       clearTimeout(MODAL_REVEAL_TIMER); MODAL_REVEAL_TIMER = 0;
     }
     title.className = 'modal-title';
+    const modalX = el('modal-x-close');
+    if (modalX) modalX.hidden = !isReadOnlyModal(kind);
+    if (kind === 'stats' || kind === 'trophy-info') wrap.classList.add('stats-mode');
     if (kind === 'level' || kind === 'gold' || kind === 'armor') {
       const cssKind = kind === 'gold' ? 'shop' : kind;
       wrap.classList.add(cssKind);
@@ -6868,6 +6931,50 @@
       btn.className = 'btn';
       btn.textContent = 'Закрыть';
       btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'stats') closeModal(); });
+      body.appendChild(btn);
+    } else if (kind === 'trophy-info') {
+      title.textContent = 'ТРОФЕИ';
+      const onBoard = S.board.filter(cell => cell.type === 'trophy').length;
+      const rem = Math.max(1, S.trophyRemaining);
+      let statusTitle = '', statusDesc = '';
+      if (onBoard > 0) {
+        statusTitle = `Трофей уже на поле (${onBoard})`;
+        statusDesc = 'Тапни прямо по трофею на поле — мех вырастет или откроется новый, а враги при этом не походят.';
+      } else if (S.difficulty === 0) {
+        statusTitle = 'На Лёгкой сложности не появляются';
+        statusDesc = 'Выбери «Нормальный» или выше перед рейдом, чтобы получать трофеи и качать мехов.';
+      } else if (S.trophiesGenerated >= MAX_TROPHIES_PER_RUN) {
+        statusTitle = `Лимит забега исчерпан (${MAX_TROPHIES_PER_RUN}/${MAX_TROPHIES_PER_RUN})`;
+        statusDesc = 'За один рейд появляется максимум 3 трофея. Следующие ждут в новом забеге.';
+      } else if (!trophyEligible()) {
+        statusTitle = 'Все доступные мехи максимальны';
+        statusDesc = 'Открывать и повышать больше некого — все мехи достигли предела уровня.';
+      } else {
+        const prefix = S.mode === 'sprint' && S.trophyRemaining > 0 ? '≥' : '';
+        statusTitle = `До следующего трофея: ${prefix}${rem}`;
+        statusDesc = `Столько особых врагов нужно одолеть. Забрано в этом рейде: ${S.trophiesThisRun || 0} (появлений: ${S.trophiesGenerated}/${MAX_TROPHIES_PER_RUN}). Интервал 20–30 переносится между забегами.`;
+      }
+      body.innerHTML =
+        `<div class="trophy-info-hero">`
+        + `<img class="trophy-info-img" src="${TROPHY_IMAGE}" alt="" draggable="false">`
+        + `<div class="trophy-info-copy"><b>${statusTitle}</b><p>${statusDesc}</p></div>`
+        + `</div>`
+        + `<div class="stats-section-label">Что значат символы на значке</div>`
+        + `<div class="stats-grid-2 trophy-legend-grid">`
+        + `<div class="stats-tile"><span><b>15</b> / <b>≥15</b></span><small>Особых врагов до трофея</small></div>`
+        + `<div class="stats-tile"><span><b>★</b></span><small>Трофей на поле — тапни его!</small></div>`
+        + `<div class="stats-tile"><span><b>3/3</b></span><small>Лимит появлений за забег</small></div>`
+        + `<div class="stats-tile"><span><b>—</b> / <b>✕</b></span><small>Лёгкий режим / макс. рост</small></div>`
+        + `</div>`
+        + `<div class="trophy-info-note">`
+        + `<p><b>Зачем нужны:</b> открывают новых мехов и повышают их уровень до 10 (новые пассивы, слоты модулей и пересадка пилотов с 5 ур.).</p>`
+        + `<p><b>Как забрать:</b> одиночный тап по трофею на поле — враги при этом <b>не ходят</b>.</p>`
+        + `</div>`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.textContent = 'Понятно';
+      btn.addEventListener('click', () => { if (runId === RUN_ID && S.pendingModal === 'trophy-info') closeModal(); });
       body.appendChild(btn);
     } else if (kind === 'gameover') {
       title.textContent = S.won ? 'ПОБЕДА!' : 'РЕЙД ОКОНЧЕН';
@@ -8475,7 +8582,7 @@
     // must keep its native Close control, not trap the user in a menu loop.
     const back = UPDATES_OPEN || !!GAME_SETTINGS || HISTORY_OPEN || !!RETUNE_DRAFT || !!classEditor || pickerOpen && live
       || ['help-modal', 'beginner-guide', 'restart-modal', 'menu-modal', 'exit-modal'].some(telegramLayer)
-      || ['stats', 'skull'].includes(S?.pendingModal) || finishedRunView();
+      || isReadOnlyModal(S?.pendingModal) || finishedRunView();
     if (back !== TELEGRAM_BACK) { telegramCall(TELEGRAM_APP.BackButton, back ? 'show' : 'hide'); TELEGRAM_BACK = back; }
     if (live !== TELEGRAM_CONFIRM) { telegramCall(TELEGRAM_APP, live ? 'enableClosingConfirmation' : 'disableClosingConfirmation'); TELEGRAM_CONFIRM = live; }
   }
@@ -8529,7 +8636,7 @@
     else if (classEditor) closeClassEditor();
     else if (pickerOpen && S && !S.over) resumeFromClassPicker();
     else if (telegramLayer('menu-modal')) { el('menu-modal').classList.remove('show'); el('menu-btn')?.focus(); }
-    else if (S?.pendingModal === 'stats' || S?.pendingModal === 'skull') closeModal();
+    else if (isReadOnlyModal(S?.pendingModal)) closeModal();
     else if (finishedRunView()) leaveFinishedRun();
     else if (S?.pendingModal || S?.resolving) flash('Сначала заверши ход и выбор наград');
     syncTelegramChrome();
@@ -9126,10 +9233,25 @@
     if (statsBtn) statsBtn.addEventListener('click', () => {
       if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('stats');
     });
+    const hudTrophyBtn = qs('#hud-trophy');
+    if (hudTrophyBtn) hudTrophyBtn.addEventListener('click', () => {
+      if (S && !S.resolving && !S.pendingModal && !S.over && !SAVE_CONFLICT) openModal('trophy-info');
+    });
     const combatModal = el('modal');
+    const modalXClose = el('modal-x-close');
+    if (modalXClose) {
+      modalXClose.addEventListener('click', () => {
+        if (isReadOnlyModal(S?.pendingModal)) closeModal();
+      });
+    }
     if (combatModal) {
       combatModal.addEventListener('click', event => {
-        if (event.target === combatModal && (S?.pendingModal === 'stats' || S?.pendingModal === 'skull')) closeModal();
+        if (event.target === combatModal && isReadOnlyModal(S?.pendingModal)) closeModal();
+      });
+      combatModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && isReadOnlyModal(S?.pendingModal)) {
+          event.preventDefault(); closeModal();
+        }
       });
     }
     const helpModal = qs('#help-modal');

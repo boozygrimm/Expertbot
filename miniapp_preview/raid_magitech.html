@@ -177,10 +177,10 @@
     <div class="board-foot">
       <span id="chain-count">Цепь 0</span>
       <span id="mode-badge">RAID · Нормальный</span>
-      <div class="hud-trophy-badge" id="hud-trophy" title="Трофей">
+      <button type="button" class="hud-trophy-badge" id="hud-trophy" title="Трофей — нажми для подсказки" aria-haspopup="dialog">
         <img id="hud-trophy-img" class="hud-trophy-img" src="" alt="" aria-hidden="true" draggable="false">
         <span id="trophy-text">1</span>
-      </div>
+      </button>
     </div>
   </div>
 
@@ -492,7 +492,12 @@
 <!-- generic modal (level / gold / armor / gameover) -->
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-card">
-    <h3 class="modal-title" id="modal-title">УРОВЕНЬ!</h3>
+    <div class="modal-head">
+      <h3 class="modal-title" id="modal-title">УРОВЕНЬ!</h3>
+      <button class="menu-x-close modal-x-close" id="modal-x-close" type="button" aria-label="Закрыть" hidden>
+        <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
     <div id="modal-body"></div>
   </div>
 </div>
