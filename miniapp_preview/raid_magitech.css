@@ -4308,14 +4308,14 @@ html[data-raid-motion="off"] .guide-tile {
 }
 .mode-pills {
   display: inline-grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: 1.48fr 0.84fr 0.96fr;
+  gap: 3px;
   padding: 3px;
   border-radius: 10px;
   border: 1px solid rgba(212, 188, 124, 0.36);
   background: rgba(6, 18, 18, 0.86);
   flex: 1;
-  max-width: 318px;
+  max-width: 344px;
 }
 .mode-pill {
   min-height: 28px;
