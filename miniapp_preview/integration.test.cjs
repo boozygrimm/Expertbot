@@ -1838,7 +1838,7 @@ test('magitech fork: only endless mode and the three identically named original 
   try {
     const doc = b.dom.window.document;
     assert.deepEqual([...doc.querySelector('#difficulty-select').options].map(o => o.value), ['0','1','2']);
-    assert.deepEqual([...doc.querySelector('#mode-select').options].map(o => o.value), ['classic']);
+    assert.deepEqual([...doc.querySelector('#mode-select').options].map(o => o.value), ['classic','sprint','pretzel']);
     for (const difficulty of [0,1,2]) {
       a.dom.window.document.querySelector('#difficulty-select').value = String(difficulty);
       doc.querySelector('#difficulty-select').value = String(difficulty);
@@ -1953,14 +1953,14 @@ test('magitech fork: unavailable legacy achievement conditions are disclosed, ne
   const b = await openMagitech({ start: false });
   try {
     const before = raidStorage(b.dom.window), achievements = b.raid.getLocalAchievements();
-    assert.equal(achievements.total, 77); assert.equal(achievements.available, 72);
-    assert.deepEqual(Array.from(achievements.catalog.filter(a => !a.available), a => a.id), [45,70,71,76,77]);
+    assert.equal(achievements.total, 77); assert.equal(achievements.available, 74);
+    assert.deepEqual(Array.from(achievements.catalog.filter(a => !a.available), a => a.id), [45,70,71]);
     b.raid.openAchievements();
     const doc = b.dom.window.document, filter = doc.querySelector('#achievement-filter');
     filter.value = 'unavailable'; filter.dispatchEvent(new b.dom.window.Event('change'));
-    assert.equal(doc.querySelectorAll('.achievement-record').length, 5);
-    assert.match(doc.querySelector('[data-achievement-id="76"]').textContent, /требует режима/);
-    assert.match(doc.querySelector('.achievement-summary').textContent, /72 доступных/);
+    assert.equal(doc.querySelectorAll('.achievement-record').length, 3);
+    assert.match(doc.querySelector('[data-achievement-id="70"]').textContent, /требует режима/);
+    assert.match(doc.querySelector('.achievement-summary').textContent, /74 доступных/);
     assert.deepEqual(raidStorage(b.dom.window), before); assert.equal(b.raid.state, null);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
@@ -5520,6 +5520,73 @@ test('magitech polish #52: clean launch button, crystal potion shimmer, compact 
     combatModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
     assert.ok(combatModal.classList.contains('show'), 'outside tap must NOT dismiss mandatory level modal');
     assert.equal(b.raid.state.pendingModal, 'level');
+
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech modes: Classic, Sprint (100 turns) and Pretzel (diagonal X crossings) with friendly guide and live chain-tip counter', async () => {
+  const b = await openMagitech({ start: false, seed: 3052 });
+  try {
+    const win = b.dom.window, doc = win.document;
+    win.localStorage.setItem(magitechKey('raid:guideSeen'), '1');
+
+    // Open region & mode selection screen from Adventurer garage.
+    doc.querySelector('.picker-card-btn[data-class-id="adventurer"]').click();
+    doc.querySelector('.mech-go-button').click();
+    assert.equal(doc.querySelector('#raid-region-screen').hidden, false);
+
+    // 3 mode pills + live description update + Pretzel locks difficulty note.
+    const classicPill = doc.querySelector('.mode-pill[data-raid-mode="classic"]');
+    const sprintPill = doc.querySelector('.mode-pill[data-raid-mode="sprint"]');
+    const pretzelPill = doc.querySelector('.mode-pill[data-raid-mode="pretzel"]');
+    const desc = doc.querySelector('#region-mode-desc');
+    assert.equal(classicPill.getAttribute('aria-pressed'), 'true');
+    assert.match(desc.textContent, /бесконечный рейд/i);
+
+    sprintPill.click();
+    assert.equal(sprintPill.getAttribute('aria-pressed'), 'true');
+    assert.equal(doc.querySelector('#mode-select').value, 'sprint');
+    assert.match(desc.textContent, /100 ходов/i);
+    assert.equal(doc.querySelector('#difficulty-lock-note').hidden, true);
+
+    pretzelPill.click();
+    assert.equal(pretzelPill.getAttribute('aria-pressed'), 'true');
+    assert.equal(doc.querySelector('#mode-select').value, 'pretzel');
+    assert.match(desc.textContent, /крест-накрест/i);
+    assert.equal(doc.querySelector('#difficulty-lock-note').hidden, false);
+
+    // Friendly modes guide modal opens with Pretzel X-crossing SVG diagram and closes on outside tap.
+    doc.querySelector('#mode-help-btn').click();
+    const modesHelp = doc.querySelector('#modes-help-modal');
+    assert.ok(modesHelp.classList.contains('show'));
+    assert.ok(modesHelp.querySelector('.pretzel-diagram svg'));
+    assert.match(modesHelp.textContent, /1 → 2 → 3 → 4/);
+    modesHelp.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(modesHelp.classList.contains('show'), false, 'outside tap closes #modes-help-modal');
+
+    // Launch Pretzel run: 100 HP fixed, difficulty 1, live chain-tip shows diagonal X crossings!
+    doc.querySelector('#region-emblem-launch').click();
+    assert.equal(b.raid.state.mode, 'pretzel');
+    assert.equal(b.raid.state.difficulty, 1);
+    assert.equal(b.raid.state.hero.maxHp, 100);
+    assert.match(doc.querySelector('#mode-badge').textContent, /Крендель/);
+
+    // Place 4 coins in a 2x2 square (0, 1, 6, 7) and draw an X crossing: 0 -> 7 -> 1 -> 6.
+    for (const idx of [0, 1, 6, 7]) b.raid.state.board[idx] = { type: 'coin' };
+    b.raid.tryExtendChain(0);
+    b.raid.tryExtendChain(7);
+    b.raid.tryExtendChain(1);
+    b.raid.tryExtendChain(6);
+    assert.match(doc.querySelector('#chain-tip').textContent, /1 перекр\. \(\+1 оч\.\)/);
+    b.raid.clearChain();
+
+    // Switch to Sprint and launch: HUD shows X/100 turns!
+    doc.querySelector('#mode-select').value = 'sprint';
+    b.raid.newGame(3053);
+    assert.equal(b.raid.state.mode, 'sprint');
+    assert.match(doc.querySelector('#mode-badge').textContent, /Спринт · 0\/100/);
+    assert.match(doc.querySelector('#status-line').textContent, /0\/100/);
 
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
