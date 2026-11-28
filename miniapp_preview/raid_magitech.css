@@ -137,39 +137,47 @@ body { display: flex; align-items: stretch; justify-content: center; }
 .cell.type-shield .ic { color: #7fd0e8; }
 .cell.type-coin .ic { color: #ffd97a; }
 .cell.type-potion .ic { color: #ff8ed4; overflow: visible; }
-/* Four distinct crystal-potion sprites. The flask swings around its foot while
-   the clipped liquid sloshes in the opposite direction. */
+/* Four distinct crystal-potion sprites with a light faceted glass shimmer
+   and two gentle sparkles strictly inside the bottle silhouette (no clipped
+   wrapper bands). */
 .cell.type-potion .potion-vessel { transform-box: view-box; }
-.cell.type-potion .potion-art-head,
-.cell.type-potion .potion-art-body { width: 48px; height: 48px; }
-.cell.type-potion .potion-lower-motion {
-  transform-box: view-box; transform-origin: 24px 21px;
-  animation: potion-rock 3.15s cubic-bezier(.42,0,.58,1) infinite;
+.cell.type-potion .potion-art { width: 48px; height: 48px; }
+.cell.type-potion .potion-glass-sheen {
+  opacity: .26;
+  animation: potion-sheen-breathe 3.4s ease-in-out var(--potion-delay, 0s) infinite;
 }
-.cell.type-potion .potion-slosh-overlay { transform-box: fill-box; transform-origin: center; }
-.cell.type-potion .potion-wave { transform-box: fill-box; transform-origin: center; }
-.cell.type-potion .potion-wave-back { animation: potion-slosh-back 1.35s ease-in-out infinite; }
-.cell.type-potion .potion-wave-front { animation: potion-slosh-front 1.05s ease-in-out infinite; }
-.cell.type-potion .potion-surface-glint { animation: potion-glint 1.05s ease-in-out infinite alternate; }
-.cell.type-potion .potion-bubble { fill: #fff8df; fill-opacity: .9; animation: potion-bubble-rise 1.8s ease-in-out infinite; }
-.cell.type-potion .potion-bubble-delay { animation-delay: -.9s; }
+.cell.type-potion .potion-sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: .18;
+  animation: potion-sparkle-twinkle 3.2s ease-in-out var(--potion-delay, 0s) infinite;
+}
+.cell.type-potion .potion-sparkle-delay {
+  animation-delay: calc(var(--potion-delay, 0s) - 1.6s);
+}
+.cell.type-potion .potion-bubble { fill: #fff8df; fill-opacity: .9; animation: potion-bubble-rise 1.9s ease-in-out infinite; }
+.cell.type-potion .potion-bubble-delay { animation-delay: -.95s; }
 .cell.type-potion.acid .potion-bubble { fill: #efffa6; }
-.cell.type-potion.mana .potion-bubble { fill: #c6edff; }
-.cell.type-potion.explosive .potion-bubble { fill: #ffe1a3; }
-.cell.type-potion.frozen .potion-lower-motion,
-.cell.type-potion.frozen .potion-wave,
-.cell.type-potion.frozen .potion-surface-glint,
-.cell.type-potion.frozen .potion-bubble,
-.cell.type-potion:not(.selected) .potion-wave,
-.cell.type-potion:not(.selected) .potion-surface-glint,
-.cell.type-potion:not(.selected) .potion-bubble { animation-play-state: paused; }
-#board .cell.selected.type-potion:not(.frozen) .potion-wave,
-#board .cell.selected.type-potion:not(.frozen) .potion-surface-glint,
-#board .cell.selected.type-potion:not(.frozen) .potion-bubble { animation-play-state: running; }
-@keyframes potion-rock { 0%,100% { transform: rotate(-6.5deg); } 50% { transform: rotate(6.5deg); } }
-@keyframes potion-slosh-back { 0%,100% { transform: translate(-3px,1px) rotate(-4deg); } 50% { transform: translate(3px,-1.4px) rotate(4deg); } }
-@keyframes potion-slosh-front { 0%,100% { transform: translate(2.5px,-.8px) rotate(3deg); } 50% { transform: translate(-2.5px,1.2px) rotate(-3deg); } }
-@keyframes potion-glint { from { opacity: .36; } to { opacity: .95; } }
+.cell.type-potion.frozen .potion-glass-sheen,
+.cell.type-potion.frozen .potion-sparkle,
+.cell.type-potion.frozen .potion-bubble { animation-play-state: paused; }
+html[data-raid-idle="1"] .potion-glass-sheen,
+html[data-raid-idle="1"] .potion-sparkle,
+html[data-raid-idle="1"] .potion-bubble,
+html[data-raid-perf="lite"] .potion-sparkle-delay { animation-play-state: paused !important; }
+html[data-raid-motion="off"] .potion-glass-sheen,
+html[data-raid-motion="off"] .potion-sparkle,
+html[data-raid-motion="off"] .potion-bubble { animation: none !important; }
+@keyframes potion-sheen-breathe {
+  0%, 100% { opacity: .22; }
+  45% { opacity: .72; }
+  60% { opacity: .34; }
+}
+@keyframes potion-sparkle-twinkle {
+  0%, 72%, 100% { opacity: .12; transform: scale(.65) rotate(0deg); }
+  84% { opacity: .96; transform: scale(1.18) rotate(18deg); }
+  92% { opacity: .45; transform: scale(.85) rotate(8deg); }
+}
 @keyframes potion-bubble-rise { 0%,100% { transform: translateY(1px); opacity: .45; } 50% { transform: translateY(-2.2px); opacity: 1; } }
 .cell.type-skull .ic { color: #d6c8e0; }
 .cell.type-arrow .ic { color: #f5d28a; }
@@ -3924,6 +3932,290 @@ html[data-raid-motion="off"] .guide-tile {
     transition: none !important;
   }
 }
+
+/* --- #52: Clean shaped Launch / Unlock button without rectangular shadow --- */
+.mech-detail-body.mech-garage-home > .mech-go-button,
+.mech-detail-body.mech-garage-home > .mech-unlock-button {
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  border: 0;
+  border-radius: 0;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.72)) drop-shadow(0 0 8px rgba(235, 110, 42, 0.34));
+}
+.mech-detail-body.mech-garage-home > .mech-go-button:hover:not(:disabled),
+.mech-detail-body.mech-garage-home > .mech-go-button:focus-visible,
+.mech-detail-body.mech-garage-home > .mech-unlock-button:hover,
+.mech-detail-body.mech-garage-home > .mech-unlock-button:focus-visible {
+  box-shadow: none;
+  outline: none;
+  filter: drop-shadow(0 5px 9px rgba(0, 0, 0, 0.78)) drop-shadow(0 0 12px rgba(255, 188, 76, 0.72));
+}
+
+/* --- #52: Compact Magitech Pause Menu (toggles + 3x2 icon tile panel) ------ */
+#menu-modal .menu-card {
+  width: min(100%, 340px);
+  padding: 14px 14px 12px;
+  gap: 10px;
+  border-radius: 18px;
+  border: 1px solid #d4bc7c99;
+  background: radial-gradient(ellipse at 50% 0%, #1d3c37 0%, #0d2120 62%, #081617 100%);
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.78), inset 0 0 0 1px rgba(240, 214, 140, 0.14);
+}
+.menu-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.menu-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+#menu-modal .menu-header h3 {
+  margin: 0;
+  color: #f3e0ab;
+  font: 600 19px/1.15 Georgia, serif;
+  text-align: left;
+}
+.raid-menu-location-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 188, 124, 0.42);
+  background: rgba(7, 22, 21, 0.74);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+#menu-modal .raid-menu-location-pill .raid-menu-theme-title {
+  margin: 0;
+  font: 700 8.5px/1 system-ui, sans-serif;
+  letter-spacing: .1em;
+  color: #9bb8a9;
+}
+#menu-modal .raid-menu-location-pill .raid-menu-location {
+  margin: 0;
+  font: 600 11px/1.1 Georgia, serif;
+  color: #ffe5a3;
+}
+.menu-x-close {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 188, 124, 0.48);
+  background: rgba(8, 22, 21, 0.8);
+  color: #f2dfb0;
+  cursor: pointer;
+}
+.menu-x-close:hover,
+.menu-x-close:focus-visible {
+  border-color: #ffe299;
+  background: rgba(34, 66, 58, 0.92);
+}
+#menu-modal .menu-resume-btn {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid #f4da92;
+  background: linear-gradient(125deg, #e5cb84 0%, #b39248 52%, #dfc47a 100%);
+  color: #161a12;
+  font: 700 14px/1 system-ui, sans-serif;
+  letter-spacing: .04em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 250, 225, 0.55);
+}
+.menu-toggles-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 13px;
+  border: 1px solid rgba(212, 188, 124, 0.28);
+  background: rgba(7, 20, 20, 0.68);
+}
+.menu-switch-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.menu-switch-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 44, 41, 0.72);
+  color: #e6dfc8;
+  font: 600 11.5px/1.1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.menu-switch-tile input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 19px;
+  margin: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 188, 124, 0.45);
+  background: rgba(11, 20, 22, 0.9);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.menu-switch-tile input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #a5b5aa;
+  transition: transform 150ms ease, background 150ms ease;
+}
+.menu-switch-tile input[type="checkbox"]:checked {
+  background: linear-gradient(90deg, #2d7c6d, #48a791);
+  border-color: #9bf5db;
+}
+.menu-switch-tile input[type="checkbox"]:checked::after {
+  transform: translateX(15px);
+  background: #fff4d1;
+}
+.menu-haptics {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.menu-haptics legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.menu-haptics .haptics-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.menu-haptics .haptics-title {
+  color: #c8d6cb;
+  font: 600 11px/1.1 system-ui, sans-serif;
+}
+.menu-haptics .haptics-segments {
+  flex: 1;
+  max-width: 196px;
+}
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+.menu-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 70px;
+  padding: 7px 4px 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 188, 124, 0.34);
+  background: linear-gradient(165deg, rgba(24, 52, 47, 0.86), rgba(11, 27, 27, 0.94));
+  color: #efe2be;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 110ms ease, background 140ms ease;
+}
+.menu-tile:hover,
+.menu-tile:focus-visible {
+  border-color: #f3d78a;
+  background: linear-gradient(165deg, rgba(35, 72, 64, 0.95), rgba(15, 36, 35, 0.98));
+}
+.menu-tile:active {
+  transform: translateY(1px);
+}
+.menu-tile-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--raid-round-button-texture) center / 100% 100% no-repeat;
+  color: #f6e4b7;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.65));
+}
+.menu-tile-badge svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+}
+.menu-tile-label {
+  font: 600 10.5px/1.15 system-ui, sans-serif;
+  color: #ede2c4;
+  text-align: center;
+}
+.menu-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#menu-modal .menu-close-btn {
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.menu-info-details {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(6, 17, 18, 0.56);
+  padding: 5px 9px;
+  text-align: left;
+}
+.menu-info-details summary {
+  cursor: pointer;
+  font: 600 10.5px/1.3 system-ui, sans-serif;
+  color: #9db6a8;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.menu-info-details summary::after {
+  content: '▾';
+  font-size: 11px;
+  opacity: .75;
+}
+.menu-info-details[open] summary::after {
+  content: '▴';
+}
+.menu-info-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.menu-info-body p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #9cb0a5;
+}
+
 
 
 

@@ -271,41 +271,82 @@
 </div>
 
 <!-- run menu -->
-<div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true">
+<div class="menu-modal" id="menu-modal" role="dialog" aria-modal="true" aria-labelledby="menu-title">
   <div class="menu-card">
-    <h3>Пауза рейда</h3>
-    <p class="raid-menu-theme-title">ЛОКАЦИЯ ЗАБЕГА</p>
-    <p class="raid-menu-location" data-raid-region-title>Забытый лес</p>
-    <p class="raid-theme-hint">Закреплена при старте — не меняется до конца этого рейда, в том числе после «Продолжить». Другое место можно выбрать для нового забега в «Мехи и настройки».</p>
-      <p class="raid-combat-note" data-raid-combat-note>Классический бой · локация задаёт атмосферу и облик врагов.</p>
-    <p class="build-label">Сборка __RAID_BUILD__</p>
-    <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
-    <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
-    <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
-    <button class="btn" id="menu-resume" type="button">Продолжить</button>
-    <details class="visual-settings" id="menu-visual">
-      <summary>Вид, движение и вибрация</summary>
-      <fieldset><legend>Отображение · только этот профиль</legend>
-        <label class="settings-row"><span>Кружки<small>Стеклянная оболочка</small></span><input type="checkbox" data-raid-visual="shells" checked role="switch"></label>
-        <label class="settings-row"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch"></label>
-      </fieldset>
-      <fieldset class="haptics-preference"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация боя</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
+    <header class="menu-header">
+      <div class="menu-title-wrap">
+        <h3 id="menu-title">Пауза рейда</h3>
+        <span class="raid-menu-location-pill" title="Локация закреплена до конца текущего забега">
+          <span class="raid-menu-theme-title">ЛОКАЦИЯ</span>
+          <b class="raid-menu-location" data-raid-region-title>Забытый лес</b>
+        </span>
+      </div>
+      <button class="settings-close menu-x-close" id="menu-x-close" type="button" aria-label="Закрыть меню">
+        <svg viewBox="0 0 24 24" class="ui-glyph" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <button class="btn menu-resume-btn" id="menu-resume" type="button">Продолжить</button>
+
+    <section class="menu-toggles-panel" id="menu-visual" aria-label="Быстрые настройки">
+      <div class="menu-switch-grid">
+        <label class="menu-switch-tile"><span>Кружки</span><input type="checkbox" data-raid-visual="shells" checked role="switch" aria-label="Кружки: стеклянная оболочка"></label>
+        <label class="menu-switch-tile"><span>Анимации</span><input type="checkbox" data-raid-visual="animations" checked role="switch" aria-label="Анимации"></label>
+        <label class="menu-switch-tile"><span>Звук</span><input type="checkbox" id="menu-sound-on" checked role="switch" aria-label="Звуковые эффекты"></label>
+        <label class="menu-switch-tile"><span>Музыка</span><input type="checkbox" id="menu-music-on" checked role="switch" aria-label="Музыка в бою"></label>
+      </div>
+      <fieldset class="haptics-preference menu-haptics"><legend>Вибрация боя</legend><div class="haptics-row"><span class="haptics-title" aria-hidden="true">Вибрация</span><div class="haptics-segments" role="radiogroup" aria-label="Режим вибрации">
         <label title="Отключить тактильные отклики"><input type="radio" name="haptics-menu" value="off" data-raid-haptics aria-label="Выключена"><span>Выкл.</span></label>
         <label title="Вибрация при выделении врагов, убийствах, боссах и сильном уроне"><input type="radio" name="haptics-menu" value="important" data-raid-haptics aria-label="Важные события"><span>Важные</span></label>
         <label title="Добавить отклик на каждое попадание"><input type="radio" name="haptics-menu" value="all" data-raid-haptics aria-label="Все боевые события"><span>Все</span></label>
       </div></div></fieldset>
-      <p>Настройки вида и вибрации сохраняются отдельно от рейда. Выделение, статусы и длительность хода не меняются.</p>
-      <p data-raid-motion-note hidden></p>
-      <p data-raid-visual-status role="status" aria-live="polite" hidden></p>
-    </details>
-    <button class="btn secondary" id="menu-restart" type="button">↻ Новый забег</button>
-    <button class="btn secondary" id="menu-classes" type="button">Мехи и настройки</button>
-    <button class="btn secondary" id="menu-history" type="button">Рекорды и статистика</button>
-    <button class="btn secondary" id="menu-achievements" type="button">◇ Достижения</button>
-    <button class="btn secondary" id="menu-updates" type="button">Что нового · история обновлений</button>
+      <p class="settings-note" data-raid-motion-note hidden></p>
+      <p class="settings-note" data-raid-visual-status role="status" aria-live="polite" hidden></p>
+    </section>
+
+    <nav class="menu-grid" aria-label="Разделы меню">
+      <button class="menu-tile" id="menu-classes" type="button" title="Мехи и настройки">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 5 25 9v7c0 6-4 9.5-9 11-5-1.5-9-5-9-11V9Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 15h10M16 10v11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+        <span class="menu-tile-label">Гараж</span>
+      </button>
+      <button class="menu-tile" id="menu-restart" type="button" title="Начать новый забег">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M24 16a8 8 0 1 1-2.3-5.7M24 7v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="menu-tile-label">Новый рейд</span>
+      </button>
+      <button class="menu-tile" id="menu-history" type="button" title="Рекорды и статистика">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 25h20M9 22V16h4v6m3 0V9h4v13m3 0v-9h4v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="menu-tile-label">Рекорды</span>
+      </button>
+      <button class="menu-tile" id="menu-achievements" type="button" title="Достижения">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="m16 5 3.1 6.6 7.3.8-5.4 4.8 1.5 7.2L16 20.8l-6.5 3.6 1.5-7.2-5.4-4.8 7.3-.8Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+        <span class="menu-tile-label">Достижения</span>
+      </button>
+      <button class="menu-tile" id="menu-help" type="button" title="Быстрый анимированный гайд">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5.5 7c4.1-.9 7.6-.2 10.5 2v16.5c-2.9-2.2-6.4-2.9-10.5-2zM26.5 7c-4.1-.9-7.6-.2-10.5 2v16.5c2.9-2.2 6.4-2.9 10.5-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+        <span class="menu-tile-label">Гайд</span>
+      </button>
+      <button class="menu-tile" id="menu-updates" type="button" title="Что нового и история обновлений">
+        <span class="menu-tile-badge" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M8 24V9.5A2.5 2.5 0 0 1 10.5 7H24v17H10.5A2.5 2.5 0 0 0 8 26m4-13h8m-8 4h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m24 4 .8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z" fill="currentColor"/></svg></span>
+        <span class="menu-tile-label">Что нового</span>
+      </button>
+    </nav>
+
     <p class="save-note" id="menu-updates-status" role="status" aria-live="polite" hidden></p>
-    <button class="btn secondary" id="menu-help" type="button">📘 Быстрый гайд</button>
-    <button class="btn secondary" id="menu-close" type="button">Закрыть меню</button>
+
+    <footer class="menu-footer">
+      <button class="btn secondary menu-close-btn" id="menu-close" type="button">Закрыть меню</button>
+      <details class="menu-info-details">
+        <summary>О рейде и сохранении</summary>
+        <div class="menu-info-body">
+          <p class="raid-theme-hint">Локация закреплена при старте — не меняется до конца этого рейда. Другое место выбирается в «Гараже» перед новым забегом.</p>
+          <p class="raid-combat-note" data-raid-combat-note>Классический бой · локация задаёт атмосферу и облик врагов.</p>
+          <p class="build-label">Сборка __RAID_BUILD__</p>
+          <p class="telegram-status" id="menu-telegram-status" role="status" aria-live="polite" hidden></p>
+          <p class="save-note" id="menu-profile-status" role="status" aria-live="polite" hidden></p>
+          <p class="save-note" id="menu-save-status" role="status" aria-live="polite"></p>
+        </div>
+      </details>
+    </footer>
   </div>
 </div>
 
@@ -322,11 +363,12 @@
     <div class="updates-body" id="updates-body" role="region" aria-label="Изменения и краткая история" tabindex="0">
       <p id="updates-description">Непрочитанное обновление. Предыдущие выпуски — в истории ниже.</p>
       <ul id="updates-current">
-        <li data-release="51"><b>Понятное открытие закрытых мехов, анимированный гайд и подсказка в бою.</b> У закрытых мехов (например, Варвара) в круглом гараже вместо неактивной кнопки запуска теперь кнопка «🔒 Как открыть?», открывающая карточку с иконкой трофея, точным способом разблокировки и живым счётчиком прогресса; гайд для новичков получил анимированную мини-доску с бегающим пальцем (показывает, как соединять мечи с врагами, собирать ресурсы и забирать трофей) и показывается один раз перед самым первым боем; а если в бою потянуть врагов без мечей, игра сразу подскажет добавить меч в цепочку.</li>
+        <li data-release="52"><b>Чистый визуал кнопки запуска, хрустальный блеск зелий, новое компактное меню и закрытие всех попапов тапом снаружи.</b> Убрана прямоугольная тень-рамка вокруг кнопки «Поехали!» в гараже; с зелий сняты выступающие цветные полосы-обёртки и заменены на лёгкий хрустальный блеск с искрами на гранях колбы; меню «Пауза рейда» переделано из длинного списка в компактную панель с быстрыми тумблерами (кружки, анимации, звук, музыка, вибрация) и плитками-иконками; все информационные окна и попапы по всей игре теперь закрываются тапом вне их границ.</li>
       </ul>
       <details class="updates-history" id="updates-history">
         <summary>История обновлений</summary>
         <ul class="updates-archive-previous">
+          <li data-release="51"><b>Понятное открытие закрытых мехов, анимированный гайд и подсказка в бою.</b> У закрытых мехов (например, Варвара) в круглом гараже вместо неактивной кнопки запуска теперь кнопка «🔒 Как открыть?», открывающая карточку с иконкой трофея, точным способом разблокировки и живым счётчиком прогресса; гайд для новичков получил анимированную мини-доску с бегающим пальцем (показывает, как соединять мечи с врагами, собирать ресурсы и забирать трофей) и показывается один раз перед самым первым боем; а если в бою потянуть врагов без мечей, игра сразу подскажет добавить меч в цепочку.</li>
           <li data-release="50"><b>Стабильные 60 FPS в долгих забегах без перегрева и лагов.</b> Устранены дубликаты SVG-масок у падающих зелий и лишние blend-проходы на оружии и скрытых эффектах; тяжёлые волны и пузырьки внутри колб теперь оживают при выборе цепочки; при бездействии (12 сек) декоративные циклы встают на паузу для охлаждения телефона; добавлены кэш клеток, очистка просроченных эффектов и авто-адаптация при просадке кадров на любом телефоне.</li>
           <li data-release="49"><b>Объёмное 3D-покачивание монет с переливом света.</b> Монеты на поле и в нижней панели теперь плавно покачиваются в 3D (±26°) с видимым золотым ребром и синхронным GPU-бликом по чеканке — без плоского сплющивания и в два раза легче прежнего 4-слойного вращения.</li>
           <li data-release="48"><b>Ускорение загрузки и плавность на телефонах (Telegram WebView).</b> Тяжёлые ассеты (музыка, звуки, фоны локаций, текстуры гаража и 140 портретов врагов) вынесены во внешние кэшируемые файлы, филактерий и трофей сжаты в лёгкий WebP — размер страницы уменьшился более чем в 10 раз (~0,8 МБ вместо 10,3 МБ). Убраны тяжёлые размытия фона, блик оружия переведён с CPU-маски на GPU, монеты используют лёгкое 2D-вращение, а на бюджетных телефонах игра автоматически снижает плотность частиц и лишние фоновые анимации.</li>

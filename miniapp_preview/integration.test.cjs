@@ -3195,7 +3195,8 @@ test('magitech update notice: first entry explains this release/history, never s
     assert.equal(b.dom.window.localStorage.getItem(magitechKey('raid:activeRun')), null);
     assert.match(doc.querySelector('#updates-build').textContent, new RegExp(build));
     assert.equal(doc.querySelectorAll('#updates-current li').length, 1, 'shows only the latest unread release above the fold');
-    assert.match(doc.querySelector('#updates-current').textContent, /Понятное открытие закрытых мехов/);
+    assert.match(doc.querySelector('#updates-current').textContent, /Чистый визуал кнопки запуска/);
+    assert.match(doc.querySelector('#updates-history').textContent, /Понятное открытие закрытых мехов/);
     assert.match(doc.querySelector('#updates-history').textContent, /Стабильные 60 FPS в долгих забегах/);
     assert.match(doc.querySelector('#updates-history').textContent, /Объёмное 3D-покачивание монет/);
     assert.match(doc.querySelector('#updates-history').textContent, /Ускорение загрузки и плавность на телефонах/);
@@ -5393,6 +5394,132 @@ test('magitech onboarding #51: locked mech explains trophy unlock, animated guid
     b.raid.tryExtendChain(2);
     assert.match(doc.querySelector('#chain-tip').textContent, /Добавь меч в цепь/i);
     b.raid.clearChain();
+
+    assert.deepEqual(b.errors, []);
+  } finally { b.dom.window.close(); }
+});
+
+test('magitech polish #52: clean launch button, crystal potion shimmer, compact toggle/tile menu, and outside-tap dismissal across all popups', async () => {
+  const b = await openMagitech({ start: false, seed: 2052, dismissUpdates: false });
+  try {
+    const win = b.dom.window, doc = win.document;
+
+    // 1. Clean shaped launch/unlock button CSS has no rectangular box-shadow/outline.
+    const cssText = [...doc.querySelectorAll('style')].map(s => s.textContent).join('\n');
+    assert.match(cssText, /\.mech-detail-body\.mech-garage-home > \.mech-go-button,[\s\S]*box-shadow:\s*none;[\s\S]*outline:\s*none;/);
+    assert.match(cssText, /filter:\s*drop-shadow\(/);
+
+    // 4a. #updates-modal closes on outside tap (own pointerdown + click on backdrop).
+    const updatesModal = doc.querySelector('#updates-modal');
+    assert.ok(updatesModal.classList.contains('show'), 'updates modal opens on first visit');
+    updatesModal.dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
+    updatesModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true, detail: 1 }));
+    assert.equal(updatesModal.classList.contains('show'), false, 'outside tap closes #updates-modal');
+
+    // 4b. #picker-visual (<details>) closes on outside pointerdown.
+    const pickerVisual = doc.querySelector('#picker-visual');
+    pickerVisual.open = true;
+    doc.querySelector('#picker-title').dispatchEvent(new win.Event('pointerdown', { bubbles: true }));
+    assert.equal(pickerVisual.open, false, 'outside pointerdown closes #picker-visual');
+
+    // 4c. #history-modal closes on outside click.
+    doc.querySelector('#picker-history').click();
+    const historyModal = doc.querySelector('#history-modal');
+    assert.ok(historyModal.classList.contains('show'));
+    historyModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(historyModal.classList.contains('show'), false, 'outside tap closes #history-modal');
+
+    // Start a run via garage (mark guide seen first so run opens directly).
+    win.localStorage.setItem(magitechKey('raid:guideSeen'), '1');
+    launchMagitechMech(doc, 'adventurer');
+    assert.ok(b.raid.state, 'run started');
+
+    // 2. Potions on board render clean crystal sprite + glass sheen + sparkles without wrapper bands.
+    b.raid.state.board[0] = { type: 'potion' };
+    b.raid.state.board[1] = { type: 'potion', mana: true };
+    b.raid.state.board[2] = { type: 'potion', acid: true };
+    b.raid.state.board[3] = { type: 'potion', explosive: true };
+    assert.equal(b.raid.saveRun(), true);
+    assert.equal(b.raid.resumeSavedRun(), true);
+    for (let i = 0; i < 4; i++) {
+      const cellEl = doc.querySelector(`#board .cell[data-idx="${i}"]`);
+      assert.ok(cellEl.querySelector('.potion-art'), `potion ${i} renders full crystal sprite`);
+      assert.ok(cellEl.querySelector('.potion-glass-sheen'), `potion ${i} has glass sheen`);
+      assert.ok(cellEl.querySelectorAll('.potion-sparkle').length >= 2, `potion ${i} has crystal sparkles`);
+      assert.equal(cellEl.querySelector('.potion-wave'), null, `potion ${i} has no protruding wrapper wave`);
+      assert.equal(cellEl.querySelector('clipPath'), null, `potion ${i} has no clipped band`);
+    }
+
+    // 3. Redesigned pause menu: inline switches + 6 icon tiles + sound/music sync.
+    const menuModal = doc.querySelector('#menu-modal');
+    doc.querySelector('#menu-btn').click();
+    assert.ok(menuModal.classList.contains('show'));
+    assert.equal(menuModal.querySelectorAll('.menu-grid .menu-tile').length, 6, 'menu has 6 icon tiles');
+    assert.ok(menuModal.querySelector('#menu-visual input[data-raid-visual="shells"]'));
+    assert.ok(menuModal.querySelector('#menu-visual input[data-raid-visual="animations"]'));
+    assert.ok(menuModal.querySelector('#menu-sound-on'));
+    assert.ok(menuModal.querySelector('#menu-music-on'));
+    assert.equal(menuModal.querySelectorAll('input[name="haptics-menu"]').length, 3);
+
+    // Sound toggle inside pause menu stays in sync with #sound-on.
+    const soundMain = doc.querySelector('#sound-on');
+    const soundMenu = doc.querySelector('#menu-sound-on');
+    soundMenu.checked = !soundMain.checked;
+    soundMenu.dispatchEvent(new win.Event('change', { bubbles: true }));
+    assert.equal(soundMain.checked, soundMenu.checked, '#menu-sound-on syncs to #sound-on');
+
+    // Music toggle inside pause menu stays in sync with #music-on.
+    const musicMain = doc.querySelector('#music-on');
+    const musicMenu = doc.querySelector('#menu-music-on');
+    musicMenu.checked = !musicMain.checked;
+    musicMenu.dispatchEvent(new win.Event('change', { bubbles: true }));
+    assert.equal(musicMain.checked, musicMenu.checked, '#menu-music-on syncs to #music-on');
+
+    // 4d. Outside tap closes #menu-modal; #menu-x-close also closes it.
+    menuModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(menuModal.classList.contains('show'), false, 'outside tap closes #menu-modal');
+    doc.querySelector('#menu-btn').click();
+    doc.querySelector('#menu-x-close').click();
+    assert.equal(menuModal.classList.contains('show'), false, '#menu-x-close closes #menu-modal');
+
+    // 4e. Outside tap closes #restart-modal.
+    doc.querySelector('#menu-btn').click();
+    doc.querySelector('#menu-restart').click();
+    const restartModal = doc.querySelector('#restart-modal');
+    assert.ok(restartModal.classList.contains('show'));
+    restartModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(restartModal.classList.contains('show'), false, 'outside tap closes #restart-modal');
+
+    // 4f. Outside tap closes #beginner-guide.
+    doc.querySelector('#menu-btn').click();
+    doc.querySelector('#menu-help').click();
+    const guide = doc.querySelector('#beginner-guide');
+    assert.ok(guide.classList.contains('show'));
+    guide.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(guide.classList.contains('show'), false, 'outside tap closes #beginner-guide');
+
+    // 4g. Outside tap closes #help-modal.
+    const helpModal = doc.querySelector('#help-modal');
+    helpModal.classList.add('show');
+    helpModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(helpModal.classList.contains('show'), false, 'outside tap closes #help-modal');
+
+    // 4h. Outside tap closes non-mandatory #modal ('stats'), but NEVER closes mandatory reward ('level').
+    doc.querySelector('#stats-btn').click();
+    const combatModal = doc.querySelector('#modal');
+    assert.ok(combatModal.classList.contains('show'));
+    assert.equal(b.raid.state.pendingModal, 'stats');
+    combatModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.equal(combatModal.classList.contains('show'), false, 'outside tap closes stats #modal');
+    assert.equal(b.raid.state.pendingModal, null);
+
+    b.raid.state.hero.xp = 100;
+    b.raid.checkLevelUp();
+    assert.ok(combatModal.classList.contains('show'));
+    assert.equal(b.raid.state.pendingModal, 'level');
+    combatModal.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    assert.ok(combatModal.classList.contains('show'), 'outside tap must NOT dismiss mandatory level modal');
+    assert.equal(b.raid.state.pendingModal, 'level');
 
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
