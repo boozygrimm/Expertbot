@@ -4428,7 +4428,7 @@ function settingsKey(b, key, extra = {}) {
   return w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra }));
 }
 
-test('magitech haptics: combat feedback is immediate and off silences it', async () => {
+test('magitech haptics: combat feedback is immediate in Бой mode and off silences it', async () => {
   const calls = [];
   const b = await openMagitech({ start: false, setup(w) {
     w.Telegram = { WebApp: { HapticFeedback: {
@@ -4440,20 +4440,20 @@ test('magitech haptics: combat feedback is immediate and off silences it', async
   try {
     const d = b.dom.window.document, radios = [...d.querySelectorAll('[name="haptics-combat"]')];
     radios.find(input => input.value === 'all').click();
-    assert.deepEqual(calls, [['impact', 'soft']], 'the control itself gives immediate tactile confirmation within the user gesture');
+    assert.deepEqual(calls, [['impact', 'soft']], 'the control itself gives immediate soft confirmation within the user gesture');
     b.raid.setSelectedClassId('adventurer'); b.raid.newGame(2718);
     const enemy = b.raid.makeSkull(false, true, 3); enemy.hp = enemy.maxHp = 20;
     b.raid.state.board[0] = { type: 'skull', skull: enemy };
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['selection']], 'combat feedback fires synchronously');
+    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']], 'nonlethal hit emits soft impact in Бой mode');
     radios.find(input => input.value === 'off').click();
     b.raid.hitSkullAt(0, 0, { direct: false });
-    assert.deepEqual(calls, [['impact', 'soft'], ['selection']]);
+    assert.deepEqual(calls, [['impact', 'soft'], ['impact', 'soft']]);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
-test('magitech haptics: important mode immediately signals kills and bosses but not nonlethal hits', async () => {
+test('magitech haptics: assistant mode (Помощник) stays quiet on ordinary hits/kills and signals helpful events', async () => {
   const calls = [];
   const b = await openMagitech({ start: false, setup(w) {
     w.Telegram = { WebApp: { HapticFeedback: {
@@ -4465,27 +4465,50 @@ test('magitech haptics: important mode immediately signals kills and bosses but 
   try {
     const r = b.raid, d = b.dom.window.document;
     r.setSelectedClassId('adventurer'); r.newGame(2718);
+    // Ordinary hit & ordinary kill stay completely silent in Помощник mode.
     r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:20, maxHp:20, def:0 }) };
     r.hitSkullAt(0, 1, { direct:false });
-    assert.deepEqual(calls, []);
     r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(0, 100, { direct:false });
-    assert.deepEqual(calls, [['selection']]);
-    r.state.board[2] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:1, maxHp:1, def:0 }) };
-    r.hitSkullAt(2, 100, { direct:false });
-    assert.deepEqual(calls, [['selection']], 'same-frame multi-kill coalesces into one crisp combat haptic');
+    assert.deepEqual(calls, [], 'ordinary hits and non-boss kills must not buzz in assistant mode');
+
+    // Skill cooldown reaching 0 via enemy turn signals light skillReady haptic.
+    r.state.turn = 2;
+    r.state.skills = ['dazzle'];
+    r.state.skillDurations.dazzle = 5;
+    r.state.skillCooldowns.dazzle = 1;
+    // Seed snapshot with turn=2, cd=1 by ending a turn with cd=2 -> 1 (silent), then 1 -> 0 (fires!).
+    r.state.skillCooldowns.dazzle = 2;
+    r.endEnemyTurn();
+    assert.deepEqual(calls, [], 'cooldown 2->1 stays silent');
+    r.endEnemyTurn();
+    assert.deepEqual(calls, [['impact', 'light']], 'skill coming off cooldown (1->0) fires light assistant tap');
+
+    // Higher-priority boss kill breaks through coalescing window with success notification.
     r.state.board[1] = { type:'skull', skull:Object.assign(r.makeSkull(true), { hp:1, maxHp:1, def:0 }) };
     r.hitSkullAt(1, 100, { direct:false });
-    assert.deepEqual(calls, [['selection'], ['selection']], 'higher-priority boss kill still fires immediately');
+    assert.deepEqual(calls, [['impact', 'light'], ['notification', 'success']], 'boss kill fires success notification');
+
+    // Heavy incoming enemy attack fires warning notification.
+    r.state.hero.hp = r.state.hero.maxHp;
+    r.state.hero.armor = 0;
+    r.state.board.fill({ type: 'coin' });
+    r.state.board[0] = { type:'skull', skull:Object.assign(r.makeSkull(false), { hp:10, maxHp:10, def:0, atk: Math.ceil(r.state.hero.maxHp * 0.35), enteredTurn: 0 }) };
+    r.enemyPhase();
+    assert.ok(calls.some(([api, arg]) => api === 'notification' && arg === 'warning'), 'heavy enemy damage fires warning notification');
+
     assert.equal(d.querySelectorAll('.haptics-test, [data-haptic-test]').length, 0);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
-test('magitech haptics: selecting enemies responds once per addition and respects off mode', async () => {
+test('magitech haptics: enemy selection is silent in Помощник mode, responds in Бой mode, and respects off mode', async () => {
   const calls = [];
   const b = await openMagitech({ start: false, setup(w) {
-    w.Telegram = { WebApp: { HapticFeedback: { selectionChanged() { calls.push('selection'); } } } };
+    w.Telegram = { WebApp: { HapticFeedback: {
+      selectionChanged() { calls.push('selection'); },
+      impactOccurred(kind) { calls.push(['impact', kind]); },
+    } } };
   } });
   try {
     const r = b.raid, w = b.dom.window, d = w.document;
@@ -4494,23 +4517,30 @@ test('magitech haptics: selecting enemies responds once per addition and respect
     r.state.board[1] = { type:'skull', skull:r.makeSkull(false) };
     r.state.board[2] = { type:'sword' };
     const cell = i => d.querySelector(`.cell[data-idx="${i}"]`);
+    // Default Помощник mode: silent while dragging over enemies.
+    raidPointer(w, cell(0), 'pointerdown');
+    assert.deepEqual(calls, [], 'default Помощник mode does not buzz when selecting enemies');
+    raidPointer(w, w, 'pointercancel');
+
+    // Switch to Бой (all) mode: enemy selection responds.
+    d.querySelector('[name="haptics-combat"][value="all"]').click();
+    calls.length = 0;
     raidPointer(w, cell(0), 'pointerdown');
     assert.deepEqual(calls, ['selection']);
-    d.elementFromPoint = () => cell(1); raidPointer(w, w, 'pointermove');
-    assert.deepEqual(calls, ['selection', 'selection']);
-    raidPointer(w, w, 'pointermove');
     d.elementFromPoint = () => cell(2); raidPointer(w, w, 'pointermove');
-    assert.deepEqual(calls, ['selection', 'selection']);
+    assert.deepEqual(calls, ['selection']);
     raidPointer(w, w, 'pointercancel');
+
+    // Switch to off: silent.
     d.querySelector('[name="haptics-combat"][value="off"]').click();
     raidPointer(w, cell(0), 'pointerdown');
-    assert.deepEqual(calls, ['selection', 'selection']);
+    assert.deepEqual(calls, ['selection']);
     raidPointer(w, w, 'pointercancel');
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });
 
-test('magitech haptics: browser fallback receives synchronous confirmation when the Telegram bridge rejects it', async () => {
+test('magitech haptics: browser fallback receives synchronous soft confirmation when the Telegram bridge rejects it', async () => {
   const calls = [];
   const b = await openMagitech({ start: false, setup(w) {
     Object.defineProperty(w.navigator, 'vibrate', { configurable: true, value(pattern) { calls.push(pattern); return true; } });
@@ -4519,9 +4549,9 @@ test('magitech haptics: browser fallback receives synchronous confirmation when 
   try {
     const d = b.dom.window.document;
     d.querySelector('[name="haptics-garage"][value="all"]').click();
-    assert.deepEqual(calls, [12]);
+    assert.deepEqual(calls, [10]);
     d.querySelector('[name="haptics-menu"][value="off"]').click();
-    assert.deepEqual(calls, [12]);
+    assert.deepEqual(calls, [10]);
     assert.deepEqual(b.errors, []);
   } finally { b.dom.window.close(); }
 });

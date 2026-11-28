@@ -3412,7 +3412,8 @@
         S.board[slot.row * COLS + slot.col] = { type: 'skull', skull };
         emptySlots.splice(emptySlots.indexOf(slot), 1);
         placed++;
-        if (isBoss) { bossPlaced = true; audioBoss(); }
+        if (isBoss) { bossPlaced = true; audioBoss(); queueCombatHaptic('bossSpawn'); }
+        else if (isSpecial) { queueCombatHaptic('specialSpawn'); }
       }
     }
 
@@ -4826,6 +4827,7 @@
   }
 
   function renderSkills() {
+    trackSkillReadyHaptic();
     const row = el('skills');
     if (!row) return;
     row.innerHTML = '';
@@ -6133,44 +6135,106 @@
   }
 
   // --- haptics --------------------------------------------------------------
-  // Haptics are best-effort and entirely local. Emit at the combat event, while
-  // coalescing same-or-lower combat repeats within 60ms so multi-kill sword
-  // chains send one crisp native impulse instead of stuttering the bridge.
+  // Tactile assistant: silent during ordinary swiping/hits by default ('important'
+  // mode = Помощник), signaling only actionable events (skill ready, special/boss
+  // spawn, trophy on board, reward ready, boss kill, heavy/critical damage).
+  // 'all' mode (Бой) adds soft combat taps on enemy selection, hits and kills.
   const HAPTICS_KEY = 'raid.magitech.haptics.v1';
   let hapticsMode = 'important';
   let lastCombatHapticAt = -1e9, lastCombatHapticRank = 0;
-  const HAPTIC_COMBAT_RANK = { hit: 1, kill: 2, damage: 3, boss: 4 };
+  let lastSelectionHapticAt = -1e9;
+  let lastHapticRunId = -1, lastHapticSkillCd = Object.create(null);
+  const HAPTIC_ASSISTANT_KINDS = new Set([
+    'confirmation', 'skillReady', 'rewardReady', 'specialSpawn', 'trophySpawn', 'boss', 'bossSpawn', 'damage',
+  ]);
+  const HAPTIC_COMBAT_RANK = {
+    hit: 1, skillReady: 1, rewardReady: 1,
+    kill: 2, specialSpawn: 3,
+    trophySpawn: 4, boss: 4,
+    bossSpawn: 5, damage: 5,
+  };
+  const HAPTIC_PROFILES = {
+    confirmation: { tg: ['impact', 'soft'],       web: 10 },
+    selection:    { tg: ['selection'],            web: 8 },
+    hit:          { tg: ['impact', 'soft'],       web: 8 },
+    skillReady:   { tg: ['impact', 'light'],      web: 10 },
+    rewardReady:  { tg: ['impact', 'soft'],       web: 10 },
+    kill:         { tg: ['impact', 'light'],      web: 14 },
+    specialSpawn: { tg: ['impact', 'medium'],     web: 16 },
+    trophySpawn:  { tg: ['notify', 'success'],    web: [12, 28, 16] },
+    boss:         { tg: ['notify', 'success'],    web: [14, 28, 18] },
+    bossSpawn:    { tg: ['notify', 'warning'],    web: [18, 32, 22] },
+    damage:       { tg: ['notify', 'warning'],    web: [20, 32, 20] },
+  };
   function hapticsEnabled() { return hapticsMode !== 'off' && document.visibilityState !== 'hidden'; }
   function emitHaptic(kind) {
     if (!hapticsEnabled()) return;
+    if (hapticsMode === 'important' && !HAPTIC_ASSISTANT_KINDS.has(kind)) return;
+    const now = nowMs();
+    if (kind === 'selection') {
+      if (now - lastSelectionHapticAt < 40) return;
+      lastSelectionHapticAt = now;
+    }
     const rank = HAPTIC_COMBAT_RANK[kind] || 0;
     if (rank) {
-      const now = nowMs();
-      if (now - lastCombatHapticAt < 60 && rank <= lastCombatHapticRank) return;
+      if (now - lastCombatHapticAt < 110 && rank <= lastCombatHapticRank) return;
       lastCombatHapticAt = now; lastCombatHapticRank = rank;
     }
+    const profile = HAPTIC_PROFILES[kind] || HAPTIC_PROFILES.confirmation;
     let delivered = false;
     try {
       const feedback = window.Telegram?.WebApp?.HapticFeedback;
-      if (kind !== 'confirmation' && typeof feedback?.selectionChanged === 'function') {
-        feedback.selectionChanged(); delivered = true;
-      } else if (typeof feedback?.impactOccurred === 'function') {
-        feedback.impactOccurred(kind === 'confirmation' ? 'soft' : 'heavy'); delivered = true;
+      if (feedback) {
+        const [api, arg] = profile.tg;
+        if (api === 'selection' && typeof feedback.selectionChanged === 'function') {
+          feedback.selectionChanged(); delivered = true;
+        } else if (api === 'notify' && typeof feedback.notificationOccurred === 'function') {
+          feedback.notificationOccurred(arg); delivered = true;
+        } else if (api === 'impact' && typeof feedback.impactOccurred === 'function') {
+          feedback.impactOccurred(arg); delivered = true;
+        } else if (typeof feedback.impactOccurred === 'function') {
+          feedback.impactOccurred(api === 'notify' ? 'medium' : 'light'); delivered = true;
+        } else if (typeof feedback.selectionChanged === 'function') {
+          feedback.selectionChanged(); delivered = true;
+        }
       }
     } catch (ignored) { /* Try the browser API if the host bridge rejects this call. */ }
     if (delivered) return;
     // Browser fallback is optional; iOS and some embedded WebViews do not
     // expose it. Never make gameplay depend on vibration support.
     try {
-      if (typeof navigator.vibrate === 'function') navigator.vibrate(kind === 'boss' ? [35, 25, 45] : kind === 'damage' ? [45, 30, 45] : kind === 'kill' ? 35 : 12);
+      if (typeof navigator.vibrate === 'function') navigator.vibrate(profile.web);
     } catch (ignored) {}
   }
   function queueCombatHaptic(kind, boss = false) {
     if (!hapticsEnabled()) return;
     if (kind === 'selection') emitHaptic('selection');
     else if (kind === 'kill') emitHaptic(boss ? 'boss' : 'kill');
-    else if (kind === 'damage') emitHaptic('damage');
-    else if (kind === 'hit' && hapticsMode === 'all') emitHaptic('hit');
+    else if (kind === 'hit') emitHaptic('hit');
+    else if (HAPTIC_PROFILES[kind]) emitHaptic(kind);
+  }
+  function trackSkillReadyHaptic() {
+    if (!S) return;
+    const prevRun = lastHapticRunId;
+    const prevMap = prevRun === RUN_ID ? lastHapticSkillCd : Object.create(null);
+    const nextMap = Object.create(null);
+    let becameReady = false;
+    for (const id of (S.skills || [])) {
+      if (!id) continue;
+      const cur = S.skillCooldowns[id] || 0;
+      nextMap[id] = cur;
+      if (prevRun === RUN_ID && S.turn > 0 && (prevMap[id] || 0) > 0 && cur === 0) becameReady = true;
+    }
+    lastHapticRunId = RUN_ID;
+    lastHapticSkillCd = nextMap;
+    if (becameReady) queueCombatHaptic('skillReady');
+  }
+  function checkDamageHaptic(prevHp, damage) {
+    if (!S || S.over) return;
+    const heavy = damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25));
+    const lowThr = Math.max(1, Math.ceil(S.hero.maxHp * .3));
+    const enteredLowHp = prevHp > lowThr && S.hero.hp > 0 && S.hero.hp <= lowThr;
+    if (heavy || enteredLowHp) queueCombatHaptic('damage');
   }
   function initHaptics() {
     const controls = [...document.querySelectorAll('[data-raid-haptics]')]; if (!controls.length) return;
@@ -6736,8 +6800,9 @@
     if (S.over || S.pendingModal || !ownsRunSlot()) return;
     S.resolving = true;
     S.actionCommitted = true;
+    const prevHp = S.hero.hp;
     const incoming = processEnemyAttack();
-    if (incoming?.damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
+    checkDamageHaptic(prevHp, incoming?.damage || 0);
     renderBoard(); renderHUD();
     // Spikes/counter resources (and their menus) settle before turn++.
     continueAfterRewards({ phase: 'end-turn' });
@@ -6846,8 +6911,9 @@
   }
 
   function damageHeroWithHaptics(...args) {
+    const prevHp = S.hero.hp;
     const damage = damageHero(...args);
-    if (damage >= Math.max(3, Math.ceil(S.hero.maxHp * .25))) queueCombatHaptic('damage');
+    checkDamageHaptic(prevHp, damage);
     return damage;
   }
 
@@ -6904,6 +6970,7 @@
       const cssKind = kind === 'gold' ? 'shop' : kind;
       wrap.classList.add(cssKind);
       title.classList.add(cssKind);
+      if (!restoredChoices) queueCombatHaptic('rewardReady');
     }
 
     if (kind === 'level') {
@@ -7180,6 +7247,7 @@
         created = true;
         // Own SVG, but preserve SetType's numeric appearance draw.
         S.board[slot] = { type: 'trophy', appearance: randInt(0, 7, 0) };
+        queueCombatHaptic('trophySpawn');
       } else S.trophyRemaining = 0;
     }
     saveTrophyRemaining();
